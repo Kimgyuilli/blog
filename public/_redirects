@@ -5,6 +5,10 @@
 # /123 /blog/tistory-migration-notes/ 301
 # /entry/old-post-title /blog/new-post-slug/ 301
 
+# Removed /blog index — send to home
+/blog / 301
+/blog/ / 301
+
 /91 /blog/peekcart-monolith-to-msa-flow/ 301
 /m/91 /blog/peekcart-monolith-to-msa-flow/ 301
 /94 /blog/codex-x-llm-wiki/ 301

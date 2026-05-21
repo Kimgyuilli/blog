@@ -1,11 +1,28 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import PostCard from '@/components/PostCard.astro';
-import { getPublishedPosts } from '@/utils/blog';
+import {
+  CATEGORIES,
+  getAllTags,
+  getCategoryUrl,
+  getPostsByCategory,
+  getPostsByTag,
+  getPublishedPosts,
+} from '@/utils/blog';
 
 const posts = await getPublishedPosts();
 const featured = posts.slice(0, 6);
 const rest = posts.slice(6);
+
+const categoryCounts = CATEGORIES.map((category) => ({
+  ...category,
+  count: getPostsByCategory(posts, category.slug).length,
+}));
+
+const tagsByCount = getAllTags(posts)
+  .map((tag) => ({ tag, count: getPostsByTag(posts, tag).length }))
+  .sort((a, b) => b.count - a.count)
+  .slice(0, 20);
 ---
 
 <BaseLayout>
@@ -17,29 +34,71 @@ const rest = posts.slice(6);
     </p>
   </section>
 
-  {
-    featured.length > 0 && (
-      <section class="home-section">
-        <h2 class="section-title">최근 글</h2>
-        <ul class="post-grid">
-          {featured.map((post) => (
-            <PostCard post={post} headingLevel={3} variant="grid" />
-          ))}
-        </ul>
-      </section>
-    )
-  }
+  <div class="home-layout">
+    <div class="home-main">
+      {
+        featured.length > 0 && (
+          <section class="home-section">
+            <h2 class="section-title">최근 글</h2>
+            <ul class="post-grid">
+              {featured.map((post) => (
+                <PostCard post={post} headingLevel={3} variant="grid" />
+              ))}
+            </ul>
+          </section>
+        )
+      }
 
-  {
-    rest.length > 0 && (
-      <section class="home-section">
-        <h2 class="section-title">전체 글</h2>
-        <ul class="post-list">
-          {rest.map((post) => (
-            <PostCard post={post} headingLevel={3} />
-          ))}
+      {
+        rest.length > 0 && (
+          <section class="home-section">
+            <h2 class="section-title">전체 글</h2>
+            <ul class="post-list">
+              {rest.map((post) => (
+                <PostCard post={post} headingLevel={3} />
+              ))}
+            </ul>
+          </section>
+        )
+      }
+    </div>
+
+    <aside class="home-sidebar" aria-label="분류 및 태그">
+      <section class="sidebar-widget">
+        <h2 class="widget-title">분류</h2>
+        <ul class="widget-category-list">
+          {
+            categoryCounts.map((category) => (
+              <li>
+                <a href={getCategoryUrl(category.slug)}>
+                  <span>{category.label}</span>
+                  <span class="count">{category.count}</span>
+                </a>
+              </li>
+            ))
+          }
         </ul>
       </section>
-    )
-  }
+
+      <section class="sidebar-widget">
+        <h2 class="widget-title">태그</h2>
+        {
+          tagsByCount.length > 0 ? (
+            <ul class="widget-tag-cloud">
+              {tagsByCount.map(({ tag, count }) => (
+                <li>
+                  <a href={`/blog/tag/${tag}/`}>
+                    #{tag}
+                    <span class="count">{count}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p class="widget-empty">아직 태그가 없습니다.</p>
+          )
+        }
+      </section>
+    </aside>
+  </div>
 </BaseLayout>
