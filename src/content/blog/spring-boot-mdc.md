@@ -1,6 +1,7 @@
 ---
 title: "Spring Boot에서 MDC 로깅 필터는 어떻게 동작할까?"
 description: "트래픽이 많은 Spring Boot 서버에서 요청별 로그를 추적하기 위해 MDC와 Servlet Filter가 어떻게 연결되는지 정리합니다."
+image: "/images/blog/spring-boot-mdc/image-01.png"
 pubDate: 2026-05-19
 tags: ["spring", "spring-boot", "mdc"]
 draft: false

@@ -1,6 +1,7 @@
 ---
 title: "Maruni 개발 마무리 회고"
 description: "어느새 Maruni 프로젝트가 끝을 향해 달려가고있다. 지난 2주간 너무 많은 일이 있어서 내가 마루니에만 진심을 다했는지 물어보면 사실 그건 아닌 것 같다. 처음 이 프로젝트를 할 때는 다양한 기능 설계와 자료조사를 통해 내가 해보고 싶었던 것을 하는 꿈을 이루는"
+image: "/images/blog/maruni/image-01.png"
 pubDate: 2025-11-24
 tags: []
 draft: false

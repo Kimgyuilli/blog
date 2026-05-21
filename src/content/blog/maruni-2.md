@@ -1,6 +1,7 @@
 ---
 title: "Maruni 개발기록(2) - 프로젝트 문서화, 안부 메세지 개선"
 description: "개발일지 3 링크 https://imdeepskyblue.tistory.com/57 Maruni 개발기록(3) - AI 대화 품질 개선 들어가며MARUNI는 노인 돌봄을 위한 AI 대화 서비스입니다. 매일 오전 9시, '마루'라는 이름의 AI가 어르신들께 안부 메시지를 보내고"
+image: "/images/blog/maruni-2/image-01.png"
 pubDate: 2025-11-10
 tags: []
 draft: false

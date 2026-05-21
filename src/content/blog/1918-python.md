@@ -1,6 +1,7 @@
 ---
 title: "백준 1918(python/파이썬)"
 description: "수식은 일반적으로 3가지 표기법으로 표현할 수 있다. 연산자가 피연산자 가운데 위치하는 중위 표기법(일반적으로 우리가 쓰는 방법이다), 연산자가 피연산자 앞에 위치하는 전위 표기법(prefix notation), 연산자가 피연산자 뒤에 위치하는 후위 표기법(postfix"
+image: "/images/blog/1918-python/image-01.jpg"
 pubDate: 2022-03-07
 tags: ["python", "백준"]
 draft: false

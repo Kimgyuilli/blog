@@ -1,6 +1,7 @@
 ---
 title: "1260 DFS와 BFS - JAVA"
 description: "기본적인 DFS, BFS 문제이다. 나는 알고리즘에 대한 지식이 없기 때문에 좀 고생했다.. 특징이 있는 부분 몇개만 소개하자면 간선 행렬을 표현할 때 1-based index를 사용해 index와 순회 돌 때의 숫자가 같게 만들었다. 재귀를 활용한 dfs queue를 사용한"
+image: "/images/blog/1260-dfs-bfs-java/image-01.png"
 pubDate: 2025-02-24
 tags: ["java"]
 draft: false

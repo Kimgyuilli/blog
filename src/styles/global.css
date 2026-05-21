@@ -262,9 +262,34 @@ h3 {
   box-shadow: var(--shadow-sm);
 }
 
+.post-card.has-thumbnail {
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 20px;
+  align-items: stretch;
+  padding: 18px;
+}
+
 .post-card:hover {
   border-color: color-mix(in srgb, var(--brand-green) 45%, var(--hairline));
   box-shadow: var(--shadow-card);
+}
+
+.post-card-content {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.post-thumbnail {
+  width: 100%;
+  height: 100%;
+  min-height: 132px;
+  max-height: 164px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: 8px;
+  background: var(--surface);
+  object-fit: cover;
 }
 
 .post-card h2,
@@ -611,6 +636,18 @@ h3 {
 
   .post-card {
     padding: 18px;
+  }
+
+  .post-card.has-thumbnail {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 14px;
+  }
+
+  .post-thumbnail {
+    aspect-ratio: 16 / 9;
+    min-height: 0;
+    max-height: none;
   }
 
   .article-header h1 {

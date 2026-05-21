@@ -1,6 +1,7 @@
 ---
 title: "Claude × Codex 하네스 구축기"
 description: "최근 작업하면서 가장 크게 느낀 문제는 “AI를 쓰고 있는데도 작업 흐름이 오히려 더 산만해질 수 있다”는 점이었다. 단순히 AI가 코드를 잘 짜느냐의 문제가 아니었다. 실제로는 아래 같은 불편이 더 컸다. 나는 결국 “AI를 더 똑똑하게 쓰는 것”보다 작업 흐름 자체를"
+image: "/images/blog/claude-codex/image-01.png"
 pubDate: 2026-04-21
 tags: ["codex", "claude"]
 draft: false

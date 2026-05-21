@@ -1,6 +1,7 @@
 ---
 title: "성능테스트 정리"
 description: "부하 테스트(Load Test) 는 시스템이 예상되는 트래픽을 안정적으로 처리할 수 있는지 검증하는 테스트이다. 단순히 \"최대 몇 명까지 버틴다\"를 보는 것이 아니다. 더 정확히는 서비스가 실제 환경에서 문제없이 동작하는 범위를 확인하는 것 이 핵심이다. 운영 환경에서는"
+image: "/images/blog/tistory-89/image-01.png"
 pubDate: 2026-05-03
 tags: []
 draft: false

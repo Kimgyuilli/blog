@@ -1,6 +1,7 @@
 ---
 title: "AWS ECS가 누구세요"
 description: "AWS ECS(Elastic Container Service)는 AWS에서 제공하는 완전 관리형 컨테이너 오케스트레이션 서비스입니다. Docker 컨테이너를 쉽게 배포하고 운영할 수 있도록 해주며, Kubernetes의 복잡성 없이 컨테이너 관리가 가능합니다. 💡 컨테이너"
+image: "/images/blog/aws-ecs/image-01.png"
 pubDate: 2025-12-05
 tags: ["aws"]
 draft: false

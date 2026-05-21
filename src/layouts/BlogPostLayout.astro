@@ -16,7 +16,7 @@ const { post, headings } = Astro.props;
 const tocItems = headings.filter((heading) => heading.depth === 2 || heading.depth === 3);
 ---
 
-<BaseLayout title={post.data.title} description={post.data.description}>
+<BaseLayout title={post.data.title} description={post.data.description} image={post.data.image}>
   <article class="article-doc">
     <div class="article-main">
       <header class="article-header">

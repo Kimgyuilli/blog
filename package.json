@@ -11,7 +11,8 @@
     "astro": "astro",
     "generate-types": "wrangler types",
     "deploy": "npm run build && wrangler deploy",
-    "migrate:tistory": "node scripts/migrate-tistory.mjs"
+    "migrate:tistory": "node scripts/migrate-tistory.mjs",
+    "sync:post-images": "node scripts/sync-post-images.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^13.5.3",

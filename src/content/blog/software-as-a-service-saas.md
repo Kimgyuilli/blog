@@ -1,6 +1,7 @@
 ---
 title: "서비스로서의 소프트웨어(Software-as-a-Service, SaaS)"
 description: "지나가면서 한번쯤은 보게 되는 단어이자 인터넷을 사용하는 모두가 사용해봤을 SaaS는 소프트웨어를 서비스의 형태로 제공하는 모델을 말한다. 예전에는 소프트웨어 설치를 CD로 하던 시절이 있었다. 이러한 방법은 다양한 단점을 가지고 있는데 1. 무단 복제가 쉽다. 2. 실시간"
+image: "/images/blog/software-as-a-service-saas/image-01.png"
 pubDate: 2025-03-26
 tags: []
 draft: false

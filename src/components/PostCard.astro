@@ -1,0 +1,52 @@
+---
+import { formatDate, getPostUrl } from '@/utils/blog';
+import type { BlogPost } from '@/utils/blog';
+
+type Props = {
+  post: BlogPost;
+  headingLevel?: 2 | 3;
+  showTags?: boolean;
+};
+
+const { post, headingLevel = 2, showTags = true } = Astro.props;
+const HeadingTag = `h${headingLevel}` as const;
+const image = post.data.image;
+---
+
+<li class:list={['post-card', { 'has-thumbnail': image }]}>
+  {
+    image && (
+      <img
+        class="post-thumbnail"
+        src={image}
+        alt=""
+        width="320"
+        height="180"
+        loading="lazy"
+        decoding="async"
+      />
+    )
+  }
+  <div class="post-card-content">
+    <div class="meta">
+      <time datetime={post.data.pubDate.toISOString()}>{formatDate(post.data.pubDate)}</time>
+    </div>
+    <HeadingTag>
+      <a href={getPostUrl(post)}>{post.data.title}</a>
+    </HeadingTag>
+    <p>{post.data.description}</p>
+    {
+      showTags && post.data.tags.length > 0 && (
+        <ul class="tag-list" aria-label={`${post.data.title} 태그`}>
+          {post.data.tags.map((tag) => (
+            <li>
+              <a class="tag" href={`/blog/tag/${tag}/`}>
+                #{tag}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </div>
+</li>

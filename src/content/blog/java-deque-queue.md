@@ -1,6 +1,7 @@
 ---
 title: "JAVA의 Deque 클래스와 Queue 클래스의 차이"
 description: "백준을 풀다가 Deque 클래스를 알게 되었다. BFS를 풀면서 Queue만 쓰던 나에게 새로운 고민을 안겨줬는데 Deque가 더 유연하니까 그냥 모든 경우에 Deque만 쓰면 되는 거 아니야? 라는 생각이었다. 그래서 찾아본 JAVA에서 Queue와 Deque의 차이를"
+image: "/images/blog/java-deque-queue/image-01.png"
 pubDate: 2025-03-25
 tags: ["java"]
 draft: false

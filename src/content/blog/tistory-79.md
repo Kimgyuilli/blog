@@ -1,6 +1,7 @@
 ---
 title: "Java 컬렉션 프레임워크 정리 (알고리즘 문제 풀이용)"
 description: "알고리즘 문제를 풀 때 자주 사용하는 Java 컬렉션 프레임워크의 주요 클래스와 메서드를 정리했습니다. List는 순서가 있고 중복을 허용하는 컬렉션입니다. 동적 배열 기반의 리스트. 인덱스 접근이 빠릅니다 (O(1)). 생성자 주요 메서드 추가 삭제 조회 수정 크기 변환"
+image: "/images/blog/tistory-79/image-01.png"
 pubDate: 2026-02-15
 tags: ["java", "알고리즘"]
 draft: false

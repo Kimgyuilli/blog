@@ -1,6 +1,7 @@
 ---
 title: "Java String, StringBuilder 메서드 정리 (알고리즘 문제 풀이용)"
 description: "알고리즘 문제를 풀 때 자주 사용하는 Java String과 StringBuilder 클래스의 주요 메서드를 정리했습니다. String은 불변(immutable) 객체입니다. 한 번 생성되면 값을 변경할 수 없습니다. 길이 문자 접근 사용 예시 사용 예시 indexOf 계열"
+image: "/images/blog/java-string-stringbuilder/image-01.jpg"
 pubDate: 2026-02-15
 tags: ["java", "알고리즘"]
 draft: false

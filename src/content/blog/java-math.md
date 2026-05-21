@@ -1,6 +1,7 @@
 ---
 title: "Java Math 클래스와 기타 유틸리티 정리 (알고리즘 문제 풀이용)"
 description: "알고리즘 문제를 풀 때 자주 사용하는 Java Math 클래스와 기타 유틸리티의 주요 메서드를 정리했습니다. java.lang.Math 클래스는 수학 연산을 위한 static 메서드들을 제공합니다. 사용 예시 사용 예시 사용 예시 사용 예시 사용 예시 사용 예시 사용 예시"
+image: "/images/blog/java-math/image-01.png"
 pubDate: 2026-02-15
 tags: ["java", "알고리즘"]
 draft: false

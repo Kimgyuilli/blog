@@ -1,6 +1,7 @@
 ---
 title: "JWT 인증의 보안 고도화 전략 – 단순 토큰에서 실전 대응까지"
 description: "최근 백엔드 개발에서는 JWT(Json Web Token)를 활용한 인증 방식이 일반화되고 있습니다. RESTful API, SPA(Single Page Application), 모바일 앱 등 다양한 아키텍처에서 세션 기반 인증보다 JWT가 선호되는 이유는 분명합니다. 하지만"
+image: "/images/blog/tistory-49/image-01.png"
 pubDate: 2025-05-20
 tags: []
 draft: false

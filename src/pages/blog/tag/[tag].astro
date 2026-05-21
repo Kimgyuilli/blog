@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro';
-import { formatDate, getAllTags, getPostsByTag, getPostUrl, getPublishedPosts } from '@/utils/blog';
+import PostCard from '@/components/PostCard.astro';
+import { getAllTags, getPostsByTag, getPublishedPosts } from '@/utils/blog';
 
 export async function getStaticPaths() {
   const posts = await getPublishedPosts();
@@ -24,15 +25,7 @@ const { posts, tag } = Astro.props;
   <ul class="post-list">
     {
       posts.map((post) => (
-        <li class="post-card">
-          <div class="meta">
-            <time datetime={post.data.pubDate.toISOString()}>{formatDate(post.data.pubDate)}</time>
-          </div>
-          <h2>
-            <a href={getPostUrl(post)}>{post.data.title}</a>
-          </h2>
-          <p>{post.data.description}</p>
-        </li>
+        <PostCard post={post} showTags={false} />
       ))
     }
   </ul>

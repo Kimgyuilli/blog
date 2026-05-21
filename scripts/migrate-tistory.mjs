@@ -273,18 +273,22 @@ async function migratePost({ id, url }, usedSlugs) {
     .replace(/\n{3,}/g, '\n\n')
     .replace(/[ \t]+\n/g, '\n')
     .trim();
+  const image = markdown.match(/!\[[^\]]*]\((\/images\/blog\/[^)]+)\)/)?.[1];
 
   const frontmatter = [
     '---',
     `title: ${yamlString(title)}`,
     `description: ${yamlString(description || title)}`,
+    image ? `image: ${yamlString(image)}` : undefined,
     `pubDate: ${pubDate}`,
     `tags: [${tags.map(yamlString).join(', ')}]`,
     'draft: false',
     `slug: ${yamlString(slug)}`,
     '---',
     '',
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   await fs.writeFile(path.join(CONTENT_DIR, `${slug}.md`), `${frontmatter}${markdown}\n`);
 

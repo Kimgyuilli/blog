@@ -1,6 +1,7 @@
 ---
 title: "Spring AI + pgvector RAG 검색 품질 개선기: 쿼리 리라이팅부터 Re-ranking까지"
 description: "이전 글에서 MessageChatMemoryAdvisor를 적용해 멀티 턴 대화까지 구현했다. 그런데 실제로 다양한 질문을 던져보니, 검색 자체가 잘 안 되는 문제가 있었다. 이 글에서는 기존 QuestionAnswerAdvisor를 커스텀 Advisor 체인으로 교체하여"
+image: "/images/blog/spring-ai-pgvector-rag-re-ranking/image-01.png"
 pubDate: 2026-02-25
 tags: ["spring", "rag"]
 draft: false

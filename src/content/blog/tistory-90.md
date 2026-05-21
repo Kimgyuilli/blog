@@ -1,6 +1,7 @@
 ---
 title: "요즘 클로드코드에 대해"
 description: "최근 Claude Code를 쓰면서 “어? 예전 같지 않은데?”라고 느낀 사람들이 꽤 많아진 것 같습니다. 단순한 체감이나 커뮤니티 불평으로만 보기 어려운 이유는, Anthropic이 실제로 Claude Code 품질 저하 이슈를 공식적으로 인정했기 때문입니다."
+image: "/images/blog/tistory-90/image-01.jpg"
 pubDate: 2026-05-03
 tags: []
 draft: false

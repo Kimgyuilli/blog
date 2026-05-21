@@ -1,6 +1,7 @@
 ---
 title: "PeekCart 학습 기록 0: 왜 모놀리스에서 MSA로 가는 흐름을 먼저 봐야 할까"
 description: "PeekCart를 MSA 프로젝트로 바로 보기 전에, 모놀리스에서 출발해 단계적으로 문제를 확인하는 흐름을 정리합니다."
+image: "/images/blog/peekcart-monolith-to-msa-flow/phase-overview.png"
 pubDate: 2026-05-13
 tags: ["peekcart", "msa", "monolith", "architecture"]
 draft: false

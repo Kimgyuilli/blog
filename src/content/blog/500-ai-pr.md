@@ -1,6 +1,7 @@
 ---
 title: "500 에러가 터지면 AI가 알아서 PR을 만들어주는 봇 만들어보기"
 description: "Spring Boot 프로젝트를 운영하다 보면 500 에러가 터진다. 로그 보고, 원인 파악하고, 코드 고치고, PR 올리고. 매번 같은 루틴이다. \"에러 나면 AI가 코드 보고 알아서 고쳐서 PR까지 올려주면 안 되나?\" 이 생각에서 시작했다. 사람이 해야 할 건 PR"
+image: "/images/blog/500-ai-pr/image-01.png"
 pubDate: 2026-02-18
 tags: []
 draft: false
