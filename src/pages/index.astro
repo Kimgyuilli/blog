@@ -4,6 +4,8 @@ import PostCard from '@/components/PostCard.astro';
 import { getPublishedPosts } from '@/utils/blog';
 
 const posts = await getPublishedPosts();
+const featured = posts.slice(0, 6);
+const rest = posts.slice(6);
 ---
 
 <BaseLayout>
@@ -15,11 +17,29 @@ const posts = await getPublishedPosts();
     </p>
   </section>
 
-  <ul class="post-list">
-    {
-      posts.map((post) => (
-        <PostCard post={post} headingLevel={3} />
-      ))
-    }
-  </ul>
+  {
+    featured.length > 0 && (
+      <section class="home-section">
+        <h2 class="section-title">최근 글</h2>
+        <ul class="post-grid">
+          {featured.map((post) => (
+            <PostCard post={post} headingLevel={3} variant="grid" />
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  {
+    rest.length > 0 && (
+      <section class="home-section">
+        <h2 class="section-title">전체 글</h2>
+        <ul class="post-list">
+          {rest.map((post) => (
+            <PostCard post={post} headingLevel={3} />
+          ))}
+        </ul>
+      </section>
+    )
+  }
 </BaseLayout>

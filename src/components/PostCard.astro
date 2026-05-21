@@ -6,14 +6,15 @@ type Props = {
   post: BlogPost;
   headingLevel?: 2 | 3;
   showTags?: boolean;
+  variant?: 'list' | 'grid';
 };
 
-const { post, headingLevel = 2, showTags = true } = Astro.props;
+const { post, headingLevel = 2, showTags = true, variant = 'list' } = Astro.props;
 const HeadingTag = `h${headingLevel}` as const;
 const image = post.data.image;
 ---
 
-<li class:list={['post-card', { 'has-thumbnail': image }]}>
+<li class:list={['post-card', `post-card--${variant}`, { 'has-thumbnail': image }]}>
   {
     image && (
       <img
