@@ -3,7 +3,7 @@ title: "Astro로 파일 기반 블로그 시작하기"
 description: "Markdown과 content collection으로 빠르게 운영하는 개발자 블로그의 기본 구조를 정리합니다."
 pubDate: 2026-05-21
 tags: ["astro", "blog", "markdown"]
-draft: false
+draft: true
 slug: "astro-blog-start"
 ---
 

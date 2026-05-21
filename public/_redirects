@@ -4,3 +4,6 @@
 # Tistory migration examples:
 # /123 /blog/tistory-migration-notes/ 301
 # /entry/old-post-title /blog/new-post-slug/ 301
+
+/91 /blog/peekcart-monolith-to-msa-flow/ 301
+/m/91 /blog/peekcart-monolith-to-msa-flow/ 301
