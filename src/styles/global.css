@@ -434,6 +434,41 @@ h3 {
   font-family: inherit;
 }
 
+.article-body table {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  border-spacing: 0;
+  background: var(--canvas);
+  font-size: 0.92rem;
+}
+
+.article-body :where(th, td) {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--hairline-soft);
+  text-align: left;
+  vertical-align: top;
+}
+
+.article-body th {
+  color: var(--ink);
+  background: var(--surface);
+  font-weight: 650;
+}
+
+.article-body tr:last-child :where(th, td) {
+  border-bottom: 0;
+}
+
+.article-body img {
+  margin-block: 22px;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--canvas);
+}
+
 .article-body aside {
   margin-block: 22px;
   padding: 16px 18px;

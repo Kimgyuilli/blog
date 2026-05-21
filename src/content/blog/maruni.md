@@ -1,0 +1,79 @@
+---
+title: "Maruni 개발 마무리 회고"
+description: "어느새 Maruni 프로젝트가 끝을 향해 달려가고있다. 지난 2주간 너무 많은 일이 있어서 내가 마루니에만 진심을 다했는지 물어보면 사실 그건 아닌 것 같다. 처음 이 프로젝트를 할 때는 다양한 기능 설계와 자료조사를 통해 내가 해보고 싶었던 것을 하는 꿈을 이루는"
+pubDate: 2025-11-24
+tags: []
+draft: false
+slug: "maruni"
+---
+## 들어가며
+
+어느새 Maruni 프로젝트가 끝을 향해 달려가고있다.
+
+지난 2주간 너무 많은 일이 있어서 내가 마루니에만 진심을 다했는지 물어보면 사실 그건 아닌 것 같다.
+
+처음 이 프로젝트를 할 때는 다양한 기능 설계와 자료조사를 통해 내가 해보고 싶었던 것을 하는 꿈을 이루는 프로젝트라고 생각했다.
+
+하지만 그 사이에 병행한 여러 동아리 활동과 학교 과제, 공부로 인해 마감 기한이라는 핑계로 프로젝트의 규모를 줄이게 됐고 그로 인해 프로젝트로써 가치가 있다고 생각했던 부분이 줄어 어느 순간부터 프로젝트 자체에 대한 애정도 줄게 되었다.
+
+이제는 이번주 수요일에 최종 데모 발표와 3주 뒤에 프로젝트를 주제로 한 최종 보고서 제출이 있는데 그것만 마무리 하면 이 프로젝트는 끝이 나게 된다.
+
+이 프로젝트가 끝난 뒤에는 이 프로젝트에서 적용해보지 못했던 AI 파인튜닝에 대한 공부와 FE 개발에 대한 공부를 추가로 해보려고 한다.
+
+## 지난 포스팅 이후로
+
+지난 포스팅 이후로 12일이 지났는데 그동안 동아리 일과 데모때 보여주기 위한 기능에 집중했다.
+
+기존에는 매일 10시마다 위험 신호를 감지했다면 추가로 이 위험 신호 감지에 대한 데모용 트리거를 만들어서 수동으로 위험 신호가 감지하는 로직을 추가하고 발표를 위한 자료 정리와 최종 보고서를 작성하는데에 시간을 썼다.
+
+다행히 그동안 기록은 열심히 해놔서 보고서를 작성하는 데에는 어려움이 없을 것 같다.
+
+#### 아래는 그동안의 기록들..
+
+![Maruni 개발 마무리 회고](/images/blog/maruni/image-01.png)
+
+![Maruni 개발 마무리 회고](/images/blog/maruni/image-02.png)
+
+![Maruni 개발 마무리 회고](/images/blog/maruni/image-03.png)
+
+## 결과물!
+
+![Maruni 개발 마무리 회고](/images/blog/maruni/image-04.png)
+
+![Maruni 개발 마무리 회고](/images/blog/maruni/image-05.png)
+
+## 마치며
+
+이렇게 내가 처음부터 1부터 10까지 기획, 개발을 모두 했던 프로젝트가 끝나간다.
+
+아쉬운점은 너무 많다. 처음부터 핵심 기능 검증을 했다면 어땠을까, react + Spring이 아닌 SSR로 개발해서 프로덕트 관리를 좀 더 쉽게 할 수 있지 않았을까? 그랬다면 다른 일들을 병행하면서도 퀄리티를 높일 수 있었을 것 같은데 그게 아쉽다.
+
+그래서 마냥 수개월간의 프로젝트가 이렇게 끝나는게 기쁘지만은 않은 것 같다. 이 프로젝트가 끝나고 조금 더 정리가 된다면 원래 기획이었던 ai 파인튜닝을 통해 더 좋은 퀄리티의 자체 ai를 탑재해서 문제를 개선시켜보고싶다.
+
+프로덕트 링크
+
+[https://maruni.kro.kr/](https://maruni.kro.kr/)
+
+ [maruni-client
+
+maruni.kro.kr](https://maruni.kro.kr/)
+
+클라이언트 레포
+
+[https://github.com/MARUNI-Service/MARUNI-client](https://github.com/MARUNI-Service/MARUNI-client)
+
+ [GitHub - MARUNI-Service/MARUNI-client
+
+Contribute to MARUNI-Service/MARUNI-client development by creating an account on GitHub.
+
+github.com](https://github.com/MARUNI-Service/MARUNI-client)
+
+서버 레포
+
+[https://github.com/MARUNI-Service/MARUNI-SERVER](https://github.com/MARUNI-Service/MARUNI-SERVER)
+
+ [GitHub - MARUNI-Service/MARUNI-SERVER
+
+Contribute to MARUNI-Service/MARUNI-SERVER development by creating an account on GitHub.
+
+github.com](https://github.com/MARUNI-Service/MARUNI-SERVER)

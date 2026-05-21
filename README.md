@@ -77,3 +77,15 @@ SITE=https://blog.example.com npm run build
 ```
 
 Cloudflare Pages는 빌드 후 `public/_redirects`를 배포 결과에 포함해 redirect 규칙으로 사용합니다. 티스토리 글을 Markdown으로 변환한 뒤 `src/content/blog`에 넣고, 이미지 경로를 `/images/blog/...`로 정리하면 목록과 상세 페이지에 자동 반영됩니다.
+
+일괄 이전 스크립트:
+
+```bash
+npm run migrate:tistory
+```
+
+스크립트는 티스토리 sitemap에서 숫자형 글 URL을 수집하고, 이미 `public/_redirects`에 등록된 글은 건너뜁니다. 시험 실행이 필요하면 아래처럼 개수를 제한할 수 있습니다.
+
+```bash
+npm run migrate:tistory -- --limit=2
+```

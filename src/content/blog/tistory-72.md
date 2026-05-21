@@ -1,0 +1,285 @@
+---
+title: "개발자에게 필요한 문서는 무엇이 있을까"
+description: "개발자가 협업을 하기 위해서 문서화는 꼭 해야 하는 작업입니다. 협업을 하기 위해서 어떤 문서가 필요할까요? 과연 모든 경우의 수를 담은 매우 상세한 문서가 정말 필요할까요? 답은 \"그렇지 않습니다\"입니다. 오히려 과도한 문서화는 독이 될 수 있습니다. 문서가 많아질수록"
+pubDate: 2025-12-17
+tags: []
+draft: false
+slug: "tistory-72"
+---
+## 개발 시작 전, 어떤 문서가 필요할까?
+
+개발자가 협업을 하기 위해서 문서화는 꼭 해야 하는 작업입니다.
+
+협업을 하기 위해서 어떤 문서가 필요할까요? 과연 모든 경우의 수를 담은 매우 상세한 문서가 정말 필요할까요?
+
+![개발자에게 필요한 문서는 무엇이 있을까](/images/blog/tistory-72/image-01.png)
+
+### 많은 문서 ≠ 좋은 문서
+
+답은 "그렇지 않습니다"입니다. 오히려 과도한 문서화는 독이 될 수 있습니다.
+
+문서가 많아질수록 그만큼의 **관리 비용**이 함께 증가합니다. 문서를 작성하는 것도 일이지만 더 큰 문제는 **유지보수**입니다. 요구사항이 변경될 때마다 여러 문서를 동시에 업데이트해야 하고 이를 제대로 관리하지 못하면 문서 간 불일치가 발생합니다.
+
+실제로 많은 프로젝트에서 개발보다 문서 관리에 더 많은 자원을 투자하게 되는 경우가 발생합니다. 이는 제한적인 인력과 시간을 가진 팀에게 큰 부담이 됩니다.
+
+### 관리되지 않는 문서의 부작용
+
+문서가 많은데 제대로 관리되지 않으면 다음과 같은 심각한 문제가 발생합니다:
+
+### 1\. 문서 간의 불일치
+
+서로 다른 문서에서 같은 내용을 다르게 설명하는 경우입니다. 예를 들어
+
+-   배치 프로세스 다이어그램에는 "대기(WAITING)" 상태가 있는데
+-   주문 상태 다이어그램에는 이 상태가 누락되어 있거나
+-   API 명세서에는 특정 필드가 필수인데 요구사항 정의서에는 선택사항으로 기재된 경우
+
+이런 불일치는 개발자들을 혼란스럽게 만들고 결국 "어떤 문서가 맞는 거지?"라는 질문을 계속 던지게 만듭니다.
+
+### 2\. 문서 버전의 혼돈
+
+이전 버전과 최신 버전의 문서가 섞여 있는 경우입니다.
+
+-   "요구사항\_정의서\_최종.docx", "요구사항\_정의서\_최종\_진짜최종.docx", "요구사항\_정의서\_v3\_최최종.docx" 같은 파일들이 공존하거나
+-   Notion에 같은 제목의 페이지가 여러 개 존재하거나
+-   어떤 문서가 현재 시점의 시스템을 반영하는지 알 수 없는 상황
+
+### 문서에 대한 신뢰 상실
+
+이런 상황이 지속되면 팀원들은 점차 문서를 신뢰하지 못하게 됩니다.
+
+-   "문서에는 이렇게 나와 있는데 실제 코드는 다르던데요"
+-   "이 문서 최신 버전 맞나요?"
+-   "차라리 코드 보는 게 빠르겠네요"
+
+**결국 문서가 있으나마나 한, 아니 오히려 문서가 없는 것보다 못한 상황이 되는 것입니다.**
+
+\---
+
+## 그렇다면, 최소한의 문서란?
+
+주어진 자원이 제한적이라면, **필요한 만큼의 최소한의 문서**만 두고 그것들을 철저히 관리하는 것이 훨씬 효율적입니다.
+
+최소한의 문서는 역할별로 다음과 같이 구성할 수 있습니다.
+
+### PM/PO가 작성하는 문서
+
+### 1\. 요구사항 정의서
+
+-   **무엇을 만들 것인가**를 명확히 하는 문서
+-   비즈니스 목표, 주요 기능, 사용자 스토리 포함
+-   플로우차트, 와이어프레임 등 시각 자료 첨부
+-   "왜 이 기능이 필요한가?"에 대한 맥락 제공
+
+![개발자에게 필요한 문서는 무엇이 있을까](/images/blog/tistory-72/image-02.png)
+
+[https://yeon-design.tistory.com/21](https://yeon-design.tistory.com/21)
+
+ [UIUX : 앱 서비스 설계 - 플로우차트 작성법
+
+신규 앱 서비스를 기획한다면 제일 먼저 하는 일은 요구사항 정의와 이를 해결하기 위한 기능 명세서를 작성하는 것일 것이다. 이 두가지 작업이 완료되면 본겨적인 서비스 개발을 위해서 사용
+
+yeon-design.tistory.com](https://yeon-design.tistory.com/21)
+
+![개발자에게 필요한 문서는 무엇이 있을까](/images/blog/tistory-72/image-03.png)
+
+[https://blog.gangnamunni.com/post/communication-with-wireframe](https://blog.gangnamunni.com/post/communication-with-wireframe)
+
+ [나의 대충 그려졌고 소중한 와이어프레임
+
+와이어프레임으로 더 빠르게 팀과 이야기하기
+
+blog.gangnamunni.com](https://blog.gangnamunni.com/post/communication-with-wireframe)
+
+### 2\. 정책서
+
+-   **비즈니스 규칙과 제약사항**을 정리한 문서
+-   예시
+    -   정산: "매월 1일 오전 10시에 전월 매출 정산"
+    -   결제: "결제 실패 시 3회까지 자동 재시도"
+    -   리뷰: "주문 후 30일 이내에만 리뷰 작성 가능"
+    -   환불: "배송 시작 전까지만 전액 환불 가능"
+
+![개발자에게 필요한 문서는 무엇이 있을까](/images/blog/tistory-72/image-04.png)
+
+[https://germweapon.tistory.com/412](https://germweapon.tistory.com/412)
+
+ [\[정책 기획\] 서비스 정책서 작성하기
+
+서비스 정책서 작성 시 고려사항 강의를 통해 만나는 실무 기획자들에게 서비스 정책서를 작성하는지, 사내에 정리된 서비스 정책 문서가 있는지 묻곤 한다. 놀랍게도 대다수 회
+
+germweapon.tistory.com](https://germweapon.tistory.com/412)
+
+### 개발자가 작성하는 문서
+
+### 1\. 개념도 (Conceptual Diagram)
+
+-   **시스템의 핵심 개념과 흐름**을 표현한 문서
+-   비즈니스 로직 + 기술적 구현 방식 + 팀의 설계 철학이 담김
+-   예: "주문 → 결제 → 배송" 흐름에서 각 단계별 주요 객체와 상호작용
+
+![개발자에게 필요한 문서는 무엇이 있을까](/images/blog/tistory-72/image-05.png)
+
+[https://boardmix.com/kr/skills/what-is-a-sequence-diagram/](https://boardmix.com/kr/skills/what-is-a-sequence-diagram/)
+
+ [\[2025년 최신\] 시퀀스 다이어그램 작성법과 UML 활용 가이드
+
+시퀀스 다이어그램 작성법을 통해 시스템의 흐름과 객체 간 메시지 전달을 시각화하는 방법을 알아보세요. UML 시퀀스 다이어그램 예시와 함께 실무에 유용한 작성 팁을 정리했습니다.
+
+boardmix.com](https://boardmix.com/kr/skills/what-is-a-sequence-diagram/)
+
+![개발자에게 필요한 문서는 무엇이 있을까](/images/blog/tistory-72/image-06.png)
+
+[https://www.impacttechnology.co.uk/example-entity-relationship-diagram](https://www.impacttechnology.co.uk/example-entity-relationship-diagram)
+
+ [Impact Technology
+
+UK software development services including, embedded software, web development and database development, we will give your company the competitive edge.
+
+www.impacttechnology.co.uk](https://www.impacttechnology.co.uk/example-entity-relationship-diagram)
+
+(종류가 많으니 필요한 것들만 하기!)
+
+### 2\. 시스템 다이어그램
+
+-   **인프라와 시스템 간 연결**을 보여주는 문서
+-   서버 구성, 데이터베이스, 외부 API 연동 등
+-   배포 아키텍처, 네트워크 구성 포함
+-   예: AWS 아키텍처 다이어그램, 마이크로서비스 간 통신 구조
+
+![개발자에게 필요한 문서는 무엇이 있을까](/images/blog/tistory-72/image-07.png)
+
+[https://www.edrawsoft.com/kr/diagram-tutorial/system-configuration-diagram-tool-best6.html?srsltid=AfmBOooJxZ40vWOBU8R\_Vwjz3Xxy3dIl5oS0Cdco9BY0CIIN9RDjPwy3](https://www.edrawsoft.com/kr/diagram-tutorial/system-configuration-diagram-tool-best6.html?srsltid=AfmBOooJxZ40vWOBU8R_Vwjz3Xxy3dIl5oS0Cdco9BY0CIIN9RDjPwy3)
+
+ [Introducing EdrawMax 10
+
+Plan, brainstorm or design anything, faster
+
+www.edrawsoft.com](https://www.edrawsoft.com/kr/diagram-tutorial/system-configuration-diagram-tool-best6.html?srsltid=AfmBOooJxZ40vWOBU8R_Vwjz3Xxy3dIl5oS0Cdco9BY0CIIN9RDjPwy3)
+
+### 3\. 러프한 주요 클래스 다이어그램
+
+-   **핵심 도메인 객체들의 관계**를 보여주는 문서
+-   모든 클래스를 다 그릴 필요 없음 - 주요 엔티티와 핵심 로직만
+-   예: Order, Payment, Product 같은 주요 도메인 모델과 그 관계
+
+![개발자에게 필요한 문서는 무엇이 있을까](/images/blog/tistory-72/image-08.png)
+
+### 4\. API 명세서 및 가이드
+
+-   **프론트엔드-백엔드 계약서** 역할
+-   RestDocs, Swagger, Postman Collection 등 활용
+-   엔드포인트, 요청/응답 형식, 에러 코드 포함
+-   가능하면 코드에서 자동 생성되도록 설정 (관리 부담 ↓)
+
+![개발자에게 필요한 문서는 무엇이 있을까](/images/blog/tistory-72/image-09.png)
+
+[https://addons.mozilla.org/ko/firefox/addon/swagger-ui-ff/](https://addons.mozilla.org/ko/firefox/addon/swagger-ui-ff/)
+
+ [Swagger UI – 🦊 Firefox용 확장 기능 (ko)
+
+Firefox용 Swagger UI 부가 기능을 다운로드하세요. Swagger-UI für Firefox
+
+addons.mozilla.org](https://addons.mozilla.org/ko/firefox/addon/swagger-ui-ff/)
+
+\---
+
+## 핵심 원칙: 문서를 위한 문서 작업이 되면 안 된다
+
+문서는 **목적**이 아니라 **수단**입니다.
+
+문서의 진짜 독자는
+
+-   🆕 **새로 합류하는 팀원**: 빠르게 프로젝트를 이해하고 온보딩하기 위해
+-   🔄 **오랜만에 프로젝트를 보는 사람**: 6개월 전에 작업했던 프로젝트를 다시 봐야 할 때
+-   🤝 **협업하는 다른 팀**: 기획팀, 디자인팀, QA팀과 소통하기 위해
+
+문서 작성 자체가 목적이 되어 실제 개발 시간을 빼앗아서는 안 됩니다.
+
+\---
+
+## 문서 개선 방법: 신규 합류자를 활용하라
+
+가장 효과적인 문서 개선 방법은 **신규 합류자의 피드백**을 활용하는 것입니다.
+
+### 프로세스
+
+1.  신규 합류자에게 기존 문서를 제공
+2.  문서를 보며 프로젝트를 파악하도록 함
+3.  다음 질문들에 대한 답변 요청:
+    -   "어떤 부분이 이해하기 어려웠나요?"
+    -   "어떤 내용이 부족했나요?"
+    -   "어떤 문서가 도움이 되었나요?"
+    -   "어떤 문서는 최신 상태가 아닌 것 같았나요?"
+4.  피드백을 바탕으로 문서 보완
+
+### 왜 효과적인가?
+
+-   신규 합류자는 **가장 객관적인 시각**을 가진 독자입니다
+-   경험이 쌓이면 당연하게 느껴지는 부분도, 새로운 사람 눈에는 명확하지 않습니다
+-   "이건 당연한 거 아니야?"라고 생각했던 부분이 실은 중요한 맥락이었을 수 있습니다
+
+\---
+
+## 상황에 따라 필요한 문서들
+
+물론 프로젝트의 규모, 팀 구성, 도메인 복잡도에 따라 필요한 문서는 달라집니다. 다음은 활용할 수 있는 문서 유형들입니다:
+
+### 요구사항 관련 문서
+
+-   **요구사항 정의서 / 사양서(SRS)**: 비즈니스 목표, 기능·비기능 요구사항, 제약조건 등을 정리해 범위와 기준을 명확히 하는 문서
+-   **유스케이스 / 시나리오**: 사용자가 어떤 목적을 어떤 흐름으로 달성하는지 스토리 형태로 적어, 화면·API 설계의 기반이 되는 문서
+
+### 도메인·용어 정리 문서
+
+-   **용어사전(Glossary)**: 서비스에서 쓰는 비즈니스 용어를 정의해 팀 간 오해를 줄이는 문서 (예: "정산"과 "지급"의 차이)
+-   **도메인 정의서 / 도메인 모델**: 핵심 개념(예: 주문, 결제, 정산)과 관계를 그림·텍스트로 설명한 자료
+
+### 설계·구조 문서
+
+-   **아키텍처 / 시스템 설계서**: 전체 시스템 구성, 모듈, 의존성, 인프라 구조(예: 배치 다이어그램 등)를 나타내는 문서
+-   **화면 정의서 / 메뉴 구성도**: 화면별 ID, 요소, 동작, 화면 간 이동 흐름을 정의한 문서로, FE·디자인 협업의 기준이 됨
+
+### 데이터·API·코드 문서
+
+-   **데이터 모델·컬럼 정의서**: 테이블, 컬럼명, 타입, 제약조건 등을 정의해 DB 일관성과 품질을 보장하는 문서
+-   **API 명세서**: 엔드포인트, 요청/응답 스키마, 에러 코드, 인증 방식을 정리한 문서로, 서버·클라이언트 계약의 역할을 함
+-   **개발 표준 / 코드 컨벤션**: 네이밍, 레이어 구조, 예외 처리 규칙 등 팀의 공통 코딩 규칙을 정의한 문서
+
+### 테스트·운영 문서
+
+-   **테스트 케이스 / 시나리오 / 보고서**: 어떤 기능을 어떤 입력과 기대 결과로 검증했는지, 결과와 이슈를 남기는 문서
+-   **운영 가이드 / README**: 빌드·배포·환경 설정, 주요 사용법, 주의사항을 정리해 신규 투입자와 운영자가 참고하는 문서
+
+\---
+
+## 적정 수준의 문서화를 유지하기
+
+문서화는 **균형을 맞춰야 합니다.**
+
+-   너무 적으면 → 지식이 개인에게만 남고, 협업이 어려워집니다
+-   너무 많으면 → 관리 부담이 커지고, 문서가 방치됩니다
+
+**핵심은 '살아있는 문서'를 유지하는 것**입니다. 정기적으로 업데이트되고, 실제로 참고되며, 팀원들이 신뢰하는 문서 몇 개가, 수십 개의 방치된 문서보다 훨씬 가치 있습니다.
+
+\---
+
+Ref
+
+[https://clickup.com/ko/blog/439514/technical-writing-examples](https://clickup.com/ko/blog/439514/technical-writing-examples)
+
+ [12가지 고품질 문서를 위한 기술 문서 작성 예시
+
+실제 기술 문서 작성 예시를 통해 기술 문서 작성의 달인이 되십시오. 명확하고 효과적인 기술 문서를 작성하는 방법을 알아보십시오.
+
+clickup.com](https://clickup.com/ko/blog/439514/technical-writing-examples)
+
+[https://bongarea.tistory.com/23](https://bongarea.tistory.com/23)
+
+ [개발자 프로젝트/소프트웨어 개발 시 필요한 문서
+
+소프트웨어 개발 과정에서는 다양한 문서가 필요합니다. 각 문서는 프로젝트의 요구사항을 정의하고, 개발 및 테스트 과정에서 참고할 수 있도록 체계적으로 정리하는 역할을 합니다. 여기에서
+
+bongarea.tistory.com](https://bongarea.tistory.com/23)
+
+[https://youtu.be/4k84WWFhly0?si=urxZXvtidCpJIOuD](https://youtu.be/4k84WWFhly0?si=urxZXvtidCpJIOuD)

@@ -1,0 +1,167 @@
+---
+title: "Maruni 개발기록(2) - 프로젝트 문서화, 안부 메세지 개선"
+description: "개발일지 3 링크 https://imdeepskyblue.tistory.com/57 Maruni 개발기록(3) - AI 대화 품질 개선 들어가며MARUNI는 노인 돌봄을 위한 AI 대화 서비스입니다. 매일 오전 9시, '마루'라는 이름의 AI가 어르신들께 안부 메시지를 보내고"
+pubDate: 2025-11-10
+tags: []
+draft: false
+slug: "maruni-2"
+---
+개발일지 3 링크
+
+[https://imdeepskyblue.tistory.com/57](https://imdeepskyblue.tistory.com/57)
+
+ [Maruni 개발기록(3) - AI 대화 품질 개선
+
+들어가며MARUNI는 노인 돌봄을 위한 AI 대화 서비스입니다. 매일 오전 9시, '마루'라는 이름의 AI가 어르신들께 안부 메시지를 보내고 대화를 나눕니다. 외로움을 달래드리고, 건강을 챙기고, 가족
+
+imdeepskyblue.tistory.com](https://imdeepskyblue.tistory.com/57)
+
+## Maruni란?
+
+Maruni는 이번에 혼자 진행하고 있는 졸업 프로젝트다.
+
+노인의 사회적 고립이라는 문제부터 시작했는데 노인 자살률 증가와 정부에서 지원하는 노인 복지(AI 스피커, AI 케어콜 등)의 한계를 극복하기 위한 음성 대화 서비스로 기획했다. (처음에는 꿈이 컸다..)
+
+초기에는 STT를 활용해 모바일 환경에서 노인과 대화하고 대화 속에서 위험 신호(우울, 건강 이상 등)를 감지해 주변 병원을 추천하거나 보호자에게 알림을 보내는 서비스를 구상했다.
+
+## 첫 번째 벽
+
+가설 검증을 진행하면서 첫 번째 문제를 맞닥뜨렸다. 외부 API를 활용한 AI 응답 서비스 구축의 한계였다.
+
+```
+사용자 발화 → STT → 키워드 처리 → AI 응답 생성 → TTS → 응답
+```
+
+이 비효율적인 프로세스 때문에 메시지 전송 후 응답까지 너무 오래 걸렸다. 이걸 해결하려면 직접 AI 모델을 개발하거나 DSML을 만들어야 했는데 혼자서 풀스택 개발하면서 AI까지 손대면 마감을 못 맞출 게 뻔했다.
+
+그래서 방향을 틀었다. 서비스 완성도보다는 **대화 흐름 처리와 위험 신호 감지**에 먼저 집중하기로 했다.
+
+```
+사용자 메시지 → 키워드 처리 → AI 응답 생성 → 응답 전송
+```
+
+프로세스를 간략화하고 핵심에 집중하는 쪽으로 피봇했다.
+
+## 핵심 시나리오
+
+결국 남은 핵심 요구사항은 이거였다.
+
+1.  **아침 9시마다 사용자에게 안부 메시지 전송**
+2.  **안부 메시지를 시작으로 대화 이어가기**
+3.  **대화 중 위험 신호 감지**
+    -   보호자에게 알림 전송
+    -   GPS 기반 주변 병원 추천
+
+### 기술 스택
+
+**Frontend**
+
+-   React + Vite + TypeScript + PWA로 모바일 환경 지원
+-   노인 친화적 UI
+
+**Backend**
+
+-   Spring Boot
+-   대화 내 위험 신호 탐지 알고리즘
+-   자연스러운 대화를 위한 프롬프팅 연구
+-   Redis 캐싱으로 대화 성능 향상 & 토큰 절약
+-   멀티턴 대화 지원
+-   FCM 푸시 알림
+
+## 그리고 많은 것을 포기했다
+
+저번 글에서도 언급했지만 결국 상당 부분을 포기하게 됐다. PWA, Redis, FCM, UI 개선...
+
+왜 이렇게 됐을까 돌아보면:
+
+1.  **내가 가진 자원을 과대평가했다.** MVP를 너무 거창하게 세웠다.
+2.  **프로덕트 완성에만 시선을 뺏겨** 핵심 기능 검증을 소홀히 했다.
+
+3주치 작업을 날리면서 설계 단계의 중요성을 다시 한번 뼈저리게 느꼈다. 그래도 팀 프로젝트가 아니라 혼자 망하는 프로젝트에서 이런 경험을 한 게 다행이라고 스스로를 위안했다.
+
+## 현재 프로덕트
+
+### 서비스 화면
+
+![Maruni 개발기록(2) - 프로젝트 문서화, 안부 메세지 개선](/images/blog/maruni-2/image-01.png)
+
+### 배포 아키텍처
+
+![Maruni 개발기록(2) - 프로젝트 문서화, 안부 메세지 개선](/images/blog/maruni-2/image-02.png)
+
+배포 구조는 최대한 단순화했다. DB를 APP 서버와 하나의 인스턴스에 둔 것도, 일단은 운영이 아닌 **데모에 집중**하고 싶어서 인프라 관리에 드는 리소스를 최대한 줄이려고 한 선택이었다.
+
+### 대화 프로세스
+
+![Maruni 개발기록(2) - 프로젝트 문서화, 안부 메세지 개선](/images/blog/maruni-2/image-03.png)
+
+### 위험 감지 프로세스
+
+![Maruni 개발기록(2) - 프로젝트 문서화, 안부 메세지 개선](/images/blog/maruni-2/image-04.png)
+
+#### 전체 시각화 문서
+
+WAS:[https://github.com/MARUNI-Service/MARUNI-SERVER/issues/9](https://github.com/MARUNI-Service/MARUNI-SERVER/issues/9) 
+
+ [서버 다이어그램 · Issue #9 · MARUNI-Service/MARUNI-SERVER
+
+MARUNI 핵심 프로세스 다이어그램 작성일: 2025-11-10 목적: 졸업 프로젝트 중간 보고 발표 자료 이 문서는 MARUNI 프로젝트의 3가지 핵심 프로세스를 시각화하여 설명합니다. 📋 목차 대화 프로세스
+
+github.com](https://github.com/MARUNI-Service/MARUNI-SERVER/issues/9)
+
+WS: [https://github.com/MARUNI-Service/MARUNI-client/issues/13](https://github.com/MARUNI-Service/MARUNI-client/issues/13)
+
+ [컴포넌트 다이어그램 · Issue #13 · MARUNI-Service/MARUNI-client
+
+MARUNI Client 컴포넌트 다이어그램 MARUNI 클라이언트의 전체 컴포넌트 구조를 Mermaid 다이어그램으로 시각화 작성일: 2025-11-10 버전: Phase 3 완료 기준 📐 1. 전체 아키텍처 (4계층) graph TB subgraph App\["🎯
+
+github.com](https://github.com/MARUNI-Service/MARUNI-client/issues/13)
+
+## 최근 작업 내역
+
+주말에는 문서 정리와 발표 준비, 그리고 **안부 메시지 구체화 작업**을 진행했다.
+
+### 안부 메시지 개선
+
+기존에는 하드코딩된 하나의 메시지로만 안부를 보냈는데, 이걸 **요일별 × 계절별 키워드 조합**으로 500개의 메시지를 만들 수 있게 개선했다.
+
+메시지 저장은 DB에 넣을까 고민했는데, 아직 DB 구조가 바뀔 여지가 많고 그때마다 마이그레이션하는 시간도 부담스러워서 그냥 **파일에 저장**하는 방식으로 갔다. (시간이 없으니까 많은 걸 포기하게 된다..)
+
+**관련 이슈**: [https://github.com/MARUNI-Service/MARUNI-SERVER/issues/7](https://github.com/MARUNI-Service/MARUNI-SERVER/issues/7)
+
+**커밋 기록**
+
+```
+4f7643f docs: dailycheck 문서 업데이트
+f036649 feat(DailyCheck): 메시지 생성 TestCode 작성
+3fa5e88 feat(DailyCheck): DailyCheckOrchestrator에 Message 생성기 연결
+04a6951 feat(DailyCheck): Message 생성 클래스 구현
+09be922 feat(DailyCheck): 계절 타입 정의
+dedfaff docs: dailycheck 구조 개선 계획 확장
+d77b106 docs: DailyCheck Message 다양화 계획 수립
+```
+
+## 앞으로 할 일
+
+### 1\. 자잘한 버그들 수정
+
+-   \[ \] 로그인 엔터로 넘어가게 하기
+-   \[ \] UTC 시간 → KST 변환 처리
+-   \[ \] 알림 메시지 여러 번 생성되는 오류 수정
+-   \[ \] 보호자 요청 받으려면 새로고침 2~3번 해야 하는 렌더링 문제
+
+### 2\. 대화 성능 개선
+
+프롬프트 구체화, 페르소나 정의, 창의성 수치(temperature) 조정 등을 테스트해볼 계획이다.
+
+이 작업들을 효율적으로 하기 위해 **테스트 스크립트**를 만들어서 여러 상황에 대한 입력만 해주면 한 번에 테스트하고 비교할 수 있는 프로세스를 구축해보려고 한다.
+
+### 3\. 위험 감지 알고리즘 개선
+
+현재 위험 감지 로직은 솔직히 말하면 단순하다. 키워드 매칭 + 무응답 비율 체크 정도?
+
+이것만으로는 실질적인 위험을 감지한다고 하기 어려워서 좀 더 정교한 알고리즘으로 개선할 필요가 있다.
+
+\---
+
+기한은 촉박하지만 핵심 기능만큼은 제대로 검증해서 의미 있는 졸업 프로젝트로 만들고 싶다.
