@@ -1,0 +1,39 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { formatDate, getPostUrl, getPublishedPosts } from '@/utils/blog';
+
+const posts = await getPublishedPosts();
+---
+
+<BaseLayout title="글 목록" description="개발 노트의 모든 공개 글 목록입니다.">
+  <section class="hero">
+    <p class="eyebrow">Posts</p>
+    <h1>글 목록</h1>
+    <p class="lead">최신 글부터 정렬됩니다. draft가 true인 글은 빌드 결과에 포함되지 않습니다.</p>
+  </section>
+
+  <ul class="post-list">
+    {
+      posts.map((post) => (
+        <li class="post-card">
+          <div class="meta">
+            <time datetime={post.data.pubDate.toISOString()}>{formatDate(post.data.pubDate)}</time>
+          </div>
+          <h2>
+            <a href={getPostUrl(post)}>{post.data.title}</a>
+          </h2>
+          <p>{post.data.description}</p>
+          <ul class="tag-list" aria-label={`${post.data.title} 태그`}>
+            {post.data.tags.map((tag) => (
+              <li>
+                <a class="tag" href={`/blog/tag/${tag}/`}>
+                  #{tag}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </li>
+      ))
+    }
+  </ul>
+</BaseLayout>

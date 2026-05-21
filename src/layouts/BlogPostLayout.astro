@@ -1,0 +1,62 @@
+---
+import BaseLayout from './BaseLayout.astro';
+import { formatDate } from '@/utils/blog';
+import type { BlogPost } from '@/utils/blog';
+
+type Props = {
+  post: BlogPost;
+  headings: {
+    depth: number;
+    slug: string;
+    text: string;
+  }[];
+};
+
+const { post, headings } = Astro.props;
+const tocItems = headings.filter((heading) => heading.depth === 2 || heading.depth === 3);
+---
+
+<BaseLayout title={post.data.title} description={post.data.description}>
+  <article class="article-doc">
+    <div class="article-main">
+      <header class="article-header">
+        <div class="meta">
+          <time datetime={post.data.pubDate.toISOString()}>{formatDate(post.data.pubDate)}</time>
+          <span>태그 {post.data.tags.length}개</span>
+        </div>
+        <h1>{post.data.title}</h1>
+        <p class="lead">{post.data.description}</p>
+        <ul class="tag-list" aria-label="태그">
+          {
+            post.data.tags.map((tag) => (
+              <li>
+                <a class="tag" href={`/blog/tag/${tag}/`}>
+                  #{tag}
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </header>
+      <div class="article-body">
+        <slot />
+      </div>
+    </div>
+    <aside class="toc" aria-label="목차">
+      <p class="toc-title">목차</p>
+      {
+        tocItems.length > 0 ? (
+          <ol>
+            {tocItems.map((heading) => (
+              <li class={`toc-depth-${heading.depth}`}>
+                <a href={`#${heading.slug}`}>{heading.text}</a>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p class="toc-empty">소제목이 있는 글에서 목차가 표시됩니다.</p>
+        )
+      }
+    </aside>
+  </article>
+</BaseLayout>

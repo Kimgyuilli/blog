@@ -1,0 +1,39 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { formatDate, getAllTags, getPostsByTag, getPostUrl, getPublishedPosts } from '@/utils/blog';
+
+export async function getStaticPaths() {
+  const posts = await getPublishedPosts();
+
+  return getAllTags(posts).map((tag) => ({
+    params: { tag },
+    props: { posts: getPostsByTag(posts, tag), tag },
+  }));
+}
+
+const { posts, tag } = Astro.props;
+---
+
+<BaseLayout title={`#${tag}`} description={`#${tag} 태그가 달린 글 목록입니다.`}>
+  <section class="hero">
+    <p class="eyebrow">Tag</p>
+    <h1>#{tag}</h1>
+    <p class="lead">{posts.length}개의 글이 있습니다.</p>
+  </section>
+
+  <ul class="post-list">
+    {
+      posts.map((post) => (
+        <li class="post-card">
+          <div class="meta">
+            <time datetime={post.data.pubDate.toISOString()}>{formatDate(post.data.pubDate)}</time>
+          </div>
+          <h2>
+            <a href={getPostUrl(post)}>{post.data.title}</a>
+          </h2>
+          <p>{post.data.description}</p>
+        </li>
+      ))
+    }
+  </ul>
+</BaseLayout>

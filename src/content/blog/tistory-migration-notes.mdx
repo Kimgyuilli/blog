@@ -1,0 +1,28 @@
+---
+title: "티스토리 글 이전을 위한 준비"
+description: "기존 티스토리 글을 Markdown으로 옮길 때 slug, 이미지, redirect를 안정적으로 관리하는 방법입니다."
+pubDate: 2026-05-19
+tags: ["migration", "tistory", "markdown"]
+draft: false
+slug: "tistory-migration-notes"
+---
+
+티스토리에서 가져온 글은 먼저 Markdown으로 변환한 뒤 `src/content/blog`에 넣습니다.
+
+## slug 관리
+
+slug는 파일명에 의존하지 않고 frontmatter의 `slug` 필드로 명시합니다. 기존 URL과 새 URL의 대응 관계는 `public/_redirects`에 추가합니다.
+
+```txt
+/123 /blog/tistory-migration-notes/ 301
+```
+
+## 이미지 경로
+
+이미지는 `/images/blog/...` 경로로 통일하면 본문 이동 후에도 경로를 예측하기 쉽습니다.
+
+## 이전 순서
+
+<aside>
+  마이그레이션할 때는 글 하나를 먼저 옮겨 빌드와 redirect를 확인한 뒤 일괄 변환하는 편이 안전합니다.
+</aside>

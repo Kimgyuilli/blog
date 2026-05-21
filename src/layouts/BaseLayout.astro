@@ -1,0 +1,74 @@
+---
+import '../styles/global.css';
+
+type Props = {
+  title?: string;
+  description?: string;
+  image?: string;
+};
+
+const siteTitle = '개발 노트';
+const defaultDescription = '코드, 운영, 배포 경험을 정리하는 한국어 개발자 블로그';
+const { title, description = defaultDescription, image = '/images/blog/og-default.svg' } = Astro.props;
+const pageTitle = title ? `${title} | ${siteTitle}` : siteTitle;
+const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://blog.example.com');
+const imageUrl = new URL(image, canonical);
+---
+
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{pageTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="alternate" type="application/rss+xml" title={siteTitle} href="/rss.xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={imageUrl} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={imageUrl} />
+    <script is:inline>
+      const storedTheme = localStorage.getItem('theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (storedTheme === 'dark' || (!storedTheme && prefersDark)) {
+        document.documentElement.classList.add('dark');
+      }
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="site-shell nav" aria-label="주요 메뉴">
+        <a class="brand" href="/">개발 노트</a>
+        <div class="nav-links">
+          <a href="/blog/">글</a>
+          <a href="/blog/tag/">태그</a>
+          <a href="/rss.xml">RSS</a>
+          <button class="theme-toggle" type="button" aria-label="다크 모드 전환">Theme</button>
+        </div>
+      </nav>
+    </header>
+    <main class="site-shell page">
+      <slot />
+    </main>
+    <footer class="footer">
+      <div class="site-shell footer-inner">
+        <span>© {new Date().getFullYear()} 개발 노트</span>
+        <span>Astro + Markdown 기반 정적 블로그</span>
+      </div>
+    </footer>
+    <script>
+      const button = document.querySelector<HTMLButtonElement>('.theme-toggle');
+      button?.addEventListener('click', () => {
+        const isDark = document.documentElement.classList.toggle('dark');
+        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">개발 노트</title>
+  <desc id="desc">Astro 기반 개발자 블로그 기본 공유 이미지</desc>
+  <rect width="1200" height="630" fill="#101418"/>
+  <rect x="72" y="72" width="1056" height="486" rx="24" fill="#171d24" stroke="#303a46" stroke-width="2"/>
+  <text x="118" y="250" fill="#6cb6ff" font-family="Arial, sans-serif" font-size="44" font-weight="700">Developer Blog</text>
+  <text x="118" y="342" fill="#e7edf5" font-family="Arial, sans-serif" font-size="82" font-weight="800">개발 노트</text>
+  <text x="118" y="420" fill="#a5b1c2" font-family="Arial, sans-serif" font-size="34">코드, 운영, 배포 경험을 정리합니다</text>
+</svg>
