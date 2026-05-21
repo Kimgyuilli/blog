@@ -850,6 +850,61 @@ h3 {
   font-size: 0.92rem;
 }
 
+.notice-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 28px;
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--brand-green) 28%, var(--hairline));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--brand-green) 8%, var(--canvas));
+  color: var(--ink);
+  text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.notice:hover {
+  background: color-mix(in srgb, var(--brand-green) 14%, var(--canvas));
+  border-color: color-mix(in srgb, var(--brand-green) 50%, var(--hairline));
+}
+
+.notice-badge {
+  flex-shrink: 0;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand-green) 22%, transparent);
+  color: color-mix(in srgb, var(--brand-green) 85%, var(--slate));
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.notice-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.96rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notice-arrow {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.notice:hover .notice-arrow {
+  color: color-mix(in srgb, var(--brand-green) 70%, var(--slate));
+}
+
 .home-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 260px;

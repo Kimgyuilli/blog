@@ -5,14 +5,18 @@ import {
   CATEGORIES,
   getAllTags,
   getCategoryUrl,
+  getPinnedPosts,
+  getPostUrl,
   getPostsByCategory,
   getPostsByTag,
   getPublishedPosts,
 } from '@/utils/blog';
 
 const posts = await getPublishedPosts();
-const featured = posts.slice(0, 6);
-const rest = posts.slice(6);
+const pinned = getPinnedPosts(posts);
+const unpinned = posts.filter((post) => !post.data.pinned);
+const featured = unpinned.slice(0, 6);
+const rest = unpinned.slice(6);
 
 const categoryCounts = CATEGORIES.map((category) => ({
   ...category,
@@ -33,6 +37,20 @@ const tagsByCount = getAllTags(posts)
       Spring을 중심으로 마주친 결정과 결과, 그리고 사이드 프로젝트의 회고를 한 곳에 정리합니다.
     </p>
   </section>
+
+  {
+    pinned.length > 0 && (
+      <section class="notice-list" aria-label="공지">
+        {pinned.map((post) => (
+          <a class="notice" href={getPostUrl(post)}>
+            <span class="notice-badge">공지</span>
+            <span class="notice-title">{post.data.title}</span>
+            <span class="notice-arrow" aria-hidden="true">→</span>
+          </a>
+        ))}
+      </section>
+    )
+  }
 
   <div class="home-layout">
     <div class="home-main">

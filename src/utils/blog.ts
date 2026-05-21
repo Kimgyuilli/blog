@@ -8,6 +8,10 @@ export async function getPublishedPosts() {
   return posts.sort((a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime());
 }
 
+export function getPinnedPosts(posts: BlogPost[]) {
+  return posts.filter((post) => post.data.pinned);
+}
+
 export function formatDate(date: Date) {
   return new Intl.DateTimeFormat('ko-KR', {
     year: 'numeric',
