@@ -42,7 +42,7 @@ slug: "spring-websocket-google-stt-1"
 
 ### 🔄 전체 흐름도
 
-```
+```java
 [Client Mic Input]
       ↓
 [WebSocket 연결 (STT 전용)]
@@ -111,7 +111,7 @@ Spring Boot에서 WebSocket 서버를 구성하는 일 자체는 어렵지 않�
 
 ### 🧱 구성 클래스 개요
 
-```
+```java
 com._ithon.speeksee.domain.voicefeedback.streaming
 ├── controller
 │   └── VoiceFeedbackWebSocketHandler.java       ← WebSocket 진입점
@@ -131,7 +131,7 @@ com._ithon.speeksee.domain.voicefeedback.streaming
 Spring WebSocket에서 TextWebSocketHandler 혹은 BinaryWebSocketHandler를 상속받아 사용한다.
 우리는 실시간 오디오 스트림을 처리해야 하므로 **BinaryMessage 기반 처리**가 필요했다.
 
-```
+```java
 public class VoiceFeedbackWebSocketHandler extends BinaryWebSocketHandler {
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
@@ -159,7 +159,7 @@ public class VoiceFeedbackWebSocketHandler extends BinaryWebSocketHandler {
 사용자마다 서로 다른 script를 읽고, 다른 타이밍에 말하며, 다른 세션 상태를 가진다.
 따라서 아래와 같은 정보들을 담는 Context 객체를 따로 관리해야 했다:
 
-```
+```java
 public class SttSessionContext {
     private final Long memberId;
     private final Long scriptId;
@@ -179,7 +179,7 @@ public class SttSessionContext {
 
 모든 WebSocket 연결을 추적하고 관리하는 중앙 관리자.
 
-```
+```java
 @Component
 public class SttSessionManager {
     private final Map<String, SttSessionContext> sessionMap = new ConcurrentHashMap<>();
@@ -211,7 +211,7 @@ public class SttSessionManager {
 -   GoogleStreamingSttClient: Google Cloud의 StreamingRecognizeRequest를 보내는 역할
 -   GoogleSttResponseObserver: Google에서 보내주는 인식 결과(STT)를 받아 FE에 보내는 역할
 
-```
+```java
 class GoogleSttResponseObserver implements ResponseObserver<StreamingRecognizeResponse> {
     @Override
     public void onResponse(StreamingRecognizeResponse response) {
@@ -251,7 +251,7 @@ STT 스트리밍처럼 사용자의 컨텍스트를 유지해야 하는 기능�
 
 ### 🧱 SttSessionContext: 세션의 모든 상태를 캡슐화
 
-```
+```java
 public class SttSessionContext {
     private final Long memberId;
     private final Long scriptId;
@@ -279,7 +279,7 @@ public class SttSessionContext {
 
 ### 📦 SttSessionManager: 모든 세션의 생명주기 총괄
 
-```
+```java
 @Component
 public class SttSessionManager {
     private final Map<String, SttSessionContext> sessionMap = new ConcurrentHashMap<>();

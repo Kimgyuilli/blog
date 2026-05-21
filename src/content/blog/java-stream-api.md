@@ -20,7 +20,7 @@ slug: "java-stream-api"
 
 ### 1.1 컬렉션에서 생성
 
-```
+```java
 // Collection 인터페이스
 Stream<E> stream()                               // 순차 스트림
 Stream<E> parallelStream()                       // 병렬 스트림
@@ -28,7 +28,7 @@ Stream<E> parallelStream()                       // 병렬 스트림
 
 **사용 예시**
 
-```
+```java
 List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
 Stream<Integer> stream1 = list.stream();
 
@@ -43,7 +43,7 @@ Stream<Map.Entry<String, Integer>> entryStream = map.entrySet().stream();
 
 ### 1.2 배열에서 생성
 
-```
+```java
 // Arrays 클래스
 static <T> Stream<T> stream(T[] array)
 static <T> Stream<T> stream(T[] array, int startInclusive, int endExclusive)
@@ -57,7 +57,7 @@ static DoubleStream stream(double[] array, int startInclusive, int endExclusive)
 
 **사용 예시**
 
-```
+```java
 String[] arr = {"a", "b", "c"};
 Stream<String> stream1 = Arrays.stream(arr);
 Stream<String> stream2 = Arrays.stream(arr, 0, 2);  // "a", "b"
@@ -68,7 +68,7 @@ IntStream intStream = Arrays.stream(intArr);
 
 ### 1.3 Stream.of()
 
-```
+```java
 static <T> Stream<T> of(T... values)             // 가변 인자
 static <T> Stream<T> of(T t)                     // 단일 요소
 static <T> Stream<T> empty()                     // 빈 스트림
@@ -76,7 +76,7 @@ static <T> Stream<T> empty()                     // 빈 스트림
 
 **사용 예시**
 
-```
+```java
 Stream<String> stream1 = Stream.of("a", "b", "c");
 Stream<Integer> stream2 = Stream.of(1, 2, 3, 4, 5);
 Stream<String> empty = Stream.empty();
@@ -84,7 +84,7 @@ Stream<String> empty = Stream.empty();
 
 ### 1.4 범위 생성 (IntStream, LongStream)
 
-```
+```java
 // IntStream
 static IntStream range(int startInclusive, int endExclusive)      // [start, end)
 static IntStream rangeClosed(int startInclusive, int endInclusive) // [start, end]
@@ -96,7 +96,7 @@ static LongStream rangeClosed(long startInclusive, long endInclusive)
 
 **사용 예시**
 
-```
+```java
 IntStream stream1 = IntStream.range(1, 5);       // 1, 2, 3, 4
 IntStream stream2 = IntStream.rangeClosed(1, 5); // 1, 2, 3, 4, 5
 
@@ -110,7 +110,7 @@ IntStream.range(0, arr.length).forEach(i -> System.out.println(arr[i]));
 
 ### 1.5 무한 스트림
 
-```
+```java
 static <T> Stream<T> iterate(T seed, UnaryOperator<T> f)
 static <T> Stream<T> iterate(T seed, Predicate<? super T> hasNext, UnaryOperator<T> next)
 static <T> Stream<T> generate(Supplier<? extends T> s)
@@ -123,7 +123,7 @@ static IntStream generate(IntSupplier s)
 
 **사용 예시**
 
-```
+```java
 // 무한 수열 (limit으로 제한)
 Stream<Integer> infiniteStream = Stream.iterate(0, n -> n + 1);
 infiniteStream.limit(10).forEach(System.out::println);  // 0~9
@@ -144,7 +144,7 @@ Stream.iterate(new int[]{0, 1}, arr -> new int[]{arr[1], arr[0] + arr[1]})
 
 ### 1.6 기타
 
-```
+```java
 // Stream.Builder
 Stream.Builder<T> builder()
 Stream.Builder<T> add(T t)
@@ -156,7 +156,7 @@ static Stream<String> lines(Path path)
 
 **사용 예시**
 
-```
+```java
 // Builder 패턴
 Stream<String> stream = Stream.<String>builder()
     .add("a")
@@ -175,7 +175,7 @@ Stream<String> stream = Stream.<String>builder()
 
 **filter**
 
-```
+```java
 Stream<T> filter(Predicate<? super T> predicate)
 IntStream filter(IntPredicate predicate)
 LongStream filter(LongPredicate predicate)
@@ -184,7 +184,7 @@ DoubleStream filter(DoublePredicate predicate)
 
 **사용 예시**
 
-```
+```java
 List<Integer> list = Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
 
 // 짝수만 필터링
@@ -203,7 +203,7 @@ List<String> longWords = words.stream()
 
 **distinct**
 
-```
+```java
 Stream<T> distinct()
 IntStream distinct()
 LongStream distinct()
@@ -212,7 +212,7 @@ DoubleStream distinct()
 
 **사용 예시**
 
-```
+```java
 List<Integer> list = Arrays.asList(1, 2, 2, 3, 3, 3, 4, 5);
 List<Integer> unique = list.stream()
     .distinct()
@@ -223,7 +223,7 @@ List<Integer> unique = list.stream()
 
 **sorted**
 
-```
+```java
 Stream<T> sorted()                               // 자연 순서
 Stream<T> sorted(Comparator<? super T> comparator)  // 사용자 정의 순서
 IntStream sorted()
@@ -233,7 +233,7 @@ DoubleStream sorted()
 
 **사용 예시**
 
-```
+```java
 List<Integer> list = Arrays.asList(5, 2, 8, 1, 9);
 
 // 오름차순
@@ -263,7 +263,7 @@ List<String> sorted4 = words.stream()
 
 **map**
 
-```
+```java
 <R> Stream<R> map(Function<? super T, ? extends R> mapper)
 IntStream mapToInt(ToIntFunction<? super T> mapper)
 LongStream mapToLong(ToLongFunction<? super T> mapper)
@@ -278,7 +278,7 @@ DoubleStream mapToDouble(IntToDoubleFunction mapper)
 
 **사용 예시**
 
-```
+```java
 List<String> words = Arrays.asList("apple", "banana", "cherry");
 
 // 대문자로 변환
@@ -305,7 +305,7 @@ int[] arr = words.stream()
 
 **flatMap** (중첩 구조를 평탄화)
 
-```
+```java
 <R> Stream<R> flatMap(Function<? super T, ? extends Stream<? extends R>> mapper)
 IntStream flatMapToInt(Function<? super T, ? extends IntStream> mapper)
 LongStream flatMapToLong(Function<? super T, ? extends LongStream> mapper)
@@ -317,7 +317,7 @@ IntStream flatMap(IntFunction<? extends IntStream> mapper)
 
 **사용 예시**
 
-```
+```java
 // 2차원 리스트를 1차원으로
 List<List<Integer>> nested = Arrays.asList(
     Arrays.asList(1, 2, 3),
@@ -346,7 +346,7 @@ List<String> wordList = Arrays.stream(text.split(" "))
 
 **limit, skip**
 
-```
+```java
 Stream<T> limit(long maxSize)                    // 최대 maxSize개만
 Stream<T> skip(long n)                           // 앞의 n개 건너뛰기
 IntStream limit(long maxSize)
@@ -355,7 +355,7 @@ IntStream skip(long n)
 
 **사용 예시**
 
-```
+```java
 List<Integer> list = Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
 
 // 처음 5개만
@@ -377,14 +377,14 @@ List<Integer> page2 = list.stream()
 
 **takeWhile, dropWhile (Java 9+)**
 
-```
+```java
 Stream<T> takeWhile(Predicate<? super T> predicate)  // 조건이 true인 동안만
 Stream<T> dropWhile(Predicate<? super T> predicate)  // 조건이 true인 동안 건너뜀
 ```
 
 **사용 예시**
 
-```
+```java
 List<Integer> list = Arrays.asList(1, 2, 3, 4, 5, 1, 2);
 
 // 5 미만인 동안만 (정렬된 스트림에서 유용)
@@ -402,14 +402,14 @@ List<Integer> dropped = list.stream()
 
 **peek**
 
-```
+```java
 Stream<T> peek(Consumer<? super T> action)
 IntStream peek(IntConsumer action)
 ```
 
 **사용 예시**
 
-```
+```java
 List<Integer> result = list.stream()
     .filter(n -> n % 2 == 0)
     .peek(n -> System.out.println("Filtered: " + n))
@@ -422,7 +422,7 @@ List<Integer> result = list.stream()
 
 **boxed, unboxed**
 
-```
+```java
 // IntStream, LongStream, DoubleStream
 Stream<Integer> boxed()                          // int → Integer
 Stream<Long> boxed()                             // long → Long
@@ -431,7 +431,7 @@ Stream<Double> boxed()                           // double → Double
 
 **사용 예시**
 
-```
+```java
 int[] arr = {1, 2, 3, 4, 5};
 List<Integer> list = Arrays.stream(arr)
     .boxed()
@@ -448,14 +448,14 @@ List<Integer> list = Arrays.stream(arr)
 
 **forEach, forEachOrdered**
 
-```
+```java
 void forEach(Consumer<? super T> action)
 void forEachOrdered(Consumer<? super T> action)  // 순서 보장 (병렬 스트림에서도)
 ```
 
 **사용 예시**
 
-```
+```java
 List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
 list.stream().forEach(System.out::println);
 
@@ -467,14 +467,14 @@ list.parallelStream().forEachOrdered(System.out::println);
 
 **collect**
 
-```
+```java
 <R, A> R collect(Collector<? super T, A, R> collector)
 <R> R collect(Supplier<R> supplier, BiConsumer<R, ? super T> accumulator, BiConsumer<R, R> combiner)
 ```
 
 **사용 예시 (Collectors와 함께)**
 
-```
+```java
 List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
 
 // List로 수집
@@ -495,7 +495,7 @@ String result5 = list.stream()
 
 **toArray**
 
-```
+```java
 Object[] toArray()
 <A> A[] toArray(IntFunction<A[]> generator)
 
@@ -507,7 +507,7 @@ double[] toArray()
 
 **사용 예시**
 
-```
+```java
 String[] arr1 = list.stream().toArray(String[]::new);
 Integer[] arr2 = list.stream().toArray(Integer[]::new);
 int[] arr3 = list.stream().mapToInt(Integer::intValue).toArray();
@@ -515,7 +515,7 @@ int[] arr3 = list.stream().mapToInt(Integer::intValue).toArray();
 
 ### 3.3 매칭
 
-```
+```java
 boolean anyMatch(Predicate<? super T> predicate)     // 하나라도 만족
 boolean allMatch(Predicate<? super T> predicate)     // 모두 만족
 boolean noneMatch(Predicate<? super T> predicate)    // 모두 불만족
@@ -523,7 +523,7 @@ boolean noneMatch(Predicate<? super T> predicate)    // 모두 불만족
 
 **사용 예시**
 
-```
+```java
 List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
 
 boolean hasEven = list.stream().anyMatch(n -> n % 2 == 0);   // true
@@ -533,14 +533,14 @@ boolean noneNegative = list.stream().noneMatch(n -> n < 0);  // true
 
 ### 3.4 찾기
 
-```
+```java
 Optional<T> findFirst()                          // 첫 번째 요소
 Optional<T> findAny()                            // 아무 요소 (병렬에서 빠름)
 ```
 
 **사용 예시**
 
-```
+```java
 List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
 
 Optional<Integer> first = list.stream()
@@ -561,13 +561,13 @@ Optional<Integer> any = list.parallelStream()
 
 **count**
 
-```
+```java
 long count()
 ```
 
 **min, max**
 
-```
+```java
 Optional<T> min(Comparator<? super T> comparator)
 Optional<T> max(Comparator<? super T> comparator)
 
@@ -582,7 +582,7 @@ OptionalDouble max()
 
 **sum, average (IntStream, LongStream, DoubleStream)**
 
-```
+```java
 int sum()                                        // IntStream
 long sum()                                       // LongStream
 double sum()                                     // DoubleStream
@@ -592,7 +592,7 @@ OptionalDouble average()                         // 모든 기본 타입 스트�
 
 **사용 예시**
 
-```
+```java
 List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
 
 // count
@@ -616,7 +616,7 @@ int max2 = Arrays.stream(arr).max().getAsInt();
 
 ### 3.6 축약 (reduce)
 
-```
+```java
 Optional<T> reduce(BinaryOperator<T> accumulator)
 T reduce(T identity, BinaryOperator<T> accumulator)
 <U> U reduce(U identity, BiFunction<U, ? super T, U> accumulator, BinaryOperator<U> combiner)
@@ -628,7 +628,7 @@ int reduce(int identity, IntBinaryOperator op)
 
 **사용 예시**
 
-```
+```java
 List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
 
 // 합계
@@ -655,7 +655,7 @@ java.util.stream.Collectors 클래스는 다양한 수집 연산을 제공합니
 
 ### 4.1 기본 수집
 
-```
+```java
 static <T> Collector<T, ?, List<T>> toList()
 static <T> Collector<T, ?, Set<T>> toSet()
 static <T, C extends Collection<T>> Collector<T, ?, C> toCollection(Supplier<C> collectionFactory)
@@ -665,7 +665,7 @@ static <T> Collector<T, ?, Set<T>> toUnmodifiableSet()
 
 **사용 예시**
 
-```
+```java
 List<Integer> list = stream.collect(Collectors.toList());
 Set<Integer> set = stream.collect(Collectors.toSet());
 ArrayList<Integer> arrayList = stream.collect(Collectors.toCollection(ArrayList::new));
@@ -674,7 +674,7 @@ TreeSet<Integer> treeSet = stream.collect(Collectors.toCollection(TreeSet::new))
 
 ### 4.2 문자열 결합
 
-```
+```java
 static Collector<CharSequence, ?, String> joining()
 static Collector<CharSequence, ?, String> joining(CharSequence delimiter)
 static Collector<CharSequence, ?, String> joining(CharSequence delimiter, CharSequence prefix, CharSequence suffix)
@@ -682,7 +682,7 @@ static Collector<CharSequence, ?, String> joining(CharSequence delimiter, CharSe
 
 **사용 예시**
 
-```
+```java
 List<String> words = Arrays.asList("apple", "banana", "cherry");
 
 String result1 = words.stream().collect(Collectors.joining());  // "applebananacherry"
@@ -692,7 +692,7 @@ String result3 = words.stream().collect(Collectors.joining(", ", "[", "]"));  //
 
 ### 4.3 집계
 
-```
+```java
 static <T> Collector<T, ?, Long> counting()
 static <T> Collector<T, ?, Optional<T>> minBy(Comparator<? super T> comparator)
 static <T> Collector<T, ?, Optional<T>> maxBy(Comparator<? super T> comparator)
@@ -709,7 +709,7 @@ static <T> Collector<T, ?, DoubleSummaryStatistics> summarizingDouble(ToDoubleFu
 
 **사용 예시**
 
-```
+```java
 List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
 
 long count = list.stream().collect(Collectors.counting());  // 5
@@ -731,7 +731,7 @@ System.out.println(stats.getAverage());  // 3.0
 
 ### 4.4 그룹화
 
-```
+```java
 static <T, K> Collector<T, ?, Map<K, List<T>>> groupingBy(Function<? super T, ? extends K> classifier)
 static <T, K, A, D> Collector<T, ?, Map<K, D>> groupingBy(Function<? super T, ? extends K> classifier, Collector<? super T, A, D> downstream)
 static <T, K, D, A, M extends Map<K, D>> Collector<T, ?, M> groupingBy(Function<? super T, ? extends K> classifier, Supplier<M> mapFactory, Collector<? super T, A, D> downstream)
@@ -739,7 +739,7 @@ static <T, K, D, A, M extends Map<K, D>> Collector<T, ?, M> groupingBy(Function<
 
 **사용 예시**
 
-```
+```java
 List<String> words = Arrays.asList("apple", "banana", "cherry", "avocado", "blueberry");
 
 // 첫 글자로 그룹화
@@ -770,14 +770,14 @@ Map<Boolean, List<Integer>> evenOdd = numbers.stream()
 
 ### 4.5 분할 (partitioningBy)
 
-```
+```java
 static <T> Collector<T, ?, Map<Boolean, List<T>>> partitioningBy(Predicate<? super T> predicate)
 static <T, D, A> Collector<T, ?, Map<Boolean, D>> partitioningBy(Predicate<? super T> predicate, Collector<? super T, A, D> downstream)
 ```
 
 **사용 예시**
 
-```
+```java
 List<Integer> numbers = Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
 
 // 짝수/홀수로 분할
@@ -796,7 +796,7 @@ Map<Boolean, Long> partitionedCount = numbers.stream()
 
 ### 4.6 Map으로 수집
 
-```
+```java
 static <T, K, U> Collector<T, ?, Map<K, U>> toMap(Function<? super T, ? extends K> keyMapper, Function<? super T, ? extends U> valueMapper)
 static <T, K, U> Collector<T, ?, Map<K, U>> toMap(Function<? super T, ? extends K> keyMapper, Function<? super T, ? extends U> valueMapper, BinaryOperator<U> mergeFunction)
 static <T, K, U, M extends Map<K, U>> Collector<T, ?, M> toMap(Function<? super T, ? extends K> keyMapper, Function<? super T, ? extends U> valueMapper, BinaryOperator<U> mergeFunction, Supplier<M> mapSupplier)
@@ -804,7 +804,7 @@ static <T, K, U, M extends Map<K, U>> Collector<T, ?, M> toMap(Function<? super 
 
 **사용 예시**
 
-```
+```java
 List<String> words = Arrays.asList("apple", "banana", "cherry");
 
 // 단어 → 길이 맵
@@ -831,25 +831,25 @@ Map<String, Integer> treeMap = words.stream()
 
 **mapping**
 
-```
+```java
 static <T, U, A, R> Collector<T, ?, R> mapping(Function<? super T, ? extends U> mapper, Collector<? super U, A, R> downstream)
 ```
 
 **filtering (Java 9+)**
 
-```
+```java
 static <T, A, R> Collector<T, ?, R> filtering(Predicate<? super T> predicate, Collector<? super T, A, R> downstream)
 ```
 
 **collectingAndThen**
 
-```
+```java
 static <T, A, R, RR> Collector<T, A, RR> collectingAndThen(Collector<T, A, R> downstream, Function<R, RR> finisher)
 ```
 
 **사용 예시**
 
-```
+```java
 // mapping: 그룹화 후 변환
 Map<Character, List<Integer>> grouped = words.stream()
     .collect(Collectors.groupingBy(
@@ -869,7 +869,7 @@ List<Integer> unmodifiable = list.stream()
 
 ## 5\. 병렬 스트림
 
-```
+```java
 Stream<T> parallel()                             // 병렬 스트림으로 변환
 Stream<T> sequential()                           // 순차 스트림으로 변환
 boolean isParallel()                             // 병렬 스트림인지 확인
@@ -877,7 +877,7 @@ boolean isParallel()                             // 병렬 스트림인지 확�
 
 **사용 예시**
 
-```
+```java
 List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
 
 // 병렬 스트림 생성
@@ -901,7 +901,7 @@ int sum = IntStream.range(1, 1000000)
 
 **1\. 배열 → List**
 
-```
+```java
 int[] arr = {1, 2, 3, 4, 5};
 List<Integer> list = Arrays.stream(arr)
     .boxed()
@@ -910,7 +910,7 @@ List<Integer> list = Arrays.stream(arr)
 
 **2\. List → 배열**
 
-```
+```java
 List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
 int[] arr = list.stream()
     .mapToInt(Integer::intValue)
@@ -919,7 +919,7 @@ int[] arr = list.stream()
 
 **3\. 문자열 → 문자 배열**
 
-```
+```java
 String str = "hello";
 char[] chars = str.chars()
     .mapToObj(c -> (char)c)
@@ -928,7 +928,7 @@ char[] chars = str.chars()
 
 **4\. 중복 제거 + 정렬**
 
-```
+```java
 List<Integer> list = Arrays.asList(5, 2, 8, 2, 1, 5, 9);
 List<Integer> result = list.stream()
     .distinct()
@@ -938,7 +938,7 @@ List<Integer> result = list.stream()
 
 **5\. 빈도수 카운팅**
 
-```
+```java
 List<String> words = Arrays.asList("a", "b", "a", "c", "a", "b");
 Map<String, Long> frequency = words.stream()
     .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
@@ -947,7 +947,7 @@ Map<String, Long> frequency = words.stream()
 
 **6\. 최대/최소 K개 요소**
 
-```
+```java
 List<Integer> list = Arrays.asList(5, 2, 8, 1, 9, 3, 7);
 
 // 최대 3개
@@ -965,7 +965,7 @@ List<Integer> bottom3 = list.stream()
 
 **7\. 조건별 필터링 및 그룹화**
 
-```
+```java
 List<Integer> numbers = Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
 
 Map<String, List<Integer>> categorized = numbers.stream()
@@ -978,7 +978,7 @@ Map<String, List<Integer>> categorized = numbers.stream()
 
 **8\. 범위 합계**
 
-```
+```java
 // 1부터 n까지의 합
 int n = 100;
 int sum = IntStream.rangeClosed(1, n).sum();  // 5050
@@ -991,7 +991,7 @@ int evenSum = IntStream.rangeClosed(1, 100)
 
 **9\. 2차원 배열 처리**
 
-```
+```java
 int[][] matrix = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
 
 // 평탄화
@@ -1007,7 +1007,7 @@ int sum = Arrays.stream(matrix)
 
 **10\. 조합 생성 (간단한 경우)**
 
-```
+```java
 List<Integer> list = Arrays.asList(1, 2, 3);
 
 // 모든 쌍 생성
@@ -1021,7 +1021,7 @@ List<int[]> pairs = list.stream()
 
 **11\. Map의 값으로 정렬**
 
-```
+```java
 Map<String, Integer> map = new HashMap<>();
 map.put("apple", 5);
 map.put("banana", 2);
@@ -1046,7 +1046,7 @@ Map<String, Integer> sortedMap = map.entrySet().stream()
 
 **12\. 문자열 처리**
 
-```
+```java
 String text = "Hello World";
 
 // 문자별 빈도
@@ -1066,7 +1066,7 @@ Map<String, Long> wordFreq = Arrays.stream(sentence.split(" "))
 
 ### 7.1 스트림은 재사용 불가
 
-```
+```java
 Stream<Integer> stream = list.stream();
 stream.forEach(System.out::println);
 // stream.forEach(System.out::println);  // IllegalStateException: stream has already been operated upon or closed
@@ -1074,7 +1074,7 @@ stream.forEach(System.out::println);
 
 ### 7.2 상태를 변경하지 말 것
 
-```
+```java
 // 잘못된 예
 List<Integer> list = new ArrayList<>();
 IntStream.range(0, 10).forEach(list::add);  // 병렬 스트림에서 문제 발생 가능
@@ -1087,7 +1087,7 @@ List<Integer> list = IntStream.range(0, 10)
 
 ### 7.3 병렬 스트림 주의
 
-```
+```java
 // 순서가 중요한 경우 병렬 스트림 사용 주의
 List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
 list.parallelStream().forEach(System.out::println);  // 순서 보장 안됨
@@ -1096,7 +1096,7 @@ list.parallelStream().forEachOrdered(System.out::println);  // 순서 보장
 
 ### 7.4 null 처리
 
-```
+```java
 // null이 포함된 리스트
 List<String> list = Arrays.asList("a", null, "b", null, "c");
 
@@ -1112,7 +1112,7 @@ List<String> result = list.stream()
 
 ### 7.5 성능 고려
 
-```
+```java
 // 작은 데이터셋에서는 for문이 더 빠를 수 있음
 List<Integer> small = Arrays.asList(1, 2, 3, 4, 5);
 
@@ -1128,7 +1128,7 @@ for (int num : small) {
 
 ### 7.6 Optional 처리
 
-```
+```java
 Optional<Integer> opt = list.stream().findFirst();
 
 // 잘못된 예
@@ -1144,7 +1144,7 @@ int value2 = opt.orElseGet(() -> 0);
 
 ### 7.7 무한 스트림 주의
 
-```
+```java
 // limit 없으면 무한 루프
 Stream<Integer> infinite = Stream.iterate(0, n -> n + 1);
 // infinite.forEach(System.out::println);  // 무한 실행!

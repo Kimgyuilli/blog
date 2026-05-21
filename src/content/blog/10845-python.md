@@ -28,7 +28,7 @@ slug: "10845-python"
 
 출력해야하는 명령이 주어질 때마다, 한 줄에 하나씩 출력한다.
 
-```
+```python
 from sys import stdin
 n = int(stdin.readline())
 q = []

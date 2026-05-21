@@ -23,7 +23,7 @@ N과 K가 주어지면 (N, K)-요세푸스 순열을 구하는 프로그램을 �
 
 예제와 같이 요세푸스 순열을 출력한다.
 
-```
+```python
 from sys import stdin
 n1, n2= map(int, stdin.readline().split())
 cir = list(range(1, n1+1))

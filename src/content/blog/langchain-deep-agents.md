@@ -49,7 +49,7 @@ result = agent.invoke({"messages": [{"role": "user", "content": "Hello"}]})
 
 `graph.py`의 미들웨어 조립 부분을 보면
 
-```
+```bash
 deepagent_middleware = [
     # [필수] 작업 계획/추적 — write_todos 도구를 제공
     # 에이전트가 복잡한 작업을 단계별로 분해하고 진행 상황을 추적할 수 있게 한다.
@@ -136,7 +136,7 @@ composite.write("/memories/note.md", "persistent")  # → StoreBackend
 
 이 전략의 트리거 설정도 모델 사양에 맞게 자동 조절되도록 구현되어 있다.
 
-```
+```bash
 # 모델이 자신의 max_input_tokens를 알려주는 경우 → 비율 기반
 {
     "trigger": ("fraction", 0.85),   # 용량의 85%에서 트리거
@@ -305,7 +305,7 @@ Hard Limits:
 
 ### 리서치 에이전트 - 오케스트레이터와 리서처의 역할 분리
 
-```
+```bash
 # 서브에이전트: 주제 하나만 깊이 리서치하는 역할
 research_sub_agent = {
     "name": "research-agent",

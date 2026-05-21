@@ -20,7 +20,7 @@ React 프로젝트를 하면서 하나의 문제에 봉착했다.
 
 이전 다른 react 강의를 보면서 이걸 왜 사용하는 건지에 대해 이해를 안하고 넘어갔었는데 이런 것 때문에 쓰는 거였다.
 
-```
+```html
 import styles from "./openBoard.module.css"
 
 <div className={styles.main__container}></div>

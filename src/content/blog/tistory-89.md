@@ -249,7 +249,7 @@ Soak Test는 장시간 운영 중 문제가 생기는지 확인한다.
 
 k6에서는 코드로 이렇게 표현한다.
 
-```
+```bash
 export const options = {
   vus: 50,         // 가상 사용자 50명
   duration: '30s'  // 30초 동안 유지
@@ -566,7 +566,7 @@ Error Rate를 볼 때 HTTP 상태 코드만 보면 부족할 수 있다.
 
 예를 들어 서버가 HTTP 200을 반환했지만, 응답 본문이 다음과 같다면 비즈니스 관점에서는 실패일 수 있다.
 
-```
+```json
 {
   "success": false,
   "message": "재고가 부족합니다"

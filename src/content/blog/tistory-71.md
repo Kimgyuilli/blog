@@ -162,7 +162,7 @@ slug: "tistory-71"
 -   페이지 하단에 도달하면 자동으로 마지막 섹션 활성화
 -   모바일에서는 햄버거 메뉴로 변환되는 반응형 UI
 
-```
+```js
 // 핵심 로직 (간략화)
 useEffect(() => {
   const observer = new IntersectionObserver(
@@ -228,7 +228,7 @@ useEffect(() => {
 
 **구현 포인트**
 
-```
+```js
 // 카테고리 필터링 로직
 const filteredProjects = projects.filter(project =>
   selectedCategory === 'All' || project.category === selectedCategory
@@ -265,7 +265,7 @@ const filteredProjects = projects.filter(project =>
 3.  blog.ts 파일 자동 업데이트
 4.  변경사항 자동 커밋 및 배포
 
-```
+```bash
 # .github/workflows/update-blog.yml
 name: Update Blog Posts
 
@@ -318,7 +318,7 @@ jobs:
 2.  이메일 템플릿 작성 (발신자 정보, 메시지 내용 포함)
 3.  React 폼과 연동
 
-```
+```js
 const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
   setStatus('sending');
@@ -353,7 +353,7 @@ const handleSubmit = async (e: React.FormEvent) => {
 
 next-themes 라이브러리를 사용해 **시스템 설정 감지**와 **사용자 선택 저장** 기능을 모두 구현했다.
 
-```
+```js
 // ThemeContext.tsx
 const ThemeProvider = ({ children }) => {
   const { theme, setTheme } = useTheme();
@@ -401,7 +401,7 @@ const ThemeProvider = ({ children }) => {
 
 **Framer Motion**을 활용해 스크롤 시 컨텐츠가 부드럽게 나타나도록 구현했다.
 
-```
+```js
 // FadeInSection.tsx
 const FadeInSection = ({ children }) => {
   return (
@@ -456,7 +456,7 @@ const FadeInSection = ({ children }) => {
 
 포트폴리오의 가장 큰 특징은 **UI와 데이터의 완전한 분리**다. 모든 컨텐츠를 src/data/ 폴더에 TypeScript 파일로 관리한다.
 
-```
+```bash
 // src/data/projects.ts
 export const projects: Project[] = [
   {
@@ -536,7 +536,7 @@ Vite 프로젝트를 GitHub Pages에 배포하기 위해 다음과 같이 설정
 
 **vite.config.ts**
 
-```
+```bash
 export default defineConfig({
   base: '/gyuill-portfolio/',  // Repository 이름
   build: {
@@ -547,7 +547,7 @@ export default defineConfig({
 
 **GitHub Actions 워크플로우**
 
-```
+```yaml
 name: Deploy to GitHub Pages
 
 on:

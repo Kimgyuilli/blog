@@ -56,7 +56,7 @@ public ResponseEntity<Object> handleException(Exception ex, HttpServletRequest r
 
 ### 전송 데이터
 
-```
+```json
 {
   "errorType": "java.lang.NullPointerException",
   "errorMessage": "Cannot invoke method on null reference",
@@ -248,7 +248,7 @@ AI에게 보내는 프롬프트의 핵심은 **에러 파일과 참고 파일을
 
 응답은 구조화된 JSON으로 강제한다:
 
-```
+```json
 {
   "analysis": "에러 원인 상세 분석",
   "root_cause": "근본 원인 한 줄 요약",
@@ -262,7 +262,7 @@ AI에게 보내는 프롬프트의 핵심은 **에러 파일과 참고 파일을
 
 AI가 JSON이 아닌 응답을 주면, 피드백을 붙여 1회 재시도한다.
 
-```
+```bash
 # 1차 시도
 try:
     text = provider.call(SYSTEM_PROMPT, user_prompt)
@@ -299,7 +299,7 @@ def _validate_ai_result(result, known_files):
 
 ### 플로우
 
-```
+```bash
 # 1. base 브랜치의 최신 SHA
 base_ref = repo.get_git_ref(f"heads/{base_branch}")
 base_sha = base_ref.object.sha

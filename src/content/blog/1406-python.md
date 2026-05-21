@@ -34,7 +34,7 @@ slug: "1406-python"
 
 ## 코드
 
-```
+```python
 from sys import stdin
 lis = list(stdin.readline().strip())
 n = int(stdin.readline())
@@ -63,7 +63,7 @@ print(''.join(lis))
 
 그래서 어쩔 수 없이 최후의 수단으로 다른 사람들은 어떻게 했는지 찾아보게 되었다.
 
-```
+```python
 import sys
 
 st1 = list(sys.stdin.readline().rstrip())

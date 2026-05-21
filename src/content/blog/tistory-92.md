@@ -77,11 +77,11 @@ Presigned 방식의 장점은 정확히 반대다. **서버는 이미지 바이�
 
 NCP에 AWS SDK를 붙이기 위한 `ObjectStorageConfig`는 이렇게 구현돼있다.
 
-```
+```java
 S3Client.builder()
-// SDK가 기본적으로 가려는 <https://s3>.{region}.amazonaws.com 을 NCP 호스트로 덮어씀.
-// 이 줄이 빠지면 SDK는 AWS S3로 요청을 보낸다.
-        .endpointOverride(URI.create(properties.endpoint()))   // <https://kr.object.ncloudstorage.com>
+        // SDK가 기본적으로 가려는 https://s3.{region}.amazonaws.com 을 NCP 호스트로 덮어씀.
+        // 이 줄이 빠지면 SDK는 AWS S3로 요청을 보낸다.
+        .endpointOverride(URI.create(properties.endpoint()))   // https://kr.object.ncloudstorage.com
 
         // region은 '통신할 호스트'가 아니라 'SigV4 서명에 들어가는 라벨'.
         // NCP가 자기 region을 "kr-standard"로 정해뒀기 때문에 서명도 같은 문자열을 써야 검증을 통과한다.
@@ -111,7 +111,7 @@ S3Client.builder()
 
 ### 2.4 \[1단계\] Presigned URL 발급
 
-```
+```java
 public PresignedUploadUrlResponse generateUploadUrl(PresignedUploadUrlRequest request) {
     // 클라에서 보낸 contentType/contentLength가 허용 범위인지 사전 검증 (MIME 화이트리스트 + 최대 크기)
     validateUploadRequest(request);
@@ -264,10 +264,10 @@ S3Client.builder()
 
 그 직관 위에 NCP 설정을 얹으면 이렇게 된다.
 
-```
+```java
 // NCP (S3 호환)
 S3Client.builder()
-    .endpointOverride(URI.create("<https://kr.object.ncloudstorage.com>"))  // 어디로 갈지를 명시
+    .endpointOverride(URI.create("https://kr.object.ncloudstorage.com"))  // 어디로 갈지를 명시
     .region(Region.of("kr-standard"))                                     // ???
     .build();
 ```

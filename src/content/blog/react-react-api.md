@@ -126,7 +126,7 @@ www.tiny.cloud](https://www.tiny.cloud/)
 
 무료 플러그인만 사용해도 대부분의 기능을 구현할 수 있기 때문에 나는 무료 플러그인만 사용하였다.
 
-```
+```bash
 import { useState, useEffect } from "react";
 import { Editor } from "@tinymce/tinymce-react";
 
@@ -196,7 +196,7 @@ autoresize\_bottom\_margin: 10,
 
 800 이상부터는 스크롤이 생긴다.
 
-```
+```js
 import TinyMCEEditor from "../../../components/Editor/TinyEditor";
 
 <TinyMCEEditor onEditorChange={setContent} />

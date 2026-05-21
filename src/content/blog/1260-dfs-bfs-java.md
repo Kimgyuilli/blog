@@ -14,7 +14,7 @@ slug: "1260-dfs-bfs-java"
 
 ## 전체 코드
 
-```
+```java
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -95,14 +95,14 @@ public class java_1260 {
 
 특징이 있는 부분 몇개만 소개하자면
 
-```
+```java
         arr = new int[node + 1][node + 1];
         flag = new boolean[node + 1];
 ```
 
 간선 행렬을 표현할 때 1-based index를 사용해 index와 순회 돌 때의 숫자가 같게 만들었다.
 
-```
+```java
     public static void dfs(int start) {
         flag[start] = true;
         sb.append(start + " ");
@@ -117,7 +117,7 @@ public class java_1260 {
 
 재귀를 활용한 dfs
 
-```
+```java
     public static void bfs(int start) {
         q.add(start);
         flag[start] = true;

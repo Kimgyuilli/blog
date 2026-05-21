@@ -29,7 +29,7 @@ Spring Boot 2.4.0 이상에서 제공하는 네이티브 기능으로 spring.con
 
 **application.yml**
 
-```
+```yaml
 spring:
   config:
     import:
@@ -38,7 +38,7 @@ spring:
 
 **사용 예시**
 
-```
+```yaml
 spring:
   datasource:
     url: ${DB_URL}
@@ -130,7 +130,7 @@ IntelliJ IDEA의 Run/Debug Configuration에서 환경변수를 직접 설정하�
 
 **1\. 의존성 추가 (build.gradle)**
 
-```
+```css
 dependencies {
     implementation 'me.paulschwarz:spring-dotenv:4.0.0'
 }
@@ -138,7 +138,7 @@ dependencies {
 
 **2\. .env 파일 생성**
 
-```
+```java
 DB_URL=jdbc:mysql://localhost:3306/mydb
 DB_USERNAME=root
 DB_PASSWORD=secret
@@ -146,7 +146,7 @@ DB_PASSWORD=secret
 
 **3\. application.yml에서 사용**
 
-```
+```yaml
 spring:
   datasource:
     url: ${DB_URL}
@@ -227,7 +227,7 @@ spring:
 
 **Spring Boot Native Config Import**
 
-```
+```yaml
 spring:
   config:
     import:
@@ -286,7 +286,7 @@ spring:
 
 **하이브리드 접근:**
 
-```
+```yaml
 spring:
   config:
     import:

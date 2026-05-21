@@ -24,7 +24,7 @@ List는 순서가 있고 중복을 허용하는 컬렉션입니다.
 
 **생성자**
 
-```
+```java
 ArrayList()                                      // 초기 용량 10
 ArrayList(int initialCapacity)                   // 초기 용량 지정
 ArrayList(Collection<? extends E> c)             // 다른 컬렉션으로 초기화
@@ -34,7 +34,7 @@ ArrayList(Collection<? extends E> c)             // 다른 컬렉션으로 초�
 
 **추가**
 
-```
+```java
 boolean add(E e)                                 // 끝에 추가
 void add(int index, E element)                   // 특정 위치에 삽입
 boolean addAll(Collection<? extends E> c)        // 컬렉션의 모든 요소 추가
@@ -43,7 +43,7 @@ boolean addAll(int index, Collection<? extends E> c)  // 특정 위치에 컬렉
 
 **삭제**
 
-```
+```java
 E remove(int index)                              // 인덱스로 삭제 후 반환
 boolean remove(Object o)                         // 객체로 삭제 (첫 번째 일치)
 boolean removeAll(Collection<?> c)               // c에 있는 모든 요소 삭제
@@ -54,7 +54,7 @@ boolean removeIf(Predicate<? super E> filter)    // 조건에 맞는 요소 삭�
 
 **조회**
 
-```
+```java
 E get(int index)                                 // 인덱스로 조회
 int indexOf(Object o)                            // 첫 번째 일치 인덱스 (-1: 없음)
 int lastIndexOf(Object o)                        // 마지막 일치 인덱스
@@ -64,21 +64,21 @@ boolean containsAll(Collection<?> c)             // c의 모든 요소 포함 �
 
 **수정**
 
-```
+```java
 E set(int index, E element)                      // 인덱스 위치 값 변경 후 이전 값 반환
 void replaceAll(UnaryOperator<E> operator)       // 모든 요소에 함수 적용
 ```
 
 **크기**
 
-```
+```java
 int size()                                       // 크기
 boolean isEmpty()                                // 비어있는지 확인
 ```
 
 **변환**
 
-```
+```java
 Object[] toArray()                               // Object 배열로 변환
 <T> T[] toArray(T[] a)                           // 타입 지정 배열로 변환
 List<E> subList(int fromIndex, int toIndex)      // 부분 리스트 [fromIndex, toIndex)
@@ -86,13 +86,13 @@ List<E> subList(int fromIndex, int toIndex)      // 부분 리스트 [fromIndex,
 
 **정렬**
 
-```
+```java
 void sort(Comparator<? super E> c)               // 정렬
 ```
 
 **기타**
 
-```
+```java
 void ensureCapacity(int minCapacity)             // 최소 용량 보장
 void trimToSize()                                // 용량을 크기에 맞춤
 Iterator<E> iterator()                           // Iterator 반환
@@ -103,7 +103,7 @@ void forEach(Consumer<? super E> action)         // 각 요소에 작업 수행
 
 **사용 예시**
 
-```
+```java
 // 생성 및 초기화
 ArrayList<Integer> list = new ArrayList<>();
 list.add(10);                                    // [10]
@@ -137,7 +137,7 @@ Integer[] arr = list.toArray(new Integer[0]);
 
 **생성자**
 
-```
+```java
 LinkedList()
 LinkedList(Collection<? extends E> c)
 ```
@@ -146,7 +146,7 @@ LinkedList(Collection<? extends E> c)
 
 **앞/뒤 추가**
 
-```
+```java
 void addFirst(E e)                               // 맨 앞에 추가
 void addLast(E e)                                // 맨 뒤에 추가 (add와 동일)
 boolean offerFirst(E e)                          // 맨 앞에 추가 (true 반환)
@@ -155,7 +155,7 @@ boolean offerLast(E e)                           // 맨 뒤에 추가 (true 반�
 
 **앞/뒤 조회**
 
-```
+```java
 E getFirst()                                     // 첫 번째 요소 (NoSuchElementException 가능)
 E getLast()                                      // 마지막 요소
 E peekFirst()                                    // 첫 번째 요소 (null 반환)
@@ -166,7 +166,7 @@ E element()                                      // 첫 번째 요소 (getFirst�
 
 **앞/뒤 삭제**
 
-```
+```java
 E removeFirst()                                  // 첫 번째 요소 삭제 후 반환
 E removeLast()                                   // 마지막 요소 삭제 후 반환
 E pollFirst()                                    // 첫 번째 요소 삭제 후 반환 (null 가능)
@@ -179,7 +179,7 @@ boolean removeLastOccurrence(Object o)           // 마지막 일치 요소 삭�
 
 **Stack/Queue 연산**
 
-```
+```java
 void push(E e)                                   // Stack: 맨 앞에 추가
 E pop()                                          // Stack: 맨 앞 요소 삭제 후 반환
 boolean offer(E e)                               // Queue: 맨 뒤에 추가
@@ -187,7 +187,7 @@ boolean offer(E e)                               // Queue: 맨 뒤에 추가
 
 **사용 예시**
 
-```
+```java
 LinkedList<String> list = new LinkedList<>();
 
 // Deque로 사용
@@ -222,7 +222,7 @@ Set은 중복을 허용하지 않는 컬렉션입니다.
 
 **생성자**
 
-```
+```java
 HashSet()                                        // 초기 용량 16, 로드팩터 0.75
 HashSet(int initialCapacity)
 HashSet(int initialCapacity, float loadFactor)
@@ -233,14 +233,14 @@ HashSet(Collection<? extends E> c)
 
 **추가**
 
-```
+```java
 boolean add(E e)                                 // 추가 (이미 있으면 false)
 boolean addAll(Collection<? extends E> c)
 ```
 
 **삭제**
 
-```
+```java
 boolean remove(Object o)                         // 삭제 (있었으면 true)
 boolean removeAll(Collection<?> c)
 boolean retainAll(Collection<?> c)               // c에 있는 것만 유지
@@ -250,21 +250,21 @@ boolean removeIf(Predicate<? super E> filter)
 
 **조회**
 
-```
+```java
 boolean contains(Object o)                       // 포함 여부
 boolean containsAll(Collection<?> c)
 ```
 
 **크기**
 
-```
+```java
 int size()
 boolean isEmpty()
 ```
 
 **변환**
 
-```
+```java
 Object[] toArray()
 <T> T[] toArray(T[] a)
 Iterator<E> iterator()
@@ -272,13 +272,13 @@ Iterator<E> iterator()
 
 **기타**
 
-```
+```java
 void forEach(Consumer<? super E> action)
 ```
 
 **사용 예시**
 
-```
+```java
 HashSet<Integer> set = new HashSet<>();
 
 // 추가
@@ -324,7 +324,7 @@ difference.removeAll(set2);                      // [1, 2]
 
 **생성자**
 
-```
+```java
 TreeSet()                                        // 자연 순서
 TreeSet(Comparator<? super E> comparator)        // 사용자 정의 순서
 TreeSet(Collection<? extends E> c)
@@ -335,7 +335,7 @@ TreeSet(SortedSet<E> s)
 
 **첫/마지막 요소**
 
-```
+```java
 E first()                                        // 최소값 (NoSuchElementException 가능)
 E last()                                         // 최대값
 E pollFirst()                                    // 최소값 삭제 후 반환 (null 가능)
@@ -344,7 +344,7 @@ E pollLast()                                     // 최대값 삭제 후 반환
 
 **범위 조회**
 
-```
+```java
 E lower(E e)                                     // e보다 작은 값 중 최대값 (null 가능)
 E floor(E e)                                     // e 이하의 값 중 최대값
 E ceiling(E e)                                   // e 이상의 값 중 최소값
@@ -353,7 +353,7 @@ E higher(E e)                                    // e보다 큰 값 중 최소�
 
 **부분 집합**
 
-```
+```java
 SortedSet<E> headSet(E toElement)                // toElement 미만의 요소들
 NavigableSet<E> headSet(E toElement, boolean inclusive)  // inclusive: 포함 여부
 SortedSet<E> tailSet(E fromElement)              // fromElement 이상의 요소들
@@ -364,14 +364,14 @@ NavigableSet<E> subSet(E fromElement, boolean fromInclusive, E toElement, boolea
 
 **역순**
 
-```
+```java
 NavigableSet<E> descendingSet()                  // 역순 뷰
 Iterator<E> descendingIterator()                 // 역순 반복자
 ```
 
 **사용 예시**
 
-```
+```java
 TreeSet<Integer> set = new TreeSet<>();
 
 // 추가 (자동 정렬)
@@ -409,7 +409,7 @@ descSet.addAll(Arrays.asList(10, 20, 30));       // [30, 20, 10]
 
 **생성자**
 
-```
+```java
 LinkedHashSet()
 LinkedHashSet(int initialCapacity)
 LinkedHashSet(int initialCapacity, float loadFactor)
@@ -420,7 +420,7 @@ LinkedHashSet(Collection<? extends E> c)
 
 **사용 예시**
 
-```
+```java
 LinkedHashSet<String> set = new LinkedHashSet<>();
 set.add("C");
 set.add("A");
@@ -444,7 +444,7 @@ Map은 키-값 쌍을 저장하는 컬렉션입니다. 키는 중복 불가, 값
 
 **생성자**
 
-```
+```java
 HashMap()                                        // 초기 용량 16, 로드팩터 0.75
 HashMap(int initialCapacity)
 HashMap(int initialCapacity, float loadFactor)
@@ -455,7 +455,7 @@ HashMap(Map<? extends K, ? extends V> m)
 
 **추가/수정**
 
-```
+```java
 V put(K key, V value)                            // 키-값 추가/수정, 이전 값 반환 (없으면 null)
 void putAll(Map<? extends K, ? extends V> m)     // 다른 맵의 모든 항목 추가
 V putIfAbsent(K key, V value)                    // 키가 없거나 null이면 추가
@@ -463,7 +463,7 @@ V putIfAbsent(K key, V value)                    // 키가 없거나 null이면 
 
 **조회**
 
-```
+```java
 V get(Object key)                                // 값 조회 (없으면 null)
 V getOrDefault(Object key, V defaultValue)       // 값 조회 (없으면 기본값)
 boolean containsKey(Object key)                  // 키 포함 여부
@@ -472,7 +472,7 @@ boolean containsValue(Object value)              // 값 포함 여부
 
 **삭제**
 
-```
+```java
 V remove(Object key)                             // 키로 삭제 후 값 반환
 boolean remove(Object key, Object value)         // 키-값 쌍이 일치하면 삭제
 void clear()                                     // 모든 항목 삭제
@@ -480,14 +480,14 @@ void clear()                                     // 모든 항목 삭제
 
 **크기**
 
-```
+```java
 int size()
 boolean isEmpty()
 ```
 
 **뷰**
 
-```
+```java
 Set<K> keySet()                                  // 모든 키의 Set
 Collection<V> values()                           // 모든 값의 Collection
 Set<Map.Entry<K, V>> entrySet()                  // 모든 엔트리의 Set
@@ -495,7 +495,7 @@ Set<Map.Entry<K, V>> entrySet()                  // 모든 엔트리의 Set
 
 **함수형 메서드**
 
-```
+```java
 V compute(K key, BiFunction<? super K, ? super V, ? extends V> remappingFunction)
 V computeIfAbsent(K key, Function<? super K, ? extends V> mappingFunction)
 V computeIfPresent(K key, BiFunction<? super K, ? super V, ? extends V> remappingFunction)
@@ -506,7 +506,7 @@ void forEach(BiConsumer<? super K, ? super V> action)
 
 **사용 예시**
 
-```
+```java
 HashMap<String, Integer> map = new HashMap<>();
 
 // 추가
@@ -562,7 +562,7 @@ Red-Black Tree 기반. 키가 정렬된 순서 유지. 검색/삽입/삭제 O(lo
 
 **생성자**
 
-```
+```java
 TreeMap()                                        // 자연 순서
 TreeMap(Comparator<? super K> comparator)        // 사용자 정의 순서
 TreeMap(Map<? extends K, ? extends V> m)
@@ -573,7 +573,7 @@ TreeMap(SortedMap<K, ? extends V> m)
 
 **첫/마지막 엔트리**
 
-```
+```java
 Map.Entry<K, V> firstEntry()                     // 최소 키 엔트리
 K firstKey()                                     // 최소 키
 Map.Entry<K, V> lastEntry()                      // 최대 키 엔트리
@@ -584,7 +584,7 @@ Map.Entry<K, V> pollLastEntry()                  // 최대 키 엔트리 삭제 
 
 **범위 조회**
 
-```
+```java
 Map.Entry<K, V> lowerEntry(K key)                // key보다 작은 키 중 최대
 K lowerKey(K key)
 Map.Entry<K, V> floorEntry(K key)                // key 이하 중 최대
@@ -597,7 +597,7 @@ K higherKey(K key)
 
 **부분 맵**
 
-```
+```java
 SortedMap<K, V> headMap(K toKey)                 // toKey 미만
 NavigableMap<K, V> headMap(K toKey, boolean inclusive)
 SortedMap<K, V> tailMap(K fromKey)               // fromKey 이상
@@ -608,7 +608,7 @@ NavigableMap<K, V> subMap(K fromKey, boolean fromInclusive, K toKey, boolean toI
 
 **역순**
 
-```
+```java
 NavigableMap<K, V> descendingMap()               // 역순 맵
 NavigableSet<K> descendingKeySet()               // 역순 키 Set
 NavigableSet<K> navigableKeySet()                // 키 NavigableSet
@@ -616,7 +616,7 @@ NavigableSet<K> navigableKeySet()                // 키 NavigableSet
 
 **사용 예시**
 
-```
+```java
 TreeMap<Integer, String> map = new TreeMap<>();
 
 // 추가 (키 자동 정렬)
@@ -651,7 +651,7 @@ NavigableMap<Integer, String> desc = map.descendingMap();  // {30=C, 25=D, 20=B,
 
 **생성자**
 
-```
+```java
 LinkedHashMap()                                  // 삽입 순서
 LinkedHashMap(int initialCapacity)
 LinkedHashMap(int initialCapacity, float loadFactor)
@@ -663,7 +663,7 @@ LinkedHashMap(Map<? extends K, ? extends V> m)
 
 **사용 예시**
 
-```
+```java
 // 삽입 순서 유지
 LinkedHashMap<String, Integer> map = new LinkedHashMap<>();
 map.put("C", 3);
@@ -700,7 +700,7 @@ Queue는 FIFO(First In First Out) 구조입니다.
 
 **생성자**
 
-```
+```java
 PriorityQueue()                                  // 자연 순서 (최소 힙)
 PriorityQueue(int initialCapacity)
 PriorityQueue(Comparator<? super E> comparator)  // 사용자 정의 순서
@@ -713,21 +713,21 @@ PriorityQueue(SortedSet<? extends E> c)
 
 **추가**
 
-```
+```java
 boolean add(E e)                                 // 추가 (실패 시 예외)
 boolean offer(E e)                               // 추가 (실패 시 false)
 ```
 
 **조회**
 
-```
+```java
 E peek()                                         // 최우선 요소 조회 (null 가능)
 E element()                                      // 최우선 요소 조회 (예외 가능)
 ```
 
 **삭제**
 
-```
+```java
 E poll()                                         // 최우선 요소 삭제 후 반환 (null 가능)
 E remove()                                       // 최우선 요소 삭제 후 반환 (예외 가능)
 boolean remove(Object o)                         // 특정 객체 삭제
@@ -736,7 +736,7 @@ void clear()
 
 **기타**
 
-```
+```java
 int size()
 boolean isEmpty()
 boolean contains(Object o)
@@ -747,7 +747,7 @@ Iterator<E> iterator()                           // 순서 보장 안 됨!
 
 **사용 예시**
 
-```
+```java
 // 최소 힙 (기본)
 PriorityQueue<Integer> minHeap = new PriorityQueue<>();
 minHeap.offer(30);
@@ -793,7 +793,7 @@ Task task = taskQueue.poll();  // High (priority=1)
 
 **생성자**
 
-```
+```java
 ArrayDeque()                                     // 초기 용량 16
 ArrayDeque(int numElements)
 ArrayDeque(Collection<? extends E> c)
@@ -803,7 +803,7 @@ ArrayDeque(Collection<? extends E> c)
 
 **앞 추가**
 
-```
+```java
 void addFirst(E e)                               // 맨 앞에 추가
 boolean offerFirst(E e)
 void push(E e)                                   // Stack: addFirst와 동일
@@ -811,7 +811,7 @@ void push(E e)                                   // Stack: addFirst와 동일
 
 **뒤 추가**
 
-```
+```java
 void addLast(E e)                                // 맨 뒤에 추가
 boolean offerLast(E e)
 boolean add(E e)                                 // addLast와 동일
@@ -820,7 +820,7 @@ boolean offer(E e)                               // offerLast와 동일
 
 **앞 조회**
 
-```
+```java
 E getFirst()                                     // 예외 가능
 E peekFirst()                                    // null 가능
 E peek()                                         // peekFirst와 동일
@@ -829,14 +829,14 @@ E element()                                      // getFirst와 동일
 
 **뒤 조회**
 
-```
+```java
 E getLast()                                      // 예외 가능
 E peekLast()                                     // null 가능
 ```
 
 **앞 삭제**
 
-```
+```java
 E removeFirst()                                  // 예외 가능
 E pollFirst()                                    // null 가능
 E remove()                                       // removeFirst와 동일
@@ -846,14 +846,14 @@ E pop()                                          // Stack: removeFirst와 동일
 
 **뒤 삭제**
 
-```
+```java
 E removeLast()                                   // 예외 가능
 E pollLast()                                     // null 가능
 ```
 
 **기타**
 
-```
+```java
 boolean remove(Object o)                         // 첫 번째 일치 삭제
 boolean removeFirstOccurrence(Object o)
 boolean removeLastOccurrence(Object o)
@@ -867,7 +867,7 @@ Iterator<E> descendingIterator()                 // 역순 반복자
 
 **사용 예시**
 
-```
+```java
 ArrayDeque<Integer> deque = new ArrayDeque<>();
 
 // Deque로 사용
@@ -907,7 +907,7 @@ String top = stack.pop();                        // "C", [B, A]
 
 **주요 메서드**
 
-```
+```java
 E push(E item)                                   // 추가
 E pop()                                          // 제거 후 반환
 E peek()                                         // 조회
@@ -917,7 +917,7 @@ int search(Object o)                             // 위치 검색 (1부터 시�
 
 **사용 예시**
 
-```
+```java
 Stack<Integer> stack = new Stack<>();
 stack.push(10);
 stack.push(20);
@@ -944,7 +944,7 @@ java.util.Collections 클래스는 컬렉션을 다루는 유틸리티 메서드
 
 ### 6.1 정렬
 
-```
+```java
 static <T extends Comparable<? super T>> void sort(List<T> list)
 static <T> void sort(List<T> list, Comparator<? super T> c)
 static void reverse(List<?> list)                // 역순
@@ -956,7 +956,7 @@ static void swap(List<?> list, int i, int j)     // 교환
 
 **사용 예시**
 
-```
+```java
 List<Integer> list = new ArrayList<>(Arrays.asList(5, 2, 8, 1, 9));
 
 Collections.sort(list);                          // [1, 2, 5, 8, 9]
@@ -968,7 +968,7 @@ Collections.swap(list, 0, 4);                    // 0번과 4번 교환
 
 ### 6.2 검색
 
-```
+```java
 static <T> int binarySearch(List<? extends Comparable<? super T>> list, T key)
 static <T> int binarySearch(List<? extends T> list, T key, Comparator<? super T> c)
 static <T extends Object & Comparable<? super T>> T max(Collection<? extends T> coll)
@@ -980,7 +980,7 @@ static int frequency(Collection<?> c, Object o)  // 빈도수
 
 **사용 예시**
 
-```
+```java
 List<Integer> list = Arrays.asList(1, 2, 5, 8, 9);
 int idx = Collections.binarySearch(list, 5);     // 2
 
@@ -993,7 +993,7 @@ int count = Collections.frequency(words, "a");   // 3
 
 ### 6.3 채우기 및 복사
 
-```
+```java
 static <T> void fill(List<? super T> list, T obj)
 static <T> boolean replaceAll(List<T> list, T oldVal, T newVal)
 static <T> void copy(List<? super T> dest, List<? extends T> src)
@@ -1002,7 +1002,7 @@ static <T> boolean addAll(Collection<? super T> c, T... elements)
 
 **사용 예시**
 
-```
+```java
 List<Integer> list = new ArrayList<>(Arrays.asList(1, 2, 3, 4, 5));
 Collections.fill(list, 0);                       // [0, 0, 0, 0, 0]
 
@@ -1016,7 +1016,7 @@ Collections.copy(dest, src);                     // [1, 2, 3, 4]
 
 ### 6.4 불변 컬렉션
 
-```
+```java
 static <T> List<T> emptyList()
 static <T> Set<T> emptySet()
 static <K,V> Map<K,V> emptyMap()
@@ -1033,7 +1033,7 @@ static <T> Collection<T> unmodifiableCollection(Collection<? extends T> c)
 
 **사용 예시**
 
-```
+```java
 List<Integer> empty = Collections.emptyList();   // 빈 리스트
 Set<String> single = Collections.singleton("A"); // 단일 요소 Set
 
@@ -1044,7 +1044,7 @@ List<Integer> unmodifiable = Collections.unmodifiableList(list);
 
 ### 6.5 동기화
 
-```
+```java
 static <T> Collection<T> synchronizedCollection(Collection<T> c)
 static <T> List<T> synchronizedList(List<T> list)
 static <T> Set<T> synchronizedSet(Set<T> s)
@@ -1053,7 +1053,7 @@ static <K,V> Map<K,V> synchronizedMap(Map<K,V> m)
 
 **사용 예시**
 
-```
+```java
 List<Integer> list = new ArrayList<>();
 List<Integer> syncList = Collections.synchronizedList(list);
 // 멀티스레드 환경에서 안전
@@ -1061,7 +1061,7 @@ List<Integer> syncList = Collections.synchronizedList(list);
 
 ### 6.6 기타
 
-```
+```java
 static <T> Comparator<T> reverseOrder()          // 역순 Comparator
 static <T> Comparator<T> reverseOrder(Comparator<T> cmp)
 static <T> void reverse(List<T> list)            // 리스트 역순
@@ -1103,7 +1103,7 @@ static boolean disjoint(Collection<?> c1, Collection<?> c2)  // 교집합 없는
 
 **1\. 빈도수 카운팅**
 
-```
+```java
 String text = "hello";
 Map<Character, Integer> freq = new HashMap<>();
 for (char ch : text.toCharArray()) {
@@ -1114,7 +1114,7 @@ for (char ch : text.toCharArray()) {
 
 **2\. 중복 제거**
 
-```
+```java
 List<Integer> list = Arrays.asList(1, 2, 2, 3, 3, 4);
 Set<Integer> set = new HashSet<>(list);
 List<Integer> unique = new ArrayList<>(set);     // [1, 2, 3, 4]
@@ -1122,14 +1122,14 @@ List<Integer> unique = new ArrayList<>(set);     // [1, 2, 3, 4]
 
 **3\. 정렬된 순서 유지하며 중복 제거**
 
-```
+```java
 List<Integer> list = Arrays.asList(3, 1, 2, 1, 3, 2);
 Set<Integer> set = new TreeSet<>(list);          // [1, 2, 3]
 ```
 
 **4\. 최대/최소 K개 요소**
 
-```
+```java
 // 최소 K개
 PriorityQueue<Integer> maxHeap = new PriorityQueue<>(Collections.reverseOrder());
 for (int num : nums) {
@@ -1147,7 +1147,7 @@ for (int num : nums) {
 
 **5\. 슬라이딩 윈도우 최대값 (Deque)**
 
-```
+```java
 ArrayDeque<Integer> deque = new ArrayDeque<>();
 List<Integer> result = new ArrayList<>();
 
@@ -1172,7 +1172,7 @@ for (int i = 0; i < nums.length; i++) {
 
 **6\. LRU 캐시**
 
-```
+```java
 LinkedHashMap<Integer, Integer> cache = new LinkedHashMap<>(capacity, 0.75f, true) {
     @Override
     protected boolean removeEldestEntry(Map.Entry<Integer, Integer> eldest) {
@@ -1183,7 +1183,7 @@ LinkedHashMap<Integer, Integer> cache = new LinkedHashMap<>(capacity, 0.75f, tru
 
 **7\. 그래프 인접 리스트**
 
-```
+```java
 // ArrayList 배열
 List<Integer>[] graph = new ArrayList[n];
 for (int i = 0; i < n; i++) {
@@ -1196,7 +1196,7 @@ Map<Integer, List<Integer>> graph = new HashMap<>();
 
 **8\. 투 포인터 with Set**
 
-```
+```java
 Set<Character> set = new HashSet<>();
 int left = 0, maxLen = 0;
 for (int right = 0; right < s.length(); right++) {
@@ -1214,7 +1214,7 @@ for (int right = 0; right < s.length(); right++) {
 
 ### 8.1 ConcurrentModificationException
 
-```
+```java
 List<Integer> list = new ArrayList<>(Arrays.asList(1, 2, 3, 4, 5));
 
 // 잘못된 예 - 예외 발생
@@ -1245,7 +1245,7 @@ for (int i = list.size() - 1; i >= 0; i--) {
 
 ### 8.2 null 관련
 
-```
+```java
 // HashMap: null 키, null 값 모두 허용
 HashMap<String, Integer> map = new HashMap<>();
 map.put(null, 1);     // OK
@@ -1274,7 +1274,7 @@ ArrayDeque<Integer> deque = new ArrayDeque<>();
 
 ### 8.3 정렬 후 비교
 
-```
+```java
 // TreeSet, TreeMap은 compareTo/Comparator 사용
 TreeSet<String> set = new TreeSet<>();
 set.add("10");
@@ -1292,7 +1292,7 @@ set2.add("1");
 
 ### 8.4 ArrayList vs LinkedList
 
-```
+```java
 // ArrayList: 인덱스 접근 O(1), 삽입/삭제 O(n)
 List<Integer> arrayList = new ArrayList<>();
 arrayList.get(100);  // 빠름

@@ -40,7 +40,7 @@ imdeepskyblue.tistory.com](https://imdeepskyblue.tistory.com/54)
 -   하지만 이들을 구분할 수 있는 타입 필드가 없었다
 -   **알림 전송 미동작**: API를 호출해도 실제로 알림이 생성되지 않는 치명적 문제가 있었다.
 
-```
+```ts
 // 기존: 타입 구분 없음
 interface Notification {
   id: number;
@@ -153,7 +153,7 @@ FCM을 제거하는 작업은 생각보다 훨씬 오래 걸렸다.
 5.  Presentation, Application Layer 재구현
 6.  테스트 코드 재작성
 
-```
+```bash
 # 마이그레이션 커밋 기록 (24개 커밋)
 b66fcf8 docs: notification 문서 업데이트
 681bb80 feat: mock 관련 로직 간략화
@@ -253,7 +253,7 @@ GET <https://maruni.kro.kr/favicon.ico> 404 (Not Found)
 
 모든 경로를 index.html로 리다이렉트하도록 설정했다.
 
-```
+```json
 {
   "rewrites": [
     {

@@ -21,7 +21,7 @@ slug: "spring-boot-mdc"
 이 로그만 보면 어떤 요청에서 어떤 일이 일어났는지 추적하기 어렵다.
 이 문제를 해결하기 위해 많이 사용하는 방식이 `traceId`를 로그마다 함께 남기는 것이다.
 
-```
+```java
 [9f31a2bc] 회원 조회 시작
 [7ac91d02] 예약 생성 시작
 [9f31a2bc] 회원 조회 완료
@@ -41,7 +41,7 @@ src/main/resources/logback-spring.xml
 
 `MdcLoggingFilter`는 요청마다 `traceId`를 만들고 MDC에 저장한다.
 
-```
+```java
 @Component
 public class MdcLoggingFilter implements Filter {
 
@@ -66,7 +66,7 @@ public class MdcLoggingFilter implements Filter {
 
 ![Spring Boot에서 MDC 로깅 필터는 어떻게 동작할까?](/images/blog/spring-boot-mdc/image-01.png)
 
-```
+```java
 <pattern>
     %d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level)
     %magenta([%X{traceId}])
@@ -106,14 +106,14 @@ logback.xml
 그래서 별도의 코드 없이도 `logback-spring.xml`이 적용된다.
 만약 다른 위치의 파일을 쓰고 싶다면 `application.yaml` 또는 실행 옵션에서 `logging.config`를 지정할 수 있다.
 
-```
+```yaml
 logging:
   config: classpath:logging/logback-prod.xml
 ```
 
 또는 외부 파일을 지정할 수도 있다.
 
-```
+```java
 java -jar app.jar --logging.config=file:/app/config/logback-spring.xml
 ```
 
@@ -125,7 +125,7 @@ java -jar app.jar --logging.config=file:/app/config/logback-spring.xml
 
 예를 들어 Controller와 Service에서 로그를 찍는다고 해보자.
 
-```
+```java
 @RestController
 @RequiredArgsConstructor
 public class WaitingController {
@@ -142,7 +142,7 @@ public class WaitingController {
 }
 ```
 
-```
+```java
 @Service
 public class WaitingService {
 
@@ -157,7 +157,7 @@ public class WaitingService {
 
 요청 하나에 대해 다음처럼 같은 traceId가 찍힌다.
 
-```
+```java
 2026-05-19 20:10:01.123 INFO  [9f31a2bc] [http-nio-8080-exec-1] WaitingController : waiting request received
 2026-05-19 20:10:01.130 INFO  [9f31a2bc] [http-nio-8080-exec-1] WaitingService    : waiting create started
 2026-05-19 20:10:01.145 INFO  [9f31a2bc] [http-nio-8080-exec-1] WaitingService    : waiting create completed
@@ -173,7 +173,7 @@ Tomcat은 스레드 풀을 사용하고, 한 요청을 처리한 스레드가 �
 
 만약 MDC를 지우지 않으면 다음 요청 로그에 이전 요청의 `traceId`가 남을 수 있다.
 
-```
+```java
 try {
     chain.doFilter(request, response);
 } finally {
@@ -183,7 +183,7 @@ try {
 
 운영 코드에서는 `MDC.clear()` 대신 특정 key만 제거하는 방식도 많이 쓴다.
 
-```
+```java
 finally {
     MDC.remove("traceId");
 }
@@ -197,7 +197,7 @@ finally {
 
 학습용 구현에서는 요청마다 UUID를 새로 만들면 충분하다.
 
-```
+```java
 String traceId = UUID.randomUUID().toString().substring(0, 8);
 ```
 
@@ -217,7 +217,7 @@ String traceId = UUID.randomUUID().toString().substring(0, 8);
 
 조금 더 운영 친화적으로 만들면 다음과 같다.
 
-```
+```java
 @Component
 public class MdcLoggingFilter extends OncePerRequestFilter {
 
@@ -275,13 +275,13 @@ X-Request-Id: req-20260519-abcd
 
 `waiting-api` 로그:
 
-```
+```java
 [req-20260519-abcd] waiting request received
 ```
 
 `payment-api` 로그:
 
-```
+```java
 [req-20260519-abcd] payment request received
 ```
 
@@ -291,7 +291,7 @@ X-Request-Id: req-20260519-abcd
 
 콘솔 로그만 사용한다면 현재처럼 단순한 패턴도 충분하다.
 
-```
+```java
 <configuration>
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
@@ -312,7 +312,7 @@ X-Request-Id: req-20260519-abcd
 
 개념적으로는 이런 형태가 더 검색하기 좋다.
 
-```
+```json
 {
   "timestamp": "2026-05-19T20:10:01.123+09:00",
   "level": "INFO",
@@ -337,7 +337,7 @@ MDC 필터는 가능하면 요청 처리 초기에 실행되는 것이 좋다.
 
 필터 순서를 명시하고 싶다면 `FilterRegistrationBean`을 사용할 수 있다.
 
-```
+```java
 @Configuration
 public class FilterConfig {
 
@@ -369,7 +369,7 @@ MDC는 기본적으로 ThreadLocal 기반이다.
 
 하지만 작업이 다른 스레드로 넘어가면 MDC가 자동으로 따라가지 않을 수 있다.
 
-```
+```java
 @Async
 public void sendNotification() {
     log.info("send notification");
@@ -388,7 +388,7 @@ Spring이 제공하는 인터페이스이며, 스레드 풀에 작업이 제출�
 
 개념적으로는 다음과 같다.
 
-```
+```ts
 public interface TaskDecorator {
     Runnable decorate(Runnable runnable);
 }
@@ -396,7 +396,7 @@ public interface TaskDecorator {
 
 즉, 원래 실행될 작업이 다음과 같이 있다면,
 
-```
+```java
 Runnable originalTask = () -> {
     log.info("send notification");
 };
@@ -404,7 +404,7 @@ Runnable originalTask = () -> {
 
 `TaskDecorator`는 이 작업을 바로 실행하지 않고, 앞뒤로 공통 로직이 붙은 새 `Runnable`로 감싼다.
 
-```
+```java
 Runnable decoratedTask = () -> {
     // 실행 전 공통 작업
     originalTask.run();
@@ -420,7 +420,7 @@ MDC 전파에서는 "실행 전 공통 작업"에 `MDC.setContextMap(...)`을 �
 이 코드는 비동기 작업이 실제로 실행되는 작업 스레드에서 호출되면 안 된다.
 작업 스레드로 넘어가기 전에, 즉 요청 스레드에 아직 MDC 값이 남아 있을 때 호출되어야 한다.
 
-```
+```java
 요청 스레드에서 복사해야 하는 값
 MDC: traceId=abc123
 
@@ -438,7 +438,7 @@ MDC: empty
 6.  실제 비동기 로직을 실행한다.
 7.  실행이 끝나면 작업 스레드의 MDC를 정리한다.
 
-```
+```java
 @Bean
 public TaskDecorator mdcTaskDecorator() {
     return runnable -> {
@@ -461,7 +461,7 @@ public TaskDecorator mdcTaskDecorator() {
 
 이 코드에서 바깥쪽 람다는 요청 스레드에서 실행된다고 이해하면 된다.
 
-```
+```java
 return runnable -> {
     Map<String, String> contextMap = MDC.getCopyOfContextMap();
     ...
@@ -470,7 +470,7 @@ return runnable -> {
 
 반면 안쪽 람다는 실제 비동기 작업 스레드에서 실행된다.
 
-```
+```java
 return () -> {
     MDC.setContextMap(contextMap);
     runnable.run();
@@ -483,7 +483,7 @@ return () -> {
 다만 `TaskDecorator` Bean을 선언하는 것만으로 모든 비동기 작업에 자동 적용되는 것은 아니다.
 `ThreadPoolTaskExecutor`에 직접 연결해야 한다.
 
-```
+```java
 @Configuration
 @EnableAsync
 public class AsyncConfig {
@@ -525,7 +525,7 @@ public class AsyncConfig {
 
 여기서 `MDC`의 메서드가 `static` 형태로 보이기 때문에 헷갈릴 수 있다.
 
-```
+```java
 MDC.put("traceId", traceId);
 MDC.getCopyOfContextMap();
 MDC.setContextMap(contextMap);

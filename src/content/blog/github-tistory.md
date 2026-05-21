@@ -40,7 +40,7 @@ GitHub 프로필 README는 개발자의 첫인상을 결정하는 중요한 공�
 
 GitHub 프로필 README는 {username}/{username} 형태의 특수한 저장소입니다.
 
-```
+```bash
 # 본인의 username으로 변경하세요
 git clone <https://github.com/your-username/your-username.git>
 
@@ -55,14 +55,14 @@ cd your-username
 
 main 브랜치에 바로 작업하지 않고 별도 브랜치를 만들어 테스트합니다.
 
-```
+```bash
 git switch -c add-blog-posts
 
 ```
 
 ### STEP 3: 디렉토리 구조 생성
 
-```
+```bash
 # Windows (Git Bash)
 mkdir -p .github/workflows
 mkdir -p .github/scripts
@@ -76,7 +76,7 @@ mkdir -p .github/{workflows,scripts}
 
 블로그 RSS를 파싱하여 README를 업데이트하는 스크립트를 작성합니다.
 
-```
+```bash
 # 파일 생성
 touch .github/scripts/update_blog.py
 
@@ -87,7 +87,7 @@ code .github/scripts/update_blog.py
 
 아래 코드를 복사하여 붙여넣습니다:
 
-```
+```python
 import feedparser
 import re
 from datetime import datetime
@@ -225,7 +225,7 @@ if __name__ == "__main__":
 
 매일 자동으로 실행되는 GitHub Actions 워크플로우를 설정합니다.
 
-```
+```bash
 # 파일 생성
 touch .github/workflows/blog-post-workflow.yml
 
@@ -236,7 +236,7 @@ code .github/workflows/blog-post-workflow.yml
 
 아래 코드를 복사하여 붙여넣습니다:
 
-```
+```yaml
 name: Update Blog Posts
 on:
   schedule:
@@ -295,7 +295,7 @@ jobs:
 
 블로그 글이 표시될 위치에 마커를 추가합니다.
 
-```
+```bash
 # README.md를 에디터로 열기
 code README.md
 
@@ -303,7 +303,7 @@ code README.md
 
 원하는 위치에 다음 내용을 추가합니다:
 
-```
+```bash
 # 📝 Posts
 
 <!-- BLOG-POST-LIST:START -->
@@ -317,7 +317,7 @@ code README.md
 
 GitHub에 푸시하기 전에 로컬에서 먼저 테스트해볼 수 있습니다.
 
-```
+```bash
 # Python 패키지 설치
 pip install feedparser
 
@@ -330,7 +330,7 @@ python .github/scripts/update_blog.py
 
 ### STEP 8: 변경사항 커밋 및 푸시
 
-```
+```bash
 # 변경된 파일 확인
 git status
 
@@ -401,7 +401,7 @@ description = clean_html(entry.get('description', ''))[:100] + '...'  # 100자�
 
 update\_blog.py의 37번 줄 수정:
 
-```
+```bash
 return date_obj.strftime('%Y년 %m월 %d일')  # 한글 형식
 # return date_obj.strftime('%m/%d/%Y')  # 미국 형식
 

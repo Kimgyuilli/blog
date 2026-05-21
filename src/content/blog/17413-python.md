@@ -29,7 +29,7 @@ slug: "17413-python"
 
 ## 코드
 
-```
+```python
 from sys import stdin
 read = list(stdin.readline().strip())
 flag = 0

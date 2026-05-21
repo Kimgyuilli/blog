@@ -40,7 +40,7 @@ slug: "spring-ai-conversation-memory"
 
 Spring AI는 `ChatMemory` 인터페이스로 대화 이력을 추상화한다. `MessageWindowChatMemory`는 최근 N개 메시지만 유지하는 슬라이딩 윈도우 방식이다.
 
-```
+```java
 @Bean
 ChatMemory chatMemory() {
     return MessageWindowChatMemory.builder()
@@ -56,7 +56,7 @@ ChatMemory chatMemory() {
 
 핵심은 `MessageChatMemoryAdvisor`와 `QuestionAnswerAdvisor`를 **ChatClient의 defaultAdvisors로 함께 등록**하는 것이다.
 
-```
+```java
 @Bean
 ChatClient chatClient(ChatClient.Builder builder, ChatMemory chatMemory, VectorStore vectorStore) {
     return builder
@@ -74,7 +74,7 @@ ChatClient chatClient(ChatClient.Builder builder, ChatMemory chatMemory, VectorS
 
 호출 시 `ChatMemory.CONVERSATION_ID` 파라미터로 세션별 이력을 구분한다.
 
-```
+```java
 public String ask(String question, String conversationId) {
     return chatClient.prompt()
             .user(question)
@@ -88,7 +88,7 @@ public String ask(String question, String conversationId) {
 
 요청에 `conversationId`가 없으면 서버에서 UUID를 생성하고, 응답에 포함시킨다.
 
-```
+```java
 record ChatRequest(@NotBlank String question, String conversationId) {}
 record ChatResponse(String answer, String conversationId) {}
 
@@ -103,7 +103,7 @@ ChatResponse chat(@Valid @RequestBody ChatRequest request) {
 
 스트림 응답의 경우, SSE 마지막에 `conversationId` 이벤트를 별도로 전송한다.
 
-```
+```java
 @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 Flux<ServerSentEvent<String>> chatStream(@Valid @RequestBody ChatRequest request) {
     String conversationId = resolveConversationId(request.conversationId());
@@ -122,7 +122,7 @@ Flux<ServerSentEvent<String>> chatStream(@Valid @RequestBody ChatRequest request
 
 처음에는 `MessageChatMemoryAdvisor`와 `QuestionAnswerAdvisor`를 ChatService에서 요청마다 생성해서 넘겼다.
 
-```
+```java
 // 이렇게 하면 Memory가 동작하지 않았다
 chatClient.prompt()
         .user(question)
@@ -143,7 +143,7 @@ chatClient.prompt()
 
 **해결:** 두 Advisor를 모두 ChatClient의 `defaultAdvisors`로 등록하고, 호출 시에는 `param`만 전달한다.
 
-```
+```java
 // AiConfig에서 defaultAdvisors로 등록
 ChatClient chatClient = builder
         .defaultAdvisors(
@@ -163,7 +163,7 @@ chatClient.prompt()
 
 Memory 문제를 해결한 뒤, 이상한 현상이 발생했다.
 
-```
+```java
 사용자: Hello, my name is John.
 챗봇: 안녕하세요, John님. (정상)
 
@@ -184,7 +184,7 @@ Memory 문제를 해결한 뒤, 이상한 현상이 발생했다.
 
 **해결:** 시스템 프롬프트에 **대화 이력도 답변 소스**임을 명시하고, 대화 이력만으로 답할 수 있으면 문서 없이도 답변하라고 지시한다.
 
-```
+```java
 2. 답변 시 다음 두 가지를 모두 활용하세요:
    - 이전 대화 내용 (사용자가 언급한 이름, 요청 사항 등)
    - 제공된 문서 컨텍스트 (상품, 정책 등 참고 자료)

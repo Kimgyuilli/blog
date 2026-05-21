@@ -46,7 +46,7 @@ Callback URL은 로그인 이후 이동할 페이지의 URL이다.
 
 이제 ID와 key 값을 기억해둔다.
 
-```
+```python
     path('naver/login/', views.naver_login, name='naver_login'),
     path('naver/callback/', views.naver_callback, name='naver_callback'),
 ```
@@ -55,7 +55,7 @@ Callback URL은 로그인 이후 이동할 페이지의 URL이다.
 
 경로를 보면 알 수 있듯 위의 서비스 url과 callback url에 동일하게 맞춰야 한다.
 
-```
+```bash
 import requests
 from django.shortcuts import redirect
 from django.conf import settings
@@ -155,7 +155,7 @@ def naver_callback(request):
 
 이제 로그인을 했으면 로그아웃도 해야 하는데 네이버 로그인 api는 로그아웃 기능을 지원 안하기에 로그아웃 하고싶어요 한다고 내보내주지 않는다. 직접 세션과 토큰을 초기화 해줘야 한다.
 
-```
+```python
 네이버 승인 토큰이 존재하면 네이버 로그아웃 메서드 호출 후 메인페이지로 이동
 def logout_view(request):
     if 'naver_access_token' in request.session:

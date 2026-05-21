@@ -65,7 +65,7 @@ sudo service redis-server start
 
 #### Docker 사용 시
 
-```
+```bash
 docker run --name redis -p 6379:6379 -d redis
 ```
 
@@ -78,7 +78,7 @@ implementation 'org.springframework.boot:spring-boot-starter-cache'
 
 ### (3) application.yml 설정
 
-```
+```yaml
 spring:
   redis:
     host: localhost

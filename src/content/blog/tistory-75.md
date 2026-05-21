@@ -89,7 +89,7 @@ pdf/
 
 웹사이트의 섹션 구조(Hero, Skills, Experience, Achievements...)와 PDF의 섹션 구조를 대응시켰다. 그리고 핵심은 **데이터 소스를 완전히 공유한다**는 것이다.
 
-```
+```js
 // ResumePdf.tsx
 import { heroData } from '@/data/hero';
 import { skillCategories } from '@/data/skills';
@@ -122,7 +122,7 @@ Font.registerHyphenationCallback((word) => [word]);
 
 @react-pdf/renderer는 번들 크기가 상당하다. 이력서 다운로드는 모든 사용자가 쓰는 기능이 아니므로 버튼을 클릭할 때 라이브러리를 로드하도록 했다.
 
-```
+```js
 // PdfDownloadButton.tsx
 const handleDownload = async () => {
   // 클릭 시점에 라이브러리와 PDF 컴포넌트를 동시에 로드
@@ -151,7 +151,7 @@ Promise.all로 @react-pdf/renderer와 ResumePdf 컴포넌트를 병렬 로드해
 
 웹사이트의 CSS 변수 색상값을 colors 객체로 매핑해서 웹과 PDF의 색상 톤을 맞췄다.
 
-```
+```bash
 // styles.ts
 export const colors = {
   accent: '#10b981',       // 웹사이트의 --color-accent와 동일

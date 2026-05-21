@@ -39,7 +39,7 @@ slug: "10799-python"
 
 잘려진 조각의 총 개수를 나타내는 정수를 한 줄에 출력한다.
 
-```
+```python
 from sys import stdin
 read = list(stdin.readline().strip())
 flag = 0

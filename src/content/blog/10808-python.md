@@ -19,7 +19,7 @@ slug: "10808-python"
 
 단어에 포함되어 있는 a의 개수, b의 개수, …, z의 개수를 공백으로 구분해서 출력한다.
 
-```
+```python
 from sys import stdin
 read = stdin.readline().strip()
 result = [0]*26     #리스트 생성

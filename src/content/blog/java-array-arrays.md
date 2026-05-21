@@ -20,7 +20,7 @@ slug: "java-array-arrays"
 
 **1차원 배열**
 
-```
+```java
 // 선언과 생성 분리
 int[] arr1;                                      // 선언
 arr1 = new int[5];                               // 크기 5인 배열 생성
@@ -39,7 +39,7 @@ String[] words = {"apple", "banana", "cherry"};
 
 **2차원 배열**
 
-```
+```java
 // 정방 행렬
 int[][] matrix1 = new int[3][4];                 // 3행 4열
 
@@ -59,7 +59,7 @@ jagged[2] = new int[1];                          // 3행: 1개
 
 ### 1.2 배열 접근
 
-```
+```java
 int[] arr = {10, 20, 30, 40, 50};
 
 // 인덱스로 접근
@@ -80,7 +80,7 @@ int value2 = matrix[1][0];                       // 3
 
 **기본 for문**
 
-```
+```java
 int[] arr = {10, 20, 30, 40, 50};
 
 for (int i = 0; i < arr.length; i++) {
@@ -90,7 +90,7 @@ for (int i = 0; i < arr.length; i++) {
 
 **향상된 for문 (for-each)**
 
-```
+```java
 for (int num : arr) {
     System.out.println(num);
 }
@@ -98,7 +98,7 @@ for (int num : arr) {
 
 **2차원 배열 순회**
 
-```
+```java
 int[][] matrix = {{1, 2, 3}, {4, 5, 6}};
 
 // 기본 for문
@@ -126,7 +126,7 @@ java.util.Arrays 클래스는 배열을 다루는 다양한 유틸리티 메서�
 
 **기본 정렬 (오름차순)**
 
-```
+```java
 static void sort(byte[] a)
 static void sort(byte[] a, int fromIndex, int toIndex)
 static void sort(char[] a)
@@ -149,7 +149,7 @@ static <T> void sort(T[] a, int fromIndex, int toIndex, Comparator<? super T> c)
 
 **사용 예시**
 
-```
+```java
 // 기본형 배열 정렬
 int[] arr = {5, 2, 8, 1, 9};
 Arrays.sort(arr);                                // [1, 2, 5, 8, 9]
@@ -173,7 +173,7 @@ Arrays.sort(words2, (a, b) -> a.length() - b.length());  // ["hi", "apple", "ban
 
 **내림차순 정렬**
 
-```
+```java
 // Integer 배열 (Wrapper 클래스 사용)
 Integer[] arr = {5, 2, 8, 1, 9};
 Arrays.sort(arr, Collections.reverseOrder());    // [9, 8, 5, 2, 1]
@@ -199,7 +199,7 @@ Arrays.sort(arr3, Collections.reverseOrder());
 
 **정렬된 배열에서 값 찾기**
 
-```
+```java
 static int binarySearch(byte[] a, byte key)
 static int binarySearch(byte[] a, int fromIndex, int toIndex, byte key)
 static int binarySearch(char[] a, char key)
@@ -222,7 +222,7 @@ static <T> int binarySearch(T[] a, int fromIndex, int toIndex, T key, Comparator
 
 **사용 예시**
 
-```
+```java
 int[] arr = {1, 2, 5, 8, 9};  // 정렬된 배열이어야 함!
 int idx1 = Arrays.binarySearch(arr, 5);          // 2 (인덱스)
 int idx2 = Arrays.binarySearch(arr, 3);          // -3 (없으면 -(삽입위치)-1)
@@ -240,7 +240,7 @@ int idx3 = Arrays.binarySearch(arr, 1, 4, 8);    // 3
 
 ### 2.3 배열 채우기 (fill)
 
-```
+```java
 static void fill(boolean[] a, boolean val)
 static void fill(boolean[] a, int fromIndex, int toIndex, boolean val)
 static void fill(byte[] a, byte val)
@@ -263,7 +263,7 @@ static void fill(Object[] a, int fromIndex, int toIndex, Object val)
 
 **사용 예시**
 
-```
+```java
 int[] arr = new int[5];
 Arrays.fill(arr, 10);                            // [10, 10, 10, 10, 10]
 
@@ -279,7 +279,7 @@ for (int[] row : matrix) {
 
 ### 2.4 배열 복사 (copyOf, copyOfRange)
 
-```
+```java
 static boolean[] copyOf(boolean[] original, int newLength)
 static byte[] copyOf(byte[] original, int newLength)
 static char[] copyOf(char[] original, int newLength)
@@ -305,7 +305,7 @@ static <T,U> T[] copyOfRange(U[] original, int from, int to, Class<? extends T[]
 
 **사용 예시**
 
-```
+```java
 int[] arr = {1, 2, 3, 4, 5};
 
 // 전체 또는 크기 변경하여 복사
@@ -320,7 +320,7 @@ int[] copy5 = Arrays.copyOfRange(arr, 0, arr.length);  // 전체 복사
 
 ### 2.5 배열 비교 (equals, deepEquals)
 
-```
+```java
 static boolean equals(boolean[] a, boolean[] a2)
 static boolean equals(byte[] a, byte[] a2)
 static boolean equals(char[] a, char[] a2)
@@ -336,7 +336,7 @@ static boolean deepEquals(Object[] a1, Object[] a2)  // 다차원 배열 비교
 
 **사용 예시**
 
-```
+```java
 int[] arr1 = {1, 2, 3};
 int[] arr2 = {1, 2, 3};
 int[] arr3 = {1, 2, 4};
@@ -355,7 +355,7 @@ boolean eq5 = Arrays.deepEquals(matrix1, matrix2);  // true (재귀적으로 비
 
 ### 2.6 배열을 문자열로 변환 (toString, deepToString)
 
-```
+```java
 static String toString(boolean[] a)
 static String toString(byte[] a)
 static String toString(char[] a)
@@ -371,7 +371,7 @@ static String deepToString(Object[] a)           // 다차원 배열용
 
 **사용 예시**
 
-```
+```java
 int[] arr = {1, 2, 3, 4, 5};
 String str1 = Arrays.toString(arr);              // "[1, 2, 3, 4, 5]"
 
@@ -383,13 +383,13 @@ String str3 = Arrays.deepToString(matrix);       // "[[1, 2], [3, 4]]" (내용)
 
 ### 2.7 배열을 리스트로 변환 (asList)
 
-```
+```java
 static <T> List<T> asList(T... a)                // 가변 인자 또는 배열을 List로
 ```
 
 **사용 예시**
 
-```
+```java
 // 배열 → List
 String[] arr = {"apple", "banana", "cherry"};
 List<String> list = Arrays.asList(arr);
@@ -410,7 +410,7 @@ mutableList.add("date");  // OK
 
 **멀티코어 활용한 빠른 정렬**
 
-```
+```java
 static void parallelSort(byte[] a)
 static void parallelSort(byte[] a, int fromIndex, int toIndex)
 static void parallelSort(char[] a)
@@ -433,7 +433,7 @@ static <T> void parallelSort(T[] a, int fromIndex, int toIndex, Comparator<? sup
 
 **사용 예시**
 
-```
+```java
 int[] largeArray = new int[1000000];
 // ... 배열 초기화
 Arrays.parallelSort(largeArray);  // 멀티코어 활용, 큰 배열에서 효율적
@@ -443,7 +443,7 @@ Arrays.parallelSort(largeArray);  // 멀티코어 활용, 큰 배열에서 효�
 
 **함수를 사용한 배열 초기화**
 
-```
+```java
 static void setAll(int[] array, IntUnaryOperator generator)
 static void setAll(long[] array, IntToLongFunction generator)
 static void setAll(double[] array, IntToDoubleFunction generator)
@@ -457,7 +457,7 @@ static <T> void parallelSetAll(T[] array, IntFunction<? extends T> generator)
 
 **사용 예시**
 
-```
+```java
 int[] arr = new int[5];
 Arrays.setAll(arr, i -> i * 2);                  // [0, 2, 4, 6, 8]
 
@@ -467,7 +467,7 @@ Arrays.setAll(words, i -> "item" + i);           // ["item0", "item1", "item2", 
 
 ### 2.10 해시코드 (hashCode, deepHashCode)
 
-```
+```java
 static int hashCode(boolean[] a)
 static int hashCode(byte[] a)
 static int hashCode(char[] a)
@@ -483,7 +483,7 @@ static int deepHashCode(Object[] a)              // 다차원 배열용
 
 **사용 예시**
 
-```
+```java
 int[] arr = {1, 2, 3};
 int hash = Arrays.hashCode(arr);
 
@@ -493,7 +493,7 @@ int deepHash = Arrays.deepHashCode(matrix);
 
 ### 2.11 스트림 변환 (stream)
 
-```
+```java
 static IntStream stream(int[] array)
 static IntStream stream(int[] array, int startInclusive, int endExclusive)
 static LongStream stream(long[] array)
@@ -506,7 +506,7 @@ static <T> Stream<T> stream(T[] array, int startInclusive, int endExclusive)
 
 **사용 예시**
 
-```
+```java
 int[] arr = {1, 2, 3, 4, 5};
 int sum = Arrays.stream(arr).sum();              // 15
 double avg = Arrays.stream(arr).average().orElse(0);  // 3.0
@@ -525,14 +525,14 @@ long count = Arrays.stream(words)
 
 **1\. 배열 정렬**
 
-```
+```java
 int[] arr = {5, 2, 8, 1, 9};
 Arrays.sort(arr);                                // [1, 2, 5, 8, 9]
 ```
 
 **2\. 배열 복사**
 
-```
+```java
 int[] original = {1, 2, 3, 4, 5};
 
 // 방법 1: Arrays.copyOf
@@ -548,7 +548,7 @@ System.arraycopy(original, 0, copy3, 0, original.length);
 
 **3\. 배열 초기화**
 
-```
+```java
 // 모두 0으로 (기본값)
 int[] arr1 = new int[5];                         // [0, 0, 0, 0, 0]
 
@@ -563,7 +563,7 @@ Arrays.setAll(arr3, i -> i * 10);                // [0, 10, 20, 30, 40]
 
 **4\. 이진 탐색**
 
-```
+```java
 int[] arr = {1, 2, 5, 8, 9};  // 정렬 필수!
 int idx = Arrays.binarySearch(arr, 5);
 if (idx >= 0) {
@@ -576,7 +576,7 @@ if (idx >= 0) {
 
 **5\. 배열 → List 변환**
 
-```
+```java
 // Integer[] → List
 Integer[] arr = {1, 2, 3, 4, 5};
 List<Integer> list = Arrays.asList(arr);
@@ -590,7 +590,7 @@ List<Integer> list2 = Arrays.stream(intArr)
 
 **6\. 2차원 배열 정렬**
 
-```
+```java
 int[][] arr = {{3, 2}, {1, 4}, {2, 1}};
 
 // 첫 번째 원소 기준 오름차순
@@ -608,7 +608,7 @@ Arrays.sort(arr, (a, b) -> {
 
 **7\. 배열 최대/최소값 찾기**
 
-```
+```java
 int[] arr = {5, 2, 8, 1, 9};
 
 // 방법 1: 반복문
@@ -631,7 +631,7 @@ int max3 = arr[arr.length - 1];                  // 최대값
 
 **8\. 배열 뒤집기**
 
-```
+```java
 int[] arr = {1, 2, 3, 4, 5};
 for (int i = 0; i < arr.length / 2; i++) {
     int temp = arr[i];
@@ -643,7 +643,7 @@ for (int i = 0; i < arr.length / 2; i++) {
 
 **9\. 배열 합계**
 
-```
+```java
 int[] arr = {1, 2, 3, 4, 5};
 
 // 방법 1: 반복문
@@ -658,7 +658,7 @@ int sum2 = Arrays.stream(arr).sum();             // 15
 
 **10\. 중복 제거**
 
-```
+```java
 int[] arr = {1, 2, 2, 3, 3, 3, 4, 5};
 int[] unique = Arrays.stream(arr)
     .distinct()
@@ -671,14 +671,14 @@ int[] unique = Arrays.stream(arr)
 
 ### 4.1 배열 인덱스
 
-```
+```java
 int[] arr = new int[5];  // 인덱스: 0 ~ 4
 // arr[5] = 10;  // ArrayIndexOutOfBoundsException!
 ```
 
 ### 4.2 배열 복사 - 얕은 복사 vs 깊은 복사
 
-```
+```java
 // 얕은 복사 (참조만 복사)
 int[] arr1 = {1, 2, 3};
 int[] arr2 = arr1;  // 같은 배열을 가리킴
@@ -693,7 +693,7 @@ System.out.println(arr1[0]);  // 100 (arr1은 변경 안됨)
 
 ### 4.3 Arrays.asList의 제한사항
 
-```
+```java
 List<Integer> list = Arrays.asList(1, 2, 3);
 // list.add(4);  // UnsupportedOperationException (크기 고정)
 // list.remove(0);  // UnsupportedOperationException
@@ -705,7 +705,7 @@ mutableList.add(4);  // OK
 
 ### 4.4 정렬 전 이진 탐색 금지
 
-```
+```java
 int[] arr = {5, 2, 8, 1, 9};  // 정렬 안 됨!
 // int idx = Arrays.binarySearch(arr, 5);  // 잘못된 결과!
 
@@ -715,7 +715,7 @@ int idx = Arrays.binarySearch(arr, 5);  // 정상 동작
 
 ### 4.5 2차원 배열 복사
 
-```
+```java
 int[][] original = {{1, 2}, {3, 4}};
 
 // 얕은 복사 (행 참조만 복사)
@@ -734,7 +734,7 @@ System.out.println(original[0][0]);  // 1 (원본은 안 변경)
 
 ### 4.6 int\[\] vs Integer\[\]
 
-```
+```java
 // int[]는 기본형 배열 - Comparator 사용 불가
 int[] arr1 = {5, 2, 8};
 // Arrays.sort(arr1, Collections.reverseOrder());  // 컴파일 에러!

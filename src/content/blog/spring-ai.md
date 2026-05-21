@@ -42,7 +42,7 @@ AI 모델과 대화하기 위한 진입점이다. `RestTemplate`이 HTTP 호출�
 
 **Bean 등록:**
 
-```
+```java
 @Bean
 ChatClient chatClient(ChatClient.Builder builder) {
     return builder
@@ -54,7 +54,7 @@ ChatClient chatClient(ChatClient.Builder builder) {
 
 **동기 호출:**
 
-```
+```java
 String answer = chatClient.prompt()
         .user("환불 정책이 어떻게 되나요?")
         .call()
@@ -63,7 +63,7 @@ String answer = chatClient.prompt()
 
 **스트리밍 호출:**
 
-```
+```java
 Flux<String> stream = chatClient.prompt()
         .user("환불 정책이 어떻게 되나요?")
         .stream()
@@ -72,7 +72,7 @@ Flux<String> stream = chatClient.prompt()
 
 **Structured Output — AI 응답을 Java 객체로 변환:**
 
-```
+```java
 record ActorFilms(String actor, List<String> movies) {}
 
 ActorFilms result = chatClient.prompt()
@@ -93,7 +93,7 @@ LLM 호출 전후에 끼어들어 프롬프트를 수정하거나 컨텍스트�
 
 Advisor는 **before advice**와 **after advice**로 나뉜다. before에서는 LLM에 전달할 프롬프트를 수정하고(문서 주입, 이력 추가 등), after에서는 응답을 후처리한다(이력 저장 등). 여러 Advisor를 체인으로 연결할 수 있으며, 우선순위에 따라 순서대로 실행된다.
 
-```
+```java
 요청 → [Advisor A: before] → [Advisor B: before] → LLM 호출
                                                        ↓
 응답 ← [Advisor A: after]  ← [Advisor B: after]  ← LLM 응답
@@ -107,7 +107,7 @@ Spring AI는 여러 내장 Advisor를 제공한다.
 
 사용자 질문으로 벡터 저장소를 검색하고, 검색된 문서를 프롬프트에 자동 추가한다.
 
-```
+```java
 QuestionAnswerAdvisor.builder(vectorStore)
         .searchRequest(SearchRequest.builder().topK(5).build())
         .build()
@@ -117,7 +117,7 @@ QuestionAnswerAdvisor.builder(vectorStore)
 
 이전 대화 내용을 `ChatMemory`에서 가져와 프롬프트에 추가하고, 새 대화를 저장한다.
 
-```
+```java
 MessageChatMemoryAdvisor.builder(chatMemory).build()
 ```
 
@@ -125,13 +125,13 @@ MessageChatMemoryAdvisor.builder(chatMemory).build()
 
 요청/응답을 로깅한다. 디버깅에 유용하다.
 
-```
+```java
 new SimpleLoggerAdvisor()
 ```
 
 **ChatClient에 Advisor 등록:**
 
-```
+```java
 ChatClient chatClient = builder
         .defaultAdvisors(
                 MessageChatMemoryAdvisor.builder(chatMemory).build(),
@@ -153,7 +153,7 @@ ChatClient chatClient = builder
 
 `ChatMemory`는 저장소 인터페이스이고, 실제 저장은 `ChatMemoryRepository` 구현체가 담당한다. `MessageWindowChatMemory`는 슬라이딩 윈도우 방식으로 최근 N개 메시지만 유지하여 토큰 제한을 관리한다.
 
-```
+```java
 MessageChatMemoryAdvisor
     └─ ChatMemory (MessageWindowChatMemory)
           └─ ChatMemoryRepository (InMemory / JDBC / ...)
@@ -165,7 +165,7 @@ MessageChatMemoryAdvisor
 
 **InMemory (서버 재시작 시 초기화):**
 
-```
+```java
 @Bean
 ChatMemory chatMemory() {
     return MessageWindowChatMemory.builder()
@@ -177,7 +177,7 @@ ChatMemory chatMemory() {
 
 **JDBC (영속화):**
 
-```
+```java
 @Bean
 ChatMemory chatMemory(JdbcChatMemoryRepository repository) {
     return MessageWindowChatMemory.builder()
@@ -189,7 +189,7 @@ ChatMemory chatMemory(JdbcChatMemoryRepository repository) {
 
 **호출 시 conversationId 전달:**
 
-```
+```java
 chatClient.prompt()
         .user(question)
         .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
@@ -209,7 +209,7 @@ chatClient.prompt()
 
 문서를 저장할 때 Embedding Model이 텍스트를 고차원 벡터로 변환한다. 검색 시에는 쿼리도 벡터로 변환한 뒤, 코사인 유사도 등으로 가장 가까운 벡터를 찾는다. Spring AI는 이 과정을 `VectorStore` 인터페이스로 추상화하여 벡터 DB에 관계없이 동일한 코드를 사용할 수 있게 한다.
 
-```
+```java
 문서 텍스트 → [Embedding Model] → 벡터 → [VectorStore에 저장]
 검색 쿼리 → [Embedding Model] → 벡터 → [VectorStore에서 유사도 검색] → 관련 문서
 ```
@@ -224,7 +224,7 @@ implementation 'org.springframework.ai:spring-ai-starter-vector-store-pgvector'
 
 **설정:**
 
-```
+```java
 spring.ai.vectorstore.pgvector:
   index-type: hnsw                # HNSW 인덱스 (근사 최근접 이웃 검색)
   distance-type: cosine_distance  # 코사인 유사도
@@ -234,7 +234,7 @@ spring.ai.vectorstore.pgvector:
 
 **문서 저장:**
 
-```
+```java
 vectorStore.add(List.of(
         new Document("환불은 구매일로부터 7일 이내에 가능합니다.", Map.of("category", "policy")),
         new Document("배송은 주문 후 2-3일 소요됩니다.", Map.of("category", "shipping"))
@@ -243,7 +243,7 @@ vectorStore.add(List.of(
 
 **검색:**
 
-```
+```java
 List<Document> results = vectorStore.similaritySearch(
         SearchRequest.builder()
                 .query("환불 어떻게 하나요?")
@@ -269,7 +269,7 @@ List<Document> results = vectorStore.similaritySearch(
 -   **DocumentTransformer**: 문서를 청크로 분할하거나 메타데이터를 추가
 -   **DocumentWriter**: 처리된 문서를 벡터 저장소 등에 저장
 
-```
+```java
 원본 문서 (PDF, HTML, JSON, ...)
     ↓
 DocumentReader (추출)
@@ -303,7 +303,7 @@ DocumentWriter (벡터 저장소에 적재)
 
 **파이프라인 예시:**
 
-```
+```java
 // 1. PDF 읽기
 PagePdfDocumentReader reader = new PagePdfDocumentReader("classpath:/manual.pdf",
         PdfDocumentReaderConfig.builder().withPagesPerDocument(1).build());
@@ -327,7 +327,7 @@ AI 모델이 답변 생성 중에 외부 API 호출이나 함수 실행을 요�
 
 모델이 직접 API를 호출하는 것이 아니다. 모델은 "이 함수를 이 파라미터로 호출해달라"고 요청하고, 애플리케이션이 실행한 뒤 결과를 모델에 다시 전달한다.
 
-```
+```java
 1. 애플리케이션 → 모델: 사용 가능한 도구 목록(이름, 설명, 파라미터) 전달
 2. 모델 → 애플리케이션: "getCurrentDateTime 함수를 호출해줘"
 3. 애플리케이션: 함수 실행 후 결과 반환
@@ -338,7 +338,7 @@ AI 모델이 답변 생성 중에 외부 API 호출이나 함수 실행을 요�
 
 **도구 정의 (`@Tool` 어노테이션):**
 
-```
+```java
 class DateTimeTools {
 
     @Tool(description = "현재 날짜와 시간을 조회합니다")
@@ -355,7 +355,7 @@ class DateTimeTools {
 
 **ChatClient에 도구 등록:**
 
-```
+```java
 // 요청마다 등록
 String response = chatClient.prompt()
         .user("10분 후에 알람 설정해줘")
@@ -371,7 +371,7 @@ ChatClient chatClient = builder
 
 **ToolContext로 추가 정보 전달:**
 
-```
+```java
 class CustomerTools {
     @Tool(description = "고객 정보를 조회합니다")
     Customer getCustomer(Long id, ToolContext context) {
@@ -409,7 +409,7 @@ LLM의 텍스트 응답을 Java 객체(POJO), List, Map 등 구조화된 데이�
 
 **Java 객체로 변환:**
 
-```
+```java
 record ActorFilms(String actor, List<String> movies) {}
 
 ActorFilms result = chatClient.prompt()
@@ -420,7 +420,7 @@ ActorFilms result = chatClient.prompt()
 
 **List로 변환:**
 
-```
+```java
 List<ActorFilms> results = chatClient.prompt()
         .user("배우 3명의 대표작")
         .call()
@@ -429,7 +429,7 @@ List<ActorFilms> results = chatClient.prompt()
 
 **Native Structured Output 사용:**
 
-```
+```java
 ActorFilms result = chatClient.prompt()
         .advisors(AdvisorParams.ENABLE_NATIVE_STRUCTURED_OUTPUT)
         .user("톰 행크스의 대표 영화 5편")
@@ -453,7 +453,7 @@ ActorFilms result = chatClient.prompt()
 
 **설정 (application.yaml):**
 
-```
+```java
 spring.ai.openai:
   api-key: ${OPENAI_API_KEY}
   embedding:
@@ -465,7 +465,7 @@ spring.ai.openai:
 
 **직접 호출이 필요한 경우:**
 
-```
+```java
 @Autowired
 EmbeddingModel embeddingModel;
 
@@ -496,7 +496,7 @@ spring.ai.mcp.client:
 
 **MCP Server (MCP 서버 구축):**
 
-```
+```java
 @Tool(description = "고객 주문 내역을 조회합니다")
 List<Order> getOrders(@ToolParam(description = "고객 ID") String customerId) {
     return orderRepository.findByCustomerId(customerId);

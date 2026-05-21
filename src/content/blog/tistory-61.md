@@ -125,7 +125,7 @@ programmers.co.kr](https://programmers.co.kr/privacy)
 
 **약관 동의 체크리스트**
 
-```
+```java
 □ 서비스 이용약관 (필수)
 □ 개인정보 수집 및 이용 동의 (필수)
 □ 개인정보 제3자 제공 동의 (해당 시 필수)
@@ -259,7 +259,7 @@ www.kisa.or.kr](https://www.kisa.or.kr/2060305/form?postSeq=14&lang_type=KO)
 
 **실제 탈퇴 절차 예시 (쿠팡)**
 
-```
+```java
 1. 사용자가 '회원 탈퇴' 요청
 2. 본인 인증 (비밀번호 재확인)
 3. 유의사항 안내
@@ -276,7 +276,7 @@ www.kisa.or.kr](https://www.kisa.or.kr/2060305/form?postSeq=14&lang_type=KO)
 
 ### 개발 단계 보안 고려사항
 
-```
+```java
 □ 비밀번호 암호화 적용 (BCrypt 등)
 □ HTTPS 적용 (개인정보 전송 구간 암호화)
 □ SQL Injection 방지
@@ -289,7 +289,7 @@ www.kisa.or.kr](https://www.kisa.or.kr/2060305/form?postSeq=14&lang_type=KO)
 
 ### 운영 단계 보안 고려사항
 
-```
+```java
 □ 개인정보 접근 로그 기록
   └ 누가, 언제, 어떤 정보를 조회/수정했는지
 

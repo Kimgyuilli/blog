@@ -20,14 +20,14 @@ java.lang.Math 클래스는 수학 연산을 위한 static 메서드들을 제�
 
 ### 1.1 상수
 
-```
+```java
 static double E                                  // 자연로그의 밑 (2.718281828459045)
 static double PI                                 // 원주율 (3.141592653589793)
 ```
 
 ### 1.2 절대값
 
-```
+```java
 static int abs(int a)
 static long abs(long a)
 static float abs(float a)
@@ -36,7 +36,7 @@ static double abs(double a)
 
 **사용 예시**
 
-```
+```java
 int a = Math.abs(-10);                           // 10
 long b = Math.abs(-100L);                        // 100
 double c = Math.abs(-3.14);                      // 3.14
@@ -44,7 +44,7 @@ double c = Math.abs(-3.14);                      // 3.14
 
 ### 1.3 최대값/최소값
 
-```
+```java
 static int max(int a, int b)
 static long max(long a, long b)
 static float max(float a, float b)
@@ -58,7 +58,7 @@ static double min(double a, double b)
 
 **사용 예시**
 
-```
+```java
 int max = Math.max(10, 20);                      // 20
 int min = Math.min(10, 20);                      // 10
 
@@ -74,7 +74,7 @@ int minVal = Arrays.stream(arr).min().getAsInt();
 
 ### 1.4 거듭제곱과 제곱근
 
-```
+```java
 static double pow(double a, double b)            // a^b
 static double sqrt(double a)                     // √a (제곱근)
 static double cbrt(double a)                     // ∛a (세제곱근)
@@ -82,7 +82,7 @@ static double cbrt(double a)                     // ∛a (세제곱근)
 
 **사용 예시**
 
-```
+```java
 double pow = Math.pow(2, 10);                    // 1024.0 (2^10)
 double sqrt = Math.sqrt(16);                     // 4.0
 double cbrt = Math.cbrt(27);                     // 3.0
@@ -96,7 +96,7 @@ for (int i = 0; i < n; i++) {
 
 ### 1.5 올림/내림/반올림
 
-```
+```java
 static double ceil(double a)                     // 올림 (ceiling)
 static double floor(double a)                    // 내림 (floor)
 static long round(double a)                      // 반올림 (long 반환)
@@ -106,7 +106,7 @@ static double rint(double a)                     // 가장 가까운 정수 (dou
 
 **사용 예시**
 
-```
+```java
 double a = 3.14;
 double b = 3.75;
 double c = -3.14;
@@ -135,7 +135,7 @@ Math.rint(3.5);  // 4.0 (짝수로 반올림)
 
 ### 1.6 부호
 
-```
+```java
 static double signum(double d)                   // 부호 반환 (1.0, 0.0, -1.0)
 static float signum(float f)
 static double copySign(double magnitude, double sign)  // magnitude의 절대값에 sign의 부호 적용
@@ -144,7 +144,7 @@ static float copySign(float magnitude, float sign)
 
 **사용 예시**
 
-```
+```java
 double s1 = Math.signum(5.0);                    // 1.0
 double s2 = Math.signum(0.0);                    // 0.0
 double s3 = Math.signum(-5.0);                   // -1.0
@@ -154,7 +154,7 @@ double cs = Math.copySign(3.0, -1.0);            // -3.0
 
 ### 1.7 지수와 로그
 
-```
+```java
 static double exp(double a)                      // e^a
 static double log(double a)                      // ln(a) (자연로그)
 static double log10(double a)                    // log₁₀(a) (상용로그)
@@ -164,7 +164,7 @@ static double expm1(double x)                    // e^x - 1 (정밀도 향상)
 
 **사용 예시**
 
-```
+```java
 double exp = Math.exp(1);                        // e (2.718281828459045)
 double log = Math.log(Math.E);                   // 1.0
 double log10 = Math.log10(100);                  // 2.0
@@ -175,7 +175,7 @@ double log2 = Math.log(8) / Math.log(2);         // 3.0 (log₂(8))
 
 ### 1.8 삼각 함수
 
-```
+```java
 static double sin(double a)                      // 사인 (라디안)
 static double cos(double a)                      // 코사인
 static double tan(double a)                      // 탄젠트
@@ -192,7 +192,7 @@ static double tanh(double x)                     // 쌍곡탄젠트
 
 **사용 예시**
 
-```
+```java
 // 각도를 라디안으로 변환
 double degree = 90;
 double radian = Math.toRadians(degree);          // π/2
@@ -208,14 +208,14 @@ double angle2 = Math.atan2(1, -1);               // 3π/4 (135도, 2사분면)
 
 ### 1.9 각도 변환
 
-```
+```java
 static double toRadians(double angdeg)           // 도 → 라디안
 static double toDegrees(double angrad)           // 라디안 → 도
 ```
 
 ### 1.10 기타 수학 함수
 
-```
+```java
 static double hypot(double x, double y)          // √(x² + y²) (빗변 길이)
 static double IEEEremainder(double f1, double f2) // IEEE 754 나머지
 static double ulp(double d)                      // Unit in the Last Place
@@ -234,7 +234,7 @@ static int getExponent(float f)
 
 **사용 예시**
 
-```
+```java
 // 빗변 길이 (피타고라스)
 double hypotenuse = Math.hypot(3, 4);            // 5.0 (√(3² + 4²))
 
@@ -244,7 +244,7 @@ double dist = Math.hypot(x2 - x1, y2 - y1);
 
 ### 1.11 오버플로우 안전 연산 (Java 8+)
 
-```
+```java
 static int addExact(int x, int y)                // 덧셈 (오버플로우 시 예외)
 static long addExact(long x, long y)
 
@@ -269,7 +269,7 @@ static int toIntExact(long value)                // long → int (오버플로�
 
 **사용 예시**
 
-```
+```java
 try {
     int result = Math.addExact(Integer.MAX_VALUE, 1);  // ArithmeticException
 } catch (ArithmeticException e) {
@@ -282,7 +282,7 @@ int overflow = Integer.MAX_VALUE + 1;            // -2147483648 (오버플로우
 
 ### 1.12 나눗셈 관련 (Java 8+)
 
-```
+```java
 static int floorDiv(int x, int y)                // 내림 나눗셈
 static long floorDiv(long x, int y)
 static long floorDiv(long x, long y)
@@ -294,7 +294,7 @@ static long floorMod(long x, long y)
 
 **사용 예시**
 
-```
+```java
 // 일반 나눗셈
 int div1 = 7 / 3;                                // 2
 int mod1 = 7 % 3;                                // 1
@@ -315,13 +315,13 @@ int idx = Math.floorMod(-1, arr.length);         // arr.length - 1
 
 ### 1.13 난수 생성
 
-```
+```java
 static double random()                           // [0.0, 1.0) 범위의 난수
 ```
 
 **사용 예시**
 
-```
+```java
 // [0.0, 1.0) 범위
 double rand = Math.random();
 
@@ -347,14 +347,14 @@ java.util.Random 클래스는 난수 생성을 위한 다양한 메서드를 제
 
 ### 2.1 생성자
 
-```
+```java
 Random()                                         // 현재 시간으로 시드 초기화
 Random(long seed)                                // 시드 지정
 ```
 
 ### 2.2 주요 메서드
 
-```
+```java
 void setSeed(long seed)                          // 시드 재설정
 
 boolean nextBoolean()                            // true 또는 false
@@ -370,7 +370,7 @@ void nextBytes(byte[] bytes)                     // 바이트 배열 채우기
 
 **사용 예시**
 
-```
+```java
 Random random = new Random();
 
 // [0, n) 범위의 정수
@@ -400,7 +400,7 @@ for (int i = arr.length - 1; i > 0; i--) {
 
 ### 2.3 Stream API (Java 8+)
 
-```
+```java
 IntStream ints()                                 // 무한 int 스트림
 IntStream ints(long streamSize)                  // streamSize개의 int
 IntStream ints(int randomNumberOrigin, int randomNumberBound)  // 범위 지정 무한 스트림
@@ -419,7 +419,7 @@ DoubleStream doubles(long streamSize, double randomNumberOrigin, double randomNu
 
 **사용 예시**
 
-```
+```java
 Random random = new Random();
 
 // 10개의 [0, 100) 난수
@@ -440,7 +440,7 @@ List<Integer> list = random.ints(0, 100)
 
 ### 3.1 생성자
 
-```
+```java
 BigInteger(String val)                           // 문자열로 생성
 BigInteger(String val, int radix)                // 진법 지정
 BigInteger(byte[] val)                           // 바이트 배열로 생성
@@ -456,7 +456,7 @@ static BigInteger TEN                            // 10
 
 ### 3.3 산술 연산
 
-```
+```java
 BigInteger add(BigInteger val)                   // 덧셈
 BigInteger subtract(BigInteger val)              // 뺄셈
 BigInteger multiply(BigInteger val)              // 곱셈
@@ -474,7 +474,7 @@ BigInteger negate()                              // 부호 반전
 
 **사용 예시**
 
-```
+```java
 BigInteger a = new BigInteger("123456789012345678901234567890");
 BigInteger b = new BigInteger("987654321098765432109876543210");
 
@@ -500,7 +500,7 @@ BigInteger gcd = a.gcd(b);
 
 ### 3.4 비트 연산
 
-```
+```java
 BigInteger and(BigInteger val)                   // AND
 BigInteger or(BigInteger val)                    // OR
 BigInteger xor(BigInteger val)                   // XOR
@@ -519,7 +519,7 @@ int getLowestSetBit()                            // 최하위 1비트 위치
 
 ### 3.5 비교
 
-```
+```java
 int compareTo(BigInteger val)                    // 비교
 boolean equals(Object x)                         // 동등성
 int signum()                                     // 부호 (-1, 0, 1)
@@ -529,7 +529,7 @@ BigInteger min(BigInteger val)                   // 최소값
 
 ### 3.6 변환
 
-```
+```java
 int intValue()                                   // int로 변환 (오버플로우 주의)
 long longValue()                                 // long으로 변환
 float floatValue()                               // float로 변환
@@ -544,7 +544,7 @@ byte[] toByteArray()                             // 바이트 배열로
 
 **사용 예시**
 
-```
+```java
 BigInteger big = new BigInteger("123456789");
 int intVal = big.intValue();
 String str = big.toString();
@@ -553,7 +553,7 @@ String hex = big.toString(16);
 
 ### 3.7 기타
 
-```
+```java
 static BigInteger valueOf(long val)              // long → BigInteger
 boolean isProbablePrime(int certainty)           // 소수 판정 (확률적)
 BigInteger nextProbablePrime()                   // 다음 소수 (확률적)
@@ -567,7 +567,7 @@ BigInteger nextProbablePrime()                   // 다음 소수 (확률적)
 
 ### 4.1 생성자
 
-```
+```java
 BigDecimal(String val)                           // 문자열로 생성 (권장)
 BigDecimal(double val)                           // double로 생성 (비권장, 오차 발생)
 BigDecimal(BigInteger val)
@@ -585,7 +585,7 @@ static BigDecimal TEN                            // 10
 
 ### 4.3 산술 연산
 
-```
+```java
 BigDecimal add(BigDecimal augend)                // 덧셈
 BigDecimal subtract(BigDecimal subtrahend)       // 뺄셈
 BigDecimal multiply(BigDecimal multiplicand)     // 곱셈
@@ -603,7 +603,7 @@ BigDecimal negate()                              // 부호 반전
 
 **RoundingMode (반올림 모드)**
 
-```
+```java
 RoundingMode.UP                                  // 0에서 멀어지는 방향 (올림)
 RoundingMode.DOWN                                // 0으로 가까워지는 방향 (버림)
 RoundingMode.CEILING                             // 양의 무한대 방향 (천장)
@@ -616,7 +616,7 @@ RoundingMode.UNNECESSARY                         // 정확히 나누어떨어져
 
 **사용 예시**
 
-```
+```java
 BigDecimal a = new BigDecimal("123.45");
 BigDecimal b = new BigDecimal("67.89");
 
@@ -640,7 +640,7 @@ double dd3 = dd1 + dd2;                          // 0.30000000000000004 (오차)
 
 ### 4.4 스케일 관련
 
-```
+```java
 int scale()                                      // 소수점 이하 자릿수
 int precision()                                  // 전체 자릿수
 BigDecimal setScale(int newScale)                // 스케일 변경
@@ -651,7 +651,7 @@ BigDecimal stripTrailingZeros()                  // 끝의 0 제거
 
 **사용 예시**
 
-```
+```java
 BigDecimal num = new BigDecimal("123.4500");
 int scale = num.scale();                         // 4
 int precision = num.precision();                 // 7
@@ -662,7 +662,7 @@ BigDecimal stripped = num.stripTrailingZeros();  // 123.45
 
 ### 4.5 비교
 
-```
+```java
 int compareTo(BigDecimal val)                    // 비교 (스케일 무시)
 boolean equals(Object x)                         // 동등성 (스케일 포함)
 int signum()                                     // 부호
@@ -672,7 +672,7 @@ BigDecimal min(BigDecimal val)                   // 최소값
 
 **사용 예시**
 
-```
+```java
 BigDecimal a = new BigDecimal("1.0");
 BigDecimal b = new BigDecimal("1.00");
 
@@ -682,7 +682,7 @@ int cmp = a.compareTo(b);                        // 0 (값은 같음)
 
 ### 4.6 변환
 
-```
+```java
 int intValue()                                   // int로 변환
 long longValue()                                 // long으로 변환
 float floatValue()                               // float로 변환
@@ -698,7 +698,7 @@ String toEngineeringString()                     // 공학 표기법
 
 ### 4.7 기타
 
-```
+```java
 static BigDecimal valueOf(long val)              // long → BigDecimal
 static BigDecimal valueOf(double val)            // double → BigDecimal
 BigDecimal movePointLeft(int n)                  // 소수점을 왼쪽으로 n자리
@@ -714,7 +714,7 @@ BigDecimal ulp()                                 // Unit in the Last Place
 
 **1\. 최대공약수 (GCD)**
 
-```
+```java
 // 유클리드 호제법
 int gcd(int a, int b) {
     while (b != 0) {
@@ -738,7 +738,7 @@ BigInteger gcd = a.gcd(b);  // 6
 
 **2\. 최소공배수 (LCM)**
 
-```
+```java
 int lcm(int a, int b) {
     return a * b / gcd(a, b);
 }
@@ -751,7 +751,7 @@ long lcm(int a, int b) {
 
 **3\. 소수 판정**
 
-```
+```java
 // 기본
 boolean isPrime(int n) {
     if (n < 2) return false;
@@ -771,7 +771,7 @@ boolean isPrime = num.isProbablePrime(10);  // certainty: 10
 
 **4\. 에라토스테네스의 체**
 
-```
+```java
 boolean[] sieve(int n) {
     boolean[] isPrime = new boolean[n + 1];
     Arrays.fill(isPrime, true);
@@ -790,7 +790,7 @@ boolean[] sieve(int n) {
 
 **5\. 거듭제곱 (빠른 거듭제곱)**
 
-```
+```java
 // 반복문
 long pow(long base, long exp) {
     long result = 1;
@@ -827,7 +827,7 @@ BigInteger result = base.modPow(exp, mod);
 
 **6\. 팩토리얼**
 
-```
+```java
 // 반복문
 long factorial(int n) {
     long result = 1;
@@ -849,7 +849,7 @@ BigInteger factorial(int n) {
 
 **7\. 조합 (nCr)**
 
-```
+```java
 // 동적 프로그래밍
 long combination(int n, int r) {
     if (r > n - r) r = n - r;  // nCr = nC(n-r)
@@ -907,7 +907,7 @@ long combination(int n, int r, long mod) {
 
 **8\. 거리 계산**
 
-```
+```java
 // 유클리드 거리
 double euclideanDistance(int x1, int y1, int x2, int y2) {
     return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
@@ -926,7 +926,7 @@ int manhattanDistance(int x1, int y1, int x2, int x2) {
 
 **9\. 평균**
 
-```
+```java
 // 정수 배열 평균
 double average(int[] arr) {
     return Arrays.stream(arr).average().orElse(0.0);
@@ -944,7 +944,7 @@ double average(int[] arr) {
 
 **10\. 부동소수점 비교**
 
-```
+```java
 // 오차 범위 내 같은지 비교
 boolean equals(double a, double b, double epsilon) {
     return Math.abs(a - b) < epsilon;
@@ -961,7 +961,7 @@ boolean same = Math.abs(a - b) < EPSILON;
 
 ### 6.1 정수 오버플로우
 
-```
+```java
 int a = Integer.MAX_VALUE;
 int b = a + 1;  // -2147483648 (오버플로우)
 
@@ -981,7 +981,7 @@ BigInteger big = BigInteger.valueOf(a).add(BigInteger.ONE);
 
 ### 6.2 부동소수점 오차
 
-```
+```java
 double d1 = 0.1 + 0.2;  // 0.30000000000000004 (오차)
 
 // 해결 방법: BigDecimal 사용
@@ -992,7 +992,7 @@ BigDecimal bd3 = bd1.add(bd2);  // 0.3 (정확)
 
 ### 6.3 나눗셈 주의
 
-```
+```java
 int a = 5;
 int b = 2;
 int c = a / b;  // 2 (정수 나눗셈)
@@ -1005,7 +1005,7 @@ double f = 1.0 * a / b;  // 2.5
 
 ### 6.4 Math.random() vs Random
 
-```
+```java
 // Math.random()은 내부적으로 Random 사용
 // 시드 제어 불가, 스레드 안전하지만 느림
 
@@ -1016,7 +1016,7 @@ random.setSeed(123);  // 시드 제어 가능
 
 ### 6.5 BigDecimal 생성 주의
 
-```
+```java
 // 잘못된 방법 (오차 발생)
 BigDecimal wrong = new BigDecimal(0.1);  // 0.1000000000000000055511151231257827021181583404541015625
 
@@ -1027,7 +1027,7 @@ BigDecimal correct2 = BigDecimal.valueOf(0.1);  // 0.1
 
 ### 6.6 BigDecimal 비교
 
-```
+```java
 BigDecimal a = new BigDecimal("1.0");
 BigDecimal b = new BigDecimal("1.00");
 

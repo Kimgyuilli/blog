@@ -9,7 +9,7 @@ slug: "9663-n-queen-java"
 ---
 ![[백준] 9663 N-Queen - JAVA](/images/blog/9663-n-queen-java/image-01.png)
 
-```
+```java
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;

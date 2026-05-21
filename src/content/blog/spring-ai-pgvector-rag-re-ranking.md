@@ -28,7 +28,7 @@ slug: "spring-ai-pgvector-rag-re-ranking"
 
 이전 글에서 구성한 Advisor 체인은 이랬다.
 
-```
+```java
 MessageChatMemoryAdvisor → QuestionAnswerAdvisor (벡터 top-5 검색)
 ```
 
@@ -48,7 +48,7 @@ MessageChatMemoryAdvisor → QuestionAnswerAdvisor (벡터 top-5 검색)
 
 ## 개선된 파이프라인
 
-```
+```java
 사용자 질문
   → MessageChatMemoryAdvisor (대화 이력 추가)
   → QueryRewriteAdvisor (쿼리 리라이팅)
@@ -64,7 +64,7 @@ Spring AI의 `BaseAdvisor` 인터페이스를 구현하면 `before()`/`after()` 
 
 가장 간단하면서 효과가 큰 변경이다.
 
-```
+```java
 SearchRequest.builder()
     .query(query)
     .topK(10)
@@ -82,7 +82,7 @@ SearchRequest.builder()
 
 문서 등록 시 메타데이터에 `category`를 넣었다면, 검색 시 특정 카테고리만 필터링할 수 있다.
 
-```
+```java
 // ChatService.java
 private Consumer<AdvisorSpec> advisorParams(String conversationId, String category) {
     return a -> {
@@ -96,7 +96,7 @@ private Consumer<AdvisorSpec> advisorParams(String conversationId, String catego
 
 API 요청 시 `category`를 보내면 해당 카테고리 문서만 검색 대상이 된다.
 
-```
+```json
 {
   "question": "환불 정책 알려줘",
   "category": "policy"
@@ -111,7 +111,7 @@ API 요청 시 `category`를 보내면 해당 카테고리 문서만 검색 대�
 
 여기서부터 흥미로워진다. 사용자는 "환불 ㄱㄴ?"이라고 쓰지만, 벡터 DB에는 "환불 요청은 상품 수령 후 7일 이내에 가능합니다"라는 문장이 임베딩되어 있다. 이 간극을 줄이기 위해 LLM으로 질문을 재작성한다.
 
-```
+```java
 public class QueryRewriteAdvisor implements BaseAdvisor {
 
     static final String REWRITTEN_QUERY_KEY = "rewrittenQuery";
@@ -151,7 +151,7 @@ public class QueryRewriteAdvisor implements BaseAdvisor {
 
 원인은 Advisor 실행 순서에 있다.
 
-```
+```java
 MessageChatMemoryAdvisor(order=0) → QueryRewriteAdvisor(order=10)
 ```
 
@@ -182,7 +182,7 @@ MessageChatMemoryAdvisor(order=0) → QueryRewriteAdvisor(order=10)
 
 벡터 유사도 순위가 항상 정확하지는 않다. topK=10으로 넉넉하게 가져온 뒤, LLM이 관련성을 재평가하여 상위 5개만 선택한다.
 
-```
+```java
 public class RetrievalRerankAdvisor implements BaseAdvisor {
 
     @Override
@@ -230,7 +230,7 @@ public class RetrievalRerankAdvisor implements BaseAdvisor {
 
 검색 결과가 5개 이하이면 재순위화 LLM 호출을 스킵한다. 어차피 전부 선택할 건데 순서만 바꾸려고 API를 호출할 이유가 없다.
 
-```
+```java
 if (candidates.size() <= RERANK_TOP_N) {
     selected = candidates;  // 스킵
 } else {

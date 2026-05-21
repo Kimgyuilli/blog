@@ -41,7 +41,7 @@ Jib을 최종 선택한 이유는 다음과 같습니다.
 
 **Dockerfile 예시 (Multi-stage)**
 
-```
+```bash
 # Build Stage
 FROM eclipse-temurin:21-jdk as builder
 WORKDIR /workspace
@@ -56,7 +56,7 @@ ENTRYPOINT ["java", "-jar", "/app.jar"]
 
 **Jib 예시 (build.gradle)**
 
-```
+```css
 // build.gradle
 jib {
     from { image = 'eclipse-temurin:21-jre' }
@@ -108,7 +108,7 @@ tasks.named('bootBuildImage') {
 4.  **강화된 감사 기능**: 모든 접속 시도와 세션 내에서 실행된 명령어까지 CloudTrail과 CloudWatch를 통해 기록 및 감사가 가능합니다.
 5.  **CI/CD 통합**: GitHub Actions에서 ssm:SendCommand API를 통해 EC2에 직접 배포 명령을 내리는 현재 파이프라인과 완벽하게 통합됩니다.
 
-```
+```bash
 # Private Subnet에 있는 EC2에 접속하는 예시 (VPC 엔드포인트 설정 필요)
 aws ssm start-session --target i-0123456789abcasd0 --region ap-northeast-2
 ```
@@ -151,7 +151,7 @@ GitHub Actions 워크플로우가 AWS 리소스에 접근하기 위한 인증 �
 
 아래는 cherrish-github-actions-role 역할에 설정된 신뢰 정책으로, Cherrish-Server/Cherrish-Server 리포지토리의 develop 브랜치에서 오는 요청만 신뢰하도록 설정한 예시입니다.
 
-```
+```json
 {
     "Version": "2012-10-17",
     "Statement": [
@@ -201,7 +201,7 @@ GitHub Actions 워크플로우가 AWS 리소스에 접근하기 위한 인증 �
 2.  **운영 유연성**: 운영 중 DB 비밀번호나 외부 API 키가 변경되었을 때, GitHub Secrets를 사용하면 코드 변경 없이도 전체 배포 파이프라인을 다시 실행해야만 적용됩니다. 반면, Parameter Store는 AWS 콘솔이나 CLI에서 값을 변경한 뒤, EC2 인스턴스에서 애플리케이션만 재시작하면 즉시 새로운 값을 적용할 수 있어 훨씬 유연하고 신속한 대응이 가능합니다.
 3.  **강화된 통제 및 감사**: 어떤 인스턴스(IAM 역할)가 어떤 파라미터에 접근할 수 있는지 세분화된 IAM 정책으로 제어할 수 있습니다. 또한, CloudTrail을 통해 모든 파라미터 조회 기록을 추적할 수 있어 보안 감사 요구사항을 충족하기에 용이합니다.
 
-```
+```bash
 # 배포 스크립트(EC2 내부)에서 Parameter Store 값 가져오기
 get_parameter() {
     aws ssm get-parameter --name "/cherrish/$1" --with-decryption \\\\
@@ -220,7 +220,7 @@ docker run -d \\\\
   ...
 ```
 
-```
+```bash
 # 배포 스크립트(EC2 내부)에서 Parameter Store 값 가져오기
 get_parameter() {
     aws ssm get-parameter --name "/cherrish/$1" --with-decryption \\\\
@@ -261,7 +261,7 @@ docker run -d \\\\
 2.  **단일 인스턴스**: 현재 트래픽 규모에서 로드밸런서 불필요
 3.  **추후 확장**: 트래픽 증가 시 ALB로 전환 예정
 
-```
+```bash
 # /etc/nginx/conf.d/cherrish.conf
 server {
     listen 443 ssl;
@@ -300,7 +300,7 @@ server {
 2.  **비용 효율**: 추가 인스턴스 불필요
 3.  **MVP 적합**: 현재 규모에서 충분한 배포 전략
 
-```
+```bash
 # scripts/deploy.sh - Rolling 배포 핵심 로직
 docker pull "$IMAGE"
 docker stop "$CONTAINER_NAME" 2>/dev/null || true

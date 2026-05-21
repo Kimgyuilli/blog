@@ -34,7 +34,7 @@ slug: "1918-python"
 
 첫째 줄에 후위 표기식으로 바뀐 식을 출력하시오
 
-```
+```python
 from sys import stdin
 read = stdin.readline().strip()
 stack = []

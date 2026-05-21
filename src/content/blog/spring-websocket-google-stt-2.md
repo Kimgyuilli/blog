@@ -36,7 +36,7 @@ Google STT에는 두 가지 주요 방식이 있다:
 
 ### 🔄 STT 흐름 요약
 
-```
+```java
 WebSocket BinaryMessage (100ms마다 chunk 수신)
      ↓
 StreamingRecognizeRequest.build(audioContent)
@@ -54,7 +54,7 @@ WebSocketSession.sendMessage() → 클라이언트 피드백 전송
 
 ### 📦 핵심 클래스: GoogleStreamingSttClient
 
-```
+```java
 @Slf4j
 public class GoogleStreamingSttClient {
 
@@ -86,7 +86,7 @@ public class GoogleStreamingSttClient {
 
 ### 👂 ResponseObserver: 응답을 어떻게 수신할 것인가
 
-```
+```java
 public class GoogleSttResponseObserver implements ResponseObserver<StreamingRecognizeResponse> {
 
     @Override
@@ -151,7 +151,7 @@ public class GoogleSttResponseObserver implements ResponseObserver<StreamingReco
 
 ### 📊 정리: STT Streaming의 핵심은 상태 흐름을 따라가는 것
 
-```
+```java
 start() → onResponse() → onResponse() ... → onComplete()
                               ↘ onError() (비정상 종료)
 ```
@@ -166,7 +166,7 @@ start() → onResponse() → onResponse() ... → onComplete()
 
 ### 📐 시퀀스 다이어그램
 
-```
+```java
 Client             WebSocketHandler       GoogleSTTClient         STT Server
   │                       │                      │                     │
   │ ---connect----------> │                      │                     │
@@ -201,7 +201,7 @@ Client             WebSocketHandler       GoogleSTTClient         STT Server
     -   일정 주기로 전송 (ex. 100ms)
 2.  **서버 → 클라이언트 (중간 결과)**
 
-```
+```json
 {
   "type": "STT_RESULT",
   "isFinal": false,
@@ -214,7 +214,7 @@ Client             WebSocketHandler       GoogleSTTClient         STT Server
 
 **3\. 서버 → 클라이언트 (최종 결과)**
 
-```
+```json
 {
   "type": "STT_RESULT",
   "isFinal": true,
@@ -227,7 +227,7 @@ Client             WebSocketHandler       GoogleSTTClient         STT Server
 
 **4\. 서버 → 클라이언트 (전체 종료)**
 
-```
+```json
 {
   "type": "STT_RESULT",
   "isFinal": true,
@@ -289,7 +289,7 @@ Google STT는 문자열을 돌려줄 뿐이다.
 우리는 onResponse()에서 수신한 transcript와 script를 비교해
 클라이언트에게 아래와 같은 피드백 메시지를 실시간으로 전달한다:
 
-```
+```json
 {
   "type": "STT_RESULT",
   "isFinal": true,
@@ -319,7 +319,7 @@ Google STT는 문자열을 돌려줄 뿐이다.
 STT 결과는 완벽하지 않다. 띄어쓰기나 조사, 발음에 따라 단어 순서나 내용이 달라질 수 있다.
 우리는 단순한 split(" ") 비교 대신, **Longest Common Subsequence (LCS)** 알고리즘을 적용했다.
 
-```
+```java
 대본:       안녕하세요 오늘 날씨는 맑습니다
 사용자:     안녕하세요 오늘 날시는 맑습니다
 
@@ -337,7 +337,7 @@ STT 결과는 완벽하지 않다. 띄어쓰기나 조사, 발음에 따라 단�
 
 ### 🔄 전체 구조 요약
 
-```
+```java
 Google STT 응답 (transcript)
     ↓
 LCS 기반 원문 대조
