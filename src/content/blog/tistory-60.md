@@ -3,6 +3,7 @@ title: "AWS 서버 구축은 어떻게 해야할까"
 description: "하나의 큰 네트워크(VPC, 회사 네트워크)를 작은 네트워크 단위로 나눈 것 Public Subnet: 라우팅 테이블에 Internet Gateway(IGW)로 가는 라우트가 있는 서브넷 Private Subnet: Internet Gateway로 가는 라우트가 없는 서브넷"
 image: "/images/blog/tistory-60/image-01.png"
 pubDate: 2025-11-13
+category: "infra"
 tags: ["aws"]
 draft: false
 slug: "tistory-60"

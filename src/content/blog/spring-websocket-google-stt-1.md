@@ -2,6 +2,7 @@
 title: "Spring WebSocket + Google STT 구조 설계: 실시간 음성 인식 피드백 시스템 만들기 (1)"
 description: "실시간 음성 인식 서비스를 만든다고 했을 때, 가장 먼저 떠오르는 건 \"STT API\"일지도 모른다.하지만 정말 중요한 건 API를 언제 어떻게 호출하고,사용자 음성을 실시간으로 전달하고,그 결과를 사용자에게 다시 어떻게 돌려주는가 하는 데이터 흐름의 구조다. 이 글은 내가"
 pubDate: 2025-07-07
+category: "backend"
 tags: ["spring"]
 draft: false
 slug: "spring-websocket-google-stt-1"

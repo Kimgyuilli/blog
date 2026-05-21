@@ -3,6 +3,7 @@ title: "백준 10799(파이썬/python)"
 description: "여러 개의 쇠막대기를 레이저로 절단하려고 한다. 효율적인 작업을 위해서 쇠막대기를 아래에서 위로 겹쳐 놓고, 레이저를 위에서 수직으로 발사하여 쇠막대기들을 자른다. 쇠막대기와 레이저의 배치는 다음 조건을 만족한다. 아래 그림은 위 조건을 만족하는 예를 보여준다. 수평으로"
 image: "/images/blog/10799-python/image-01.png"
 pubDate: 2022-02-19
+category: "algorithm"
 tags: ["python", "백준"]
 draft: false
 slug: "10799-python"

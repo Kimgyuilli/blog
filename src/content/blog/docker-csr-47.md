@@ -2,6 +2,7 @@
 title: "Docker 환경에서 CSR 프로젝트를 배포하면서 겪은 구조적 고민"
 description: "최근에 CSR 기반의 프로젝트를 Docker 환경에서 배포하면서 고민거리를 만났다. 처음엔 명확했다고 생각한 구조가 배포단계에서 복잡함으로 되돌아오면서 리포지토리 구성과 Docker 기반 운영 방식에 대해 다시 한번 생각하게 되었다. 나는 백엔드(Spring Boot) +"
 pubDate: 2025-05-03
+category: "infra"
 tags: ["docker"]
 draft: false
 slug: "docker-csr-47"

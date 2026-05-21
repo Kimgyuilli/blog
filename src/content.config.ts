@@ -9,6 +9,15 @@ const blog = defineCollection({
     description: z.string(),
     image: z.string().startsWith('/images/blog/').optional(),
     pubDate: z.coerce.date(),
+    category: z.enum([
+      'algorithm',
+      'language-note',
+      'backend',
+      'ai',
+      'infra',
+      'frontend',
+      'essay',
+    ]),
     tags: z.array(z.string()).default([]),
     draft: z.boolean().default(false),
     slug: z

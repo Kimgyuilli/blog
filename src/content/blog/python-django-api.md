@@ -3,6 +3,7 @@ title: "python django 프로젝트에서 네이버 로그인 api 활용해 보�
 description: "이번엔 프로젝트를 진행하면서 만들게 됐던 python django에서 네이버 로그인 기능 구현하는 법을 알아보자 네이버 로그인을 구현한다는 건 시작 전에는 어려워보이지만 막상 해보면 네이버 개발자들이 만들 서비스에 숟가락만 얹는 것임을 알 수 있다. 먼저 Naver"
 image: "/images/blog/python-django-api/image-01.png"
 pubDate: 2025-01-23
+category: "backend"
 tags: ["python"]
 draft: false
 slug: "python-django-api"

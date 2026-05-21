@@ -3,6 +3,7 @@ title: "코드리뷰 고수인척 하기 튜토리얼"
 description: "작성일: 2025/10/10 안녕하세요! 이번엔 코드리뷰를 할 때 고수처럼 보일 수 있는 약어들을 소개합니다:) 리뷰는 상대방이 알아들을 수 있게 해야 하지만 가끔은 좀 있어보이게 리뷰하고 싶지 않나요? 혹은 다른 사람이 처음 보는 단어를 쓰며 리뷰를 해서 당황했던 적이 있지"
 image: "/images/blog/tistory-58/image-01.png"
 pubDate: 2025-11-12
+category: "essay"
 tags: []
 draft: false
 slug: "tistory-58"

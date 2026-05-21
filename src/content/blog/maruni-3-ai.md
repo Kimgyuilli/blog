@@ -2,6 +2,7 @@
 title: "Maruni 개발기록(3) - AI 대화 품질 개선"
 description: "마지막 개발일지 https://imdeepskyblue.tistory.com/65 Maruni 개발 마무리 회고 들어가며어느새 Maruni 프로젝트가 끝을 향해 달려가고있다.지난 2주간 너무 많은 일이 있어서 내가 마루니에만 진심을 다했는지 물어보면 사실 그건 아닌 것"
 pubDate: 2025-11-12
+category: "essay"
 tags: []
 draft: false
 slug: "maruni-3-ai"

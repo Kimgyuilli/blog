@@ -3,6 +3,7 @@ title: "접근 범위를 제한해서 보안 강화시키기"
 description: "AWS, GCP 등 다양한 클라우드 플랫폼에서 활용되는 필수적인 보안 정책으로 무언가에 액세스 할 때 필요한 최소한의 권한만 가지도록 제한하는 보안 원칙이다. 이 원칙에 따라 불필요한 권한을 제거하여 보안 사고를 예방할 수 있다. PoLP를 어긴 예시 AWS 클라우드에서의"
 image: "/images/blog/tistory-67/image-01.png"
 pubDate: 2025-11-27
+category: "backend"
 tags: []
 draft: false
 slug: "tistory-67"

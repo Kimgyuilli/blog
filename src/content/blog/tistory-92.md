@@ -3,6 +3,7 @@ title: "내가 짠 코드인데 왜 동작하는지 설명을 못 했다"
 description: "지난 주말 솝트에서 진행하는 해커톤에 참여했다. 결과로 대상을 타기는 했지만 개인적으로 아쉬웠던 부분이 있어 기록 및 학습을 하려고 한다. 이번 해커톤에서 가장 부끄러웠던 건 결과물이 아니라 내 코드에 대한 내 이해의 깊이였다. 이번에 구현하게 된 서비스는 매일 나의 실수를"
 image: "/images/blog/tistory-92/image-01.png"
 pubDate: 2026-05-19
+category: "essay"
 tags: []
 draft: false
 slug: "tistory-92"

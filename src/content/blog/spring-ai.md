@@ -3,6 +3,7 @@ title: "Spring AI가 제공하는 주요 기능 정리"
 description: "Spring AI는 Java/Spring 생태계에서 AI 애플리케이션을 구축하기 위한 프레임워크다. LLM 호출, 문서 임베딩, 벡터 검색, 대화 이력 관리 등 AI 앱에 필요한 기능들을 Spring 스타일의 추상화로 제공한다. 이 글에서는 Spring AI가 제공하는 주요"
 image: "/images/blog/spring-ai/image-01.png"
 pubDate: 2026-02-22
+category: "ai"
 tags: ["spring"]
 draft: false
 slug: "spring-ai"

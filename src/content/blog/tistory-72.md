@@ -3,6 +3,7 @@ title: "개발자에게 필요한 문서는 무엇이 있을까"
 description: "개발자가 협업을 하기 위해서 문서화는 꼭 해야 하는 작업입니다. 협업을 하기 위해서 어떤 문서가 필요할까요? 과연 모든 경우의 수를 담은 매우 상세한 문서가 정말 필요할까요? 답은 \"그렇지 않습니다\"입니다. 오히려 과도한 문서화는 독이 될 수 있습니다. 문서가 많아질수록"
 image: "/images/blog/tistory-72/image-01.png"
 pubDate: 2025-12-17
+category: "essay"
 tags: []
 draft: false
 slug: "tistory-72"

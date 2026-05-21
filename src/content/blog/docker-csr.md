@@ -2,6 +2,7 @@
 title: "Docker 기반 CSR 프로젝트, 결국 이렇게 구조 바꿨다"
 description: "앞선 글에서 나는 CSR 기반 프로젝트(React + Spring Boot + PostgreSQL)를 Docker로 통합 관리하려다 겪은 시행착오와 고민들을 공유했다. 그때는 Info 리포지토리에서 FE, BE를 서브모듈처럼 두고, 하나의 docker-compose.yml로"
 pubDate: 2025-05-20
+category: "infra"
 tags: ["docker"]
 draft: false
 slug: "docker-csr"

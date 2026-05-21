@@ -3,6 +3,7 @@ title: "AWS 인프라를 어떻게 구축할 수 있을까"
 description: "Spring Boot 애플리케이션을 컨테이너 이미지로 만드는 세 가지 주요 방식(Dockerfile, Jib, bootBuildImage)을 비교 분석했습니다. Jib을 최종 선택한 이유는 다음과 같습니다. 결론적으로, CI/CD 파이프라인의 효율성을 극대화하고 개발자가"
 image: "/images/blog/tistory-73/image-01.png"
 pubDate: 2026-01-16
+category: "infra"
 tags: ["aws"]
 draft: false
 slug: "tistory-73"

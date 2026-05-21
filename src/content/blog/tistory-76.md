@@ -3,6 +3,7 @@ title: "Java 래퍼 클래스 메서드 정리 (알고리즘 문제 풀이용)"
 description: "알고리즘 문제를 풀 때 자주 사용하는 Java 래퍼 클래스들의 주요 메서드를 정리했습니다. parseInt 계열 valueOf 계열 toString 계열 사용 예시 10진수 → 다른 진법 (String 반환) 다른 진법 → 10진수 사용 예시 사용 예시 사용 예시 사용 예시"
 image: "/images/blog/tistory-76/image-01.png"
 pubDate: 2026-02-15
+category: "language-note"
 tags: ["java", "알고리즘"]
 draft: false
 slug: "tistory-76"

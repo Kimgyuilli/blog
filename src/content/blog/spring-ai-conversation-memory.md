@@ -3,6 +3,7 @@ title: "Spring AI로 멀티 턴 대화(Conversation Memory) 구현하기"
 description: "이 프로젝트는 Spring AI를 학습하기 위한 프로젝트다. 고객센터 같은 상황에서 문서 기반으로 질문에 답변하면서, 동시에 이전 대화 맥락도 이어갈 수 있는 챗봇을 만드는 것이 목표다. 즉, 멀티 턴 대화와 RAG 기능을 모두 갖춘 프로그램을 완성하는 것이다. 이전 글에서"
 image: "/images/blog/spring-ai-conversation-memory/image-01.png"
 pubDate: 2026-02-22
+category: "ai"
 tags: ["spring"]
 draft: false
 slug: "spring-ai-conversation-memory"

@@ -3,6 +3,7 @@ title: "Gitmoji에 대해 아시나요?"
 description: "작성일: 2025/10/04 첫 아티클인데 gitmoji라는 git 컨벤션에 대해 소개해보려고 해요! 먼저 아래와 같은 git 컨벤션은 많이 보셨을 거라고 생각되는데요. 하지만 글이 많아지면 집중력이 급격히 떨어지는 저 같은 사람도 있습니다… 그래서 그런 사람들을 위한"
 image: "/images/blog/gitmoji/image-01.png"
 pubDate: 2025-11-10
+category: "essay"
 tags: ["git"]
 draft: false
 slug: "gitmoji"

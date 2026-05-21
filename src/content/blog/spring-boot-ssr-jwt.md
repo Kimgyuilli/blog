@@ -2,6 +2,7 @@
 title: "Spring Boot SSR 환경에서 JWT 사용의 적절성에 대한 고찰"
 description: "Spring Boot 기반의 SSR(Server-Side Rendering) 웹 애플리케이션에서 인증 및 인가 기능을 구현할 때, JWT(Json Web Token)를 사용할 것인지, 혹은 세션(Session) 기반 인증을 사용할 것인지에 대한 선택은 매우 중요하다. 최근"
 pubDate: 2025-04-24
+category: "backend"
 tags: ["spring", "spring-boot"]
 draft: false
 slug: "spring-boot-ssr-jwt"

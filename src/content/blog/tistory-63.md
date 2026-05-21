@@ -2,6 +2,7 @@
 title: "검색의 종말"
 description: "작성일: 2025/10/25 \"더 이상 검색을 통해 우리 웹사이트를 방문하는 사람이 없습니다.\" 2025년 9월 HubSpot의 연례 행사 INBOUND 2025에서 나온 이 발표는 마케팅 업계에 큰 충격을 안겼습니다. 십수 년간 디지털 마케팅의 핵심이었던 INBOUND"
 pubDate: 2025-11-14
+category: "essay"
 tags: []
 draft: false
 slug: "tistory-63"

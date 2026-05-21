@@ -2,6 +2,7 @@
 title: "백준 10845(파이썬/python)"
 description: "정수를 저장하는 큐를 구현한 다음, 입력으로 주어지는 명령을 처리하는 프로그램을 작성하시오. 명령은 총 여섯 가지이다. 첫째 줄에 주어지는 명령의 수 N (1 ≤ N ≤ 10,000)이 주어진다. 둘째 줄부터 N개의 줄에는 명령이 하나씩 주어진다. 주어지는 정수는 1보다"
 pubDate: 2022-01-10
+category: "algorithm"
 tags: ["python", "백준"]
 draft: false
 slug: "10845-python"

@@ -2,6 +2,7 @@
 title: "Spring Boot로 로그인을 구현해보기 1"
 description: "스프링 공부를 시작한지 어언 1달 지금 나는 그동안 따로 유튜브 강의를 보거나 선배님들의 대면 세션 및 과제를 수행하면서 자신감과 스프링에 대한 애정이 오를대로 오른 상태이다. 그래서 이번에 스프링 프로젝트의 첫 걸음으로 스프링 로그인 기능을 만들어보기로 했다. 그 여정을"
 pubDate: 2025-04-16
+category: "backend"
 tags: ["spring", "spring-boot"]
 draft: false
 slug: "spring-boot-1"

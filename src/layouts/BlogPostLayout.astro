@@ -1,6 +1,6 @@
 ---
 import BaseLayout from './BaseLayout.astro';
-import { formatDate } from '@/utils/blog';
+import { formatDate, getCategoryMeta, getCategoryUrl } from '@/utils/blog';
 import type { BlogPost } from '@/utils/blog';
 
 type Props = {
@@ -14,6 +14,7 @@ type Props = {
 
 const { post, headings } = Astro.props;
 const tocItems = headings.filter((heading) => heading.depth === 2 || heading.depth === 3);
+const category = getCategoryMeta(post.data.category);
 ---
 
 <BaseLayout title={post.data.title} description={post.data.description} image={post.data.image}>
@@ -21,6 +22,7 @@ const tocItems = headings.filter((heading) => heading.depth === 2 || heading.dep
     <div class="article-main">
       <header class="article-header">
         <div class="meta">
+          <a class="category-badge" href={getCategoryUrl(category.slug)}>{category.label}</a>
           <time datetime={post.data.pubDate.toISOString()}>{formatDate(post.data.pubDate)}</time>
           <span>태그 {post.data.tags.length}개</span>
         </div>

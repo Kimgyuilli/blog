@@ -3,6 +3,7 @@ title: "Java Stream API 정리 (알고리즘 문제 풀이용)"
 description: "알고리즘 문제를 풀 때 자주 사용하는 Java Stream API의 주요 메서드를 정리했습니다. Stream이란? 컬렉션, 배열 등의 데이터를 함수형 프로그래밍 방식으로 처리할 수 있는 API (Java 8+) 사용 예시 사용 예시 사용 예시 사용 예시 사용 예시 사용 예시"
 image: "/images/blog/java-stream-api/image-01.jpg"
 pubDate: 2026-02-15
+category: "language-note"
 tags: ["java", "알고리즘"]
 draft: false
 slug: "java-stream-api"

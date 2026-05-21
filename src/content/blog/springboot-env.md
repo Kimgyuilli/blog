@@ -2,6 +2,7 @@
 title: "SpringBoot 애플리케이션에 .env 통합하는 방법 세가지"
 description: "안녕하세요. 저는 요즘에 합세랑 솦커톤, 과제로 인해서 프로젝트를 새로 세팅해야 하는 상황이 많았는데요! 특히 환경 설정을 하면서 환경 변수를 분리하게 되는데 저는 분리하는 방법이 다양하다고만 알고 있지 어떤 장단점이 있는지 모르고 그냥 익숙한 방법을 쓰고 있었습니다."
 pubDate: 2025-11-25
+category: "backend"
 tags: ["spring", "springboot"]
 draft: false
 slug: "springboot-env"

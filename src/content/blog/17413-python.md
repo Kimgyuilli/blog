@@ -2,6 +2,7 @@
 title: "백준 17413(파이썬/python)"
 description: "문자열 S가 주어졌을 때, 이 문자열에서 단어만 뒤집으려고 한다. 먼저, 문자열 S는 아래와과 같은 규칙을 지킨다. 태그는 '<'로 시작해서 '>'로 끝나는 길이가 3 이상인 부분 문자열이고, '<'와 '>' 사이에는 알파벳 소문자와 공백만 있다. 단어는 알파벳 소문자와"
 pubDate: 2022-02-08
+category: "algorithm"
 tags: ["python", "백준"]
 draft: false
 slug: "17413-python"

@@ -3,6 +3,7 @@ title: "2025 솝커톤 회고"
 description: "11/22(토) 저녁부터 SOPT에서 진행하는 해커톤에 참가하게 되었다. 이번 글에서는 그 해커톤에 대한 회고를 작성하려고 한다. 나는 지금까지 구름톤 유니브를 통해 2개의 해커톤을 경험했다. 두 해커톤 모두 사전 개발 기간이 주어졌는데, 이번 SOPT 해커톤은 달랐다."
 image: "/images/blog/tistory-64/image-01.jpg"
 pubDate: 2025-11-24
+category: "essay"
 tags: []
 draft: false
 slug: "tistory-64"

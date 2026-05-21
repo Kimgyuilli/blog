@@ -2,6 +2,7 @@
 title: "React에서 컴포넌트의 css 파일이 적용될 때"
 description: "React 프로젝트를 하면서 하나의 문제에 봉착했다. 현재 자료실, 오픈 게시판 페이지를 만들고 있는데 자료실의 css가 import 하지도 않은 오픈 게시판에 계속 적용되는 것이다. 원인원인은 css에서 클래스 선택자는 전역으로 사용되는 문제였다. 클래스 이름이 겹치기만"
 pubDate: 2025-03-08
+category: "frontend"
 tags: ["react"]
 draft: false
 slug: "react-css"

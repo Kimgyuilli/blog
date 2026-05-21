@@ -2,6 +2,7 @@
 title: "[Spring] MVC와 REST API 차이"
 description: "MVC와 REST API에 대해 알아보려고 한다. 개념 공통점 1. 역할 분리 (Separation of Concerns) 두 아키텍처 모두 기능별로 역할을 나누어 구조화한다. 2. 클라이언트-서버 구조 MVC든 REST API든 기본적으로 클라이언트-서버 구조이다. 3."
 pubDate: 2025-04-05
+category: "backend"
 tags: ["spring"]
 draft: false
 slug: "spring-mvc-rest-api"

@@ -3,6 +3,7 @@ title: "Spring Boot 프로젝트에 Redis를 도입하며"
 description: "현재 Spring Boot를 기반으로 웹 애플리케이션을 개발하고 있는 학생으로서, 이번 프로젝트를 진행하면서 Redis를 처음으로 도입하게 되었다. 그간 이름만 익숙했을 뿐, 실제로 사용해 본 경험은 없었기에 Redis가 무엇인지, 왜 필요한지, 그리고 Spring"
 image: "/images/blog/spring-boot-redis/image-01.png"
 pubDate: 2025-04-16
+category: "backend"
 tags: ["spring", "spring-boot", "redis"]
 draft: false
 slug: "spring-boot-redis"

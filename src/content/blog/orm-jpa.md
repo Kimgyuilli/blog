@@ -3,6 +3,7 @@ title: "스프링의 ORM 표준과 JPA"
 description: "요즘은 대부분의 서비스를 개발할 때 데이터를 저장하고 빠르게 읽어오기 위해 데이터베이스를 사용하는데 사용되는 데이터베이스의 대부분은 RDB(관계형 데이터베이스)이다. 객체를 관계형 데이터 베이스에 빠르게 저장하는 방법이 없을까 하는 개발자들의 고민의 ORM의 시작이었다."
 image: "/images/blog/orm-jpa/image-01.png"
 pubDate: 2025-04-05
+category: "backend"
 tags: []
 draft: false
 slug: "orm-jpa"

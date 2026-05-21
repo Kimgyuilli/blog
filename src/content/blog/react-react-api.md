@@ -2,6 +2,7 @@
 title: "[React] React 게시판 프로젝트에서 웹 에디터 api를 활용해보자"
 description: "나는 요즘 우리 학교 컴공과 홈페이지를 리뉴얼하는 프로젝트를 진행하고 있다. 이번에 개발중인 기능은 게시판 글 쓰기 기능인데 요구 페이지는 아래와 같다. 이걸 생으로 만들어볼까 하고"
 pubDate: 2025-03-19
+category: "frontend"
 tags: ["react"]
 draft: false
 slug: "react-react-api"

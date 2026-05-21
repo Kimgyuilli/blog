@@ -1,0 +1,38 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import PostCard from '@/components/PostCard.astro';
+import {
+  CATEGORIES,
+  getPostsByCategory,
+  getPublishedPosts,
+  type CategorySlug,
+} from '@/utils/blog';
+
+export async function getStaticPaths() {
+  const posts = await getPublishedPosts();
+  return CATEGORIES.map((category) => ({
+    params: { category: category.slug },
+    props: {
+      posts: getPostsByCategory(posts, category.slug as CategorySlug),
+      category,
+    },
+  }));
+}
+
+const { posts, category } = Astro.props;
+---
+
+<BaseLayout
+  title={category.label}
+  description={`${category.label} 분류의 글 목록입니다.`}
+>
+  <section class="hero">
+    <p class="eyebrow">Category</p>
+    <h1>{category.label}</h1>
+    <p class="lead">{category.description} · {posts.length}개의 글</p>
+  </section>
+
+  <ul class="post-list">
+    {posts.map((post) => <PostCard post={post} headingLevel={3} />)}
+  </ul>
+</BaseLayout>

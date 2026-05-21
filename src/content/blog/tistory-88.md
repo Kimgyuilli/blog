@@ -3,6 +3,7 @@ title: "개발자가 코드를 안짜는 시대가 오고있다"
 description: "안녕하세요 섭섭이분들. 이번에도 AI를 주제로 아티클을 작성해보았습니다. 이번 아티클은 이번 38기가 시작하기 전부터 이 주제로는 꼭 아티클 하나 써야겠다 생각하고 자료조사를 해왔었는데요, 이런 트렌드의 변화에 대해 많이 이야기 나누고싶어요. 추가적인 의견이나 공유거리가"
 image: "/images/blog/tistory-88/image-01.jpg"
 pubDate: 2026-05-03
+category: "essay"
 tags: []
 draft: false
 slug: "tistory-88"

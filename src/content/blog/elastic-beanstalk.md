@@ -3,6 +3,7 @@ title: "엘라스틱 빈스톡(Elastic Beanstalk)이 뭘까"
 description: "이번에 AWS를 공부하면서 ECS랑 Elastic Beanstalk에 대해 처음 알게 됐는데요. 이번 글에서는 Elastic Beanstalk에 대해 공부해봤습니다. AWS (Amazon Web Services)는 웹사이트를 배포할 수 있는 다양한 환경을 제공합니다. 하지만"
 image: "/images/blog/elastic-beanstalk/image-01.png"
 pubDate: 2025-12-05
+category: "infra"
 tags: []
 draft: false
 slug: "elastic-beanstalk"

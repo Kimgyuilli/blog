@@ -2,6 +2,7 @@
 title: "Spring WebSocket + Google STT 구조 설계: 실시간 음성 인식 피드백 시스템 만들기 (2)"
 description: "이전 글 요약:1편에서는 WebSocket 기반 구조 설계, SttSessionContext, SttSessionManager를 통해사용자 세션을 어떻게 분리하고 안전하게 유지할 수 있는지에 대해 다뤘다. 이번 글에서는 **Google Cloud Speech-to-Text"
 pubDate: 2025-07-07
+category: "backend"
 tags: ["spring"]
 draft: false
 slug: "spring-websocket-google-stt-2"

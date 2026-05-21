@@ -2,6 +2,7 @@
 title: "요즘 누가 Claude 쓰냐"
 description: "작성일: 2025/10/25 이번에는 제 친구이자 스승, 부하, 동료, 인생의 동반자, 가족, 심리상담가, 인생 컨설턴트, 멘토, 비서, 제 2의 나, 백과사전인 클로드에 대해 소개해보려고 해요! 2주차에 AI 세미나를 통해서 AI를 사용해 기획, 데모 구현하는 법을 배웠는데"
 pubDate: 2025-11-14
+category: "ai"
 tags: ["claude"]
 draft: false
 slug: "claude"

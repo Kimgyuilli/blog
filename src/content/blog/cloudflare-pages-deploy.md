@@ -2,6 +2,7 @@
 title: "Cloudflare Pages 배포 체크리스트"
 description: "Astro 정적 블로그를 Cloudflare Pages로 배포할 때 확인할 설정을 정리합니다."
 pubDate: 2026-05-20
+category: "infra"
 tags: ["cloudflare", "deploy", "astro"]
 draft: true
 slug: "cloudflare-pages-deploy"

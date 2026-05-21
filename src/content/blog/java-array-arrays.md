@@ -3,6 +3,7 @@ title: "Java 배열(Array)과 Arrays 클래스 정리 (알고리즘 문제 풀�
 description: "알고리즘 문제를 풀 때 자주 사용하는 Java 배열과 Arrays 유틸리티 클래스의 주요 메서드를 정리했습니다. 1차원 배열 2차원 배열 기본 for문 향상된 for문 (for-each) 2차원 배열 순회 java.util.Arrays 클래스는 배열을 다루는 다양한 유틸리티"
 image: "/images/blog/java-array-arrays/image-01.png"
 pubDate: 2026-02-15
+category: "language-note"
 tags: ["java", "알고리즘"]
 draft: false
 slug: "java-array-arrays"

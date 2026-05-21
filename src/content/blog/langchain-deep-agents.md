@@ -3,6 +3,7 @@ title: "LangChain이 공개한 에이전트 하네스, Deep Agents 뜯어보기"
 description: "요즘 AI 에이전트 하네스를 직접 만들어보려는 시도가 많다. 나도 그중 하나였다. 프롬프트 짜고, 도구 몇 개 붙이고, 루프 돌리면 되겠지 싶었는데 막상 만들어보면 금방 벽에 부딪힌다. 대화가 길어지면 컨텍스트가 넘치고, 도구 호출 결과가 거대해지면 토큰 비용이 폭발하고,"
 image: "/images/blog/langchain-deep-agents/image-01.png"
 pubDate: 2026-03-16
+category: "ai"
 tags: []
 draft: false
 slug: "langchain-deep-agents"

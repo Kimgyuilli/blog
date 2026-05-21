@@ -3,6 +3,7 @@ title: "포트폴리오 웹사이트에서 이력서 PDF 자동 생성하기"
 description: "취업을 준비하는 개발자로서 관리해야 할 것들이 많다. GitHub, 블로그, 이력서, 포트폴리오... 각각 따로 관리하다 보면 내용이 서로 달라지기 마련이다. 경력사항을 업데이트하면 이력서도 고치고 포트폴리오도 고치고 여기저기 흩어진 정보를 하나하나 동기화해야 한다. 이"
 image: "/images/blog/tistory-75/image-01.png"
 pubDate: 2026-02-13
+category: "frontend"
 tags: []
 draft: false
 slug: "tistory-75"

@@ -2,6 +2,7 @@
 title: "Maruni 개발 기록(1) - 욕심 덜어내기.."
 description: "개발일지 2 https://imdeepskyblue.tistory.com/54 Maruni 개발기록(2) - 프로젝트 문서화, 안부 메세지 개선 개발일지 3 링크https://imdeepskyblue.tistory.com/57 Maruni 개발기록(3) - AI 대화 품질"
 pubDate: 2025-11-07
+category: "essay"
 tags: []
 draft: false
 slug: "maruni-1"

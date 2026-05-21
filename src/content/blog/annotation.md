@@ -2,6 +2,7 @@
 title: "스프링 annotation, 의존성 정리"
 description: "어노테이션 설명 어노테이션 설명 어노테이션 설명 어노테이션 설명 어노테이션 설명 어노테이션"
 pubDate: 2025-04-12
+category: "backend"
 tags: []
 draft: false
 slug: "annotation"

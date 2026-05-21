@@ -3,6 +3,7 @@ title: "소셜 로그인 OAuth 플로우를 이해해보자"
 description: "현재의 소셜 로그인의 대부분은 OAuth2.0 인증 방식을 기반으로 동작한다 OAuth는 유저가 다른 서비스에 내 비밀번호를 주지 않고 다른 곳이 이미 있는 자신에 정보에 대해 그 사이트가 접근할 수 있도록 허용하는 절차이다. OAuth2.0 인증 방식은 위와 같은 흐름을"
 image: "/images/blog/oauth/image-01.png"
 pubDate: 2025-03-22
+category: "backend"
 tags: []
 draft: false
 slug: "oauth"

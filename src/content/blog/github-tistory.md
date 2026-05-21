@@ -3,6 +3,7 @@ title: "GitHub 프로필에 Tistory 최신 포스트 업데이트하기"
 description: "GitHub 프로필 README는 개발자의 첫인상을 결정하는 중요한 공간입니다. 많은 개발자들이 자신의 기술 스택, 프로젝트, 통계를 표시하지만, 기술 블로그를 운영한다면 최신 글을 자동으로 보여주는 것도 좋은 방법입니다. 이번 글에서는 GitHub Actions와 RSS"
 image: "/images/blog/github-tistory/image-01.png"
 pubDate: 2025-11-27
+category: "essay"
 tags: ["git"]
 draft: false
 slug: "github-tistory"

@@ -1,0 +1,65 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import {
+  CATEGORIES,
+  formatDate,
+  getCategoryUrl,
+  getPostUrl,
+  getPostsByCategory,
+  getPublishedPosts,
+} from '@/utils/blog';
+
+const posts = await getPublishedPosts();
+
+const groups = CATEGORIES.map((category) => ({
+  ...category,
+  posts: getPostsByCategory(posts, category.slug),
+}));
+---
+
+<BaseLayout title="분류" description="카테고리별로 정리한 글 목차입니다.">
+  <section class="hero">
+    <p class="eyebrow">Categories</p>
+    <h1>분류별 목차</h1>
+    <p class="lead">관심 있는 분류로 바로 이동해서 글을 찾아볼 수 있습니다.</p>
+  </section>
+
+  <nav class="category-jump" aria-label="카테고리 바로가기">
+    {
+      groups.map((group) => (
+        <a href={`#${group.slug}`}>
+          {group.label}
+          <span class="count">{group.posts.length}</span>
+        </a>
+      ))
+    }
+  </nav>
+
+  {
+    groups.map((group) => (
+      <section class="category-block" id={group.slug}>
+        <header class="category-block-header">
+          <h2>
+            <a href={getCategoryUrl(group.slug)}>{group.label}</a>
+            <span class="count">{group.posts.length}</span>
+          </h2>
+          <p>{group.description}</p>
+        </header>
+        {group.posts.length > 0 ? (
+          <ul class="category-post-list">
+            {group.posts.map((post) => (
+              <li>
+                <a href={getPostUrl(post)}>{post.data.title}</a>
+                <time datetime={post.data.pubDate.toISOString()}>
+                  {formatDate(post.data.pubDate)}
+                </time>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p class="empty">아직 글이 없습니다.</p>
+        )}
+      </section>
+    ))
+  }
+</BaseLayout>
