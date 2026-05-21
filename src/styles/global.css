@@ -573,9 +573,43 @@ h3 {
   position: sticky;
   top: 92px;
   max-height: calc(100vh - 120px);
-  overflow: auto;
+  overflow-y: auto;
   padding-left: 18px;
+  padding-block: 8px;
   border-left: 1px solid var(--hairline);
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--slate) 30%, transparent) transparent;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black 18px,
+    black calc(100% - 18px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black 18px,
+    black calc(100% - 18px),
+    transparent 100%
+  );
+}
+
+.toc::-webkit-scrollbar {
+  width: 4px;
+}
+
+.toc::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.toc::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--slate) 24%, transparent);
+  border-radius: 999px;
+}
+
+.toc::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--slate) 45%, transparent);
 }
 
 .toc-title {
