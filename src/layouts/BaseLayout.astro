@@ -45,7 +45,10 @@ const imageUrl = new URL(image, canonical);
   <body>
     <header class="site-header">
       <nav class="site-shell nav" aria-label="주요 메뉴">
-        <a class="brand" href="/">개발 노트</a>
+        <a class="brand" href="/">
+          <span class="brand-dot" role="presentation"></span>
+          개발 노트
+        </a>
         <div class="nav-links">
           <a href="/categories/">분류</a>
           <a href="/blog/tag/">태그</a>
@@ -69,6 +72,9 @@ const imageUrl = new URL(image, canonical);
         const isDark = document.documentElement.classList.toggle('dark');
         localStorage.setItem('theme', isDark ? 'dark' : 'light');
       });
+    </script>
+    <script>
+      import '../scripts/easter-eggs';
     </script>
   </body>
 </html>
