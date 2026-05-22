@@ -15,6 +15,25 @@ npm run dev
 npm run build
 ```
 
+## 포트폴리오 통합
+
+별도 Vite/React 포트폴리오 프로젝트를 `/portfolio/` 경로로 함께 배포할 수 있습니다.
+
+```bash
+cd ../gyuill-portfolio
+npm run build
+
+cd ../blog
+npm run sync:portfolio
+npm run build
+```
+
+포트폴리오 프로젝트 위치가 다르면 `PORTFOLIO_DIR` 환경 변수로 지정합니다.
+
+```bash
+PORTFOLIO_DIR=/path/to/gyuill-portfolio npm run sync:portfolio
+```
+
 ## 글 작성
 
 글은 `src/content/blog`에 Markdown 또는 MDX 파일로 추가합니다.

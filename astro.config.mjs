@@ -10,6 +10,11 @@ export default defineConfig({
   site,
   output: 'static',
   integrations: [mdx(), sitemap()],
+  vite: {
+    optimizeDeps: {
+      exclude: ['@astrojs/cloudflare/entrypoints/server'],
+    },
+  },
 
   markdown: {
     shikiConfig: {

@@ -12,7 +12,8 @@
     "generate-types": "wrangler types",
     "deploy": "npm run build && wrangler deploy",
     "migrate:tistory": "node scripts/migrate-tistory.mjs",
-    "sync:post-images": "node scripts/sync-post-images.mjs"
+    "sync:post-images": "node scripts/sync-post-images.mjs",
+    "sync:portfolio": "node scripts/sync-portfolio.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^13.5.3",
