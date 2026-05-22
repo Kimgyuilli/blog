@@ -563,6 +563,30 @@ h3 {
   font-variant-ligatures: none;
 }
 
+.article-body .mermaid-diagram {
+  overflow-x: auto;
+  margin-block: 24px;
+  padding: 20px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
+}
+
+.article-body .mermaid-diagram svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-inline: auto;
+}
+
+.article-body .mermaid-diagram-error {
+  white-space: pre;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+
 .article-body table {
   display: block;
   overflow-x: auto;
