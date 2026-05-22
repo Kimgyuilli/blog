@@ -155,24 +155,7 @@ Ref
 
 [https://jibinary.tistory.com/342](https://jibinary.tistory.com/342)
 
- [\[AWS\] Elastic Beanstalk란? 쉽게 개념 정리 \[Deploy Policy: All at One, Rolling, Immutable, Traffic Splitting\]
-
-◇  공부 기록용으로 작성하였으니 틀린점, 피드백 주시면 감사하겠습니다 ◇   AWS Elastic BeanstalkAWS Elastic Beanstalk는 개발자가 인프라에 대한 고민 없이 애플리케이션의 개발에만 집중하여, 쉽
-
-jibinary.tistory.com](https://jibinary.tistory.com/342)
-
 [https://docs.aws.amazon.com/ko\_kr/elasticbeanstalk/latest/dg/Welcome.html](https://docs.aws.amazon.com/ko_kr/elasticbeanstalk/latest/dg/Welcome.html)
-
- [AWS Elastic Beanstalk란 무엇인가요? - AWS Elastic Beanstalk
-
-이 페이지에 작업이 필요하다는 점을 알려 주셔서 감사합니다. 실망시켜 드려 죄송합니다. 잠깐 시간을 내어 설명서를 향상시킬 수 있는 방법에 대해 말씀해 주십시오.
-
-docs.aws.amazon.com](https://docs.aws.amazon.com/ko_kr/elasticbeanstalk/latest/dg/Welcome.html)
 
 [https://velog.io/@bcl0206/AWS-Elastic-Beanstalk-배포-방법-DB-연결](https://velog.io/@bcl0206/AWS-Elastic-Beanstalk-배포-방법-DB-연결)
 
- [AWS Elastic Beanstalk으로 배포하기
-
-IAM 인스턴스? 생성 방법 그 링크키페어 생성방법생활코딩 AWS Elastic Beanstalkhttps://www.youtube.com/watch?v=g7W5LK1DM8o&t=498sDB연동 방법 및 워크벤치 연결 오류 디버깅https://yout
-
-velog.io](https://velog.io/@bcl0206/AWS-Elastic-Beanstalk-배포-방법-DB-연결)

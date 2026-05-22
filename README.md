@@ -59,12 +59,12 @@ public/
 4. Build command: `npm run build`
 5. Output directory: `dist`
 
-서브도메인 연결은 Pages 프로젝트의 Custom domains에서 `blog.example.com` 같은 도메인을 추가하고 DNS 안내에 따라 설정합니다.
+서브도메인 연결은 Pages 프로젝트의 Custom domains에서 `blog.rlarbdlf222.workers.dev` 같은 도메인을 추가하고 DNS 안내에 따라 설정합니다.
 
 프로덕션 canonical URL과 sitemap URL은 빌드 시 `SITE` 환경 변수로 지정할 수 있습니다.
 
 ```bash
-SITE=https://blog.example.com npm run build
+SITE=https://blog.rlarbdlf222.workers.dev npm run build
 ```
 
 ## 티스토리 마이그레이션

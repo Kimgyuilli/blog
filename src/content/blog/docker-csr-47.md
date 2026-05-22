@@ -13,7 +13,6 @@ slug: "docker-csr-47"
 
 나는 백엔드(Spring Boot) + 프론트엔드(Vite 기반 React) + PostgreSQL DB를 Docker로 함께 묶어서 실행하고 관리하려고 했다. 그래서 다음과 같은 디렉터리 구조를 잡았다:
 
-
 Jeonse-ive-INFO는 전체를 통합 관리하는 루트 디렉터리
 
 -   Jeonse-ive-BE: 백엔드 프로젝트

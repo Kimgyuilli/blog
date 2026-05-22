@@ -1,6 +1,6 @@
 ---
 title: "Maruni 개발 기록(1) - 욕심 덜어내기.."
-description: "개발일지 2 https://imdeepskyblue.tistory.com/54 Maruni 개발기록(2) - 프로젝트 문서화, 안부 메세지 개선 개발일지 3 링크https://imdeepskyblue.tistory.com/57 Maruni 개발기록(3) - AI 대화 품질"
+description: "프로젝트 욕심을 덜어내고 실제 데모를 위해 클라이언트와 서버를 연결하며 마주한 설계 문제와 해결 과정을 정리합니다."
 pubDate: 2025-11-07
 category: "essay"
 tags: []
@@ -10,12 +10,6 @@ slug: "maruni-1"
 개발일지 2
 
 [https://imdeepskyblue.tistory.com/54](https://imdeepskyblue.tistory.com/54)
-
- [Maruni 개발기록(2) - 프로젝트 문서화, 안부 메세지 개선
-
-개발일지 3 링크https://imdeepskyblue.tistory.com/57 Maruni 개발기록(3) - AI 대화 품질 개선들어가며MARUNI는 노인 돌봄을 위한 AI 대화 서비스입니다. 매일 오전 9시, '마루'라는 이름의 AI가 어르신들께 안부
-
-imdeepskyblue.tistory.com](https://imdeepskyblue.tistory.com/54)
 
 ## 들어가며
 

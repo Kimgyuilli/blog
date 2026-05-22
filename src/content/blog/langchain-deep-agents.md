@@ -404,8 +404,3 @@ Deep Agents를 뜯어보면서 정리한, 에이전트 하네스 설계 시 참�
 
 -   Deep Agents GitHub: [https://github.com/langchain-ai/deepagents](https://github.com/langchain-ai/deepagents)
 
- [GitHub - langchain-ai/deepagents: Agent harness built with LangChain and LangGraph. Equipped with a planning tool, a filesystem
-
-Agent harness built with LangChain and LangGraph. Equipped with a planning tool, a filesystem backend, and the ability to spawn subagents - well-equipped to handle complex agentic tasks. - langchai...
-
-github.com](https://github.com/langchain-ai/deepagents)

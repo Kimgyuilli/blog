@@ -1,6 +1,6 @@
 ---
 title: "Maruni 개발기록(2) - 프로젝트 문서화, 안부 메세지 개선"
-description: "개발일지 3 링크 https://imdeepskyblue.tistory.com/57 Maruni 개발기록(3) - AI 대화 품질 개선 들어가며MARUNI는 노인 돌봄을 위한 AI 대화 서비스입니다. 매일 오전 9시, '마루'라는 이름의 AI가 어르신들께 안부 메시지를 보내고"
+description: "Maruni 프로젝트에서 문서화와 안부 메시지 기능을 개선하며 느낀 구조적 고민과 구현 과정을 정리합니다."
 image: "/images/blog/maruni-2/image-01.png"
 pubDate: 2025-11-10
 category: "essay"
@@ -11,12 +11,6 @@ slug: "maruni-2"
 개발일지 3 링크
 
 [https://imdeepskyblue.tistory.com/57](https://imdeepskyblue.tistory.com/57)
-
- [Maruni 개발기록(3) - AI 대화 품질 개선
-
-들어가며MARUNI는 노인 돌봄을 위한 AI 대화 서비스입니다. 매일 오전 9시, '마루'라는 이름의 AI가 어르신들께 안부 메시지를 보내고 대화를 나눕니다. 외로움을 달래드리고, 건강을 챙기고, 가족
-
-imdeepskyblue.tistory.com](https://imdeepskyblue.tistory.com/57)
 
 ## Maruni란?
 
@@ -105,19 +99,7 @@ Maruni는 이번에 혼자 진행하고 있는 졸업 프로젝트다.
 
 WAS:[https://github.com/MARUNI-Service/MARUNI-SERVER/issues/9](https://github.com/MARUNI-Service/MARUNI-SERVER/issues/9) 
 
- [서버 다이어그램 · Issue #9 · MARUNI-Service/MARUNI-SERVER
-
-MARUNI 핵심 프로세스 다이어그램 작성일: 2025-11-10 목적: 졸업 프로젝트 중간 보고 발표 자료 이 문서는 MARUNI 프로젝트의 3가지 핵심 프로세스를 시각화하여 설명합니다. 📋 목차 대화 프로세스
-
-github.com](https://github.com/MARUNI-Service/MARUNI-SERVER/issues/9)
-
 WS: [https://github.com/MARUNI-Service/MARUNI-client/issues/13](https://github.com/MARUNI-Service/MARUNI-client/issues/13)
-
- [컴포넌트 다이어그램 · Issue #13 · MARUNI-Service/MARUNI-client
-
-MARUNI Client 컴포넌트 다이어그램 MARUNI 클라이언트의 전체 컴포넌트 구조를 Mermaid 다이어그램으로 시각화 작성일: 2025-11-10 버전: Phase 3 완료 기준 📐 1. 전체 아키텍처 (4계층) graph TB subgraph App\["🎯
-
-github.com](https://github.com/MARUNI-Service/MARUNI-client/issues/13)
 
 ## 최근 작업 내역
 

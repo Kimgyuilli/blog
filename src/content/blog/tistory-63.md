@@ -81,10 +81,4 @@ GEO는 **생성형 AI의 응답에 자신의 콘텐츠가 인용되도록 최적
 
 [https://www.aigrowthclub.kr/seo-geo-report-1/](https://www.aigrowthclub.kr/seo-geo-report-1/)
 
- [SEO → GEO 전환기의 시장 패턴 및 비즈니스 전략 분석 - 에그클 Ai Ggrowth Club
-
-2025년 9월, 구글이 조용히 '&num=100' 파라미터 지원을 중단했습니다. 개발자나 SEO 전문가가 아니라면 스쳐 지나갔을 이 작은 사건이, 실은 우리가 정보를 탐색하고 지식을 얻는 방식을 근본적으로
-
-aigrowthclub.kr](https://www.aigrowthclub.kr/seo-geo-report-1/)
-
 [https://www.youtube.com/watch?v=PrWrmAc\_sd8&t=470s](https://www.youtube.com/watch?v=PrWrmAc_sd8&t=470s)

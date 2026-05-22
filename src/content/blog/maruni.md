@@ -56,26 +56,11 @@ slug: "maruni"
 
 [https://maruni.kro.kr/](https://maruni.kro.kr/)
 
- [maruni-client
-
-maruni.kro.kr](https://maruni.kro.kr/)
-
 클라이언트 레포
 
 [https://github.com/MARUNI-Service/MARUNI-client](https://github.com/MARUNI-Service/MARUNI-client)
-
- [GitHub - MARUNI-Service/MARUNI-client
-
-Contribute to MARUNI-Service/MARUNI-client development by creating an account on GitHub.
-
-github.com](https://github.com/MARUNI-Service/MARUNI-client)
 
 서버 레포
 
 [https://github.com/MARUNI-Service/MARUNI-SERVER](https://github.com/MARUNI-Service/MARUNI-SERVER)
 
- [GitHub - MARUNI-Service/MARUNI-SERVER
-
-Contribute to MARUNI-Service/MARUNI-SERVER development by creating an account on GitHub.
-
-github.com](https://github.com/MARUNI-Service/MARUNI-SERVER)

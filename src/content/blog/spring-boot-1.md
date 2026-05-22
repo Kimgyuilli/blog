@@ -17,12 +17,6 @@ slug: "spring-boot-1"
 
 [https://github.com/Kimgyuilli/Spring\_login](https://github.com/Kimgyuilli/Spring_login)
 
- [GitHub - Kimgyuilli/Spring\_login: 스프링으로 로그인 기능 고도화 해보기
-
-스프링으로 로그인 기능 고도화 해보기. Contribute to Kimgyuilli/Spring\_login development by creating an account on GitHub.
-
-github.com](https://github.com/Kimgyuilli/Spring_login)
-
 먼저 이 프로젝트의 기능적 목표와 구조적 목표를 정했다.
 
 기능적 목표

@@ -74,19 +74,7 @@ USD 0.059/GB × 1,300원 = 약 77원/GB
 
 [https://inpa.tistory.com/entry/AWS-](https://inpa.tistory.com/entry/AWS-)[📚-NAT-Gateway-NAT-Instance-대체해서-비용-절약](https://inpa.tistory.com/entry/AWS-%F0%9F%93%9A-NAT-Gateway-NAT-Instance-%EB%8C%80%EC%B2%B4%ED%95%B4%EC%84%9C-%EB%B9%84%EC%9A%A9-%EC%A0%88%EC%95%BD)
 
- [\[AWS\] 📚 NAT Gateway → NAT Instance 대체해서 비용 절약하기
-
-NAT 인프라 AWS에서 네트워크를 설계할때 NAT의 사용은 필수적이다. 보안상 서버들을 외부에서 접근할 수 없고 확인할 수 없도록 해야하기 때문이다. 그래서 VPC 인프라를 구축할때 Public 서브넷과 P
-
-inpa.tistory.com](https://inpa.tistory.com/entry/AWS-%F0%9F%93%9A-NAT-Gateway-NAT-Instance-%EB%8C%80%EC%B2%B4%ED%95%B4%EC%84%9C-%EB%B9%84%EC%9A%A9-%EC%A0%88%EC%95%BD)
-
 [https://jjung0326.tistory.com/84](https://jjung0326.tistory.com/84)
-
- [\[AWS\] 3-Tier-Architecture 구축 #3 - NAT Gateway 대신 NAT Instance를 사용해 비용 절약하기
-
-아래 포스팅에서 이어지는 글입니다. \[AWS\] 3-Tier-Architecture 구축 #2 - VPC 아래 포스팅에서 이어지는 글입니다. \[AWS\] 3-Tier-Architecture 구축 #1 - 설계 Django로 만든 프로젝트를 AWS에서 3 Tier Architecture로 구
-
-jjung0326.tistory.com](https://jjung0326.tistory.com/84)
 
 ## Bastion Host
 
@@ -131,12 +119,6 @@ Bastion Host와 VPN은 자주 헷갈린다. 둘 다 외부에서 내부로 들�
 
 [https://harris91.vercel.app/bastion-host](https://harris91.vercel.app/bastion-host)
 
- [Bastion Host(배스천 호스트) 란?
-
-클라우드에 보안을 위한 내/외부 게이트 호스트
-
-harris91.vercel.app](https://harris91.vercel.app/bastion-host)
-
 ### 프로덕션(실제 운영 환경)으로 간다면
 
 아래처럼 해야한다.
@@ -155,12 +137,6 @@ harris91.vercel.app](https://harris91.vercel.app/bastion-host)
 
 [https://musma.github.io/2019/11/29/about-aws-ssm.html](https://musma.github.io/2019/11/29/about-aws-ssm.html)
 
- [AWS SSM으로 EC2 인스턴스에 접근하기 (SSH 대체)
-
-목차 서론 들어가기: 더 좋은 방법 대상 독자 SSM: AWS Systems Manager 원격 호스트 접속 방법 비교: SSH (기존) vs. SSM (개선) S...
-
-musma.github.io](https://musma.github.io/2019/11/29/about-aws-ssm.html)
-
 ## SSM
 
 그래서 SSM을 사용해 접근하는 방식이 많이 쓰인다고 한다.
@@ -175,12 +151,6 @@ musma.github.io](https://musma.github.io/2019/11/29/about-aws-ssm.html)
 6.  AWS Client VPN을 사용하는 것에 비해서 비용이 적게 든다. (돈 + 수고로움)
 
 [https://jibinary.tistory.com/371#google\_vignette](https://jibinary.tistory.com/371#google_vignette)
-
- [\[AWS\] Systems Manager란? 쉽게 개념 정리 (Patch Manager, Session Manager, Parameter Store, Run Command, Automation)
-
-◇  공부 기록용으로 작성하였으니 틀린점, 피드백 주시면 감사하겠습니다 ◇ Systems Manager (SSM)Systems Manager은 여러 AWS 리소스를 그룹화하여 운영 및 유지보수를 자동화하고 효율적으로 관리하
-
-jibinary.tistory.com](https://jibinary.tistory.com/371#google_vignette)
 
 ### SSM 아키텍처
 
@@ -208,12 +178,6 @@ aws ssm start-session --target i-1234567890abcdef0
 공식문서도 있다.(레전드 AWS)
 
 [https://docs.aws.amazon.com/ko\_kr/prescriptive-guidance/latest/patterns/access-a-bastion-host-by-using-session-manager-and-amazon-ec2-instance-connect.html](https://docs.aws.amazon.com/ko_kr/prescriptive-guidance/latest/patterns/access-a-bastion-host-by-using-session-manager-and-amazon-ec2-instance-connect.html)
-
- [Session Manager 및 Amazon EC2 인스턴스 연결을 사용한 Bastion Host 액세스 - 권장 가이드
-
-이 페이지에 작업이 필요하다는 점을 알려 주셔서 감사합니다. 실망시켜 드려 죄송합니다. 잠깐 시간을 내어 설명서를 향상시킬 수 있는 방법에 대해 말씀해 주십시오.
-
-docs.aws.amazon.com](https://docs.aws.amazon.com/ko_kr/prescriptive-guidance/latest/patterns/access-a-bastion-host-by-using-session-manager-and-amazon-ec2-instance-connect.html)
 
 고해성사를 하자면 나는 지금까지 aws 서버 구축을 완전 야매로 해왔다. (Claude + 블로그..)
 

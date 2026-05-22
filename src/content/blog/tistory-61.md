@@ -87,35 +87,11 @@ Ref
 
 [https://www.coupang.com/np/policies/terms](https://www.coupang.com/np/policies/terms)
 
- [로켓배송으로 빠르게, 로켓와우 멤버십으로 할인과 무료 반품까지 | 쿠팡
-
-쿠팡 로켓배송, 로켓프레시, 로켓직구, 로켓럭셔리까지 쿠팡 멤버십으로 모든 헤택을 한 번에 누려보세요. 쿠팡 와우회원은 무료배송도 가능합니다
-
-www.coupang.com](https://www.coupang.com/np/policies/terms)
-
 [https://www.kakao.com/policy/privacy](https://www.kakao.com/policy/privacy)
-
- [개인정보처리방침
-
-자동화 수집 카카오 서비스 이용 과정에서 단말기정보, IP주소, 쿠키, 방문일시, 부정이용기록, 서비스 이용 기록 등의 정보가 자동으로 생성되어 수집될 수 있습니다.
-
-www.kakao.com](https://www.kakao.com/policy/privacy)
 
 [https://policy.naver.com/policy/privacy.html](https://policy.naver.com/policy/privacy.html)
 
- [개인정보처리방침
-
-네이버 개인정보 처리방침 (Ver.11.12) 네이버는 이용자 개인정보 보호를 여러 경영요소 가운데 최우선의 가치로 두고 있습니다. 이전 개인정보처리방침 보기 1. 개인정보처리방침의 의의 네이버
-
-policy.naver.com](https://policy.naver.com/policy/privacy.html)
-
 [https://programmers.co.kr/privacy](https://programmers.co.kr/privacy)
-
- [프로그래머스
-
-SW개발자를 위한 평가, 교육의 Total Solution을 제공하는 개발자 성장을 위한 베이스캠프
-
-programmers.co.kr](https://programmers.co.kr/privacy)
 
 ### Step 2: 약관 동의 처리
 
@@ -138,12 +114,6 @@ programmers.co.kr](https://programmers.co.kr/privacy)
 ### Step 3: 비밀번호 정책 수립
 
 [https://www.kisa.or.kr/2060305/form?postSeq=14&lang\_type=KO](https://www.kisa.or.kr/2060305/form?postSeq=14&lang_type=KO)
-
- [KISA 한국인터넷진흥원
-
-1\. 안전한 패스워드 2. 이러한 패스워드 사용하지 마세요 3. 안전한 패스워드 생성 Tip 4. 패스워드 보안 지침(이용자 측면) 5. 패스워드 보안 지침(관리자 측면)
-
-www.kisa.or.kr](https://www.kisa.or.kr/2060305/form?postSeq=14&lang_type=KO)
 
 **KISA(한국인터넷진흥원) 권고 기준**
 
@@ -381,26 +351,9 @@ www.kisa.or.kr](https://www.kisa.or.kr/2060305/form?postSeq=14&lang_type=KO)
 
 [https://maily.so/kkumaeunsonyeon/posts/10z301nezlw](https://maily.so/kkumaeunsonyeon/posts/10z301nezlw)
 
- [\[백엔드 정책\] 회원 기본정책
-
-01\. 회원정의, 회원종류, 회원가입조건
-
-maily.so](https://maily.so/kkumaeunsonyeon/posts/10z301nezlw)
-
 [https://maily.so/kkumaeunsonyeon/posts/1gz27724r3q](https://maily.so/kkumaeunsonyeon/posts/1gz27724r3q)
-
- [\[백엔드 정책\] 회원 기본정책
-
-02\. 회원가입정보, 정보변경, 탈퇴 후 정보관리
-
-maily.so](https://maily.so/kkumaeunsonyeon/posts/1gz27724r3q)
 
 [https://www.privacy.go.kr/front/contents/cntntsView.do?contsNo=283](https://www.privacy.go.kr/front/contents/cntntsView.do?contsNo=283)
 
 [https://hyeyun133.tistory.com/9](https://hyeyun133.tistory.com/9)
 
- [02\. 회원 정책 정의
-
-1단계: 회원 관련 용어 정의하기 보통 서비스 이용약관을 보면 \[용어의 정의\] 항목이 있다. 그래서 육육걸즈(카페24) / 지그재그의 서비스 이용약관을 참고해서 회원 용어를 정의했다. 서비스 이
-
-hyeyun133.tistory.com](https://hyeyun133.tistory.com/9)

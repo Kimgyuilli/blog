@@ -24,7 +24,6 @@ slug: "spring-websocket-google-stt-1"
 나중에 비슷한 시스템을 다시 만들거나 확장할 때,
 **스스로에게 명확한 레퍼런스를 남기기 위한 글**이기도 하다.
 
-
 ## 2\. 전체 구조 개요: WebSocket + Google STT Streaming 연동 흐름
 
 ### 🧩 기본 아이디어
@@ -99,7 +98,6 @@ java
 String jwt \= request.getHeader("Sec-WebSocket-Protocol"); // 검증 후 사용자 정보 세션 context에 저장
 
 이 방식은 **WebSocket 표준을 지키면서도 보안을 유지**할 수 있는 방법이다
-
 
 ## 3\. WebSocket 서버 구성 및 주요 클래스 설계
 

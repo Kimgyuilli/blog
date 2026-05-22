@@ -18,12 +18,6 @@ slug: "python-django-api"
 
 [https://developers.naver.com/main/](https://developers.naver.com/main/)
 
- [NAVER Developers
-
-네이버 오픈 API들을 활용해 개발자들이 다양한 애플리케이션을 개발할 수 있도록 API 가이드와 SDK를 제공합니다. 제공중인 오픈 API에는 네이버 로그인, 검색, 단축URL, 캡차를 비롯 기계번역, 음
-
-developers.naver.com](https://developers.naver.com/main/)
-
 ![python django 프로젝트에서 네이버 로그인 api 활용해 보기](/images/blog/python-django-api/image-01.png)
 
 **app 등록 클릭**

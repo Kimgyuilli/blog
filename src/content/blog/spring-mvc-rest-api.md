@@ -88,10 +88,4 @@ Json 형태로 객체 데이터를 반환, **RestController = Spring MVC Contro
 
 [https://diddl.tistory.com/m/74](https://diddl.tistory.com/m/74)
 
- [\[Spring\] @Controller와 @RestController 차이점
-
-스프링에서 컨트롤러로 지정해주기 위한 어노테이션에는 @Controller와 @RestController가 있다. 전통적인 Spring MVC의 컨트롤러인 @Controller와 Restful 웹 서비스의 컨트롤러인 @RestController의 주요 차이점은
-
-diddl.tistory.com](https://diddl.tistory.com/m/74)
-
 아직은 구조가 좀 어렵지만 사용하다보면 익숙해지겠지!

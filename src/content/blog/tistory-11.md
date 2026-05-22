@@ -24,12 +24,6 @@ slug: "tistory-11"
 
 [피로그래밍 홈페이지](https://pirogramming.com/)
 
- [피로그래밍
-
-비전공자 웹 프로그래밍 동아리
-
-pirogramming.com](https://pirogramming.com/)
-
 내가 피로그래밍에 지원하게 된 주요 이유는 2가지였다.
 
 #### 첫번째. 실전 압축형 커리큘럼

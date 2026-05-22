@@ -367,24 +367,7 @@ ECS는 Docker 컨테이너를 쉽고 효율적으로 관리할 수 있는 강력
 
 [https://docs.aws.amazon.com/ko\_kr/AmazonECS/latest/developerguide/Welcome.html](https://docs.aws.amazon.com/ko_kr/AmazonECS/latest/developerguide/Welcome.html)
 
- [Amazon Elastic Container Service란 무엇입니까? - Amazon Elastic Container Service
-
-Amazon Elastic Container Service란 무엇입니까? Amazon Elastic Container Service(Amazon ECS)는 컨테이너 애플리케이션을 쉽게 배포, 관리 및 확대할 수 있도록 도와주는 완전 관리형 컨테이너 오케스트레이션 서
-
-docs.aws.amazon.com](https://docs.aws.amazon.com/ko_kr/AmazonECS/latest/developerguide/Welcome.html)
-
 [https://www.elancer.co.kr/blog/detail/840](https://www.elancer.co.kr/blog/detail/840)
-
- [AWS ECS vs EKS의 차이, DevOps 엔지니어가 알려드립니다. I 이랜서 블로그
-
-빠른 개발과 배포가 중요한 DevOps 환경, 그리고 안정적이고 효율적인 서비스 운영을 위해 많은 기업들이 컨테이너 기반 아키텍처인 ECS와 EKS를 활용해 차별화된 서비스를 구축하고 있습니다. AWS
-
-www.elancer.co.kr](https://www.elancer.co.kr/blog/detail/840)
 
 [https://itguny04.tistory.com/62](https://itguny04.tistory.com/62)
 
- [\[AWS\] ECS(Elastic Container Serivce)란?
-
-Elastic Container Service Elastic Container Service(이하 ECS)란? ‘Amazon Elastic Container Service(Amazon ECS)는 확장성이 뛰어나고 빠른 컨테이너 관리 서비스입니다. 이를 사용하여 클러스터에서 컨테이너를 실행,
-
-itguny04.tistory.com](https://itguny04.tistory.com/62)

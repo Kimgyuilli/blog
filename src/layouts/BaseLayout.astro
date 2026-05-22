@@ -11,7 +11,7 @@ const siteTitle = '개발 노트';
 const defaultDescription = '코드, 운영, 배포 경험을 정리하는 한국어 개발자 블로그';
 const { title, description = defaultDescription, image = '/images/blog/og-default.svg' } = Astro.props;
 const pageTitle = title ? `${title} | ${siteTitle}` : siteTitle;
-const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://blog.example.com');
+const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://blog.rlarbdlf222.workers.dev');
 const imageUrl = new URL(image, canonical);
 ---
 

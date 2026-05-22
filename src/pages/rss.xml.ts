@@ -8,7 +8,7 @@ export async function GET(context: APIContext) {
   return rss({
     title: '개발 노트',
     description: '코드, 운영, 배포 경험을 정리하는 한국어 개발자 블로그',
-    site: context.site ?? 'https://blog.example.com',
+    site: context.site ?? 'https://blog.rlarbdlf222.workers.dev',
     items: posts.map((post) => ({
       title: post.data.title,
       description: post.data.description,

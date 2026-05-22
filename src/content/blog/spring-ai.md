@@ -20,12 +20,6 @@ Spring AI는 Java/Spring 생태계에서 AI 애플리케이션을 구축하기 �
 
 [https://github.com/Kimgyuilli/rag-template](https://github.com/Kimgyuilli/rag-template)
 
- [GitHub - Kimgyuilli/rag-template: rag 템플릿
-
-rag 템플릿. Contribute to Kimgyuilli/rag-template development by creating an account on GitHub.
-
-github.com](https://github.com/Kimgyuilli/rag-template)
-
 \---
 
 ## 1\. ChatClient — LLM 호출 API

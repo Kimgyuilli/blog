@@ -448,8 +448,3 @@ async def subscribe() -> AsyncGenerator[dict, None]:
 
 [https://github.com/Kimgyuilli/500-pr-bot](https://github.com/Kimgyuilli/500-pr-bot)
 
- [GitHub - Kimgyuilli/500-pr-bot
-
-Contribute to Kimgyuilli/500-pr-bot development by creating an account on GitHub.
-
-github.com](https://github.com/Kimgyuilli/500-pr-bot)

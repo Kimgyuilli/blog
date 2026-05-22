@@ -26,23 +26,11 @@ slug: "react-react-api"
 
 [https://github.com/naver/smarteditor2](https://github.com/naver/smarteditor2)
 
- [GitHub - naver/smarteditor2: Javascript WYSIWYG HTML editor
-
-Javascript WYSIWYG HTML editor. Contribute to naver/smarteditor2 development by creating an account on GitHub.
-
-github.com](https://github.com/naver/smarteditor2)
-
 ![[React] React 게시판 프로젝트에서 웹 에디터 api를 활용해보자](/images/blog/react-react-api/image-02.png)
 
 ### 2\. TOAST UI Editor
 
 [https://ui.toast.com/tui-editor](https://ui.toast.com/tui-editor)
-
- [TOAST UI :: Make Your Web Delicious!
-
-TOAST UI is an open-source JavaScript UI library maintained by NHN Cloud.
-
-ui.toast.com](https://ui.toast.com/tui-editor)
 
 ![[React] React 게시판 프로젝트에서 웹 에디터 api를 활용해보자](/images/blog/react-react-api/image-03.png)
 
@@ -50,23 +38,11 @@ ui.toast.com](https://ui.toast.com/tui-editor)
 
 [https://ckeditor.com/](https://ckeditor.com/)
 
- [WYSIWYG HTML Editor with Collaborative Rich Text Editing
-
-Rock-solid, Free WYSIWYG Editor with Collaborative Editing, 200+ features, Full Documentation and Support. Trusted by 20k+ companies.
-
-ckeditor.com](https://ckeditor.com/)
-
 ![[React] React 게시판 프로젝트에서 웹 에디터 api를 활용해보자](/images/blog/react-react-api/image-04.png)
 
 ### 4\. tinyMCE
 
 [https://www.tiny.cloud/](https://www.tiny.cloud/)
-
- [The Most Trusted & Feature-rich WYSIWYG Rich Text Editor | TinyMCE
-
-Elevate your web development with TinyMCE's WYSIWYG Rich Text Editor. Trusted by 1.5M+ developers, with AI-powered tools and seamless integrations.
-
-www.tiny.cloud](https://www.tiny.cloud/)
 
 ![[React] React 게시판 프로젝트에서 웹 에디터 api를 활용해보자](/images/blog/react-react-api/image-05.png)
 
@@ -97,12 +73,6 @@ console에 무료 버전은 배포 전까지만 사용 가능하다는 메세지
 사용법도 간단하다.
 
 [https://www.tiny.cloud/](https://www.tiny.cloud/)
-
- [The Most Trusted & Feature-rich WYSIWYG Rich Text Editor | TinyMCE
-
-Elevate your web development with TinyMCE's WYSIWYG Rich Text Editor. Trusted by 1.5M+ developers, with AI-powered tools and seamless integrations.
-
-www.tiny.cloud](https://www.tiny.cloud/)
 
 위 홈페이지에 들어가서 로그인을 하면 바로 아래와 같은 페이지로 이동되는데
 
@@ -209,6 +179,5 @@ setContent에 사용자가 입력한 내용을 받아오게 된다. 
 ## 결과물
 
 ![[React] React 게시판 프로젝트에서 웹 에디터 api를 활용해보자](/images/blog/react-react-api/image-09.png)
-
 
 추가적으로 이미지 처리를 해야 하는데 이건 나중에 또 적으러 올 수도 있고 안올 수도 있다.

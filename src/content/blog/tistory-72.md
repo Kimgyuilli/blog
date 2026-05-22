@@ -77,21 +77,9 @@ slug: "tistory-72"
 
 [https://yeon-design.tistory.com/21](https://yeon-design.tistory.com/21)
 
- [UIUX : 앱 서비스 설계 - 플로우차트 작성법
-
-신규 앱 서비스를 기획한다면 제일 먼저 하는 일은 요구사항 정의와 이를 해결하기 위한 기능 명세서를 작성하는 것일 것이다. 이 두가지 작업이 완료되면 본겨적인 서비스 개발을 위해서 사용
-
-yeon-design.tistory.com](https://yeon-design.tistory.com/21)
-
 ![개발자에게 필요한 문서는 무엇이 있을까](/images/blog/tistory-72/image-03.png)
 
 [https://blog.gangnamunni.com/post/communication-with-wireframe](https://blog.gangnamunni.com/post/communication-with-wireframe)
-
- [나의 대충 그려졌고 소중한 와이어프레임
-
-와이어프레임으로 더 빠르게 팀과 이야기하기
-
-blog.gangnamunni.com](https://blog.gangnamunni.com/post/communication-with-wireframe)
 
 ### 2\. 정책서
 
@@ -106,12 +94,6 @@ blog.gangnamunni.com](https://blog.gangnamunni.com/post/communication-with-wiref
 
 [https://germweapon.tistory.com/412](https://germweapon.tistory.com/412)
 
- [\[정책 기획\] 서비스 정책서 작성하기
-
-서비스 정책서 작성 시 고려사항 강의를 통해 만나는 실무 기획자들에게 서비스 정책서를 작성하는지, 사내에 정리된 서비스 정책 문서가 있는지 묻곤 한다. 놀랍게도 대다수 회
-
-germweapon.tistory.com](https://germweapon.tistory.com/412)
-
 ### 개발자가 작성하는 문서
 
 ### 1\. 개념도 (Conceptual Diagram)
@@ -124,21 +106,9 @@ germweapon.tistory.com](https://germweapon.tistory.com/412)
 
 [https://boardmix.com/kr/skills/what-is-a-sequence-diagram/](https://boardmix.com/kr/skills/what-is-a-sequence-diagram/)
 
- [\[2025년 최신\] 시퀀스 다이어그램 작성법과 UML 활용 가이드
-
-시퀀스 다이어그램 작성법을 통해 시스템의 흐름과 객체 간 메시지 전달을 시각화하는 방법을 알아보세요. UML 시퀀스 다이어그램 예시와 함께 실무에 유용한 작성 팁을 정리했습니다.
-
-boardmix.com](https://boardmix.com/kr/skills/what-is-a-sequence-diagram/)
-
 ![개발자에게 필요한 문서는 무엇이 있을까](/images/blog/tistory-72/image-06.png)
 
 [https://www.impacttechnology.co.uk/example-entity-relationship-diagram](https://www.impacttechnology.co.uk/example-entity-relationship-diagram)
-
- [Impact Technology
-
-UK software development services including, embedded software, web development and database development, we will give your company the competitive edge.
-
-www.impacttechnology.co.uk](https://www.impacttechnology.co.uk/example-entity-relationship-diagram)
 
 (종류가 많으니 필요한 것들만 하기!)
 
@@ -152,12 +122,6 @@ www.impacttechnology.co.uk](https://www.impacttechnology.co.uk/example-entity-re
 ![개발자에게 필요한 문서는 무엇이 있을까](/images/blog/tistory-72/image-07.png)
 
 [https://www.edrawsoft.com/kr/diagram-tutorial/system-configuration-diagram-tool-best6.html?srsltid=AfmBOooJxZ40vWOBU8R\_Vwjz3Xxy3dIl5oS0Cdco9BY0CIIN9RDjPwy3](https://www.edrawsoft.com/kr/diagram-tutorial/system-configuration-diagram-tool-best6.html?srsltid=AfmBOooJxZ40vWOBU8R_Vwjz3Xxy3dIl5oS0Cdco9BY0CIIN9RDjPwy3)
-
- [Introducing EdrawMax 10
-
-Plan, brainstorm or design anything, faster
-
-www.edrawsoft.com](https://www.edrawsoft.com/kr/diagram-tutorial/system-configuration-diagram-tool-best6.html?srsltid=AfmBOooJxZ40vWOBU8R_Vwjz3Xxy3dIl5oS0Cdco9BY0CIIN9RDjPwy3)
 
 ### 3\. 러프한 주요 클래스 다이어그램
 
@@ -177,12 +141,6 @@ www.edrawsoft.com](https://www.edrawsoft.com/kr/diagram-tutorial/system-configur
 ![개발자에게 필요한 문서는 무엇이 있을까](/images/blog/tistory-72/image-09.png)
 
 [https://addons.mozilla.org/ko/firefox/addon/swagger-ui-ff/](https://addons.mozilla.org/ko/firefox/addon/swagger-ui-ff/)
-
- [Swagger UI – 🦊 Firefox용 확장 기능 (ko)
-
-Firefox용 Swagger UI 부가 기능을 다운로드하세요. Swagger-UI für Firefox
-
-addons.mozilla.org](https://addons.mozilla.org/ko/firefox/addon/swagger-ui-ff/)
 
 \---
 
@@ -270,18 +228,6 @@ Ref
 
 [https://clickup.com/ko/blog/439514/technical-writing-examples](https://clickup.com/ko/blog/439514/technical-writing-examples)
 
- [12가지 고품질 문서를 위한 기술 문서 작성 예시
-
-실제 기술 문서 작성 예시를 통해 기술 문서 작성의 달인이 되십시오. 명확하고 효과적인 기술 문서를 작성하는 방법을 알아보십시오.
-
-clickup.com](https://clickup.com/ko/blog/439514/technical-writing-examples)
-
 [https://bongarea.tistory.com/23](https://bongarea.tistory.com/23)
-
- [개발자 프로젝트/소프트웨어 개발 시 필요한 문서
-
-소프트웨어 개발 과정에서는 다양한 문서가 필요합니다. 각 문서는 프로젝트의 요구사항을 정의하고, 개발 및 테스트 과정에서 참고할 수 있도록 체계적으로 정리하는 역할을 합니다. 여기에서
-
-bongarea.tistory.com](https://bongarea.tistory.com/23)
 
 [https://youtu.be/4k84WWFhly0?si=urxZXvtidCpJIOuD](https://youtu.be/4k84WWFhly0?si=urxZXvtidCpJIOuD)

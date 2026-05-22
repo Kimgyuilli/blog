@@ -4,7 +4,7 @@ import { defineConfig } from 'astro/config';
 
 import cloudflare from '@astrojs/cloudflare';
 
-const site = process.env.SITE ?? 'https://blog.example.com';
+const site = process.env.SITE ?? 'https://blog.rlarbdlf222.workers.dev';
 
 export default defineConfig({
   site,

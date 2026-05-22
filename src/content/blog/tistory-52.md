@@ -70,38 +70,15 @@ slug: "tistory-52"
 
 [https://imdeepskyblue.tistory.com/53](https://imdeepskyblue.tistory.com/53)
 
- [Maruni 개발 기록(1) - 욕심 덜어내기..
-
-개발일지 2https://imdeepskyblue.tistory.com/54 Maruni 개발기록(2) - 프로젝트 문서화, 안부 메세지 개선개발일지 3 링크https://imdeepskyblue.tistory.com/57 Maruni 개발기록(3) - AI 대화 품질 개선들어가며MARUNI는 노
-
-imdeepskyblue.tistory.com](https://imdeepskyblue.tistory.com/53)
-
 기록 2
 
 [https://imdeepskyblue.tistory.com/54](https://imdeepskyblue.tistory.com/54)
-
- [Maruni 개발기록(2) - 프로젝트 문서화, 안부 메세지 개선
-
-개발일지 3 링크https://imdeepskyblue.tistory.com/57 Maruni 개발기록(3) - AI 대화 품질 개선들어가며MARUNI는 노인 돌봄을 위한 AI 대화 서비스입니다. 매일 오전 9시, '마루'라는 이름의 AI가 어르신들께 안부
-
-imdeepskyblue.tistory.com](https://imdeepskyblue.tistory.com/54)
 
 기록 3
 
 [https://imdeepskyblue.tistory.com/57](https://imdeepskyblue.tistory.com/57)
 
- [Maruni 개발기록(3) - AI 대화 품질 개선
-
-들어가며MARUNI는 노인 돌봄을 위한 AI 대화 서비스입니다. 매일 오전 9시, '마루'라는 이름의 AI가 어르신들께 안부 메시지를 보내고 대화를 나눕니다. 외로움을 달래드리고, 건강을 챙기고, 가족
-
-imdeepskyblue.tistory.com](https://imdeepskyblue.tistory.com/57)
-
 기록 4
 
 [https://imdeepskyblue.tistory.com/65](https://imdeepskyblue.tistory.com/65)
 
- [Maruni 개발 마무리 회고
-
-들어가며어느새 Maruni 프로젝트가 끝을 향해 달려가고있다.지난 2주간 너무 많은 일이 있어서 내가 마루니에만 진심을 다했는지 물어보면 사실 그건 아닌 것 같다.처음 이 프로젝트를 할 때는 다
-
-imdeepskyblue.tistory.com](https://imdeepskyblue.tistory.com/65)

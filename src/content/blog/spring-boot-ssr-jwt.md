@@ -78,19 +78,7 @@ Spring Boot SSR 구조에서는 여전히 세션 기반 인증 방식이 현실�
 
 [https://zks145.tistory.com/106](https://zks145.tistory.com/106)
 
- [\[Spring\] SSR에서 JWT를 이용한 인증/인가 처리 고민
-
-SSR과 JWT에 대한 고찰여기저기 글을 찾아보면 LocalStorage, Cookie를 이용해 JWT 관리하게 되는데 Spring Boot에서 JSP, thymeleaf 같이 SSR 기반 방식의 경우 JWT를 사용하는 경우는 거의 없습니다. SSR 경우 대
-
-zks145.tistory.com](https://zks145.tistory.com/106)
-
 [https://velog.io/@suragaryen/SSR-%EB%B0%A9%EC%8B%9D%EA%B3%BC-Spring-Security-jwt](https://velog.io/@suragaryen/SSR-%EB%B0%A9%EC%8B%9D%EA%B3%BC-Spring-Security-jwt)
-
- [SSR 방식과 Spring Security + jwt
-
-최근 내 프로젝트 (spring boot + thymeleaf)에 spring boot와 jwt 토큰을 발급해서 로그인을 구현하려는 시도를 했었다. 그러나 여기저기 구글링을 해보고 많이 찾아봐도 Api로 로그인 테스트만 하고 막상
-
-velog.io](https://velog.io/@suragaryen/SSR-%EB%B0%A9%EC%8B%9D%EA%B3%BC-Spring-Security-jwt)
 
 [https://velog.io/@suragaryen/SSR-%EB%B0%A9%EC%8B%9D%EA%B3%BC-Spring-Security-jwt](https://velog.io/@suragaryen/SSR-%EB%B0%A9%EC%8B%9D%EA%B3%BC-Spring-Security-jwt))
 
@@ -98,8 +86,3 @@ velog.io](https://velog.io/@suragaryen/SSR-%EB%B0%A9%EC%8B%9D%EA%B3%BC-Spring-Se
 
 [https://dev-rootable.tistory.com/160](https://dev-rootable.tistory.com/160)
 
- [SSR에 JWT 적용이 부적합한 이유
-
-세션 방식으로 구현했던 SSR 서버에 JWT를 적용하면서 느낀 점을 정리하고자 한다. 💥 문제점 🚨 Stateless 하지 않다. SSR 서버는 매 요청마다 비즈니스 로직을 수행하고 컨트롤러를 통해 렌더링
-
-dev-rootable.tistory.com](https://dev-rootable.tistory.com/160)

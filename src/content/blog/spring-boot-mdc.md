@@ -600,14 +600,3 @@ MDC 로깅 필터의 핵심은 단순하다.
 -   Spring Boot Logging 공식 문서: [https://docs.spring.io/spring-boot/4.0-SNAPSHOT/reference/features/logging.html](https://docs.spring.io/spring-boot/4.0-SNAPSHOT/reference/features/logging.html)
 -   Spring Boot Logback 설정 문서: [https://docs.spring.io/spring-boot/4.0-SNAPSHOT/how-to/logging.html](https://docs.spring.io/spring-boot/4.0-SNAPSHOT/how-to/logging.html)
 
- [Logging :: Spring Boot
-
-Spring Boot has no mandatory logging dependency, except for the Commons Logging API, which is typically provided by Spring Framework’s spring-jcl module. To use Logback, you need to include it and spring-jcl on the classpath. The recommended way to do th
-
-docs.spring.io](https://docs.spring.io/spring-boot/4.0-SNAPSHOT/how-to/logging.html)
-
- [Logging :: Spring Boot
-
-By default, Spring Boot logs only to the console and does not write log files. If you want to write log files in addition to the console output, you need to set a logging.file.name or logging.file.path property (for example, in your application.properties)
-
-docs.spring.io](https://docs.spring.io/spring-boot/4.0-SNAPSHOT/reference/features/logging.html)

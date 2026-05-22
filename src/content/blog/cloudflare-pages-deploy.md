@@ -18,7 +18,7 @@ Cloudflare Pages에서는 GitHub 저장소를 연결한 뒤 빌드 명령과 출
 
 ## 커스텀 도메인
 
-서브도메인 연결은 Pages 프로젝트의 Custom domains 메뉴에서 `blog.example.com` 같은 값을 추가하고 DNS 확인을 완료하면 됩니다.
+서브도메인 연결은 Pages 프로젝트의 Custom domains 메뉴에서 `blog.rlarbdlf222.workers.dev` 같은 값을 추가하고 DNS 확인을 완료하면 됩니다.
 
 ## 배포 전 확인
 

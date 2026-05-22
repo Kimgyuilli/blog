@@ -561,8 +561,3 @@ GitHub 프로필을 더욱 풍성하게 만들어보세요! 🚀
 
 **전체 예제 코드**: [GitHub Repository](https://github.com/Kimgyuilli)
 
- [Kimgyuilli - Overview
-
-Kimgyuilli has 34 repositories available. Follow their code on GitHub.
-
-github.com](https://github.com/Kimgyuilli)
