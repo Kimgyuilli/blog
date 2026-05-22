@@ -667,8 +667,117 @@ h3 {
   color: var(--ink);
 }
 
+.toc a.toc-link-active {
+  color: var(--brand-green-deep);
+  font-weight: 650;
+  transform: translateX(2px);
+  transition: color 0.18s ease, transform 0.18s ease;
+}
+
 .toc-depth-3 {
   padding-left: 14px;
+}
+
+.reading-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: transparent;
+  z-index: 60;
+  pointer-events: none;
+}
+
+.reading-progress-bar {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, var(--brand-green), var(--brand-green-deep));
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.12s ease-out;
+}
+
+.related-posts {
+  margin-top: 56px;
+  padding-top: 28px;
+  border-top: 1px solid var(--hairline);
+}
+
+.related-posts-title {
+  margin: 0 0 18px;
+  color: var(--ink);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.related-posts-list {
+  display: grid;
+  gap: 14px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.article-image-zoomable {
+  cursor: zoom-in;
+  transition: transform 0.18s ease;
+}
+
+.article-image-zoomable:hover {
+  transform: scale(1.01);
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(15, 23, 42, 0.82);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  z-index: 1000;
+  cursor: zoom-out;
+}
+
+.lightbox[hidden] {
+  display: none;
+}
+
+.lightbox-visible {
+  opacity: 1;
+}
+
+.lightbox-image {
+  max-width: min(96vw, 1400px);
+  max-height: 92vh;
+  border-radius: 10px;
+  background: var(--canvas);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  cursor: default;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 999px;
+  color: white;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.24);
 }
 
 .toc-empty {

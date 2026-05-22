@@ -92,10 +92,129 @@ function setupCopyButtons() {
   });
 }
 
+// 4. Reading progress bar at top of viewport.
+function setupReadingProgress() {
+  const article = document.querySelector<HTMLElement>('.article-body');
+  const progress = document.querySelector<HTMLElement>('.reading-progress-bar');
+  if (!article || !progress) return;
+
+  const update = () => {
+    const rect = article.getBoundingClientRect();
+    const articleTop = window.scrollY + rect.top;
+    const articleHeight = article.offsetHeight;
+    const readableHeight = Math.max(articleHeight - window.innerHeight * 0.65, 1);
+    const current = window.scrollY - articleTop + window.innerHeight * 0.18;
+    const ratio = Math.min(Math.max(current / readableHeight, 0), 1);
+    progress.style.transform = `scaleX(${ratio})`;
+  };
+
+  update();
+  window.addEventListener('scroll', update, { passive: true });
+  window.addEventListener('resize', update);
+}
+
+// 5. TOC active heading highlight while scrolling.
+function setupTocHighlight() {
+  const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('.toc a[href^="#"]'));
+  const headings = links
+    .map((link) => {
+      const id = decodeURIComponent(link.hash.slice(1));
+      const heading = document.getElementById(id);
+      return heading ? { link, heading } : null;
+    })
+    .filter((item): item is { link: HTMLAnchorElement; heading: HTMLElement } => Boolean(item));
+
+  if (headings.length === 0) return;
+
+  const setActive = (activeId: string) => {
+    for (const { link } of headings) {
+      const isActive = decodeURIComponent(link.hash.slice(1)) === activeId;
+      link.classList.toggle('toc-link-active', isActive);
+      if (isActive) {
+        link.setAttribute('aria-current', 'location');
+      } else {
+        link.removeAttribute('aria-current');
+      }
+    }
+  };
+
+  const visible = new Map<string, number>();
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        const id = entry.target.id;
+        if (entry.isIntersecting) {
+          visible.set(id, entry.boundingClientRect.top);
+        } else {
+          visible.delete(id);
+        }
+      }
+
+      if (visible.size > 0) {
+        const [activeId] = Array.from(visible.entries()).sort((a, b) => a[1] - b[1])[0];
+        setActive(activeId);
+        return;
+      }
+
+      const current = headings
+        .filter(({ heading }) => heading.getBoundingClientRect().top <= window.innerHeight * 0.28)
+        .at(-1);
+      if (current) setActive(current.heading.id);
+    },
+    { rootMargin: '-20% 0px -65% 0px', threshold: 0.01 },
+  );
+
+  headings.forEach(({ heading }) => observer.observe(heading));
+  setActive(headings[0].heading.id);
+}
+
+// 7. Image lightbox — click any article image to view it large.
+function setupImageZoom() {
+  const lightbox = document.querySelector<HTMLElement>('.lightbox');
+  const image = lightbox?.querySelector<HTMLImageElement>('.lightbox-image');
+  const closeBtn = lightbox?.querySelector<HTMLButtonElement>('.lightbox-close');
+  const images = document.querySelectorAll<HTMLImageElement>('.article-body img');
+  if (!lightbox || !image || !closeBtn || images.length === 0) return;
+
+  const open = (src: string, alt: string) => {
+    image.src = src;
+    image.alt = alt;
+    lightbox.hidden = false;
+    requestAnimationFrame(() => lightbox.classList.add('lightbox-visible'));
+    document.body.style.overflow = 'hidden';
+  };
+
+  const close = () => {
+    lightbox.classList.remove('lightbox-visible');
+    document.body.style.overflow = '';
+    window.setTimeout(() => {
+      lightbox.hidden = true;
+      image.src = '';
+    }, 200);
+  };
+
+  images.forEach((img) => {
+    if (img.closest('a')) return;
+    img.classList.add('article-image-zoomable');
+    img.addEventListener('click', () => open(img.currentSrc || img.src, img.alt));
+  });
+
+  closeBtn.addEventListener('click', close);
+  lightbox.addEventListener('click', (event) => {
+    if (event.target === lightbox) close();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !lightbox.hidden) close();
+  });
+}
+
 function init() {
+  setupReadingProgress();
+  setupTocHighlight();
   setupBrandDot();
   setupArticleFinish();
   setupCopyButtons();
+  setupImageZoom();
   consoleGreeting();
 }
 

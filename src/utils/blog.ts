@@ -57,3 +57,28 @@ export function getPostsByCategory(posts: BlogPost[], slug: CategorySlug) {
 export function getCategoryUrl(slug: CategorySlug) {
   return `/categories/${slug}/`;
 }
+
+export function getRelatedPosts(target: BlogPost, all: BlogPost[], limit = 3) {
+  const targetTags = new Set(target.data.tags);
+  const candidates = all
+    .filter((post) => post.data.slug !== target.data.slug)
+    .map((post) => {
+      const sharedTags = post.data.tags.filter((tag) => targetTags.has(tag)).length;
+      const sameCategory = post.data.category === target.data.category ? 1 : 0;
+      const score = sharedTags * 2 + sameCategory;
+      return { post, score };
+    })
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return b.post.data.pubDate.getTime() - a.post.data.pubDate.getTime();
+    });
+
+  const related = candidates.filter((c) => c.score > 0).slice(0, limit);
+  if (related.length >= limit) return related.map((c) => c.post);
+
+  const seen = new Set(related.map((c) => c.post.data.slug));
+  const filler = candidates
+    .filter((c) => !seen.has(c.post.data.slug))
+    .slice(0, limit - related.length);
+  return [...related, ...filler].map((c) => c.post);
+}

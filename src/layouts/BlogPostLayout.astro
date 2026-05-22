@@ -1,6 +1,13 @@
 ---
 import BaseLayout from './BaseLayout.astro';
-import { formatDate, getCategoryMeta, getCategoryUrl } from '@/utils/blog';
+import PostCard from '@/components/PostCard.astro';
+import {
+  formatDate,
+  getCategoryMeta,
+  getCategoryUrl,
+  getPublishedPosts,
+  getRelatedPosts,
+} from '@/utils/blog';
 import type { BlogPost } from '@/utils/blog';
 
 type Props = {
@@ -15,9 +22,14 @@ type Props = {
 const { post, headings } = Astro.props;
 const tocItems = headings.filter((heading) => heading.depth === 2 || heading.depth === 3);
 const category = getCategoryMeta(post.data.category);
+const allPosts = await getPublishedPosts();
+const relatedPosts = getRelatedPosts(post, allPosts, 3);
 ---
 
 <BaseLayout title={post.data.title} description={post.data.description} image={post.data.image}>
+  <div class="reading-progress" aria-hidden="true">
+    <div class="reading-progress-bar"></div>
+  </div>
   <article class="article-doc">
     <div class="article-main">
       <header class="article-header">
@@ -43,6 +55,18 @@ const category = getCategoryMeta(post.data.category);
       <div class="article-body">
         <slot />
       </div>
+      {
+        relatedPosts.length > 0 && (
+          <section class="related-posts" aria-label="다음 읽을거리">
+            <h2 class="related-posts-title">다음 읽을거리</h2>
+            <ul class="related-posts-list">
+              {relatedPosts.map((related) => (
+                <PostCard post={related} headingLevel={3} variant="list" showTags={false} />
+              ))}
+            </ul>
+          </section>
+        )
+      }
     </div>
     <aside class="toc" aria-label="목차">
       <p class="toc-title">목차</p>
@@ -61,4 +85,8 @@ const category = getCategoryMeta(post.data.category);
       }
     </aside>
   </article>
+  <div class="lightbox" role="dialog" aria-modal="true" aria-label="이미지 확대" hidden>
+    <button class="lightbox-close" type="button" aria-label="닫기">×</button>
+    <img class="lightbox-image" alt="" />
+  </div>
 </BaseLayout>
