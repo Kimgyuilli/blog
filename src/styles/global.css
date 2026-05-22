@@ -792,6 +792,81 @@ h3 {
   background: rgba(255, 255, 255, 0.24);
 }
 
+.mini-game {
+  margin-top: 48px;
+  padding: 24px;
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  background: var(--canvas);
+  box-shadow: var(--shadow-sm);
+}
+
+.mini-game-head {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.mini-game-head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.mini-game-status {
+  margin: 0;
+  color: var(--slate);
+  font-size: 0.9rem;
+}
+
+.mini-game-score {
+  margin: 0;
+  color: var(--brand-green-deep);
+  font-size: 0.88rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.mini-game-canvas-wrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.mini-game canvas {
+  display: block;
+  max-width: 100%;
+  border-radius: 10px;
+  background: #0f172a;
+  touch-action: none;
+}
+
+.mini-game-start {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 10px 20px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--brand-green-deep);
+  color: white;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.mini-game-start:hover {
+  transform: translate(-50%, -50%) scale(1.04);
+}
+
+.mini-game-start[hidden] {
+  display: none;
+}
+
 .toc-empty {
   margin: 0;
   color: var(--muted);

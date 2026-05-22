@@ -20,6 +20,22 @@ const suggestions = posts.filter((post) => !post.data.pinned).slice(0, 3);
     </p>
   </section>
 
+  <section class="mini-game" aria-label="스네이크 미니게임">
+    <header class="mini-game-head">
+      <h2>잠깐, 한 판?</h2>
+      <p class="mini-game-status">방향키 또는 WASD로 조작</p>
+      <p class="mini-game-score">최고 점수 0</p>
+    </header>
+    <div class="mini-game-canvas-wrap">
+      <canvas></canvas>
+      <button type="button" class="mini-game-start">시작</button>
+    </div>
+  </section>
+
+  <script>
+    import '../scripts/mini-game';
+  </script>
+
   {
     suggestions.length > 0 && (
       <section class="home-section">
