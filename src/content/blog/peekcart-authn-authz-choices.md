@@ -1,6 +1,7 @@
 ---
 title: "PeekCart 학습 기록 2: 인증, 인가의 갈림길에서 무엇을 선택할 수 있을까"
 description: "PeekCart의 인증과 인가 설계를 비밀번호 저장, JWT, 토큰 회수, 재발급 전략, 서비스 간 신뢰 관점에서 정리합니다."
+image: "/images/blog/peekcart-authn-authz-choices/thumbnail.png"
 pubDate: 2026-05-23
 category: "backend"
 tags: ["peekcart", "auth", "security", "spring"]
