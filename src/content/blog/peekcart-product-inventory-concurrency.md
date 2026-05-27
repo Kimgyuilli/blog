@@ -387,52 +387,84 @@ public class InventoryLockFacade {
   
 이 코드에서 가장 중요한 것은 `InventoryLockFacade`와 `InventoryService`의 분리다.  
   
-`InventoryService`는 `@Transactional`이 붙어 있다. Spring AOP가 프록시를 통해 트랜잭션을 관리한다. `InventoryLockFacade`는 `@Transactional`이 없다. 대신 분산 락을 잡고, `InventoryService`를 호출하고, 트랜잭션이 커밋된 뒤에 락을 해제한다.  
-  
-이 순서가 왜 중요한가? 다음 두 시나리오를 비교하면 보인다.  
-  
-### 올바른 순서: 락 > 트랜잭션  
-  
-```  
-1. Redis 분산 락 획득  
-2. 트랜잭션 시작 (Spring AOP)3. 재고 조회 → 차감 → flush4. 트랜잭션 커밋 (DB에 반영 완료)  
-3. Redis 분산 락 해제  
-```  
-  
-다른 스레드가 락을 획득하는 시점에는 이미 커밋이 끝나 있다. 안전하다.  
-  
-### 잘못된 순서: 트랜잭션 > 락  
-  
-```  
-1. 트랜잭션 시작  
-2. Redis 분산 락 획득  
-3. 재고 조회 → 차감 → flush4. Redis 분산 락 해제  
-4. 트랜잭션 커밋 ← 아직 DB에 반영 안 됨!  
-```  
-  
-4번에서 락을 해제한 뒤, 5번의 커밋이 완료되기 전에 다른 스레드가 같은 데이터를 읽을 수 있다. 이전 stock 값을 읽어 오버셀링이 발생한다.  
-  
-```mermaid  
-sequenceDiagram  
+`InventoryService`는 `@Transactional`이 붙어 있다(기본 `Propagation.REQUIRED`). `InventoryLockFacade`는 `@Transactional`이 없다. 이 분리의 의도는 "락 획득 → 트랜잭션 시작 → 재고 변경 → 트랜잭션 커밋 → 락 해제" 순서를 보장하는 것이다.
+
+하지만 이 순서가 항상 보장되는 것은 아니다. **호출자의 트랜잭션 컨텍스트에 따라 실제 동작이 달라진다.**
+
+### 경우 1: 단독 호출 — 의도대로 동작
+
+`InventoryLockFacade`를 외부 트랜잭션 없이 직접 호출하면 설계 의도대로 동작한다.
+
+```
+1. Redis 분산 락 획득
+2. InventoryService 진입 → 새 트랜잭션 시작 (REQUIRED, 기존 없으므로)
+3. 재고 조회 → 차감
+4. InventoryService 반환 → 트랜잭션 커밋 (DB 반영 완료)
+5. Redis 분산 락 해제
+```
+
+다른 스레드가 락을 획득하는 시점에는 이미 커밋이 끝나 있다. 분산 락만으로 직렬화가 완성된다.
+
+### 경우 2: 외부 트랜잭션 안에서 호출 — 락이 먼저 풀린다
+
+`OrderCommandService.createOrder()`처럼 이미 `@Transactional`이 열린 컨텍스트에서 호출하면 이야기가 달라진다.
+
+```
+1. OrderCommandService 트랜잭션 시작 (외부)
+2. Redis 분산 락 획득
+3. InventoryService 진입 → 외부 트랜잭션에 참여 (REQUIRED, 기존 있으므로)
+4. 재고 조회 → 차감
+5. InventoryService 반환 — 트랜잭션은 아직 커밋되지 않음
+6. Redis 분산 락 해제                ← DB 반영 전에 락이 풀림!
+7. ... 주문 저장, 장바구니 비우기, Outbox 이벤트 저장 ...
+8. OrderCommandService 반환 → 외부 트랜잭션 커밋 (여기서야 DB 반영)
+```
+
+6번에서 락이 풀린 뒤 8번에서 커밋이 완료되기 전, 다른 스레드가 같은 상품의 락을 획득하고 아직 커밋되지 않은 재고를 읽을 수 있다.
+
+```mermaid
+sequenceDiagram
     participant A as 스레드 A
-    participant B as 스레드 B
     participant Redis as Redis Lock
     participant DB as Database
-    Note over A,DB: 올바른 순서 (Facade 패턴)  
-    A->>Redis: 락 획득
-    A->>DB: 트랜잭션 시작
-    A->>DB: stock 100 → 99
-    A->>DB: 트랜잭션 커밋
-    A->>Redis: 락 해제
-    B->>Redis: 락 획득
-    B->>DB: 트랜잭션 시작
-    B->>DB: stock 99 → 98 (커밋된 값을 읽음)  
-    B->>DB: 트랜잭션 커밋
-    B->>Redis: 락 해제
-```  
-  
-이 순서를 코드로 강제하는 방법이 "Facade는 비트랜잭션, Service는 트랜잭션"이라는 분리다. Facade가 try-finally로 락을 잡고 놓고, Service의 `@Transactional`이 그 안에서 시작되고 끝난다.  
-  
+    participant B as 스레드 B
+
+    rect rgb(255, 243, 220)
+        Note over A,DB: 외부 트랜잭션 시작
+        A->>Redis: 락 획득 ✓
+        A->>DB: stock 100 → 99 (미커밋)
+        A->>Redis: 락 해제
+        Note over A: 주문 저장, Outbox 등 계속 진행
+    end
+
+    rect rgb(255, 220, 220)
+        Note over Redis,B: 위험 구간
+        B->>Redis: 락 획득 ✓
+        B->>DB: stock 100 읽음 (A 미커밋)
+        B->>DB: stock 99로 변경 시도
+    end
+
+    A->>DB: 외부 트랜잭션 커밋 ✓
+    Note over DB: A의 version 반영
+
+    rect rgb(220, 240, 220)
+        Note over DB,B: 낙관적 락이 방어
+        B->>DB: 커밋 시도 → version 불일치
+        Note over B: OptimisticLockException
+    end
+```
+
+**이것이 낙관적 락(`@Version`)이 "Redis 장애 시 fallback"이 아니라 정상 경로에서도 필요한 진짜 이유다.** 외부 트랜잭션 안에서 호출될 때 분산 락은 경합을 줄여주지만 완전한 직렬화를 보장하지 못한다. 낙관적 락이 커밋 시점에 version을 비교해서 실제 오버셀링을 막는다.
+
+### 두 경우의 비교
+
+PeekCart에서 재고 차감의 주요 경로는 `OrderCommandService.createOrder()` 안이다. 즉 대부분의 실제 호출은 **경우 2**에 해당한다. 분산 락은 동시 경합의 대부분을 걸러주지만, 낙관적 락이 커밋 시점의 최종 정합성을 보장한다. 이것이 이중 방어의 실질적 의미다.
+
+| 호출 컨텍스트 | 트랜잭션 커밋 시점 | 분산 락 효과 | 낙관적 락 역할 |
+| --- | --- | --- | --- |
+| 단독 호출 | `InventoryService` 반환 시 (락 해제 전) | 완전한 직렬화 | 사실상 불필요 (충돌 0) |
+| 외부 트랜잭션 안 | 외부 트랜잭션 반환 시 (락 해제 후) | 경합 감소 (완전하지 않음) | 실제 오버셀링 방어 |
+
 ### DistributedLockManager: Redis 장애 시 fallback  
   
 ```java  
@@ -460,11 +492,13 @@ Redis에 연결할 수 없을 때 `false`를 반환하면 모든 주문이 실�
   
 이때 오버셀링은 어떻게 막는가? `Inventory.decrease()`가 실행되면 JPA의 `@Version`이 동작한다. 여러 트랜잭션이 동시에 같은 재고를 차감하면 한쪽은 `OptimisticLockException`으로 실패한다. 즉, 낙관적 락이 최후의 방어선이다.  
   
-```  
-정상 상황: Redis 분산 락 → 직렬화 → 충돌 없음 → 낙관적 락 충돌 거의 0Redis 장애: 분산 락 없음 → 동시 접근 → 낙관적 락이 충돌 감지 → 오버셀링 방지  
-```  
-  
-이 이중 방어가 PeekCart 재고 동시성의 핵심 설계다.  
+```
+단독 호출:      분산 락 → 완전 직렬화 → 낙관적 락 충돌 거의 0
+외부 트랜잭션:  분산 락 → 경합 감소 → 커밋 시점 낙관적 락이 최종 방어
+Redis 장애:    분산 락 없음 → 동시 접근 → 낙관적 락이 충돌 감지
+```
+
+세 경우 모두에서 오버셀링은 발생하지 않는다. 분산 락의 역할은 상황에 따라 "완전한 직렬화"에서 "경합 감소"까지 달라지지만, 낙관적 락이 항상 최종 정합성을 보장한다. 이것이 이중 방어의 실질적 의미다.  
   
 ### InventoryService: 트랜잭션 안에서 도메인 로직만  
   
