@@ -201,7 +201,7 @@ public class OrderCommandService {
 
 **1단계: 장바구니 조회와 검증.** 장바구니가 없거나 비어 있으면 주문을 만들 수 없다. 이 검증은 UseCase 흐름에 가깝기 때문에 Application Service에 있다.
 
-**2단계: 재고 차감과 가격 스냅샷.** 장바구니의 각 아이템마다 `productPort.decreaseStockAndGetUnitPrice()`를 호출한다. Order 도메인은 이 메서드 뒤에서 재고를 어떤 락 전략으로 차감하는지 알지 않는다. 다만 호출 결과로 "재고 차감이 성공했다"는 사실과 주문 시점의 상품 가격을 함께 받는다.
+**2단계: 재고 차감과 가격 스냅샷.** 장바구니의 각 아이템마다 `productPort.decreaseStockAndGetUnitPrice()`를 호출한다. 내부에서는 `InventoryLockFacade`가 Redis 분산 락을 잡고 `InventoryService.decreaseStock()`을 호출한다. 여기서 중요한 점은, `InventoryService`의 `@Transactional`이 기본 `Propagation.REQUIRED`이므로 `createOrder()`의 외부 트랜잭션에 참여한다는 것이다. 분산 락은 `InventoryService` 반환 후 해제되지만, 실제 DB 커밋은 `createOrder()` 전체가 끝나야 일어난다. 따라서 분산 락 해제와 커밋 사이에 다른 스레드가 끼어들 수 있고, 이때 `@Version` 낙관적 락이 최종 방어선이 된다(3편에서 상세히 다뤘다). 동시에 이 호출은 주문 시점의 상품 가격을 반환한다.
 
 여기서 중요한 것은 가격을 장바구니가 아니라 이 시점에 가져온다는 점이다. 사용자가 장바구니에 상품을 담은 지 3일이 지났다면 그 사이에 가격이 바뀌었을 수 있다. 주문 시점의 최신 가격을 가져와야 정확하다.
 
