@@ -445,10 +445,10 @@ h3 {
 
 .article-doc {
   display: grid;
-  grid-template-columns: minmax(0, var(--content-width)) 220px;
+  grid-template-columns: minmax(0, var(--content-width)) 280px;
   align-items: start;
   justify-content: center;
-  gap: 56px;
+  gap: 48px;
 }
 
 .article-main {
