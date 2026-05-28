@@ -2,7 +2,7 @@
 title: "PeekCart 학습 기록 7: 15분 후에 돌아와서 주문을 취소하는 일"
 description: "PeekCart의 결제 타임아웃 스케줄러, REQUIRES_NEW 건별 트랜잭션, 상태 경합 격리, ShedLock 도입 이유를 정리합니다."
 image: "/images/blog/peekcart-order-timeout-scheduler/thumbnail.png"
-pubDate: 2026-05-28
+pubDate: 2026-05-28T22:00:00+09:00
 category: "backend"
 tags: ["peekcart", "order", "scheduler", "transaction", "shedlock", "spring"]
 draft: false
