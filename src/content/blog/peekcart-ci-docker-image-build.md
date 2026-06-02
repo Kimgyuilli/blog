@@ -269,7 +269,9 @@ CI는 이미지를 **빌드하고 레지스트리에 올리기(push)**까지만 
 | SlackPort mock 공통화 | **Spring 컨텍스트 캐시 적중** — `@Import`/`@TestPropertySource` 차이로 미적중 |
 | 신규 테스트 작성 규약 확립 | unit/integration job 분리, 병렬 전략 |
 
-이 작업을 시작하기 전 "지금 손볼 가치가 있는가"를 검토한 내부 리뷰 문서(`docs/review/ci-optimization-analysis.md`)는 한 원칙을 명시했다. **"컨테이너 재사용과 컨텍스트 재사용을 한 번에 하지 말 것."** 테스트마다 설정과 정리(cleanup) 방식이 달라서, 처음부터 모든 테스트를 하나의 완전 공유 구조로 밀어붙이면 속도를 얻기는커녕 flaky 테스트(실행할 때마다 결과가 달라지는 불안정 테스트) 위험만 커진다. 그래서 1차에서는 *규약 표준화*만 하고 *공유 최적화*는 2차로 미뤘다. 이는 "덜 끝낸 것"이 아니라 **불안정을 피하기 위해 의도적으로 단계를 나눈 것**이다. 12편에서도 ShedLock 테스트가 "락이 배선돼 동작한다"까지만 검증하고 "여러 인스턴스 중 하나만 실행된다"는 핵심 보장은 공백으로 남겼다. 여기서도 마찬가지로 "표준화됨"은 달성하되 "최적화됨"은 후속 과제로 분명히 표시했다.
+이 작업을 시작하기 전 "지금 손볼 가치가 있는가"를 검토한 내부 리뷰 문서에 한 원칙을 명시했다. **"컨테이너 재사용과 컨텍스트 재사용을 한 번에 하지 말 것."** 
+테스트마다 설정과 정리(cleanup) 방식이 달라서 처음부터 모든 테스트를 하나의 완전 공유 구조로 밀어붙이면 속도를 얻기는커녕 flaky 테스트(실행할 때마다 결과가 달라지는 불안정 테스트) 위험만 커진다. 
+그래서 1차에서는 *규약 표준화*만 하고 *공유 최적화*는 2차로 미뤘다. 이는 "덜 끝낸 것"이 아니라 **불안정을 피하기 위해 의도적으로 단계를 나눈 것**이다. 12편에서도 ShedLock 테스트가 "락이 배선돼 동작한다"까지만 검증하고 "여러 인스턴스 중 하나만 실행된다"는 핵심 보장은 공백으로 남겼다. 여기서도 마찬가지로 "표준화됨"은 달성하되 "최적화됨"은 후속 과제로 놔두었다.
 
 ### 단일 job의 비용 — fail-fast가 약하다
 
@@ -308,11 +310,6 @@ CI 파이프라인을 "테스트"의 관점에서 보면, 보장하는 것과 �
 | CI 워크플로우 문법(트리거/job/step/if) | GitHub Actions 공식 문서, *Workflow syntax* | `ci.yml` 전반 |
 | 멀티스테이지 빌드와 레이어 캐싱 | Docker 공식 *Multi-stage builds* / *Build cache* | Dockerfile 절 |
 | Testcontainers + `@ServiceConnection` | Spring Boot Reference, *Testcontainers at Development Time* | "추가 설정 없이 실행한다" 절 |
-| CI 구조 판단·D-009 가치 분석 | `docs/review/ci-optimization-analysis.md` | D-009 한계 절 |
-| Task 3-1 구현 결정 이력 | `docs/progress/PHASE3.md` (2026-04-03~04-16), `docs/TASKS.md` Task 3-1 | 설계·결정 전반 |
-| 통합 테스트 베이스 규약 | `src/test/java/com/peekcart/support/AbstractIntegrationTest.java` | D-009 1차 해결 |
-| CI 안의 관측성 lint 3종 | 15편, ADR-0009, `scripts/observability-*-lint.sh` | lint step 절 |
-| SHA 태그로 빌드 추적한 실측 | 16편, 17편, `loadtest/reports/` | 이미지 태그 절 |
 
 ---
 
