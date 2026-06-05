@@ -1,0 +1,56 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" fill="#F6F2EA"/>
+  <rect x="70" y="70" width="1060" height="490" rx="28" fill="#FCFAF5" stroke="#242526" stroke-width="3"/>
+  <path d="M105 146H1095" stroke="#242526" stroke-width="3"/>
+  <circle cx="123" cy="109" r="10" fill="#D95D39"/>
+  <circle cx="158" cy="109" r="10" fill="#D9A441"/>
+  <circle cx="193" cy="109" r="10" fill="#2D8C7C"/>
+
+  <text x="105" y="205" fill="#242526" font-family="Pretendard, Apple SD Gothic Neo, Noto Sans KR, Arial, sans-serif" font-size="30" font-weight="700">PeekCart 학습 기록 18</text>
+  <text x="105" y="282" fill="#242526" font-family="Pretendard, Apple SD Gothic Neo, Noto Sans KR, Arial, sans-serif" font-size="64" font-weight="800">Phase 4 전</text>
+  <text x="105" y="358" fill="#242526" font-family="Pretendard, Apple SD Gothic Neo, Noto Sans KR, Arial, sans-serif" font-size="64" font-weight="800">부채 점검</text>
+  <text x="107" y="414" fill="#6B6259" font-family="Pretendard, Apple SD Gothic Neo, Noto Sans KR, Arial, sans-serif" font-size="23" font-weight="500">글쓰기로 발견한 조용한 결함을 MSA 진입 전에 묶어 본다</text>
+
+  <rect x="105" y="454" width="176" height="58" rx="12" fill="#242526"/>
+  <text x="133" y="493" fill="#FCFAF5" font-family="Pretendard, Apple SD Gothic Neo, Noto Sans KR, Arial, sans-serif" font-size="31" font-weight="800">22개</text>
+  <text x="222" y="493" fill="#D9A441" font-family="Pretendard, Apple SD Gothic Neo, Noto Sans KR, Arial, sans-serif" font-size="24" font-weight="800">부채</text>
+
+  <g transform="translate(635 183)">
+    <rect x="0" y="0" width="360" height="300" rx="22" fill="#EEF6F2" stroke="#2D8C7C" stroke-width="3"/>
+    <text x="30" y="52" fill="#242526" font-family="Pretendard, Apple SD Gothic Neo, Noto Sans KR, Arial, sans-serif" font-size="25" font-weight="800">Phase 4 Checklist</text>
+    <g stroke="#242526" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M34 92L44 102L64 80"/>
+      <path d="M34 140L44 150L64 128"/>
+      <path d="M34 188L44 198L64 176"/>
+      <path d="M34 236L44 246L64 224"/>
+    </g>
+    <g font-family="Pretendard, Apple SD Gothic Neo, Noto Sans KR, Arial, sans-serif" font-size="21" font-weight="700" fill="#3E3F3B">
+      <text x="85" y="104">Gateway 인증 경계</text>
+      <text x="85" y="152">Outbox와 DLQ 하드닝</text>
+      <text x="85" y="200">관측성 계약 갱신</text>
+      <text x="85" y="248">Saga 정합성 검증</text>
+    </g>
+  </g>
+
+  <g stroke="#242526" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M865 136C911 126 948 138 973 170"/>
+    <path d="M969 151L974 171L954 168"/>
+    <path d="M813 506C771 520 726 510 696 478"/>
+    <path d="M700 498L696 478L716 482"/>
+  </g>
+
+  <g>
+    <rect x="787" y="92" width="88" height="54" rx="14" fill="#F8DDA5" stroke="#242526" stroke-width="3"/>
+    <text x="817" y="128" fill="#242526" font-family="Pretendard, Apple SD Gothic Neo, Noto Sans KR, Arial, sans-serif" font-size="19" font-weight="800">CI</text>
+    <rect x="965" y="177" width="112" height="60" rx="15" fill="#F2B7A0" stroke="#242526" stroke-width="3"/>
+    <text x="994" y="216" fill="#242526" font-family="Pretendard, Apple SD Gothic Neo, Noto Sans KR, Arial, sans-serif" font-size="19" font-weight="800">Auth</text>
+    <rect x="705" y="500" width="142" height="60" rx="15" fill="#D8E6F3" stroke="#242526" stroke-width="3"/>
+    <text x="730" y="539" fill="#242526" font-family="Pretendard, Apple SD Gothic Neo, Noto Sans KR, Arial, sans-serif" font-size="19" font-weight="800">Outbox</text>
+  </g>
+
+  <g opacity="0.65" stroke="#C9C1B7" stroke-width="2">
+    <path d="M90 545H1110"/>
+    <path d="M1050 150V545"/>
+    <path d="M580 150V545"/>
+  </g>
+</svg>
