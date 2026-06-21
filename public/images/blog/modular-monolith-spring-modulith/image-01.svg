@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">모듈러 모놀리스와 Spring Modulith 학습 기록</title>
+  <desc id="desc">Blog thumbnail using the official Spring Modulith project image from spring.io, arranged with modular monolith architecture blocks.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#17231d"/>
+      <stop offset="45%" stop-color="#1d2428"/>
+      <stop offset="100%" stop-color="#10161a"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#22342b"/>
+      <stop offset="100%" stop-color="#121a1e"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#92d957"/>
+      <stop offset="100%" stop-color="#78be20"/>
+    </linearGradient>
+    <linearGradient id="line" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#78be20"/>
+      <stop offset="55%" stop-color="#8bd3ff"/>
+      <stop offset="100%" stop-color="#f5b75f"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#020607" flood-opacity="0.36"/>
+    </filter>
+    <filter id="blur" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="22"/>
+    </filter>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M 48 0 L 0 0 0 48" fill="none" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <circle cx="922" cy="124" r="216" fill="#78be20" opacity="0.12" filter="url(#blur)"/>
+  <circle cx="198" cy="524" r="162" fill="#f5b75f" opacity="0.08" filter="url(#blur)"/>
+
+  <g transform="translate(74 72)">
+    <rect x="0" y="0" width="1052" height="486" rx="24" fill="#0c1215" opacity="0.66" stroke="#ffffff" stroke-opacity="0.08"/>
+
+    <g transform="translate(46 54)">
+      <text x="0" y="34" fill="#f5f8f4" font-family="Inter, Apple SD Gothic Neo, Pretendard, Arial, sans-serif" font-size="41" font-weight="800">모듈러 모놀리스와</text>
+      <text x="0" y="86" fill="#f5f8f4" font-family="Inter, Apple SD Gothic Neo, Pretendard, Arial, sans-serif" font-size="41" font-weight="800">Spring Modulith</text>
+      <text x="0" y="128" fill="#b6c1ba" font-family="Inter, Apple SD Gothic Neo, Pretendard, Arial, sans-serif" font-size="19" font-weight="500">module boundaries · public API · events · verification</text>
+    </g>
+
+    <g transform="translate(64 246)" filter="url(#shadow)">
+      <rect x="0" y="0" width="358" height="156" rx="18" fill="#11191b" stroke="#ffffff" stroke-opacity="0.1"/>
+      <text x="26" y="42" fill="#e8eee9" font-family="Inter, Apple SD Gothic Neo, Pretendard, Arial, sans-serif" font-size="22" font-weight="700">one deployment</text>
+      <path d="M30 77 H302" stroke="url(#line)" stroke-width="5" stroke-linecap="round"/>
+      <rect x="28" y="103" width="58" height="26" rx="8" fill="#1c2d26" stroke="#78be20" stroke-opacity="0.42"/>
+      <rect x="103" y="103" width="58" height="26" rx="8" fill="#1b2730" stroke="#8bd3ff" stroke-opacity="0.38"/>
+      <rect x="178" y="103" width="58" height="26" rx="8" fill="#2c2419" stroke="#f5b75f" stroke-opacity="0.42"/>
+      <rect x="253" y="103" width="58" height="26" rx="8" fill="#1c2d26" stroke="#78be20" stroke-opacity="0.42"/>
+    </g>
+
+    <g transform="translate(520 72)" filter="url(#shadow)">
+      <rect x="0" y="0" width="444" height="338" rx="22" fill="url(#panel)" stroke="#ffffff" stroke-opacity="0.12"/>
+      <circle cx="222" cy="166" r="126" fill="#0d1215" opacity="0.42"/>
+      <image href="spring-modulith-source.svg" x="116" y="58" width="212" height="212" preserveAspectRatio="xMidYMid meet"/>
+
+      <g fill="none" stroke-linecap="round">
+        <path d="M79 265 C138 302 302 302 365 265" stroke="#78be20" stroke-opacity="0.72" stroke-width="5"/>
+        <path d="M89 285 C150 319 292 319 356 285" stroke="#8bd3ff" stroke-opacity="0.56" stroke-width="4"/>
+      </g>
+      <g transform="translate(47 252)">
+        <rect x="0" y="0" width="82" height="42" rx="13" fill="#12231c" stroke="#78be20" stroke-opacity="0.36"/>
+        <circle cx="22" cy="21" r="7" fill="#78be20"/>
+        <rect x="39" y="15" width="25" height="12" rx="6" fill="#97cf62"/>
+      </g>
+      <g transform="translate(181 274)">
+        <rect x="0" y="0" width="82" height="42" rx="13" fill="#17232b" stroke="#8bd3ff" stroke-opacity="0.34"/>
+        <circle cx="22" cy="21" r="7" fill="#8bd3ff"/>
+        <rect x="39" y="15" width="25" height="12" rx="6" fill="#83c6ec"/>
+      </g>
+      <g transform="translate(315 252)">
+        <rect x="0" y="0" width="82" height="42" rx="13" fill="#2a2116" stroke="#f5b75f" stroke-opacity="0.36"/>
+        <circle cx="22" cy="21" r="7" fill="#f5b75f"/>
+        <rect x="39" y="15" width="25" height="12" rx="6" fill="#dfaa5f"/>
+      </g>
+    </g>
+
+    <g transform="translate(879 386)">
+      <text x="0" y="0" fill="#83908a" font-family="Inter, Apple SD Gothic Neo, Pretendard, Arial, sans-serif" font-size="12" font-weight="600">Image source: spring.io</text>
+    </g>
+  </g>
+</svg>
