@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Spring Boot 4 Java WAS 서버 학습 정리</title>
+  <desc id="desc">A technical thumbnail showing Spring Boot 4 Java WAS architecture, API flow, observability traces, database, Redis cache, and virtual thread lanes.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#17211d"/>
+      <stop offset="48%" stop-color="#20272b"/>
+      <stop offset="100%" stop-color="#11171c"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#26342f"/>
+      <stop offset="100%" stop-color="#151c20"/>
+    </linearGradient>
+    <linearGradient id="spring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7ee787"/>
+      <stop offset="100%" stop-color="#2fbf71"/>
+    </linearGradient>
+    <linearGradient id="java" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f7c769"/>
+      <stop offset="100%" stop-color="#e66f2e"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#8bd3ff"/>
+      <stop offset="100%" stop-color="#4d8cff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#020607" flood-opacity="0.36"/>
+    </filter>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M 48 0 L 0 0 0 48" fill="none" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <circle cx="920" cy="90" r="190" fill="#2fbf71" opacity="0.08" filter="url(#soft)"/>
+  <circle cx="175" cy="515" r="150" fill="#e66f2e" opacity="0.08" filter="url(#soft)"/>
+
+  <g transform="translate(76 72)">
+    <rect x="0" y="0" width="1048" height="486" rx="24" fill="#0d1215" opacity="0.58" stroke="#ffffff" stroke-opacity="0.08"/>
+    <g transform="translate(44 48)">
+      <text x="0" y="34" fill="#f4f7f5" font-family="Inter, Apple SD Gothic Neo, Pretendard, Arial, sans-serif" font-size="42" font-weight="800">Spring Boot 4</text>
+      <text x="0" y="86" fill="#f4f7f5" font-family="Inter, Apple SD Gothic Neo, Pretendard, Arial, sans-serif" font-size="42" font-weight="800">Java WAS 서버 학습 정리</text>
+      <text x="0" y="127" fill="#aebbb5" font-family="Inter, Apple SD Gothic Neo, Pretendard, Arial, sans-serif" font-size="19" font-weight="500">MVC API · HTTP Clients · Observability</text>
+    </g>
+
+    <g transform="translate(505 86)" filter="url(#shadow)">
+      <rect x="0" y="0" width="426" height="300" rx="20" fill="url(#panel)" stroke="#ffffff" stroke-opacity="0.12"/>
+      <rect x="28" y="31" width="370" height="54" rx="14" fill="#11191b" stroke="#7ee787" stroke-opacity="0.32"/>
+      <rect x="51" y="49" width="122" height="18" rx="9" fill="url(#spring)" opacity="0.95"/>
+      <rect x="195" y="49" width="74" height="18" rx="9" fill="#40504b"/>
+      <rect x="287" y="49" width="74" height="18" rx="9" fill="#40504b"/>
+
+      <rect x="45" y="118" width="128" height="78" rx="16" fill="#172522" stroke="#7ee787" stroke-opacity="0.35"/>
+      <rect x="197" y="118" width="184" height="78" rx="16" fill="#1c2228" stroke="#8bd3ff" stroke-opacity="0.3"/>
+      <rect x="70" y="143" width="80" height="12" rx="6" fill="#7ee787" opacity="0.8"/>
+      <rect x="70" y="166" width="58" height="10" rx="5" fill="#94a3a0" opacity="0.52"/>
+      <rect x="222" y="143" width="119" height="12" rx="6" fill="#8bd3ff" opacity="0.84"/>
+      <rect x="222" y="166" width="89" height="10" rx="5" fill="#94a3a0" opacity="0.52"/>
+
+      <path d="M173 157 C184 157 186 157 197 157" stroke="url(#blue)" stroke-width="4" stroke-linecap="round"/>
+      <path d="M108 229 C175 258 269 258 338 229" fill="none" stroke="#f7c769" stroke-opacity="0.86" stroke-width="4" stroke-linecap="round"/>
+      <path d="M108 247 C175 276 269 276 338 247" fill="none" stroke="#f7c769" stroke-opacity="0.38" stroke-width="3" stroke-linecap="round"/>
+      <path d="M108 211 C175 240 269 240 338 211" fill="none" stroke="#f7c769" stroke-opacity="0.38" stroke-width="3" stroke-linecap="round"/>
+
+      <g transform="translate(35 228)">
+        <rect x="0" y="0" width="84" height="42" rx="12" fill="#211d17" stroke="#f7c769" stroke-opacity="0.35"/>
+        <circle cx="22" cy="21" r="7" fill="#f7c769"/>
+        <rect x="38" y="15" width="30" height="12" rx="6" fill="#e2ae5d" opacity="0.78"/>
+      </g>
+      <g transform="translate(306 228)">
+        <rect x="0" y="0" width="84" height="42" rx="12" fill="#162329" stroke="#8bd3ff" stroke-opacity="0.35"/>
+        <circle cx="22" cy="21" r="7" fill="#8bd3ff"/>
+        <rect x="38" y="15" width="30" height="12" rx="6" fill="#75bdf0" opacity="0.78"/>
+      </g>
+    </g>
+
+    <g transform="translate(67 238)">
+      <rect x="0" y="0" width="336" height="166" rx="18" fill="#11191b" stroke="#ffffff" stroke-opacity="0.1"/>
+      <text x="24" y="43" fill="#dfe7e3" font-family="Inter, Apple SD Gothic Neo, Pretendard, Arial, sans-serif" font-size="22" font-weight="700">Greenfield Baseline</text>
+      <g fill="none" stroke-linecap="round" stroke-width="5">
+        <path d="M29 78 H287" stroke="url(#spring)"/>
+        <path d="M29 105 H224" stroke="url(#java)"/>
+        <path d="M29 132 H261" stroke="url(#blue)"/>
+      </g>
+      <g fill="#94a3a0" opacity="0.76">
+        <circle cx="303" cy="78" r="6"/>
+        <circle cx="240" cy="105" r="6"/>
+        <circle cx="277" cy="132" r="6"/>
+      </g>
+    </g>
+
+    <g transform="translate(874 360)">
+      <circle cx="0" cy="0" r="58" fill="url(#spring)" opacity="0.95"/>
+      <path d="M-12 15 C-10 -12 8 -33 30 -38 C32 -13 16 10 -12 15 Z" fill="#102019"/>
+      <path d="M-34 23 C-11 14 8 0 25 -28" fill="none" stroke="#102019" stroke-width="5" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>
