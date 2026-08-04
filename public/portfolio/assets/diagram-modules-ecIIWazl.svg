@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1340 660" width="1340" height="660" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif">
+  <defs>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/>
+    </marker>
+  </defs>
+
+  <rect width="1340" height="660" fill="#ffffff"/>
+
+  <!-- app -->
+  <rect x="420" y="24" width="420" height="62" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="630" y="49" text-anchor="middle" font-size="17" font-weight="700" fill="#111">app</text>
+  <text x="630" y="72" text-anchor="middle" font-size="13.5" fill="#333">실행 · 조립 · ApplicationModules.verify()</text>
+
+  <line x1="630" y1="86" x2="630" y2="118" stroke="#111" stroke-width="2" marker-end="url(#arw)"/>
+
+  <!-- mobile -->
+  <rect x="420" y="120" width="420" height="62" fill="#f4f4f4" stroke="#333" stroke-width="1.5" rx="3"/>
+  <text x="630" y="145" text-anchor="middle" font-size="16" font-weight="700" fill="#111">mobile</text>
+  <text x="630" y="168" text-anchor="middle" font-size="13.5" fill="#333">모바일 진입 표면 · 얇은 orchestration (도메인 정책 없음)</text>
+
+  <line x1="630" y1="182" x2="630" y2="214" stroke="#111" stroke-width="2" marker-end="url(#arw)"/>
+
+  <!-- capability group -->
+  <rect x="40" y="218" width="1020" height="200" fill="#ececec" stroke="#999" stroke-width="1.5" rx="3"/>
+  <text x="60" y="242" font-size="14" font-weight="700" fill="#333">capability 모듈 (modules/)</text>
+
+  <g font-size="15" font-weight="600" fill="#111" text-anchor="middle">
+    <rect x="60" y="256" width="180" height="56" fill="#f8f8f8" stroke="#333" stroke-width="1.5" rx="3"/>
+    <text x="150" y="280">user</text>
+    <text x="150" y="299" font-size="11.5" font-weight="400" fill="#555">프로필 · FindOrCreate</text>
+
+    <rect x="260" y="256" width="180" height="56" fill="#f8f8f8" stroke="#333" stroke-width="1.5" rx="3"/>
+    <text x="350" y="280">auth</text>
+    <text x="350" y="299" font-size="11.5" font-weight="400" fill="#555">OAuth · JWT · 보안</text>
+
+    <rect x="460" y="256" width="180" height="56" fill="#f8f8f8" stroke="#333" stroke-width="1.5" rx="3"/>
+    <text x="550" y="280">workspace</text>
+    <text x="550" y="299" font-size="11.5" font-weight="400" fill="#555">멤버십 · RBAC · label</text>
+
+    <rect x="660" y="256" width="180" height="56" fill="#f8f8f8" stroke="#333" stroke-width="1.5" rx="3"/>
+    <text x="750" y="280">project</text>
+    <text x="750" y="299" font-size="11.5" font-weight="400" fill="#555">task · milestone</text>
+
+    <rect x="860" y="256" width="180" height="56" fill="#f8f8f8" stroke="#333" stroke-width="1.5" rx="3"/>
+    <text x="950" y="280">signal</text>
+    <text x="950" y="299" font-size="11.5" font-weight="400" fill="#555">조회 · action 원장</text>
+
+    <rect x="60" y="336" width="180" height="56" fill="#f8f8f8" stroke="#333" stroke-width="1.5" rx="3"/>
+    <text x="150" y="360">source</text>
+    <text x="150" y="379" font-size="11.5" font-weight="400" fill="#555">외부 연결 · source_ref</text>
+
+    <rect x="260" y="336" width="180" height="56" fill="#f8f8f8" stroke="#333" stroke-width="1.5" rx="3"/>
+    <text x="350" y="360">context</text>
+    <text x="350" y="379" font-size="11.5" font-weight="400" fill="#555">엔티티 간 연결</text>
+
+    <rect x="460" y="336" width="180" height="56" fill="#f8f8f8" stroke="#333" stroke-width="1.5" rx="3"/>
+    <text x="550" y="360">notification</text>
+    <text x="550" y="379" font-size="11.5" font-weight="400" fill="#555">FCM push 소비·발송</text>
+
+    <rect x="660" y="336" width="180" height="56" fill="#f8f8f8" stroke="#333" stroke-width="1.5" rx="3"/>
+    <text x="750" y="360">minsu</text>
+    <text x="750" y="379" font-size="11.5" font-weight="400" fill="#555">LLM 경계 · task draft</text>
+
+    <rect x="860" y="336" width="180" height="56" fill="#fff" stroke="#bbb" stroke-width="1.5" stroke-dasharray="5 4" rx="3"/>
+    <text x="950" y="366" font-size="12.5" font-weight="400" fill="#888">확장 여지</text>
+  </g>
+
+  <!-- outbox -->
+  <rect x="1100" y="256" width="200" height="136" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="1200" y="292" text-anchor="middle" font-size="16" font-weight="700" fill="#111">outbox</text>
+  <text x="1200" y="316" text-anchor="middle" font-size="12" fill="#444">append-only 발행 로그</text>
+  <text x="1200" y="338" text-anchor="middle" font-size="12" fill="#444">public API는 OutboxAppender 하나</text>
+  <text x="1200" y="362" text-anchor="middle" font-size="12" fill="#444">signal · project 가 발행한다</text>
+
+  <line x1="1060" y1="324" x2="1094" y2="324" stroke="#111" stroke-width="2" marker-end="url(#arw)"/>
+
+  <!-- common -->
+  <line x1="550" y1="418" x2="550" y2="446" stroke="#111" stroke-width="2" marker-end="url(#arw)"/>
+  <rect x="40" y="450" width="1260" height="58" fill="#f4f4f4" stroke="#333" stroke-width="1.5" rx="3"/>
+  <text x="670" y="474" text-anchor="middle" font-size="16" font-weight="700" fill="#111">common</text>
+  <text x="670" y="495" text-anchor="middle" font-size="13" fill="#333">영속성 베이스 · 공유 에러 계약 · 테스트 fixture (Modulith OPEN)</text>
+
+  <!-- rules -->
+  <rect x="40" y="536" width="1260" height="100" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="62" y="562" font-size="14" font-weight="700" fill="#111">경계 규칙: 문서가 아니라 빌드가 강제한다</text>
+  <text x="62" y="588" font-size="13" fill="#333">· 다른 모듈의 internal 패키지 참조 금지    · 순환 의존 금지    · 공개 계약은 root, 구현체는 nested에 package-private</text>
+  <text x="62" y="612" font-size="13" fill="#333">· 위반하면 ApplicationModules.verify()가 <tspan font-weight="700" fill="#111">빌드를 실패시킨다</tspan>. 리뷰어의 눈이 아니라 CI가 잡는다</text>
+</svg>

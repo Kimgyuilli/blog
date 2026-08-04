@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1340 660" width="1340" height="660" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif">
+  <defs>
+    <marker id="arw3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/>
+    </marker>
+  </defs>
+
+  <rect width="1340" height="660" fill="#ffffff"/>
+
+  <!-- user action -->
+  <rect x="40" y="150" width="190" height="110" fill="#f4f4f4" stroke="#333" stroke-width="1.5" rx="3"/>
+  <text x="135" y="182" text-anchor="middle" font-size="15" font-weight="700" fill="#111">사용자 액션</text>
+  <text x="135" y="208" text-anchor="middle" font-size="12.5" fill="#333">Signal을 태스크로</text>
+  <text x="135" y="228" text-anchor="middle" font-size="12.5" fill="#333">수용(convert) 또는</text>
+  <text x="135" y="248" text-anchor="middle" font-size="12.5" fill="#333">dismiss</text>
+
+  <line x1="230" y1="205" x2="274" y2="205" stroke="#111" stroke-width="2" marker-end="url(#arw3)"/>
+
+  <!-- transaction group -->
+  <rect x="280" y="60" width="380" height="250" fill="#ececec" stroke="#999" stroke-width="1.5" rx="3"/>
+  <text x="470" y="88" text-anchor="middle" font-size="14" font-weight="700" fill="#333">단일 DB 트랜잭션 (부분 성공 없음)</text>
+
+  <rect x="305" y="102" width="330" height="52" fill="#f8f8f8" stroke="#333" stroke-width="1.5" rx="3"/>
+  <text x="470" y="134" text-anchor="middle" font-size="14" fill="#111">task 생성 <tspan font-size="12" fill="#555">(project)</tspan></text>
+
+  <rect x="305" y="166" width="330" height="52" fill="#f8f8f8" stroke="#333" stroke-width="1.5" rx="3"/>
+  <text x="470" y="198" text-anchor="middle" font-size="14" fill="#111">signal_actions 처리 기록 <tspan font-size="12" fill="#555">(signal)</tspan></text>
+
+  <rect x="305" y="230" width="330" height="52" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="470" y="262" text-anchor="middle" font-size="14" font-weight="700" fill="#111">outbox_events append <tspan font-size="12" font-weight="400" fill="#555">(outbox)</tspan></text>
+
+  <text x="280" y="336" font-size="12.5" fill="#333">OutboxAppender.append 는 <tspan font-weight="700" fill="#111">Propagation.MANDATORY</tspan></text>
+  <text x="280" y="356" font-size="12.5" fill="#333">트랜잭션 밖 호출 자체를 막는다</text>
+
+  <!-- outbox store -->
+  <line x1="640" y1="256" x2="714" y2="256" stroke="#111" stroke-width="2" marker-end="url(#arw3)"/>
+  <rect x="720" y="196" width="220" height="120" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="830" y="228" text-anchor="middle" font-size="15" font-weight="700" fill="#111">outbox_events</text>
+  <text x="830" y="252" text-anchor="middle" font-size="12.5" fill="#333">append-only 발행 로그</text>
+  <text x="830" y="276" text-anchor="middle" font-size="12" fill="#555">멱등키 {event_type}:{aggregate_id}</text>
+  <text x="830" y="296" text-anchor="middle" font-size="12" fill="#555">ON CONFLICT DO NOTHING</text>
+
+  <!-- consumers -->
+  <line x1="946" y1="232" x2="1004" y2="170" stroke="#111" stroke-width="2" marker-end="url(#arw3)"/>
+  <rect x="1010" y="96" width="290" height="110" fill="#f4f4f4" stroke="#777" stroke-width="1.5" stroke-dasharray="6 4" rx="3"/>
+  <text x="1155" y="126" text-anchor="middle" font-size="14.5" font-weight="700" fill="#333">worker · retrieval</text>
+  <text x="1155" y="150" text-anchor="middle" font-size="12.5" fill="#555">outbox 폴링 → projection</text>
+  <text x="1155" y="172" text-anchor="middle" font-size="12.5" fill="#555">retrieval_documents / _events</text>
+  <text x="1155" y="192" text-anchor="middle" font-size="12" fill="#777">retry · backoff · DLQ 소유</text>
+
+  <line x1="946" y1="286" x2="1004" y2="350" stroke="#111" stroke-width="2" marker-end="url(#arw3)"/>
+  <rect x="1010" y="290" width="290" height="160" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="1155" y="318" text-anchor="middle" font-size="14.5" font-weight="700" fill="#111">notification <tspan font-size="12" font-weight="400" fill="#555">(api-server)</tspan></text>
+  <rect x="1030" y="332" width="250" height="46" fill="#f8f8f8" stroke="#333" stroke-width="1.5" rx="3"/>
+  <text x="1155" y="352" text-anchor="middle" font-size="12.5" font-weight="600" fill="#111">consume: 누구에게 보낼지 확정</text>
+  <text x="1155" y="370" text-anchor="middle" font-size="11.5" fill="#555">DB 트랜잭션 · watermark 전진</text>
+  <rect x="1030" y="388" width="250" height="46" fill="#f8f8f8" stroke="#333" stroke-width="1.5" rx="3"/>
+  <text x="1155" y="408" text-anchor="middle" font-size="12.5" font-weight="600" fill="#111">dispatch: 실제 FCM 호출</text>
+  <text x="1155" y="426" text-anchor="middle" font-size="11.5" fill="#555">외부 I/O · 실패해도 pending 잔존</text>
+
+  <!-- rules -->
+  <rect x="40" y="480" width="1260" height="150" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="62" y="508" font-size="14" font-weight="700" fill="#111">이벤트 계약 규약</text>
+  <text x="62" y="536" font-size="13" fill="#333"><tspan font-weight="700" fill="#111">Zero-Payload</tspan> : payload는 ID 중심의 최소 데이터. 소비자가 필요하면 공유 DB에서 최신 상태를 다시 읽어 hydrate 한다</text>
+  <text x="62" y="562" font-size="13" fill="#333"><tspan font-weight="700" fill="#111">네이밍</tspan> : event_type = {aggregate}.{과거형} : signal.created · task.created · signal.converted_to_task · signal.dismissed</text>
+  <text x="62" y="588" font-size="13" fill="#333"><tspan font-weight="700" fill="#111">하위호환</tspan> : Schema Registry 없이 additive-only + tolerant reader. breaking 시에만 event_type 접미사 .vN + dual-emit</text>
+  <text x="62" y="614" font-size="13" fill="#333"><tspan font-weight="700" fill="#111">발행 주체</tspan> : issued_by 컬럼 (worker | api-server). 이벤트를 발생시킨 쪽이 같은 트랜잭션에서 직접 남긴다</text>
+</svg>

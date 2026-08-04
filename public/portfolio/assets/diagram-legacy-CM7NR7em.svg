@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1340 500" width="1340" height="500" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif">
+  <defs>
+    <marker id="arw4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/>
+    </marker>
+  </defs>
+
+  <rect width="1340" height="500" fill="#ffffff"/>
+
+  <!-- local / test -->
+  <rect x="40" y="36" width="390" height="196" fill="#f4f4f4" stroke="#333" stroke-width="1.5" rx="3"/>
+  <text x="235" y="66" text-anchor="middle" font-size="15" font-weight="700" fill="#111">local · test</text>
+  <text x="62" y="98" font-size="13" fill="#333">스키마 소유 · <tspan font-weight="700" fill="#111">momens-server (미러)</tspan></text>
+  <text x="62" y="124" font-size="13" fill="#333">Flyway · <tspan font-weight="700" fill="#111">ON</tspan></text>
+  <text x="62" y="156" font-size="12.5" fill="#555">레거시 소유 테이블을 그대로 본뜬</text>
+  <text x="62" y="176" font-size="12.5" fill="#555">미러 마이그레이션을 모듈별로 소유</text>
+  <text x="62" y="196" font-size="12.5" fill="#555">(타임스탬프 버전 → 병렬 개발 충돌 회피)</text>
+  <text x="62" y="218" font-size="12.5" fill="#555">→ 모듈 단독 통합 테스트가 가능해진다</text>
+
+  <!-- dev -->
+  <rect x="450" y="36" width="330" height="196" fill="#f4f4f4" stroke="#333" stroke-width="1.5" rx="3"/>
+  <text x="615" y="66" text-anchor="middle" font-size="15" font-weight="700" fill="#111">dev (GKE)</text>
+  <text x="472" y="98" font-size="13" fill="#333">스키마 소유 · <tspan font-weight="700" fill="#111">momens-server</tspan></text>
+  <text x="472" y="124" font-size="13" fill="#333">Flyway · <tspan font-weight="700" fill="#111">ON</tspan></text>
+  <text x="472" y="156" font-size="12.5" fill="#555">신규 테이블을 서버가 직접 만든다</text>
+  <text x="472" y="176" font-size="12.5" fill="#555">E2E 검증 · 실기기 push 확인</text>
+  <text x="472" y="204" font-size="12" fill="#777">환경·배포 파이프라인 직접 구축</text>
+
+  <!-- prod -->
+  <rect x="800" y="36" width="500" height="196" fill="#ffffff" stroke="#111" stroke-width="2.5" rx="3"/>
+  <text x="1050" y="66" text-anchor="middle" font-size="15" font-weight="700" fill="#111">prod (제약이 걸린 곳)</text>
+  <text x="822" y="98" font-size="13" fill="#333">스키마 소유 · <tspan font-weight="700" fill="#111">레거시 momens-api (타 담당자)</tspan></text>
+  <text x="822" y="124" font-size="13" fill="#333">Flyway · <tspan font-weight="700" fill="#111">OFF</tspan>　/　ddl-auto · <tspan font-weight="700" fill="#111">validate</tspan></text>
+  <text x="822" y="156" font-size="12.5" fill="#555">서버는 스키마를 만들지 않고 <tspan font-weight="700" fill="#111">검증만</tspan> 한다</text>
+  <text x="822" y="176" font-size="12.5" fill="#555">신규 컬럼이 필요하면 내가 반영할 수 없고,</text>
+  <text x="822" y="196" font-size="12.5" fill="#555">레거시 쪽 마이그레이션을 <tspan font-weight="700" fill="#111">요청</tspan>해야 한다</text>
+  <text x="822" y="218" font-size="12.5" fill="#555">→ 그래서 배포에 순서가 생긴다</text>
+
+  <!-- gate -->
+  <text x="40" y="268" font-size="14" font-weight="700" fill="#111">배포 순서 게이트</text>
+
+  <rect x="40" y="282" width="360" height="76" fill="#f8f8f8" stroke="#333" stroke-width="1.5" rx="3"/>
+  <text x="220" y="312" text-anchor="middle" font-size="13.5" font-weight="700" fill="#111">① 레거시 momens-api가</text>
+  <text x="220" y="336" text-anchor="middle" font-size="13.5" fill="#333">prod 스키마 마이그레이션 반영</text>
+
+  <line x1="406" y1="320" x2="454" y2="320" stroke="#111" stroke-width="2" marker-end="url(#arw4)"/>
+
+  <rect x="460" y="282" width="320" height="76" fill="#f8f8f8" stroke="#333" stroke-width="1.5" rx="3"/>
+  <text x="620" y="312" text-anchor="middle" font-size="13.5" font-weight="700" fill="#111">② momens-server 배포</text>
+  <text x="620" y="336" text-anchor="middle" font-size="13.5" fill="#333">새 매핑이 컬럼을 찾는다</text>
+
+  <line x1="786" y1="320" x2="834" y2="320" stroke="#111" stroke-width="2" marker-end="url(#arw4)"/>
+
+  <rect x="840" y="282" width="220" height="76" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="950" y="328" text-anchor="middle" font-size="14.5" font-weight="700" fill="#111">정상 기동</text>
+
+  <!-- violation -->
+  <rect x="40" y="386" width="1260" height="88" fill="#ffffff" stroke="#111" stroke-width="1.5" stroke-dasharray="6 4" rx="3"/>
+  <text x="62" y="414" font-size="13.5" font-weight="700" fill="#111">순서를 뒤집으면</text>
+  <text x="62" y="440" font-size="13" fill="#333">매핑은 새 컬럼을 기대하는데 prod에는 아직 없다 → <tspan font-weight="700" fill="#111">ddl-auto=validate 실패 → 기동 불가</tspan></text>
+  <text x="62" y="464" font-size="13" fill="#333">실제로 dev 배포에서 마이그레이션 순서 문제로 <tspan font-weight="700" fill="#111">CrashLoopBackOff</tspan>를 겪고, 이후 순서를 티켓의 명시적 게이트로 만들었다</text>
+</svg>

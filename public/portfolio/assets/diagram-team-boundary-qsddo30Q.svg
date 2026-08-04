@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1340 620" width="1340" height="620" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif">
+  <defs>
+    <marker id="arw2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/>
+    </marker>
+    <marker id="arw2s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 10 0 L 0 5 L 10 10 z" fill="#111"/>
+    </marker>
+  </defs>
+
+  <rect width="1340" height="620" fill="#ffffff"/>
+
+  <!-- other teams: Android -->
+  <rect x="140" y="36" width="280" height="76" fill="#f4f4f4" stroke="#777" stroke-width="1.5" stroke-dasharray="6 4" rx="3"/>
+  <text x="280" y="64" text-anchor="middle" font-size="15" font-weight="700" fill="#333">Android 팀</text>
+  <text x="280" y="88" text-anchor="middle" font-size="12.5" fill="#555">앱 · Firebase 프로젝트 소유</text>
+
+  <!-- other teams: FE TL -->
+  <rect x="920" y="36" width="280" height="76" fill="#f4f4f4" stroke="#777" stroke-width="1.5" stroke-dasharray="6 4" rx="3"/>
+  <text x="1060" y="64" text-anchor="middle" font-size="15" font-weight="700" fill="#333">웹 FE · TL</text>
+  <text x="1060" y="88" text-anchor="middle" font-size="12.5" fill="#555">웹 클라이언트 · 전환 시점 결정</text>
+
+  <!-- legacy -->
+  <rect x="60" y="210" width="270" height="110" fill="#f4f4f4" stroke="#777" stroke-width="1.5" stroke-dasharray="6 4" rx="3"/>
+  <text x="195" y="242" text-anchor="middle" font-size="15" font-weight="700" fill="#333">레거시 momens-api</text>
+  <text x="195" y="266" text-anchor="middle" font-size="12.5" fill="#555">Go / Gin · 타 담당자 소관</text>
+  <text x="195" y="290" text-anchor="middle" font-size="12.5" fill="#555">prod 스키마 소유</text>
+  <text x="195" y="310" text-anchor="middle" font-size="12.5" fill="#555">웹 API (전환 전까지 운영)</text>
+
+  <!-- me -->
+  <rect x="500" y="196" width="340" height="140" fill="#ffffff" stroke="#111" stroke-width="2.5" rx="3"/>
+  <text x="670" y="228" text-anchor="middle" font-size="17" font-weight="700" fill="#111">momens-server</text>
+  <text x="670" y="250" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111">내 책임</text>
+  <text x="670" y="276" text-anchor="middle" font-size="12.5" fill="#333">모듈 경계 · 모바일 API · 인증</text>
+  <text x="670" y="298" text-anchor="middle" font-size="12.5" fill="#333">사용자 확정 액션 · outbox 발행</text>
+  <text x="670" y="320" text-anchor="middle" font-size="12.5" fill="#333">dev GKE 환경 · 배포 파이프라인</text>
+
+  <!-- worker -->
+  <rect x="1010" y="210" width="270" height="110" fill="#f4f4f4" stroke="#777" stroke-width="1.5" stroke-dasharray="6 4" rx="3"/>
+  <text x="1145" y="242" text-anchor="middle" font-size="15" font-weight="700" fill="#333">worker · retrieval</text>
+  <text x="1145" y="266" text-anchor="middle" font-size="12.5" fill="#555">타 담당자 소관</text>
+  <text x="1145" y="290" text-anchor="middle" font-size="12.5" fill="#555">Signal 생산 · evidence</text>
+  <text x="1145" y="310" text-anchor="middle" font-size="12.5" fill="#555">outbox 소비 · projection</text>
+
+  <!-- diagonal arrows -->
+  <line x1="292" y1="112" x2="498" y2="212" stroke="#111" stroke-width="2" marker-end="url(#arw2)"/>
+  <text x="386" y="150" font-size="12.5" fill="#111">FCM 대상 프로젝트 분리</text>
+  <text x="425" y="169" font-size="12.5" fill="#111">cross-project IAM 1회</text>
+
+  <line x1="1048" y1="112" x2="842" y2="212" stroke="#111" stroke-width="2" marker-end="url(#arw2)"/>
+  <text x="986" y="150" font-size="12.5" fill="#111">웹 세션 모델 · 버저닝</text>
+  <text x="947" y="169" font-size="12.5" fill="#111">(미결 → 리스크 등록 후 전진)</text>
+
+  <!-- horizontal contracts -->
+  <line x1="336" y1="266" x2="494" y2="266" stroke="#111" stroke-width="2" marker-end="url(#arw2)" marker-start="url(#arw2s)"/>
+  <text x="415" y="248" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111">스키마 소유권</text>
+  <text x="415" y="288" text-anchor="middle" font-size="12" fill="#333">배포 순서 게이트</text>
+
+  <line x1="846" y1="266" x2="1004" y2="266" stroke="#111" stroke-width="2" marker-end="url(#arw2)" marker-start="url(#arw2s)"/>
+  <text x="925" y="248" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111">이벤트 계약</text>
+  <text x="925" y="288" text-anchor="middle" font-size="12" fill="#333">D1~D5 · proto</text>
+
+  <!-- shared DB -->
+  <line x1="670" y1="336" x2="670" y2="394" stroke="#111" stroke-width="2" marker-end="url(#arw2)"/>
+  <rect x="500" y="398" width="340" height="66" fill="#ececec" stroke="#333" stroke-width="1.5" rx="3"/>
+  <text x="670" y="426" text-anchor="middle" font-size="15" font-weight="700" fill="#111">공유 PostgreSQL</text>
+  <text x="670" y="449" text-anchor="middle" font-size="12.5" fill="#333">세 서비스가 같은 스키마를 본다</text>
+
+  <path d="M 195 320 L 195 431 L 494 431" fill="none" stroke="#111" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arw2)"/>
+  <path d="M 1145 320 L 1145 431 L 846 431" fill="none" stroke="#111" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arw2)"/>
+
+  <!-- process banner -->
+  <rect x="60" y="502" width="1220" height="96" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="82" y="528" font-size="14" font-weight="700" fill="#111">결정이 안 난 채로 전진하는 절차</text>
+  <text x="82" y="554" font-size="13" fill="#333">① 서버 혼자 못 정하는 항목만 추려 <tspan font-weight="700" fill="#111">결정 요청서</tspan>로 문서화 → ② 회의에서 D1~D5 확정 → ③ <tspan font-weight="700" fill="#111">ADR로 확정</tspan> → ④ 뒤집히면 새 ADR로 supersede</text>
+  <text x="82" y="580" font-size="13" fill="#333">답이 안 오는 항목은 <tspan font-weight="700" fill="#111">위험 레지스터(R1~R7)</tspan>에 등록하고 비용 기준으로 등급을 갈라, 값싼 것은 seam만 박고 전진한다</text>
+</svg>
