@@ -2,7 +2,7 @@
 title: "CS 스터디 3주차: 프로세스, 스레드와 컨텍스트 스위칭"
 description: "프로그램·프로세스·스레드의 차이부터 상태 전이, 동시성과 병렬성, 컨텍스트 스위칭의 실제 비용까지 정리합니다."
 image: "/images/blog/cs-os-basics/thumbnail.png"
-pubDate: 2026-08-31
+pubDate: 2026-08-27
 category: "cs"
 tags: ["CS", "운영체제", "프로세스", "스레드", "컨텍스트 스위칭", "동시성"]
 draft: false

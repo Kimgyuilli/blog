@@ -2,7 +2,7 @@
 title: "CS 스터디 1주차: 자료구조를 선택하는 기준"
 description: "배열, 연결 리스트, 해시 테이블, 트리와 힙의 구조·복잡도·실전 선택 기준을 한 번에 정리합니다."
 image: "/images/blog/cs-data-structures/thumbnail.png"
-pubDate: 2026-08-31
+pubDate: 2026-08-13
 category: "cs"
 tags: ["CS", "자료구조", "배열", "연결 리스트", "해시 테이블", "트리"]
 draft: false

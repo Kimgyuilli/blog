@@ -2,7 +2,7 @@
 title: "CS 스터디 2주차: 핵심 알고리즘 지도"
 description: "정렬과 탐색부터 그래프, DP, 그리디, 최단 경로, MST, 문자열 매칭까지 문제 유형별 핵심 알고리즘을 정리합니다."
 image: "/images/blog/cs-algorithms/thumbnail.png"
-pubDate: 2026-08-31
+pubDate: 2026-08-20
 category: "cs"
 tags: ["CS", "알고리즘", "그래프", "동적 계획법", "정렬", "탐색"]
 draft: false
