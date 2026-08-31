@@ -16,6 +16,7 @@ const blog = defineCollection({
       'ai',
       'infra',
       'frontend',
+      'cs',
       'essay',
     ]),
     tags: z.array(z.string()).default([]),

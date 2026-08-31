@@ -41,6 +41,7 @@ export const CATEGORIES = [
   { slug: 'ai', label: 'AI / LLM', description: 'Spring AI, RAG, Claude/Codex 활용기' },
   { slug: 'infra', label: '인프라 / 배포', description: 'AWS, Docker, Cloudflare, 성능' },
   { slug: 'frontend', label: '프론트엔드', description: 'React, 포트폴리오 웹사이트' },
+  { slug: 'cs', label: 'CS', description: '자료구조, 알고리즘, 운영체제 등 컴퓨터 과학 기초' },
   { slug: 'essay', label: '회고 · 생각', description: '프로젝트 회고, 개발 문화, 메타' },
 ] as const;
 
