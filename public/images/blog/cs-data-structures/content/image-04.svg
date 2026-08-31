@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+<defs>
+<style>
+text{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans KR","Apple SD Gothic Neo",sans-serif;fill:#172033}
+.title{font-size:30px;font-weight:700}.sub{font-size:18px;fill:#526075}.label{font-size:19px;font-weight:650}.small{font-size:15px;fill:#526075}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:17px}
+.card{fill:#ffffff;stroke:#d7deea;stroke-width:2}.blue{fill:#e9f1ff;stroke:#4f7cff;stroke-width:2}.green{fill:#e9f8f0;stroke:#37a66b;stroke-width:2}.yellow{fill:#fff7df;stroke:#d79b28;stroke-width:2}.purple{fill:#f2ecff;stroke:#8559d9;stroke-width:2}.red{fill:#fff0f0;stroke:#d95c5c;stroke-width:2}.line{stroke:#65738a;stroke-width:3;fill:none}.arrow{stroke:#65738a;stroke-width:3;fill:none;marker-end:url(#arrow)}
+</style>
+<marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#65738a"/></marker>
+</defs><rect width="1200" height="700" fill="#f7f9fc"/>
+<text x="60" y="62" class="title">자료구조별 메모리 구성</text><text x="60" y="96" class="sub">모두 O(n)이어도 실제 상수 비용과 배치 방식은 다르다</text>
+<rect x="60" y="135" width="520" height="225" rx="20" class="card"/><text x="88" y="175" class="label">배열 — 연속된 공간</text>
+<g transform="translate(95 215)"><rect width="78" height="76" class="blue"/><rect x="78" width="78" height="76" class="blue"/><rect x="156" width="78" height="76" class="blue"/><rect x="234" width="78" height="76" class="blue"/><rect x="312" width="78" height="76" fill="#f0f2f6" stroke="#c0c8d5" stroke-width="2"/><rect x="390" width="78" height="76" fill="#f0f2f6" stroke="#c0c8d5" stroke-width="2"/>
+<text x="39" y="46" text-anchor="middle" class="label">A</text><text x="117" y="46" text-anchor="middle" class="label">B</text><text x="195" y="46" text-anchor="middle" class="label">C</text><text x="273" y="46" text-anchor="middle" class="label">D</text><text x="390" y="105" text-anchor="middle" class="small">미사용 용량</text></g>
+<rect x="620" y="135" width="520" height="225" rx="20" class="card"/><text x="648" y="175" class="label">연결 리스트 — 노드 + 참조</text>
+<g transform="translate(660 215)"><rect width="110" height="72" rx="10" class="green"/><rect x="165" width="110" height="72" rx="10" class="green"/><rect x="330" width="110" height="72" rx="10" class="green"/>
+<text x="55" y="44" text-anchor="middle" class="label">A | next</text><text x="220" y="44" text-anchor="middle" class="label">B | next</text><text x="385" y="44" text-anchor="middle" class="label">C | null</text>
+<path d="M110 36 L158 36" class="arrow"/><path d="M275 36 L323 36" class="arrow"/><text x="220" y="108" text-anchor="middle" class="small">노드마다 포인터 비용</text></g>
+<rect x="60" y="400" width="520" height="235" rx="20" class="card"/><text x="88" y="440" class="label">해시 테이블 — 엔트리 + 여유 버킷</text>
+<g transform="translate(95 480)"><rect width="65" height="64" class="purple"/><rect x="65" width="65" height="64" fill="#fff" stroke="#c0c8d5" stroke-width="2"/><rect x="130" width="65" height="64" class="purple"/><rect x="195" width="65" height="64" fill="#fff" stroke="#c0c8d5" stroke-width="2"/><rect x="260" width="65" height="64" class="purple"/><rect x="325" width="65" height="64" fill="#fff" stroke="#c0c8d5" stroke-width="2"/><rect x="390" width="65" height="64" class="purple"/>
+<text x="32" y="40" text-anchor="middle" class="label">K1</text><text x="162" y="40" text-anchor="middle" class="label">K2</text><text x="292" y="40" text-anchor="middle" class="label">K3</text><text x="422" y="40" text-anchor="middle" class="label">K4</text><text x="227" y="99" text-anchor="middle" class="small">충돌 방지를 위한 빈 버킷 유지</text></g>
+<rect x="620" y="400" width="520" height="235" rx="20" class="card"/><text x="648" y="440" class="label">트리 — 노드 + 자식 참조</text>
+<g transform="translate(695 465)"><circle cx="185" cy="25" r="30" class="yellow"/><circle cx="95" cy="125" r="30" class="yellow"/><circle cx="275" cy="125" r="30" class="yellow"/><path d="M163 46 L115 102" class="arrow"/><path d="M207 46 L255 102" class="arrow"/><text x="185" y="32" text-anchor="middle" class="label">8</text><text x="95" y="132" text-anchor="middle" class="label">3</text><text x="275" y="132" text-anchor="middle" class="label">10</text><text x="185" y="187" text-anchor="middle" class="small">각 노드가 자식 위치를 저장</text></g>
+</svg>

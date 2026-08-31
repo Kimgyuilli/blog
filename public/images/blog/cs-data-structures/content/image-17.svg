@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="680" viewBox="0 0 1200 680">
+<defs>
+<style>
+text{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans KR","Apple SD Gothic Neo",sans-serif;fill:#172033}
+.title{font-size:30px;font-weight:700}.sub{font-size:18px;fill:#526075}.label{font-size:19px;font-weight:650}.small{font-size:15px;fill:#526075}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:17px}
+.card{fill:#ffffff;stroke:#d7deea;stroke-width:2}.blue{fill:#e9f1ff;stroke:#4f7cff;stroke-width:2}.green{fill:#e9f8f0;stroke:#37a66b;stroke-width:2}.yellow{fill:#fff7df;stroke:#d79b28;stroke-width:2}.purple{fill:#f2ecff;stroke:#8559d9;stroke-width:2}.red{fill:#fff0f0;stroke:#d95c5c;stroke-width:2}.line{stroke:#65738a;stroke-width:3;fill:none}.arrow{stroke:#65738a;stroke-width:3;fill:none;marker-end:url(#arrow)}
+</style>
+<marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#65738a"/></marker>
+</defs><rect width="1200" height="680" fill="#f7f9fc"/><text x="60" y="62" class="title">최소 힙: 완전 이진 트리와 배열 표현</text><text x="60" y="96" class="sub">부모 값 ≤ 자식 값 · 전체 정렬이 아니라 우선순위만 보장한다</text>
+<g transform="translate(110 155)"><path d="M260 40 L130 150 M260 40 L390 150 M130 150 L60 270 M130 150 L200 270 M390 150 L320 270 M390 150 L460 270" class="line"/>
+<circle cx="260" cy="40" r="38" class="blue"/><circle cx="130" cy="150" r="36" class="green"/><circle cx="390" cy="150" r="36" class="green"/><circle cx="60" cy="270" r="34" class="yellow"/><circle cx="200" cy="270" r="34" class="yellow"/><circle cx="320" cy="270" r="34" class="yellow"/><circle cx="460" cy="270" r="34" class="yellow"/>
+<g class="label" text-anchor="middle"><text x="260" y="48">1</text><text x="130" y="158">3</text><text x="390" y="158">2</text><text x="60" y="278">7</text><text x="200" y="278">6</text><text x="320" y="278">5</text><text x="460" y="278">4</text></g></g>
+<path d="M600 300 L715 300" class="arrow"/><text x="657" y="280" text-anchor="middle" class="small">레벨 순서</text>
+<g transform="translate(745 220)"><rect width="62" height="76" class="blue"/><rect x="62" width="62" height="76" class="green"/><rect x="124" width="62" height="76" class="green"/><rect x="186" width="62" height="76" class="yellow"/><rect x="248" width="62" height="76" class="yellow"/><rect x="310" width="62" height="76" class="yellow"/><rect x="372" width="62" height="76" class="yellow"/>
+<g class="label" text-anchor="middle"><text x="31" y="46">1</text><text x="93" y="46">3</text><text x="155" y="46">2</text><text x="217" y="46">7</text><text x="279" y="46">6</text><text x="341" y="46">5</text><text x="403" y="46">4</text></g>
+<g class="small" text-anchor="middle"><text x="31" y="105">0</text><text x="93" y="105">1</text><text x="155" y="105">2</text><text x="217" y="105">3</text><text x="279" y="105">4</text><text x="341" y="105">5</text><text x="403" y="105">6</text></g></g>
+<rect x="85" y="515" width="1030" height="100" rx="18" class="card"/>
+<text x="600" y="553" text-anchor="middle" class="label">인덱스 i 기준</text><text x="600" y="589" text-anchor="middle" class="mono">부모 ⌊(i−1)/2⌋     왼쪽 2i+1     오른쪽 2i+2</text>
+<text x="600" y="650" text-anchor="middle" class="small">루트 확인 O(1) · 삽입 O(log n) · 루트 삭제 O(log n) · 임의 값 탐색 O(n)</text>
+</svg>

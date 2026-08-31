@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="680" viewBox="0 0 1200 680">
+<defs>
+<style>
+text{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans KR","Apple SD Gothic Neo",sans-serif;fill:#172033}
+.title{font-size:30px;font-weight:700}.sub{font-size:18px;fill:#526075}.label{font-size:19px;font-weight:650}.small{font-size:15px;fill:#526075}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:17px}
+.card{fill:#ffffff;stroke:#d7deea;stroke-width:2}.blue{fill:#e9f1ff;stroke:#4f7cff;stroke-width:2}.green{fill:#e9f8f0;stroke:#37a66b;stroke-width:2}.yellow{fill:#fff7df;stroke:#d79b28;stroke-width:2}.purple{fill:#f2ecff;stroke:#8559d9;stroke-width:2}.red{fill:#fff0f0;stroke:#d95c5c;stroke-width:2}.line{stroke:#65738a;stroke-width:3;fill:none}.arrow{stroke:#65738a;stroke-width:3;fill:none;marker-end:url(#arrow)}
+</style>
+<marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#65738a"/></marker>
+</defs><rect width="1200" height="680" fill="#f7f9fc"/><text x="60" y="62" class="title">이진 트리의 대표 유형</text><text x="60" y="96" class="sub">영문 조건을 함께 기억하면 교재별 번역 차이를 피할 수 있다</text>
+<rect x="45" y="135" width="350" height="485" rx="20" class="card"/><text x="220" y="180" text-anchor="middle" class="label">Full Binary Tree</text><text x="220" y="210" text-anchor="middle" class="small">자식 수가 0개 또는 2개</text>
+<g transform="translate(80 245)"><path d="M140 40 L65 145 M140 40 L215 145 M215 145 L170 250 M215 145 L260 250" class="line"/><circle cx="140" cy="40" r="30" class="blue"/><circle cx="65" cy="145" r="30" class="green"/><circle cx="215" cy="145" r="30" class="green"/><circle cx="170" cy="250" r="30" class="yellow"/><circle cx="260" cy="250" r="30" class="yellow"/></g>
+<rect x="425" y="135" width="350" height="485" rx="20" class="card"/><text x="600" y="180" text-anchor="middle" class="label">Perfect Binary Tree</text><text x="600" y="210" text-anchor="middle" class="small">모든 리프 깊이가 같고 내부 노드는 자식 2개</text>
+<g transform="translate(460 245)"><path d="M140 40 L65 145 M140 40 L215 145 M65 145 L20 250 M65 145 L110 250 M215 145 L170 250 M215 145 L260 250" class="line"/><circle cx="140" cy="40" r="30" class="blue"/><circle cx="65" cy="145" r="30" class="green"/><circle cx="215" cy="145" r="30" class="green"/><circle cx="20" cy="250" r="26" class="yellow"/><circle cx="110" cy="250" r="26" class="yellow"/><circle cx="170" cy="250" r="26" class="yellow"/><circle cx="260" cy="250" r="26" class="yellow"/></g>
+<rect x="805" y="135" width="350" height="485" rx="20" class="card"/><text x="980" y="180" text-anchor="middle" class="label">Complete Binary Tree</text><text x="980" y="210" text-anchor="middle" class="small">마지막 레벨을 왼쪽부터 채움</text>
+<g transform="translate(840 245)"><path d="M140 40 L65 145 M140 40 L215 145 M65 145 L20 250 M65 145 L110 250 M215 145 L170 250" class="line"/><circle cx="140" cy="40" r="30" class="blue"/><circle cx="65" cy="145" r="30" class="green"/><circle cx="215" cy="145" r="30" class="green"/><circle cx="20" cy="250" r="26" class="yellow"/><circle cx="110" cy="250" r="26" class="yellow"/><circle cx="170" cy="250" r="26" class="yellow"/></g>
+<text x="600" y="652" text-anchor="middle" class="small">Full: 차수 조건 · Perfect: 차수 + 같은 깊이 · Complete: 레벨을 채우는 순서</text>
+</svg>

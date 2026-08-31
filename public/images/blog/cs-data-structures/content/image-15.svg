@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+<defs>
+<style>
+text{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans KR","Apple SD Gothic Neo",sans-serif;fill:#172033}
+.title{font-size:30px;font-weight:700}.sub{font-size:18px;fill:#526075}.label{font-size:19px;font-weight:650}.small{font-size:15px;fill:#526075}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:17px}
+.card{fill:#ffffff;stroke:#d7deea;stroke-width:2}.blue{fill:#e9f1ff;stroke:#4f7cff;stroke-width:2}.green{fill:#e9f8f0;stroke:#37a66b;stroke-width:2}.yellow{fill:#fff7df;stroke:#d79b28;stroke-width:2}.purple{fill:#f2ecff;stroke:#8559d9;stroke-width:2}.red{fill:#fff0f0;stroke:#d95c5c;stroke-width:2}.line{stroke:#65738a;stroke-width:3;fill:none}.arrow{stroke:#65738a;stroke-width:3;fill:none;marker-end:url(#arrow)}
+</style>
+<marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#65738a"/></marker>
+</defs><rect width="1200" height="760" fill="#f7f9fc"/><text x="60" y="62" class="title">트리 순회 방식</text><text x="60" y="96" class="sub">같은 트리도 노드를 처리하는 시점에 따라 방문 순서가 달라진다</text>
+<g transform="translate(95 145)"><path d="M280 45 L145 150 M280 45 L415 150 M145 150 L55 260 M145 150 L225 260 M225 260 L175 370 M225 260 L275 370 M415 150 L485 260 M485 260 L440 370" class="line"/>
+<circle cx="280" cy="45" r="34" class="blue"/><circle cx="145" cy="150" r="34" class="green"/><circle cx="415" cy="150" r="34" class="green"/><circle cx="55" cy="260" r="32" class="yellow"/><circle cx="225" cy="260" r="32" class="purple"/><circle cx="485" cy="260" r="32" class="purple"/><circle cx="175" cy="370" r="30" class="yellow"/><circle cx="275" cy="370" r="30" class="yellow"/><circle cx="440" cy="370" r="30" class="yellow"/>
+<g class="label" text-anchor="middle"><text x="280" y="52">8</text><text x="145" y="157">3</text><text x="415" y="157">10</text><text x="55" y="267">1</text><text x="225" y="267">6</text><text x="485" y="267">14</text><text x="175" y="377">4</text><text x="275" y="377">7</text><text x="440" y="377">13</text></g></g>
+<g transform="translate(650 145)">
+<rect width="500" height="105" rx="16" class="blue"/><text x="25" y="37" class="label">전위 Root → Left → Right</text><text x="25" y="76" class="mono">8, 3, 1, 6, 4, 7, 10, 14, 13</text>
+<rect y="125" width="500" height="105" rx="16" class="green"/><text x="25" y="162" class="label">중위 Left → Root → Right</text><text x="25" y="201" class="mono">1, 3, 4, 6, 7, 8, 10, 13, 14</text>
+<rect y="250" width="500" height="105" rx="16" class="purple"/><text x="25" y="287" class="label">후위 Left → Right → Root</text><text x="25" y="326" class="mono">1, 4, 7, 6, 3, 13, 14, 10, 8</text>
+<rect y="375" width="500" height="105" rx="16" class="yellow"/><text x="25" y="412" class="label">레벨 순회 BFS</text><text x="25" y="451" class="mono">8, 3, 10, 1, 6, 14, 4, 7, 13</text>
+</g><text x="600" y="710" text-anchor="middle" class="small">중위 순회는 BST에서 오름차순 결과를 만든다 · 레벨 순회는 큐를 사용한다</text>
+</svg>

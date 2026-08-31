@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="650" viewBox="0 0 1200 650">
+<defs>
+<style>
+text{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans KR","Apple SD Gothic Neo",sans-serif;fill:#172033}
+.title{font-size:30px;font-weight:700}.sub{font-size:18px;fill:#526075}.label{font-size:19px;font-weight:650}.small{font-size:15px;fill:#526075}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:17px}
+.card{fill:#ffffff;stroke:#d7deea;stroke-width:2}.blue{fill:#e9f1ff;stroke:#4f7cff;stroke-width:2}.green{fill:#e9f8f0;stroke:#37a66b;stroke-width:2}.yellow{fill:#fff7df;stroke:#d79b28;stroke-width:2}.purple{fill:#f2ecff;stroke:#8559d9;stroke-width:2}.red{fill:#fff0f0;stroke:#d95c5c;stroke-width:2}.line{stroke:#65738a;stroke-width:3;fill:none}.arrow{stroke:#65738a;stroke-width:3;fill:none;marker-end:url(#arrow)}
+</style>
+<marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#65738a"/></marker>
+</defs><rect width="1200" height="650" fill="#f7f9fc"/>
+<text x="60" y="62" class="title">공간 복잡도: 전체 공간과 보조 공간</text>
+<text x="60" y="96" class="sub">입력 크기 n에 따라 필요한 메모리가 어떻게 증가하는지 표현한다</text>
+<rect x="60" y="135" width="510" height="350" rx="22" class="card"/>
+<text x="90" y="180" class="label">전체 공간 복잡도</text>
+<rect x="100" y="220" width="430" height="95" rx="14" class="blue"/>
+<text x="315" y="260" text-anchor="middle" class="label">입력 데이터 저장 공간</text><text x="315" y="289" text-anchor="middle" class="small">예: n개의 원소를 담은 배열 → O(n)</text>
+<text x="315" y="345" text-anchor="middle" class="label">+</text>
+<rect x="100" y="370" width="430" height="80" rx="14" class="green"/>
+<text x="315" y="404" text-anchor="middle" class="label">실행 중 추가 공간</text><text x="315" y="431" text-anchor="middle" class="small">임시 배열 · 스택 · 큐 · 변수</text>
+<rect x="630" y="135" width="510" height="350" rx="22" class="card"/>
+<text x="660" y="180" class="label">보조 공간 Auxiliary Space</text>
+<rect x="675" y="220" width="420" height="95" rx="14" fill="#f0f2f6" stroke="#c0c8d5" stroke-width="2"/>
+<text x="885" y="260" text-anchor="middle" class="label" fill="#8b95a7">입력 데이터 공간은 제외</text><text x="885" y="289" text-anchor="middle" class="small">분석 대상이 아님</text>
+<path d="M885 325 L885 366" class="arrow"/>
+<rect x="675" y="370" width="420" height="80" rx="14" class="green"/>
+<text x="885" y="404" text-anchor="middle" class="label">알고리즘이 추가로 쓰는 공간</text><text x="885" y="431" text-anchor="middle" class="small">입력 크기에 따라 증가하는가?</text>
+<rect x="60" y="525" width="1080" height="80" rx="18" class="yellow"/>
+<text x="600" y="559" text-anchor="middle" class="label">O(1) 보조 공간 ≠ 메모리를 전혀 사용하지 않음</text>
+<text x="600" y="588" text-anchor="middle" class="small">입력 n이 커져도 추가 메모리의 양이 일정하다는 뜻</text>
+</svg>
