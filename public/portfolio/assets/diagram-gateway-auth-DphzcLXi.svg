@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1340 560" width="1340" height="560" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif">
+  <defs>
+    <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/>
+    </marker>
+  </defs>
+
+  <rect width="1340" height="560" fill="#ffffff"/>
+  <text x="40" y="40" font-size="17" font-weight="700" fill="#111">인증 신뢰 경계의 3단계 격상 &#8212; "누구인가"를 뒤로 어떻게 전달하는가</text>
+
+  <!-- column headers -->
+  <text x="150" y="76" text-anchor="middle" font-size="13" fill="#666">클라이언트</text>
+  <text x="470" y="76" text-anchor="middle" font-size="13" fill="#666">Gateway</text>
+  <text x="800" y="76" text-anchor="middle" font-size="13" fill="#666">5개 서비스</text>
+  <text x="1130" y="76" text-anchor="middle" font-size="13" fill="#666">신뢰의 전제</text>
+
+  <!-- ROW 1 -->
+  <rect x="40" y="92" width="1260" height="120" fill="#f7f7f7" stroke="#999" stroke-width="1.5" rx="3"/>
+  <text x="56" y="116" font-size="13.5" font-weight="700" fill="#111">1단계 &#8212; 서비스별 JWT 검증</text>
+
+  <rect x="90" y="130" width="120" height="52" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="150" y="161" text-anchor="middle" font-size="13.5" fill="#111">Bearer 토큰</text>
+  <line x1="212" y1="156" x2="700" y2="156" stroke="#111" stroke-width="2" marker-end="url(#a3)"/>
+  <text x="456" y="148" text-anchor="middle" font-size="12.5" fill="#333">Authorization 헤더가 서비스까지 그대로 간다</text>
+
+  <rect x="702" y="130" width="196" height="52" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="800" y="153" text-anchor="middle" font-size="13" fill="#111">각 서비스가 각자 검증</text>
+  <text x="800" y="172" text-anchor="middle" font-size="12" fill="#666">검증 로직 5벌 · 키 회전 5배</text>
+
+  <rect x="960" y="130" width="320" height="52" fill="#ececec" stroke="#666" stroke-width="1.5" rx="3"/>
+  <text x="1120" y="152" text-anchor="middle" font-size="12.5" fill="#111">HS256 대칭키 공유 &#8594; <tspan font-weight="700">RS256 + JWKS</tspan></text>
+  <text x="1120" y="171" text-anchor="middle" font-size="12.5" fill="#111">발급은 user-service만, 검증은 공개키로</text>
+
+  <!-- ROW 2 -->
+  <rect x="40" y="224" width="1260" height="120" fill="#f7f7f7" stroke="#999" stroke-width="1.5" rx="3"/>
+  <text x="56" y="248" font-size="13.5" font-weight="700" fill="#111">2단계 &#8212; Gateway 단일 검증 + 평문 헤더 전달</text>
+
+  <rect x="90" y="262" width="120" height="52" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="150" y="293" text-anchor="middle" font-size="13.5" fill="#111">Bearer 토큰</text>
+  <line x1="212" y1="288" x2="378" y2="288" stroke="#111" stroke-width="2" marker-end="url(#a3)"/>
+
+  <rect x="380" y="262" width="180" height="52" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="470" y="285" text-anchor="middle" font-size="13" font-weight="700" fill="#111">JWT 검증 1회</text>
+  <text x="470" y="304" text-anchor="middle" font-size="12" fill="#666">외부 헤더 strip</text>
+
+  <line x1="562" y1="288" x2="700" y2="288" stroke="#111" stroke-width="2" marker-end="url(#a3)"/>
+  <text x="631" y="280" text-anchor="middle" font-size="12" fill="#333">X-User-*</text>
+  <text x="631" y="306" text-anchor="middle" font-size="12" fill="#333">(평문)</text>
+
+  <rect x="702" y="262" width="196" height="52" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="800" y="292" text-anchor="middle" font-size="13" fill="#111">헤더 값을 그대로 신뢰</text>
+
+  <rect x="960" y="262" width="320" height="52" fill="#ececec" stroke="#666" stroke-width="1.5" rx="3"/>
+  <text x="1120" y="284" text-anchor="middle" font-size="12.5" fill="#111"><tspan font-weight="700">NetworkPolicy 단독</tspan> &#8212; ClusterIP 환원 +</text>
+  <text x="1120" y="303" text-anchor="middle" font-size="12.5" fill="#111">gateway 경유 강제로 위조를 막는다</text>
+
+  <!-- ROW 3 -->
+  <rect x="40" y="356" width="1260" height="128" fill="#ffffff" stroke="#111" stroke-width="2.5" rx="3"/>
+  <text x="56" y="380" font-size="13.5" font-weight="700" fill="#111">3단계 &#8212; Gateway가 서명한 내부 토큰만 인증 근거 (ADR-0017)</text>
+
+  <rect x="90" y="396" width="120" height="60" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="150" y="432" text-anchor="middle" font-size="13.5" fill="#111">Bearer 토큰</text>
+  <line x1="212" y1="426" x2="378" y2="426" stroke="#111" stroke-width="2" marker-end="url(#a3)"/>
+
+  <rect x="380" y="396" width="180" height="60" fill="#111" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="470" y="420" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">검증 후 개인키로 서명</text>
+  <text x="470" y="440" text-anchor="middle" font-size="12" fill="#dddddd">사용자 Authorization 미전달</text>
+
+  <line x1="562" y1="426" x2="700" y2="426" stroke="#111" stroke-width="2.5" marker-end="url(#a3)"/>
+  <text x="631" y="418" text-anchor="middle" font-size="12" font-weight="700" fill="#111">X-Internal-Auth</text>
+  <text x="631" y="444" text-anchor="middle" font-size="12" fill="#333">(서명 assertion)</text>
+
+  <rect x="702" y="396" width="196" height="60" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="800" y="420" text-anchor="middle" font-size="13" fill="#111">서명 · iss · kid · exp 검증</text>
+  <text x="800" y="440" text-anchor="middle" font-size="12" fill="#666">실패 시 fail-closed (부팅 거부)</text>
+
+  <rect x="960" y="390" width="320" height="76" fill="#111" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="1120" y="414" text-anchor="middle" font-size="12.5" font-weight="700" fill="#ffffff">defense-in-depth</text>
+  <text x="1120" y="435" text-anchor="middle" font-size="12.5" fill="#ffffff">NetworkPolicy <tspan font-weight="700">AND</tspan> 서명 &#8212; NP를 우회해도</text>
+  <text x="1120" y="455" text-anchor="middle" font-size="12.5" fill="#ffffff">인증은 통과할 수 없다</text>
+
+  <line x1="40" y1="506" x2="1300" y2="506" stroke="#999" stroke-width="1"/>
+  <text x="40" y="534" font-size="13" fill="#555">통제가 하나뿐이면 그것은 방어가 아니라 가정이다. &#160;&#160;키 도메인 분리는 kid가 아니라 <tspan font-weight="700">SPKI DER SHA-256 지문 집합이 서로소</tspan>인지로 강제한다</text>
+  <text x="40" y="554" font-size="13" fill="#555">&#8212; 같은 키를 다른 kid로 등록하는 우회를 막기 위해서다. 이름(issuer · claim · 헤더)은 프레임워크 의존 0인 별도 계약 모듈에 한 번만 정의한다.</text>
+</svg>

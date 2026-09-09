@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1340 620" width="1340" height="620" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif">
+  <defs>
+    <marker id="arw2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/>
+    </marker>
+    <marker id="arwg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#777"/>
+    </marker>
+  </defs>
+
+  <rect width="1340" height="620" fill="#ffffff"/>
+
+  <!-- ===== BEFORE ===== -->
+  <text x="40" y="40" font-size="16" font-weight="700" fill="#111">① 분리 전 &#8212; 모듈은 나뉘어 있지만 동기 호출로 묶여 있다</text>
+
+  <rect x="40" y="60" width="520" height="230" fill="#f7f7f7" stroke="#999" stroke-width="1.5" rx="3"/>
+  <text x="56" y="84" font-size="13" fill="#666">단일 애플리케이션 (root app)</text>
+
+  <rect x="70" y="100" width="140" height="56" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="140" y="133" text-anchor="middle" font-size="15" font-weight="700" fill="#111">Order</text>
+
+  <rect x="290" y="100" width="140" height="56" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="360" y="133" text-anchor="middle" font-size="15" font-weight="700" fill="#111">Product</text>
+
+  <rect x="180" y="204" width="140" height="56" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="250" y="237" text-anchor="middle" font-size="15" font-weight="700" fill="#111">Payment</text>
+
+  <line x1="212" y1="122" x2="288" y2="122" stroke="#111" stroke-width="2" marker-end="url(#arw2)"/>
+  <text x="250" y="114" text-anchor="middle" font-size="12" fill="#333">ProductPort</text>
+  <line x1="288" y1="140" x2="212" y2="140" stroke="#111" stroke-width="2" marker-end="url(#arw2)"/>
+  <text x="250" y="178" text-anchor="middle" font-size="12" fill="#333">재고 차감 · 단가 조회</text>
+
+  <line x1="150" y1="158" x2="205" y2="202" stroke="#111" stroke-width="2" marker-end="url(#arw2)"/>
+  <line x1="295" y1="202" x2="350" y2="158" stroke="#111" stroke-width="2" marker-end="url(#arw2)"/>
+  <text x="120" y="196" font-size="12" fill="#333">OrderPort</text>
+
+  <rect x="450" y="196" width="96" height="72" fill="#ececec" stroke="#666" stroke-width="1.5" rx="3"/>
+  <text x="498" y="222" text-anchor="middle" font-size="13" font-weight="700" fill="#111">User</text>
+  <text x="498" y="244" text-anchor="middle" font-size="13" font-weight="700" fill="#111">Notification</text>
+  <text x="498" y="262" text-anchor="middle" font-size="11.5" fill="#666">의존 없음</text>
+
+  <text x="40" y="316" font-size="13.5" fill="#333">&#8594; Product를 먼저 떼면 Order가 <tspan font-weight="700">부팅에 실패</tspan>한다. 컴파일이 되는 것과 독립적으로 뜨는 것은 다른 문제다.</text>
+
+  <!-- ===== MIDDLE : strangler ===== -->
+  <rect x="620" y="60" width="330" height="256" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <rect x="620" y="60" width="330" height="36" fill="#ececec" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="785" y="84" text-anchor="middle" font-size="15" font-weight="700" fill="#111">② 떼기 전에 결합부터 없앤다</text>
+
+  <text x="638" y="122" font-size="13" fill="#333"><tspan font-weight="700">strangler-1</tspan>&#160;&#160;재고 차감 &#8594; 예약 원장 + 이벤트</text>
+  <text x="638" y="150" font-size="13" fill="#333"><tspan font-weight="700">strangler-2</tspan>&#160;&#160;단가 조회 &#8594; 로컬 캐시 (CQRS)</text>
+  <text x="638" y="178" font-size="13" fill="#333"><tspan font-weight="700">strangler-3</tspan>&#160;&#160;2-phase 예약 확정 / 보상</text>
+  <text x="638" y="206" font-size="13" fill="#333"><tspan font-weight="700">strangler-4</tspan>&#160;&#160;상품 존재 확인 &#8594; 로컬 캐시</text>
+  <text x="638" y="234" font-size="13" fill="#333"><tspan font-weight="700">strangler-5</tspan>&#160;&#160;Order&#8596;Payment 상호 호출 제거</text>
+
+  <line x1="638" y1="252" x2="932" y2="252" stroke="#999" stroke-width="1"/>
+  <text x="638" y="276" font-size="12.5" fill="#111" font-weight="700">판정 기준 = 서비스 간 production 동기 호출 수</text>
+  <text x="638" y="298" font-size="12.5" fill="#555">0이 된 뒤에야 모듈을 뗀다 (peel)</text>
+
+  <line x1="566" y1="175" x2="614" y2="175" stroke="#111" stroke-width="2" marker-end="url(#arw2)"/>
+  <line x1="956" y1="175" x2="1000" y2="175" stroke="#111" stroke-width="2" marker-end="url(#arw2)"/>
+
+  <!-- ===== AFTER ===== -->
+  <text x="1006" y="40" font-size="16" font-weight="700" fill="#111">③ 분리 후</text>
+
+  <rect x="1006" y="60" width="140" height="50" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="1076" y="90" text-anchor="middle" font-size="14" font-weight="700" fill="#111">user</text>
+  <rect x="1160" y="60" width="140" height="50" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="1230" y="90" text-anchor="middle" font-size="14" font-weight="700" fill="#111">notification</text>
+
+  <rect x="1006" y="124" width="140" height="50" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="1076" y="154" text-anchor="middle" font-size="14" font-weight="700" fill="#111">order</text>
+  <rect x="1160" y="124" width="140" height="50" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="1230" y="154" text-anchor="middle" font-size="14" font-weight="700" fill="#111">product</text>
+  <rect x="1006" y="188" width="140" height="50" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="1076" y="218" text-anchor="middle" font-size="14" font-weight="700" fill="#111">payment</text>
+  <rect x="1160" y="188" width="140" height="50" fill="#ececec" stroke="#666" stroke-width="1.5" rx="3"/>
+  <text x="1230" y="212" text-anchor="middle" font-size="13" fill="#111">각 서비스</text>
+  <text x="1230" y="230" text-anchor="middle" font-size="13" fill="#111">자기 스키마 소유</text>
+
+  <rect x="1006" y="252" width="294" height="44" fill="#111" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="1153" y="280" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">Kafka &#8212; 이벤트 + 로컬 캐시로만 협력</text>
+
+  <text x="1006" y="322" font-size="13" fill="#333">마지막 peel에서 root app 해체</text>
+
+  <line x1="40" y1="352" x2="1300" y2="352" stroke="#999" stroke-width="1"/>
+
+  <!-- bottom: local cache detail -->
+  <text x="40" y="384" font-size="16" font-weight="700" fill="#111">로컬 캐시는 "캐시"가 아니라 복제본이다</text>
+
+  <rect x="40" y="404" width="200" height="60" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="140" y="430" text-anchor="middle" font-size="14" font-weight="700" fill="#111">product-service</text>
+  <text x="140" y="452" text-anchor="middle" font-size="12.5" fill="#555">단가 변경</text>
+
+  <line x1="242" y1="434" x2="336" y2="434" stroke="#111" stroke-width="2" marker-end="url(#arw2)"/>
+  <text x="289" y="424" text-anchor="middle" font-size="12" fill="#333">product.updated</text>
+  <text x="289" y="452" text-anchor="middle" font-size="12" fill="#333">(@Version 포함)</text>
+
+  <rect x="338" y="404" width="200" height="60" fill="#ffffff" stroke="#111" stroke-width="2" rx="3"/>
+  <text x="438" y="430" text-anchor="middle" font-size="14" font-weight="700" fill="#111">order-service</text>
+  <text x="438" y="452" text-anchor="middle" font-size="12.5" fill="#555">단가 캐시 테이블</text>
+
+  <rect x="580" y="392" width="720" height="84" fill="#f7f7f7" stroke="#999" stroke-width="1.5" rx="3"/>
+  <text x="600" y="418" font-size="13.5" fill="#333"><tspan font-weight="700">순서 보장이 없는 채널</tspan>에서 복제본을 유지하려면 키가 아니라 <tspan font-weight="700">버전으로 정렬</tspan>한다 &#8212;</text>
+  <text x="600" y="442" font-size="13.5" fill="#333">원자 upsert로 갱신하고, 늦게 도착한 낮은 버전은 스킵한다(stale-skip).</text>
+  <text x="600" y="464" font-size="13.5" fill="#333">캐시 미스는 "상품 없음"과 구분되는 별도 에러 코드로 드러낸다 &#8212; 조용히 넘기면 신규 상품 주문이 조용히 실패한다.</text>
+
+  <line x1="40" y1="500" x2="1300" y2="500" stroke="#999" stroke-width="1"/>
+  <text x="40" y="530" font-size="13" fill="#555">모듈이 늘 때마다 함께 고쳐야 하는 암묵 규약(Dockerfile 워밍 레이어 · CI 이미지 매트릭스)은 사람의 기억이 아니라</text>
+  <text x="40" y="552" font-size="13" fill="#555">Gradle 서브프로젝트 목록과의 <tspan font-weight="700">양방향 대조 lint</tspan>로 고정했다. 누락과 제거된 모듈의 잔존을 모두 잡는다.</text>
+  <text x="40" y="586" font-size="12.5" fill="#888">※ 실제 peel 순서: notification &#8594; user (독립) &#8594; product &#8594; order &#8594; payment (사가 클러스터, root app 해체)</text>
+</svg>
