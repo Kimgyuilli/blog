@@ -1,4 +1,4 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/ResumePdf-6CUe7qO8.js","assets/react-pdf.browser-BtCoK0w4.js"])))=>i.map(i=>d[i]);
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/ResumePdf-BdIeolQL.js","assets/react-pdf.browser-D0XXGJ6Z.js"])))=>i.map(i=>d[i]);
 (function(){const t=document.createElement("link").relList;if(t&&t.supports&&t.supports("modulepreload"))return;for(const s of document.querySelectorAll('link[rel="modulepreload"]'))o(s);new MutationObserver(s=>{for(const u of s)if(u.type==="childList")for(const l of u.addedNodes)l.tagName==="LINK"&&l.rel==="modulepreload"&&o(l)}).observe(document,{childList:!0,subtree:!0});function r(s){const u={};return s.integrity&&(u.integrity=s.integrity),s.referrerPolicy&&(u.referrerPolicy=s.referrerPolicy),s.crossOrigin==="use-credentials"?u.credentials="include":s.crossOrigin==="anonymous"?u.credentials="omit":u.credentials="same-origin",u}function o(s){if(s.ep)return;s.ep=!0;const u=r(s);fetch(s.href,u)}})();var sN=typeof globalThis<"u"?globalThis:typeof window<"u"?window:typeof global<"u"?global:typeof self<"u"?self:{};function ul(e){return e&&e.__esModule&&Object.prototype.hasOwnProperty.call(e,"default")?e.default:e}function aN(e){if(Object.prototype.hasOwnProperty.call(e,"__esModule"))return e;var t=e.default;if(typeof t=="function"){var r=function o(){return this instanceof o?Reflect.construct(t,arguments,this.constructor):t.apply(this,arguments)};r.prototype=t.prototype}else r={};return Object.defineProperty(r,"__esModule",{value:!0}),Object.keys(e).forEach(function(o){var s=Object.getOwnPropertyDescriptor(e,o);Object.defineProperty(r,o,s.get?s:{enumerable:!0,get:function(){return e[o]}})}),r}var ac={exports:{}},zo={},lc={exports:{}},be={};/**
  * @license React
  * react.production.min.js
@@ -218,7 +218,7 @@ Error generating stack: `+y.message+`
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
- */const jw=[["path",{d:"M18 6 6 18",key:"1bl5f8"}],["path",{d:"m6 6 12 12",key:"d8bk6v"}]],Mw=je("x",jw),dc=[{label:"Home",href:"#home"},{label:"Skills",href:"#skills"},{label:"Projects",href:"#projects"},{label:"Achievements",href:"#achievements"},{label:"Experience",href:"#experience"},{label:"Blog",href:"#blog"},{label:"Contact",href:"#contact"}],Rw="<Dev/>",w1=Z.createContext(void 0);function Nw({children:e}){const[t,r]=Z.useState(()=>localStorage.getItem("theme")||"dark");Z.useEffect(()=>{localStorage.setItem("theme",t),t==="dark"?document.documentElement.classList.add("dark"):document.documentElement.classList.remove("dark")},[t]);const o=()=>{const u=window.matchMedia("(prefers-reduced-motion: reduce)").matches,l="startViewTransition"in document;!u&&l&&document.startViewTransition?document.startViewTransition(()=>{r(f=>f==="light"?"dark":"light")}):u?r(f=>f==="light"?"dark":"light"):(document.documentElement.classList.add("theme-transition"),r(f=>f==="light"?"dark":"light"),setTimeout(()=>{document.documentElement.classList.remove("theme-transition")},1e3))},s=Z.useMemo(()=>({theme:t,toggleTheme:o}),[t]);return k.jsx(w1.Provider,{value:s,children:e})}function Lw(){const e=Z.useContext(w1);if(e===void 0)throw new Error("useTheme must be used within a ThemeProvider");return e}const Ow="modulepreload",zw=function(e){return"/portfolio/"+e},Gm={},Wm=function(t,r,o){let s=Promise.resolve();if(r&&r.length>0){let l=function(h){return Promise.all(h.map(p=>Promise.resolve(p).then(g=>({status:"fulfilled",value:g}),g=>({status:"rejected",reason:g}))))};document.getElementsByTagName("link");const f=document.querySelector("meta[property=csp-nonce]"),d=f?.nonce||f?.getAttribute("nonce");s=l(r.map(h=>{if(h=zw(h),h in Gm)return;Gm[h]=!0;const p=h.endsWith(".css"),g=p?'[rel="stylesheet"]':"";if(document.querySelector(`link[href="${h}"]${g}`))return;const v=document.createElement("link");if(v.rel=p?"stylesheet":Ow,p||(v.as="script"),v.crossOrigin="",v.href=h,d&&v.setAttribute("nonce",d),document.head.appendChild(v),p)return new Promise((x,C)=>{v.addEventListener("load",x),v.addEventListener("error",()=>C(new Error(`Unable to preload CSS for ${h}`)))})}))}function u(l){const f=new Event("vite:preloadError",{cancelable:!0});if(f.payload=l,window.dispatchEvent(f),!f.defaultPrevented)throw l}return s.then(l=>{for(const f of l||[])f.status==="rejected"&&u(f.reason);return t().catch(u)})};function $m({className:e,showLabel:t,onClick:r}){const[o,s]=Z.useState(!1),u=async()=>{if(!o){s(!0);try{const[{pdf:l},{ResumePdf:f}]=await Promise.all([Wm(()=>import("./react-pdf.browser-BtCoK0w4.js"),[]),Wm(()=>import("./ResumePdf-6CUe7qO8.js"),__vite__mapDeps([0,1]))]),d=await l(k.jsx(f,{})).toBlob(),h=URL.createObjectURL(d),p=document.createElement("a");p.href=h,p.download="김규일_이력서.pdf",p.click(),setTimeout(()=>URL.revokeObjectURL(h),1e3)}catch(l){console.error("PDF 생성 실패:",l)}finally{s(!1),r?.()}}};return k.jsx("button",{onClick:u,disabled:o,className:e,"aria-label":"이력서 PDF 다운로드",title:"이력서 다운로드",children:o?k.jsxs(k.Fragment,{children:[k.jsx(k1,{size:t?16:18,style:{animation:"spin 1s linear infinite"}}),t&&k.jsx("span",{children:"PDF 생성중..."})]}):k.jsxs(k.Fragment,{children:[k.jsx(iw,{size:t?16:18}),t&&k.jsx("span",{children:"이력서 다운로드"})]})})}const Bw="_nav_10752_1",Fw="_container_10752_18",Vw="_brand_10752_46",Hw="_divider_10752_126",Re={nav:Bw,container:Fw,"nav-content":"_nav-content_10752_39",brand:Vw,"brand-link":"_brand-link_10752_50","desktop-nav":"_desktop-nav_10752_66","nav-links":"_nav-links_10752_78","nav-link":"_nav-link_10752_78","nav-link-active":"_nav-link-active_10752_114",divider:Hw,"theme-toggle":"_theme-toggle_10752_145","theme-toggle-mobile":"_theme-toggle-mobile_10752_146","toggle-track":"_toggle-track_10752_156","toggle-thumb":"_toggle-thumb_10752_178","toggle-thumb-dark":"_toggle-thumb-dark_10752_192","mobile-nav":"_mobile-nav_10752_201","mobile-button":"_mobile-button_10752_213","mobile-menu":"_mobile-menu_10752_237","mobile-menu-content":"_mobile-menu-content_10752_268","mobile-nav-link":"_mobile-nav-link_10752_276","mobile-divider":"_mobile-divider_10752_301","blog-link":"_blog-link_10752_308","download-btn":"_download-btn_10752_347","mobile-blog-link":"_mobile-blog-link_10752_378","mobile-download-btn":"_mobile-download-btn_10752_406","github-link":"_github-link_10752_442","mobile-github-link":"_mobile-github-link_10752_465"},Km="https://github.com/Kimgyuilli/gyuill-portfolio",Zm="https://blog.rlarbdlf222.workers.dev/";function Uw({isProjectPage:e=!1,onNavigateHome:t}){const[r,o]=Z.useState(!1),[s,u]=Z.useState("home"),{theme:l,toggleTheme:f}=Lw(),d=(h,p)=>{!e||!t||(h.preventDefault(),t(p.replace("#","")))};return Z.useEffect(()=>{if(e)return;const h=()=>{const p=dc.map(D=>D.href.substring(1)),g=.9,v=window.scrollY*g+100,x=window.innerHeight,C=document.documentElement.scrollHeight;if(x+window.scrollY>=C-10){u(p[p.length-1]);return}for(const D of p){const I=document.getElementById(D);if(I){const z=I.getBoundingClientRect(),M=(z.top+window.scrollY)*g,q=z.height*g;if(v>=M&&v<M+q){u(D);break}}}};return window.addEventListener("scroll",h),h(),()=>window.removeEventListener("scroll",h)},[e]),k.jsxs("nav",{className:Re.nav,children:[k.jsx("div",{className:Re.container,children:k.jsxs("div",{className:Re["nav-content"],children:[k.jsx("div",{className:Re.brand,children:k.jsx("a",{href:"#home",className:Re["brand-link"],onClick:h=>d(h,"#home"),children:Rw})}),k.jsxs("div",{className:Re["desktop-nav"],children:[k.jsx("div",{className:Re["nav-links"],children:dc.map(h=>{const p=!e&&s===h.href.substring(1);return k.jsx("a",{href:h.href,onClick:g=>d(g,h.href),className:`${Re["nav-link"]} ${p?Re["nav-link-active"]:""}`,children:h.label},h.label)})}),k.jsx("div",{className:Re.divider}),k.jsxs("a",{href:Zm,className:Re["blog-link"],"aria-label":"Tech Blog",children:[k.jsx(Jc,{size:18}),k.jsx("span",{children:"Tech Blog"})]}),k.jsx($m,{className:Re["download-btn"]}),k.jsx("a",{href:Km,target:"_blank",rel:"noopener noreferrer",className:Re["github-link"],"aria-label":"GitHub Repository",children:k.jsx(Vm,{size:18})}),k.jsx("div",{className:Re.divider}),k.jsx("button",{onClick:f,className:Re["theme-toggle"],"aria-label":"Toggle theme",children:k.jsx("div",{className:Re["toggle-track"],children:k.jsx("div",{className:`${Re["toggle-thumb"]} ${l==="dark"?Re["toggle-thumb-dark"]:""}`,children:l==="dark"?k.jsx(Hm,{size:14}):k.jsx(Um,{size:14})})})})]}),k.jsxs("div",{className:Re["mobile-nav"],children:[k.jsx("button",{onClick:f,className:Re["theme-toggle-mobile"],"aria-label":"Toggle theme",children:k.jsx("div",{className:Re["toggle-track"],children:k.jsx("div",{className:`${Re["toggle-thumb"]} ${l==="dark"?Re["toggle-thumb-dark"]:""}`,children:l==="dark"?k.jsx(Hm,{size:12}):k.jsx(Um,{size:12})})})}),k.jsx("button",{onClick:()=>o(!r),className:Re["mobile-button"],"aria-label":"Toggle menu",children:r?k.jsx(Mw,{size:24}):k.jsx(gw,{size:24})})]})]})}),r&&k.jsx("div",{className:Re["mobile-menu"],children:k.jsxs("div",{className:Re["mobile-menu-content"],children:[dc.map(h=>k.jsx("a",{href:h.href,className:Re["mobile-nav-link"],onClick:p=>{d(p,h.href),o(!1)},children:h.label},h.label)),k.jsx("div",{className:Re["mobile-divider"]}),k.jsxs("a",{href:Zm,className:Re["mobile-blog-link"],onClick:()=>o(!1),children:[k.jsx(Jc,{size:18}),"Tech Blog"]}),k.jsx($m,{className:Re["mobile-download-btn"],showLabel:!0,onClick:()=>o(!1)}),k.jsxs("a",{href:Km,target:"_blank",rel:"noopener noreferrer",className:Re["mobile-github-link"],onClick:()=>o(!1),children:[k.jsx(Vm,{size:18}),"GitHub Repo"]})]})})]})}const Gw="/portfolio/assets/profile-CpUiUMR4.jpeg",Di={name:"김규일",profileImage:Gw,about:{paragraphs:[`학습한 내용을 기술 블로그에 기록하고, 세미나와 스터디를 통해 팀원들과 지식을 나누며 함께 성장하는 환경을 만들어갑니다. 
+ */const jw=[["path",{d:"M18 6 6 18",key:"1bl5f8"}],["path",{d:"m6 6 12 12",key:"d8bk6v"}]],Mw=je("x",jw),dc=[{label:"Home",href:"#home"},{label:"Skills",href:"#skills"},{label:"Projects",href:"#projects"},{label:"Achievements",href:"#achievements"},{label:"Experience",href:"#experience"},{label:"Blog",href:"#blog"},{label:"Contact",href:"#contact"}],Rw="<Dev/>",w1=Z.createContext(void 0);function Nw({children:e}){const[t,r]=Z.useState(()=>localStorage.getItem("theme")||"dark");Z.useEffect(()=>{localStorage.setItem("theme",t),t==="dark"?document.documentElement.classList.add("dark"):document.documentElement.classList.remove("dark")},[t]);const o=()=>{const u=window.matchMedia("(prefers-reduced-motion: reduce)").matches,l="startViewTransition"in document;!u&&l&&document.startViewTransition?document.startViewTransition(()=>{r(f=>f==="light"?"dark":"light")}):u?r(f=>f==="light"?"dark":"light"):(document.documentElement.classList.add("theme-transition"),r(f=>f==="light"?"dark":"light"),setTimeout(()=>{document.documentElement.classList.remove("theme-transition")},1e3))},s=Z.useMemo(()=>({theme:t,toggleTheme:o}),[t]);return k.jsx(w1.Provider,{value:s,children:e})}function Lw(){const e=Z.useContext(w1);if(e===void 0)throw new Error("useTheme must be used within a ThemeProvider");return e}const Ow="modulepreload",zw=function(e){return"/portfolio/"+e},Gm={},Wm=function(t,r,o){let s=Promise.resolve();if(r&&r.length>0){let l=function(h){return Promise.all(h.map(p=>Promise.resolve(p).then(g=>({status:"fulfilled",value:g}),g=>({status:"rejected",reason:g}))))};document.getElementsByTagName("link");const f=document.querySelector("meta[property=csp-nonce]"),d=f?.nonce||f?.getAttribute("nonce");s=l(r.map(h=>{if(h=zw(h),h in Gm)return;Gm[h]=!0;const p=h.endsWith(".css"),g=p?'[rel="stylesheet"]':"";if(document.querySelector(`link[href="${h}"]${g}`))return;const v=document.createElement("link");if(v.rel=p?"stylesheet":Ow,p||(v.as="script"),v.crossOrigin="",v.href=h,d&&v.setAttribute("nonce",d),document.head.appendChild(v),p)return new Promise((x,C)=>{v.addEventListener("load",x),v.addEventListener("error",()=>C(new Error(`Unable to preload CSS for ${h}`)))})}))}function u(l){const f=new Event("vite:preloadError",{cancelable:!0});if(f.payload=l,window.dispatchEvent(f),!f.defaultPrevented)throw l}return s.then(l=>{for(const f of l||[])f.status==="rejected"&&u(f.reason);return t().catch(u)})};function $m({className:e,showLabel:t,onClick:r}){const[o,s]=Z.useState(!1),u=async()=>{if(!o){s(!0);try{const[{pdf:l},{ResumePdf:f}]=await Promise.all([Wm(()=>import("./react-pdf.browser-D0XXGJ6Z.js"),[]),Wm(()=>import("./ResumePdf-BdIeolQL.js"),__vite__mapDeps([0,1]))]),d=await l(k.jsx(f,{})).toBlob(),h=URL.createObjectURL(d),p=document.createElement("a");p.href=h,p.download="김규일_이력서.pdf",p.click(),setTimeout(()=>URL.revokeObjectURL(h),1e3)}catch(l){console.error("PDF 생성 실패:",l)}finally{s(!1),r?.()}}};return k.jsx("button",{onClick:u,disabled:o,className:e,"aria-label":"이력서 PDF 다운로드",title:"이력서 다운로드",children:o?k.jsxs(k.Fragment,{children:[k.jsx(k1,{size:t?16:18,style:{animation:"spin 1s linear infinite"}}),t&&k.jsx("span",{children:"PDF 생성중..."})]}):k.jsxs(k.Fragment,{children:[k.jsx(iw,{size:t?16:18}),t&&k.jsx("span",{children:"이력서 다운로드"})]})})}const Bw="_nav_10752_1",Fw="_container_10752_18",Vw="_brand_10752_46",Hw="_divider_10752_126",Re={nav:Bw,container:Fw,"nav-content":"_nav-content_10752_39",brand:Vw,"brand-link":"_brand-link_10752_50","desktop-nav":"_desktop-nav_10752_66","nav-links":"_nav-links_10752_78","nav-link":"_nav-link_10752_78","nav-link-active":"_nav-link-active_10752_114",divider:Hw,"theme-toggle":"_theme-toggle_10752_145","theme-toggle-mobile":"_theme-toggle-mobile_10752_146","toggle-track":"_toggle-track_10752_156","toggle-thumb":"_toggle-thumb_10752_178","toggle-thumb-dark":"_toggle-thumb-dark_10752_192","mobile-nav":"_mobile-nav_10752_201","mobile-button":"_mobile-button_10752_213","mobile-menu":"_mobile-menu_10752_237","mobile-menu-content":"_mobile-menu-content_10752_268","mobile-nav-link":"_mobile-nav-link_10752_276","mobile-divider":"_mobile-divider_10752_301","blog-link":"_blog-link_10752_308","download-btn":"_download-btn_10752_347","mobile-blog-link":"_mobile-blog-link_10752_378","mobile-download-btn":"_mobile-download-btn_10752_406","github-link":"_github-link_10752_442","mobile-github-link":"_mobile-github-link_10752_465"},Km="https://github.com/Kimgyuilli/gyuill-portfolio",Zm="https://blog.rlarbdlf222.workers.dev/";function Uw({isProjectPage:e=!1,onNavigateHome:t}){const[r,o]=Z.useState(!1),[s,u]=Z.useState("home"),{theme:l,toggleTheme:f}=Lw(),d=(h,p)=>{!e||!t||(h.preventDefault(),t(p.replace("#","")))};return Z.useEffect(()=>{if(e)return;const h=()=>{const p=dc.map(D=>D.href.substring(1)),g=.9,v=window.scrollY*g+100,x=window.innerHeight,C=document.documentElement.scrollHeight;if(x+window.scrollY>=C-10){u(p[p.length-1]);return}for(const D of p){const I=document.getElementById(D);if(I){const z=I.getBoundingClientRect(),M=(z.top+window.scrollY)*g,q=z.height*g;if(v>=M&&v<M+q){u(D);break}}}};return window.addEventListener("scroll",h),h(),()=>window.removeEventListener("scroll",h)},[e]),k.jsxs("nav",{className:Re.nav,children:[k.jsx("div",{className:Re.container,children:k.jsxs("div",{className:Re["nav-content"],children:[k.jsx("div",{className:Re.brand,children:k.jsx("a",{href:"#home",className:Re["brand-link"],onClick:h=>d(h,"#home"),children:Rw})}),k.jsxs("div",{className:Re["desktop-nav"],children:[k.jsx("div",{className:Re["nav-links"],children:dc.map(h=>{const p=!e&&s===h.href.substring(1);return k.jsx("a",{href:h.href,onClick:g=>d(g,h.href),className:`${Re["nav-link"]} ${p?Re["nav-link-active"]:""}`,children:h.label},h.label)})}),k.jsx("div",{className:Re.divider}),k.jsxs("a",{href:Zm,className:Re["blog-link"],"aria-label":"Tech Blog",children:[k.jsx(Jc,{size:18}),k.jsx("span",{children:"Tech Blog"})]}),k.jsx($m,{className:Re["download-btn"]}),k.jsx("a",{href:Km,target:"_blank",rel:"noopener noreferrer",className:Re["github-link"],"aria-label":"GitHub Repository",children:k.jsx(Vm,{size:18})}),k.jsx("div",{className:Re.divider}),k.jsx("button",{onClick:f,className:Re["theme-toggle"],"aria-label":"Toggle theme",children:k.jsx("div",{className:Re["toggle-track"],children:k.jsx("div",{className:`${Re["toggle-thumb"]} ${l==="dark"?Re["toggle-thumb-dark"]:""}`,children:l==="dark"?k.jsx(Hm,{size:14}):k.jsx(Um,{size:14})})})})]}),k.jsxs("div",{className:Re["mobile-nav"],children:[k.jsx("button",{onClick:f,className:Re["theme-toggle-mobile"],"aria-label":"Toggle theme",children:k.jsx("div",{className:Re["toggle-track"],children:k.jsx("div",{className:`${Re["toggle-thumb"]} ${l==="dark"?Re["toggle-thumb-dark"]:""}`,children:l==="dark"?k.jsx(Hm,{size:12}):k.jsx(Um,{size:12})})})}),k.jsx("button",{onClick:()=>o(!r),className:Re["mobile-button"],"aria-label":"Toggle menu",children:r?k.jsx(Mw,{size:24}):k.jsx(gw,{size:24})})]})]})}),r&&k.jsx("div",{className:Re["mobile-menu"],children:k.jsxs("div",{className:Re["mobile-menu-content"],children:[dc.map(h=>k.jsx("a",{href:h.href,className:Re["mobile-nav-link"],onClick:p=>{d(p,h.href),o(!1)},children:h.label},h.label)),k.jsx("div",{className:Re["mobile-divider"]}),k.jsxs("a",{href:Zm,className:Re["mobile-blog-link"],onClick:()=>o(!1),children:[k.jsx(Jc,{size:18}),"Tech Blog"]}),k.jsx($m,{className:Re["mobile-download-btn"],showLabel:!0,onClick:()=>o(!1)}),k.jsxs("a",{href:Km,target:"_blank",rel:"noopener noreferrer",className:Re["mobile-github-link"],onClick:()=>o(!1),children:[k.jsx(Vm,{size:18}),"GitHub Repo"]})]})})]})}const Gw="/portfolio/assets/profile-CpUiUMR4.jpeg",Di={name:"김규일",profileImage:Gw,about:{paragraphs:[`학습한 내용을 기술 블로그에 기록하고, 세미나와 스터디를 통해 팀원들과 지식을 나누며 함께 성장하는 환경을 만들어갑니다. 
 혼자 빠르게 앞서가기보다, 동료와 오래 지속될 수 있는 방향으로 함께 멀리 가는 개발자가 되고자 합니다.`,"단순히 기능을 구현하는 것에 그치지 않고, 왜 이 기술을 선택했는지 근거를 갖고 개발합니다.","프로젝트 기획부터 배포까지 경험하며, 직무 간 맥락을 이해하고 주도적으로 소통합니다.","AI 도구를 활용해 반복 작업을 자동화하고, 핵심 로직 개발에 집중하여 생산성을 높입니다."]},education:[{period:"2020.03 - 현재",school:"안양대학교 컴퓨터공학과 20학번 (유예) [학점: 4.02/4.5]"}],lastUpdated:"2026-08-05"},Ua=[{label:"이메일",value:"rlarbdlf222@gmail.com",href:"mailto:rlarbdlf222@gmail.com"},{label:"전화번호",value:"Please contact me by email",href:""},{label:"위치",value:"경기도, 대한민국"}],Ww=[{href:"https://github.com/Kimgyuilli",label:"GitHub"},{href:"https://www.linkedin.com/in/kimgyuill222",label:"LinkedIn"},{href:"https://blog.rlarbdlf222.workers.dev",label:"Tech Blog"}],_t={"hero-section":"_hero-section_dpy24_1","hero-container":"_hero-container_dpy24_10","hero-grid":"_hero-grid_dpy24_19","left-column":"_left-column_dpy24_33","center-column":"_center-column_dpy24_37","right-column":"_right-column_dpy24_42","section-title":"_section-title_dpy24_87","timeline-list":"_timeline-list_dpy24_96"},Ke={"career-title":"_career-title_m1h69_1","profile-wrapper":"_profile-wrapper_m1h69_11","profile-image-box":"_profile-image-box_m1h69_16","profile-image":"_profile-image_m1h69_16","info-section":"_info-section_m1h69_41","section-header":"_section-header_m1h69_47","info-grid":"_info-grid_m1h69_56","info-item":"_info-item_m1h69_62","info-label":"_info-label_m1h69_67","info-value":"_info-value_m1h69_73","info-value-name":"_info-value-name_m1h69_78","updated-section":"_updated-section_m1h69_90","updated-label":"_updated-label_m1h69_100","updated-date":"_updated-date_m1h69_106"};function $w(e){const t=new Date(e),r=new Date;r.setHours(0,0,0,0),t.setHours(0,0,0,0);const o=Math.floor((r.getTime()-t.getTime())/(1e3*60*60*24));return{formatted:e.replace(/-/g,". "),diffDays:o}}function Kw(){const{formatted:e,diffDays:t}=$w(Di.lastUpdated);return k.jsxs("div",{className:_t["left-column"],children:[k.jsx("div",{children:k.jsx("h1",{className:Ke["career-title"],children:"CAREER"})}),k.jsx("div",{className:Ke["profile-wrapper"],children:k.jsx("div",{className:Ke["profile-image-box"],children:k.jsx("img",{src:Di.profileImage,alt:Di.name,className:Ke["profile-image"]})})}),k.jsx("div",{className:Ke["info-section"],children:k.jsxs("div",{children:[k.jsx("h2",{className:Ke["section-header"],children:"Profile"}),k.jsxs("div",{className:Ke["info-grid"],children:[k.jsxs("div",{className:Ke["info-item"],children:[k.jsx("p",{className:Ke["info-label"],children:"이름"}),k.jsx("p",{className:Ke["info-value-name"],children:Di.name})]}),k.jsxs("div",{className:Ke["info-item"],children:[k.jsx("p",{className:Ke["info-label"],children:"이메일"}),k.jsx("p",{className:Ke["info-value"],children:Ua.find(r=>r.label==="이메일")?.value})]}),k.jsxs("div",{className:Ke["info-item"],children:[k.jsx("p",{className:Ke["info-label"],children:"번호"}),k.jsx("p",{className:Ke["info-value"],children:Ua.find(r=>r.label==="전화번호")?.value})]}),k.jsxs("div",{className:Ke["info-item"],children:[k.jsx("p",{className:Ke["info-label"],children:"주소"}),k.jsx("p",{className:Ke["info-value"],children:Ua.find(r=>r.label==="위치")?.value})]})]})]})}),k.jsxs("div",{className:Ke["updated-section"],children:[k.jsx("p",{className:Ke["updated-label"],children:"Latest Updated"}),k.jsxs("p",{className:Ke["updated-date"],children:[e," (D+",t,")"]})]})]})}const ef=[{company:"SOPT makers",position:"공식 홈페이지팀 BE",period:"2026.08 - 현재",description:["공식 홈페이지 및 인증 · 리쿠르팅 로직 유지보수","팀 내부 효율성 개선 작업"],type:"activity"},{company:"IT 동아리 SOPT",position:"SERVER OB",period:"2026.02 - 2026.07",description:["서버 파트 합동 세미나 참여 및 과제/리뷰 수행","Redis 스터디장/성능테스트 스터디 참여","1주차 MVP","12주간 정보 공유 아티클 17개 작성","해커톤 참여 및 iOS 서비스 부문 대상 수상",'프로젝트 관리 툴 "Momens" Server Lead'],type:"activity"},{company:"IT 동아리 SOPT",position:"SERVER YB",period:"2025.09 - 2026.01",description:["서버 파트 합동 세미나 참여 및 과제 수행","Spring Boot 기반 서버 개발 역량 강화","1주차 과제 MVP","12주간 정보 공유 아티클 22개 작성","해커톤 참여 및 웹 서비스 부문 대상 수상",'뷰티 캘린더 앱 "Cherrish" Server Lead, GitHub Wiki 기반 서버 문서화'],type:"activity"},{company:"IT 동아리 피로그래밍",position:"교육팀 운영진",period:"2025.03 - 2025.08",description:["교육 커리큘럼 설계 및 과제 출제","과제 채점 기준 수립 및 코드리뷰 진행","강의자 섭외 및 조율","Git 세션 강의 진행","리쿠르팅 전반 참여"],type:"activity"},{company:"IT 동아리 피로그래밍 피로니어",position:"서버 개발 팀 참가자",period:"2025.03 - 2025.05",description:["SpringBoot 과정 수료","리쿠르팅 플랫폼 프로젝트 PM 및 풀스택 리드 개발자"],type:"activity"},{company:"Groomthon Univ",position:"AYU 서버파트 미르미",period:"2025.02 - 2025.09",description:["해커톤 2회 참여 (9ITHON 최우수상 수상)","SpringBoot 스터디 진행 및 기술 공유"],type:"activity"},{company:"IT 동아리 피로그래밍",position:"참가자",period:"2024.12 - 2025.02",description:["풀스택 개발 과정 수료","3주차 과제 MVP","러닝 코스 추천 웹 서비스 팀 프로젝트 개발"],type:"activity"},{company:"AYU DB LAB",position:"학부 연구생",period:"2024.03 - 2026.02",description:["노인 돌봄을 위한 AI 비서 서비스 논문 및 프로젝트 연구 진행"],type:"activity"}],ht={"about-section":"_about-section_cnh1r_1","about-paragraphs":"_about-paragraphs_cnh1r_5","about-paragraph":"_about-paragraph_cnh1r_5","timeline-item":"_timeline-item_cnh1r_18","timeline-date":"_timeline-date_cnh1r_24","timeline-content":"_timeline-content_cnh1r_34","timeline-title":"_timeline-title_cnh1r_39","timeline-subtitle":"_timeline-subtitle_cnh1r_46","timeline-text":"_timeline-text_cnh1r_52"};function Zw(){const e=ef.filter(r=>r.type==="career"),t=ef.filter(r=>r.type==="activity");return k.jsxs("div",{className:_t["center-column"],children:[k.jsxs("div",{className:ht["about-section"],children:[k.jsx("h2",{className:_t["section-title"],children:"About Me"}),k.jsx("div",{className:ht["about-paragraphs"],children:Di.about.paragraphs.map((r,o)=>k.jsx("p",{className:ht["about-paragraph"],children:r},o))})]}),k.jsxs("div",{children:[k.jsx("h2",{className:_t["section-title"],children:"Education"}),k.jsx("div",{className:_t["timeline-list"],children:Di.education.map((r,o)=>k.jsxs("div",{className:ht["timeline-item"],children:[k.jsx("div",{className:ht["timeline-date"],children:r.period}),k.jsx("div",{className:ht["timeline-content"],children:k.jsx("p",{className:ht["timeline-text"],children:r.school})})]},o))})]}),e.length>0&&k.jsxs("div",{children:[k.jsx("h2",{className:_t["section-title"],children:"Career"}),k.jsx("div",{className:_t["timeline-list"],children:e.map((r,o)=>k.jsxs("div",{className:ht["timeline-item"],children:[k.jsx("div",{className:ht["timeline-date"],children:r.period}),k.jsxs("div",{className:ht["timeline-content"],children:[k.jsx("p",{className:ht["timeline-title"],children:r.position}),k.jsx("p",{className:ht["timeline-subtitle"],children:r.company})]})]},o))})]}),k.jsxs("div",{children:[k.jsx("h2",{className:_t["section-title"],children:"Activities"}),k.jsx("div",{className:_t["timeline-list"],children:t.map((r,o)=>k.jsxs("div",{className:ht["timeline-item"],children:[k.jsx("div",{className:ht["timeline-date"],children:r.period}),k.jsxs("div",{className:ht["timeline-content"],children:[k.jsx("p",{className:ht["timeline-text"],children:r.company}),k.jsx("p",{className:ht["timeline-subtitle"],children:r.position})]})]},o))})]})]})}const Qw="/portfolio/assets/thumbnail-DhocodSY.webp",qw="/portfolio/assets/diagram-modules-ecIIWazl.svg",Yw="/portfolio/assets/diagram-team-boundary-qsddo30Q.svg",Xw="/portfolio/assets/diagram-outbox-DS2c4XxZ.svg",Jw="/portfolio/assets/diagram-legacy-CM7NR7em.svg",eS={diagram_modules:qw,diagram_team_boundary:Yw,diagram_outbox:Xw,diagram_legacy:Jw},tS=`## 프로젝트 개요
 
 **Momens**는 흩어진 업무 맥락을 연결해 프로젝트의 리스크·결정 사항·다음 행동을 놓치지 않게 돕는 AI 운영 도구다. \`momens-server\`는 그 제품의 **Java/Spring Product API 서버**이며, 기존 Go/Gin 서버(\`momens-api\`)를 점진적으로 대체한다. SOPT 38기 앱잼 프로덕트이고, 나는 **서버 리드**로 참여했다.
@@ -228,9 +228,9 @@ Error generating stack: `+y.message+`
 - **모듈 경계를 빌드가 강제하는 구조를 만들었다.** Gradle 서브프로젝트 16개 위에 Spring Modulith 검증을 얹어, 경계 위반을 리뷰가 아니라 CI가 잡는다
 - **팀 간 책임 경계를 문서로 정의했다.** 서버 혼자 정할 수 없는 항목만 추린 결정 요청서로 회의를 주도했고, 확정된 내용을 ADR 22건으로 남겼다
 - **레거시와 DB를 공유하는 제약을 드러내는 데서 멈추지 않고 없앴다.** 운영 DB의 스키마 소유권 자체를 신규 서버로 이전해, 마이그레이션마다 관리자에게 권한을 요청하던 왕복을 없앴다
-- **전환 단위를 제약에 맞춰 다시 설계했다.** 경로별로 트래픽을 돌릴 지점이 없다는 것을 확인하고 점진 전환을 기각한 뒤, 인증과 Product API 2단계로 나누고 무엇이 전환을 막는지를 게이트 셋으로 명시했다
-- **"옮긴 게 맞다"를 사람 눈이 아니라 도구가 판정하게 했다.** 레거시와 신규 서버를 나란히 띄워 응답과 DB 기록을 대조하는 차등 비교 하네스를 만들고, 그 위에 OpenAPI 스냅샷 드리프트 게이트를 얹었다
-- **간헐적 503의 원인을 81초짜리 endpoint 공백으로 특정하고 없앴다.** 이후 기동이 123초까지 지연된 배포에서도 외부 health check는 20회 모두 200이었다
+- **전환 단위를 제약에 맞춰 다시 설계했다.** 경로별로 트래픽을 돌릴 지점이 없다는 것을 확인하고 점진 전환을 기각한 뒤, 인증과 Product API 2단계로 나누고 무엇이 전환을 막는지를 게이트 넷으로 명시했다
+- **"옮긴 게 맞다"를 사람 눈이 아니라 도구가 판정하게 했다.** 레거시와 신규 서버를 나란히 띄워 응답과 DB 기록을 대조하는 차등 비교 하네스(케이스 108개)를 만들고, 그 위에 OpenAPI 스냅샷 드리프트 게이트를 얹었다
+- **dev 서버의 간헐적 503의 원인을 81초짜리 endpoint 공백으로 특정하고 없앴다.** 이후 기동이 123초까지 지연된 배포에서도 외부 health check는 20회 모두 200이었다
 
 ### 개발 동기
 
@@ -240,7 +240,7 @@ Error generating stack: `+y.message+`
 
 다만 경계는 합의만으로 지켜지지 않는다고 전제했다. 규칙을 문서에 적어두는 대신 어기면 **빌드가 실패하게** 만들었고 팀 사이의 책임은 회의록이 아니라 ADR에 확정된 형태로 남겼다.
 
-이 프로젝트에서 다룬 문제는 결국 하나로 모인다. **경계를 어디에 긋고, 어떻게 지키고, 누구와 협상할 것인가.** 아래 다섯 개의 케이스는 그 경계가 놓인 세 개의 층이다.
+이 프로젝트에서 다룬 문제는 결국 하나로 모인다. **경계를 어디에 긋고, 어떻게 지키고, 누구와 협상할 것인가.** 아래 여섯 개의 케이스는 그 경계가 놓인 세 개의 층이다.
 
 | 층 | 경계 | 지키는 수단 |
 | --- | --- | --- |
@@ -254,17 +254,19 @@ Error generating stack: `+y.message+`
 | 소속 | SOPT 38기 앱잼 프로덕트 |
 | 역할 | **서버 리드** (모듈 설계 · 크로스팀 계약 · dev 인프라) |
 | 서버 인원 | 2명 (워크스페이스 전체 12명) |
-| 커밋 | 1,065개 (전 브랜치 기준, 저장소 전체 1,410개) |
-| 코드 규모 | Java 26,821줄 (578파일) |
-| 테스트 | 28,590줄 (195파일) |
+| 커밋 | 1,055개 (전 브랜치 기준, 저장소 전체 1,392개) |
+| 코드 규모 | Java 27,215줄 (592파일) |
+| 테스트 | 28,547줄 (192파일) |
 | 문서 | ADR 22건 · 상세 설계 10건 · 공통 규칙 6건 · 서버 명세 4건 |
+
+> 수치는 모두 **2026-09-10 기준 재측정값**이다. 이 글에는 시점이 다른 수치가 함께 나온다. 레거시 규모는 이관을 계획하던 2026-06 시점, 이관 원장은 baseline 커밋(2026-07-15) 기준이고, 각 표에 어느 시점인지 적었다.
 
 ### 기술 스택
 
 | 영역 | 스택 |
 | --- | --- |
 | Language / Framework | Java 21, **Spring Boot 4**, Spring Modulith |
-| Data | PostgreSQL, JPA, Flyway (24단계) |
+| Data | PostgreSQL, JPA, Flyway (45단계) |
 | Test | JUnit 5, Testcontainers |
 | Build | Gradle 멀티모듈 (Groovy DSL), Spotless + Google Java Format |
 | Infra | Docker, Kubernetes (dev GKE), GitHub Actions |
@@ -313,7 +315,9 @@ Error generating stack: `+y.message+`
 
 **6) 쪼개는 수단이 하나가 아니라는 것도 실패로 알았다**
 
-\`project\` 모듈이 두꺼워졌을 때 위 순서대로 nested \`@ApplicationModule\`로 가려 했는데, 실제로 선언해 보니 다른 모듈과 충돌이 났다. 대신 \`core\`·\`task\`·\`milestone\`·\`blocker\` 네 하위 도메인의 root를 각각 \`NamedInterface\`로 선언해 공개 계약만 노출하는 쪽으로 갔다. 이 과정에서 숨어 있던 결합도 드러났다 — 다른 하위 도메인의 repository를 JPQL로 직접 조회하던 3건을 공개 reader로 교체했다. 의존 방향과 순환은 ArchUnit 테스트로 고정했다.
+\`project\` 모듈이 두꺼워졌을 때 위 순서대로 nested \`@ApplicationModule\`로 가려 했는데, 실제로 선언해 보니 다른 모듈과 충돌이 났다. 대신 \`core\`·\`task\`·\`milestone\`·\`blocker\` 네 하위 도메인의 root를 각각 \`NamedInterface\`로 선언해 공개 계약만 노출하는 쪽으로 갔다(\`source\`도 같은 방식으로 \`connection\`·\`ref\` 둘로 갈랐다). 이 과정에서 숨어 있던 결합도 드러났다 — 다른 하위 도메인의 repository를 JPQL로 직접 조회하던 3건을 \`ProjectReader\`·\`MilestoneDirectory\`로 교체했고, milestone 생성이 \`ProjectOwnerRepository\`를 직접 참조하던 것도 \`ProjectOwnerReader\`로 바꿨다. 의존 방향과 순환은 ArchUnit 테스트(\`ProjectSubDomainBoundaryTests\`)로 고정했다.
+
+경계를 옮기면서 계산 책임도 따라 옮겼다. 진행률 계산이 \`project\`의 core에 있었는데 **분모와 분자가 모두 task**라 task 쪽으로 넘겼다. 경계를 다시 긋는 작업은 코드를 옮기는 것으로 끝나지 않고 "이 계산은 누구 것인가"를 다시 묻게 한다.
 
 앞의 "물리 분리 → nested"가 항상 성립하는 규칙이 아니었던 셈이다. 기준은 어떤 수단을 쓰느냐가 아니라 **경계가 실제로 강제되는가**라는 쪽으로 정리했다.
 
@@ -336,18 +340,22 @@ Error generating stack: `+y.message+`
 
 옮겨야 할 레거시의 크기부터가 문제였다. 그리고 이관과 동시에 모바일 MVP 신규 API도 10개 넘게 만들어야 했다.
 
-| 항목 | 규모 |
+| 항목 | 규모 (2026-06 계획 시점) |
 | --- | --- |
 | HTTP 매핑 | 76개 |
 | 비즈니스 API | 약 69개 |
 | Go 코드 | 프로덕션만 1.4만 LOC (전체 2만 LOC 이상) |
 | DB | 마이그레이션 15개 이상 · 테이블 20개 이상 |
 
+이 표는 이관을 **계획하던 시점**의 레거시다. 한 달 뒤 이관 원장을 전수로 뜨면서 기준 커밋을 고정했을 때는 route 선언이 **96개**로 늘어 있었다. 분석하는 동안에도 옮겨야 할 대상이 자라고 있었다는 뜻이고, 원장이 "계획 문서가 아니라 고정된 커밋의 코드"를 정본으로 삼는 이유가 여기에 있다. 이 글에서 이후로 나오는 이관 수치는 전부 그 baseline(\`momens-api@71bbd076\`, 2026-07-15) 기준의 **96건**이다.
+
 여기에 제약이 하나 더 있다. 신규 서버는 레거시 \`momens-api\`와 **같은 PostgreSQL을 공유**하고, 운영 DB의 스키마 소유권은 레거시에 있다. 신규 서버의 운영 프로필은 \`flyway off\` + \`ddl-auto=validate\`라서 **스키마를 만들 수 없고 검증만 한다.** 새 컬럼이 필요하면 내가 마이그레이션을 짜서 배포하는 것으로 끝나지 않고, 레거시 쪽에 반영을 요청해야 하며, 순서가 어긋나면 서버가 아예 뜨지 않는다.
 
 ### 해결 (To-Be)
 
-전부 옮긴 뒤 한 번에 전환하는 **빅뱅 컷오버를 기각**했다. 완성 전까지는 운영 가치가 0이고, 리스크가 컷오버 시점 하나에 몰린다. 대신 레거시를 감싼 채 기능을 하나씩 새 서버로 넘기는 **Strangler Fig** 방식을 택했다. 한 사용자 행위를 끝까지 옮기는 **최소 수직 슬라이스**를 구현 단위로 삼고, 무엇을 함께 넘길지는 파일이 아니라 불변식을 함께 지켜야 하는 **aggregate 경계**로 잘랐다. 다만 구현 단위와 운영 전환 단위는 같지 않다. 그 차이가 나중에 방식 자체를 바꾸게 되는데, 3장에서 다룬다.
+전부 옮긴 뒤 한 번에 전환하는 **빅뱅 컷오버를 기각**했다. 완성 전까지는 운영 가치가 0이고, 리스크가 컷오버 시점 하나에 몰린다. 대신 레거시를 감싼 채 기능을 하나씩 새 서버로 넘기는 **점진 전환**(Strangler Fig)을 택했다 — 2026-06 계획 시점의 결정이다. 한 사용자 행위를 끝까지 옮기는 **최소 수직 슬라이스**를 구현 단위로 삼고, 실제 트래픽을 넘기는 단위는 불변식을 함께 지켜야 하는 **aggregate 경계**로 따로 잡았다.
+
+**미리 밝혀 두면, 이 점진 전환은 끝내 실행되지 않았다.** 슬라이스 구현은 계속 나아갔지만 트래픽은 한 건도 넘어가지 못했고, 두 달 뒤 방식 자체를 기각하게 된다. 이유는 이 장이 아니라 3장에 있다 — 점진 전환이 성립하려면 필요한 전제 하나가 서버 밖에 없었다.
 
 그리고 환경별로 스키마 소유자를 명시적으로 갈랐다. local/test에는 레거시 소유 테이블을 본뜬 **미러 마이그레이션**을 두어 개발과 테스트를 막지 않고, prod에는 **배포 순서 게이트**를 티켓의 명시적 완료 조건으로 넣었다.
 
@@ -355,9 +363,19 @@ Error generating stack: `+y.message+`
 
 ### 기술적 고민과 결정
 
-**1) 무엇부터 옮길지는 트랜잭션 경계가 정한다**
+**1) 구현 단위와 전환 단위는 다른 자로 잰다**
 
-슬라이스를 파일이나 컨트롤러 단위로 자르지 않았다. 기준은 **레거시에서 한 트랜잭션에 묶여 있던 것은 같은 슬라이스로 함께 옮긴다**였다. 태스크 생성과 Signal 처리 상태가 한 트랜잭션이었으므로 둘을 갈라서 옮기면 중간 상태가 생긴다.
+이관 단위를 하나로 두지 않고 둘로 나눈 것이 이 전략의 핵심이다.
+
+**구현 단위는 최소 수직 슬라이스다.** 한 사용자 행위를 request 파싱부터 인가·도메인 규칙·쿼리·응답 계약·테스트까지 끝까지 옮기는 것을 한 단위로 삼았다. 같은 Go 파일에 있다는 이유로 관련 없는 endpoint를 함께 옮기지 않고, 반대로 한 사용자 행위가 여러 endpoint를 반드시 요구하면 파일이 달라도 같은 슬라이스로 묶었다. 파일이나 컨트롤러가 아니라 **사용자가 하는 일**이 기준이다.
+
+**운영 전환 단위는 aggregate의 writer다.** 여기서 aggregate는 *한 트랜잭션에서 우연히 함께 변경된 행의 묶음*이 아니라 **하나의 root를 통해 불변식을 원자적으로 지키는 일관성 경계**다. 이 구분이 실제로 중요했다. read endpoint는 인증과 응답 계약만 맞으면 endpoint 단위로 넘길 수 있지만, write는 **같은 aggregate를 바꾸는 모든 경로**를 함께 봐야 한다.
+
+\`tasks\`가 그 사례다. REST create/update/delete뿐 아니라 MCP tool과 Slack 액션도 같은 \`tasks\`를 쓴다. **REST handler를 다 구현했다고 task write 전환 준비가 끝난 게 아니다.** 한 aggregate의 writer는 한 시점에 하나만 둔다는 원칙을 세웠기 때문에, 요청 복제나 dual-write로 얼버무리지 않고 비-HTTP writer까지 전환 범위에 넣어야 했다. 이 한 줄이 나중에 컷오버 게이트 하나(G2)로 그대로 돌아온다.
+
+정리하면 **작은 단위로 구현하는 것과 작은 단위로 전환하는 것은 별개**다. 구현은 슬라이스로 잘게 나눌 수 있었지만, 전환은 aggregate가 허락하는 만큼만 잘렸다. 3장에서 그 한계가 방식 자체를 바꾼다.
+
+**2) 계약은 대상에 따라 갈랐다**
 
 계약도 대상에 따라 갈랐다. 기존 웹 API는 클라이언트 수정을 최소화하려고 **legacy-compatible 계약을 유지**했고, 모바일 신규 API만 \`/api\` 표준 계약으로 갔다. 인증도 새 서버를 순수하게 유지하는 것보다 전환 비용을 줄이는 쪽을 택해, 레거시 미들웨어를 작게 패치해 Bearer 헤더와 새 쿠키를 함께 읽게 했다.
 
@@ -365,17 +383,17 @@ Error generating stack: `+y.message+`
 
 > 관련 글: [레거시 API를 한 번에 갈아엎으려다 멈춘 이유](https://blog.rlarbdlf222.workers.dev/blog/legacy-api-strangler-fig-migration/). 검토했지만 채택하지 않은 BFF·API Gateway 안과, 당시 outbox를 후보로 떠올리지 못했던 이유까지 회고로 정리했다.
 
-**2) 미러를 둔 이유는 모듈 격리를 지키기 위해서다**
+**3) 미러를 둔 이유는 모듈 격리를 지키기 위해서다**
 
 Flyway는 자기 클래스패스의 마이그레이션만 본다. 마이그레이션을 \`app\`에 몰아두면 단순하지만, 그 순간 **모듈 단독 통합 테스트가 불가능**해진다. 그래서 마이그레이션을 모듈별 소유로 두고, 병렬 개발에서 정수 버전이 충돌하지 않도록 **타임스탬프 버전**을 채택했다. 중앙집중이 더 단순하다는 걸 알면서도 모듈 격리를 택한 트레이드오프다.
 
 레거시가 소유한 테이블은 \`@Immutable\` read-only 엔티티로 매핑해 신규 서버가 실수로 쓰기 경로를 만들 수 없게 했다.
 
-**3) 순서를 뒤집으면 서버가 죽는다**
+**4) 순서를 뒤집으면 서버가 죽는다**
 
 \`ddl-auto=validate\` 환경에서 매핑이 아직 없는 컬럼을 기대하면 **기동 자체가 실패한다.** 실제로 dev 배포에서 마이그레이션 순서 문제로 파드가 \`CrashLoopBackOff\`에 빠진 적이 있다. 이후 "레거시 마이그레이션 반영 → 서버 배포" 순서를 사람의 기억이 아니라 **티켓의 게이트**로 만들었다.
 
-**4) 값의 소유권이 enum과 문자열을 가른다**
+**5) 값의 소유권이 enum과 문자열을 가른다**
 
 리뷰에서 나온 논점이다. 이 저장소는 task의 \`status\`·\`priority\`를 enum이 아닌 문자열로 둔다. 표면만 보면 "이 레포는 상태값을 문자열로 쓴다"는 패턴처럼 보이지만, **그 예외가 성립하는 이유는 그 값의 소유권이 레거시에 있어서** 코드에서 enum으로 이중 정의하면 안 되기 때문이다.
 
@@ -411,7 +429,7 @@ Flyway는 자기 클래스패스의 마이그레이션만 본다. 마이그레�
 
 | 항목 | 실측 |
 | --- | --- |
-| 이력 | 심기 28 + 실행 14 = **42행, 실패 0** |
+| 이력 | 심기 28 + 실행 14 = **42행, 실패 0** (실제 적용 소요 0.586초) |
 | 우리가 락에 막힐 때 | 5.3 ~ 5.8초 · \`lock_timeout\` 1회 |
 | 레거시가 우리 때문에 막힐 때 | **1초 미만** (10만 행 최장 342ms) |
 | 실패 경로 | 전부 스키마 무변경 |
@@ -422,7 +440,7 @@ Flyway는 자기 클래스패스의 마이그레이션만 본다. 마이그레�
 
 첫 롤아웃이 타임아웃으로 실패했을 때 나는 "\`maxUnavailable=0\`이니 옛 Pod가 계속 서빙한다, 서비스 영향은 없다"고 보고했다. 확인해 보니 사실이 아니었다. 해당 경로는 이미 503을 반환하고 있었고, 되짚어 보니 클러스터 이관 이후 **롤아웃에 성공한 적이 한 번도 없었다.** 매니페스트가 보장하는 것은 "옛 Pod가 남는다"이지 **"그 Pod가 Ready다"가 아니다.** 설정 파일만 보고 운영 상태를 단정한 것이 오판의 원인이었다.
 
-원인 후보를 넷으로 좁혀 하나씩 배제하고 남은 것은 접속 정보였다. 설계 문서가 요구한 direct host는 **IPv4 주소 레코드 없이 IPv6만 반환**하는데 클러스터는 IPv4 전용이었다. 배제해야 할 대상은 pooler 주소가 아니라 transaction 모드였고, 판별 기준도 host가 아니라 포트였다. 즉 **설계 문서의 그 요구 자체가 이 환경에서 틀렸다.**
+원인 후보를 넷으로 좁혀 하나씩 배제했다. ①시크릿 키 누락은 필요 placeholder 10개를 전수 대조해 배제했다 — 워크플로가 빈 값이면 \`exit 1\`인데 통과했다는 사실 자체가 증거였다. ②접속 정보 미교체는 시크릿의 갱신 시각으로, ③선행 기동 버그는 수정 커밋이 릴리스에 포함된 것으로 배제했다. 남은 ④가 정답이었다. 설계 문서가 요구한 direct host는 **IPv4 주소 레코드 없이 IPv6만 반환**하는데 클러스터는 IPv4 전용이었다. 배제해야 할 대상은 pooler 주소가 아니라 transaction 모드였고, 판별 기준도 host가 아니라 포트였다. 즉 **설계 문서의 그 요구 자체가 이 환경에서 틀렸다.**
 
 더 뼈아픈 건 이 사실이 이미 내 작업 기록에 적혀 있었다는 점이다. 추론으로 다시 도달하는 대신 로컬 기록을 먼저 뒤졌으면 훨씬 빨리 닫혔을 구간이었다.
 
@@ -430,9 +448,11 @@ Flyway는 자기 클래스패스의 마이그레이션만 본다. 마이그레�
 
 처음에는 원문을 남기고 "정정" 인용구를 덧붙였는데, 불필요하다는 지적을 받았다. 절차 문서에서 중요한 것은 기록의 역사성이 아니라 **다음 사람이 틀린 지시를 근거로 되돌리지 않는 것**이다. 문서가 direct 접속을 요구한 채로 남아 있으면 정확히 그 일이 일어난다. 경위는 별도 절이 갖게 하고, 절차 본문은 최종 상태만 말하도록 고쳐 썼다.
 
+같은 작업에서 문서가 자기 숫자와 어긋난 것도 잡았다. 절차 문서가 마지막 단계의 수기 의무를 "3행"이라고 적는데 대장에는 4행이 있었다. 나중에 추가된 행 하나만큼 숫자가 갱신되지 않은 것이다. **문서 안에서 자기가 틀렸다고 지목할 수 있는 숫자는 남기지 않는다**는 기준으로 4행으로 고쳤다.
+
 **6) 끝난 도구는 걷어낸다 — 정리가 아니라 교정이다**
 
-전환이 끝난 뒤 1회용 도구 2,285줄을 지웠다. 단순 정리가 아니었다. 부트스트랩 분류 게이트는 원래 심기 목록 누락을 막으려고 만든 필수 CI였는데, 부트스트랩이 끝나 운영에서 Flyway가 켜지자 **그 목록이 더는 아무것도 통제하지 않게 됐다.** 그런데도 게이트는 새 마이그레이션을 둘 중 하나에 넣도록 계속 강요했고, 이름을 믿고 심기 목록에 넣으면 Flyway가 그대로 실행해 \`already exists\`를 맞는다. **막으려던 실패를 유도하는 상태로 뒤집혀 있었다.**
+전환이 끝난 뒤 1회용 도구 2,285줄을 지웠다(그중 쌍둥이 환경이 1,312줄이다). 단순 정리가 아니었다. 부트스트랩 분류 게이트는 원래 심기 목록 누락을 막으려고 만든 필수 CI였는데, 부트스트랩이 끝나 운영에서 Flyway가 켜지자 **그 목록이 더는 아무것도 통제하지 않게 됐다.** 그런데도 게이트는 새 마이그레이션을 둘 중 하나에 넣도록 계속 강요했고, 이름을 믿고 심기 목록에 넣으면 Flyway가 그대로 실행해 \`already exists\`를 맞는다. **막으려던 실패를 유도하는 상태로 뒤집혀 있었다.**
 
 반면 설계 문서 1,200여 줄은 남겼다. 심기 28과 실행 14가 왜 그렇게 갈렸는지, \`outOfOrder\`를 왜 한 번만 켰는지는 거기에만 있기 때문이다. 절차 본문을 고치는 대신 머리말에 "재실행용이 아니라 기록"이라고 덮는 방식을 택했다. 본문까지 손대면 왜 그렇게 했는지가 흐려진다.
 
@@ -448,21 +468,28 @@ Flyway는 자기 클래스패스의 마이그레이션만 본다. 마이그레�
 
 FE는 환경변수 하나로 모든 XHR의 목적지를 정한다. ingress가 \`/api\` 접두사로 두 서버를 가르지만, 어떤 요청이 그 접두사를 달지 결정하는 것은 그 값 **하나**다. 스위치의 해상도가 1비트인 셈이다. capability별로 조금씩 돌리려면 FE에 없는 라우팅 계층을 새로 만들어야 하는데, 그건 서버가 소유한 코드가 아니다.
 
-여기에 조건이 겹쳤다. 병행 예정이던 FE·worker 작업이 진행되지 못하면서, 웹 실사용 Product API는 구현이 끝났는데도 **한 건도 전환되지 못했다.** 이관 원장 96건 중 구현 46 · 추적 50이고 전환 준비 이상은 0건이다. 배포 매니페스트에도 \`FE has not cut over to /api\`라는 문장이 그대로 남아 있다. 완성된 코드가 운영 가치를 0으로 내고 있는 상태였고, 이건 빅뱅 컷오버를 기각할 때 들었던 바로 그 이유와 같은 모양이다.
+여기에 조건이 겹쳤다. 병행 예정이던 FE·worker 작업이 진행되지 못하면서, **웹이 실제로 쓰는 Product API 33개가 원장 기준으로 전부 \`implemented\`인데 한 건도 전환되지 못했다.** 원장 96건 중 구현 46 · 추적 50이고 전환 준비 이상은 0건이다. 배포 매니페스트에도 \`FE has not cut over to /api\`라는 문장이 그대로 남아 있다. 완성된 코드가 운영 가치를 0으로 내고 있는 상태였고, 이건 빅뱅 컷오버를 기각할 때 들었던 바로 그 이유와 같은 모양이다.
+
+참고로 추적 50건이 전부 남은 일은 아니다. 명시적 제외 11 · endpoint 전환 대상 아님 7 · 웹 미호출 보류 5를 빼면 **실제로 남은 이관 대상은 27건**이다. 원장을 전수로 뜬 값이 있어서 "얼마나 남았나"에 감이 아니라 숫자로 답할 수 있다.
 
 ### 해결 (To-Be)
 
 capability별 점진 전환을 기각했다. 이득이 사라졌기 때문이다 — 웹 Product API가 이미 전부 구현된 시점에는, 라우팅 계층을 새로 만들어 얻는 것이 그 비용을 넘지 못한다.
 
-그런데 일괄로도 갈 수 없다는 것이 조사에서 드러났다. 게이트가 셋 있었다.
+그런데 일괄로도 갈 수 없다는 것이 조사에서 드러났다. 2단계를 막는 게이트가 넷 있었다.
 
 | 게이트 | 내용 | 성격 |
 | --- | --- | --- |
 | G1 | 레거시는 쓰기와 검색 색인 반영을 한 트랜잭션에서 하는데, 신규 서버는 outbox에 쌓고 그 소비자가 아직 없다 | **조용하다.** 쓰기는 성공하므로 5xx도 401도 안 난다 |
-| G2 | \`tasks\`를 쓰는 레거시 경로가 웹만이 아니다. MCP 서버와 봇 액션이 컷오버 후에도 남는다 | 한 aggregate에 두 writer가 공존 |
+| G2 | \`tasks\`를 쓰는 레거시 경로가 웹만이 아니다. MCP 서버와 봇 액션이 컷오버 후에도 남는다 | 한 aggregate에 두 writer가 공존 (2장의 그 문제다) |
 | G3 | 소스 연동 provider 자격 증명이 운영에 없다 | 전환 즉시 기능이 통째로 죽는다 |
+| G4 | 신규 서버로 이관하지 않기로 한 레거시 OAuth·MCP grant UI가 같은 API 클라이언트를 탄다 | base를 뒤집으면 이관 안 한 표면까지 함께 넘어간다 |
 
-탈출구는 조사 중에 나왔다. FE의 **로그인 진입점과 API base가 서로 다른 환경변수**라, 라우팅 계층 없이도 둘을 나눌 수 있었다. 그래서 인증 → Product API **2단계**로 확정했다. 한 세션이 두 서버의 Product API를 섞어 부르지 않으므로 혼합 트래픽도 아니다. 가능했던 최대 해상도가 2였던 것이다.
+G4는 내가 처음 조사에서 놓쳤고 **리뷰에서 드러났다.** 게이트가 셋인 줄 알았는데 넷이었다. 이 표면만 별도 base로 격리하기로 하면서, 앞서 "라우팅 지점이 없다"고 단정했던 서술도 정확해졌다 — 없는 것은 *일반 endpoint 라우팅 계층*이고, **이관하지 않기로 명시한 표면 하나를 위한 한시적 예외**는 만들 수 있었다.
+
+탈출구도 조사 중에 나왔다. FE의 **로그인 진입점과 API base가 서로 다른 환경변수**라, 라우팅 계층 없이도 둘을 나눌 수 있었다. 그래서 인증 → Product API **2단계**로 확정했다. 한 세션이 두 서버의 Product API를 섞어 부르지 않으므로 혼합 트래픽도 아니다. 가능했던 최대 해상도가 2였던 것이다.
+
+다만 그 독립은 조건부다. 로그인 URL 환경변수가 **비어 있으면 API base에서 파생**되도록 FE 코드가 짜여 있고, 운영 설정이 값을 명시하고 있어서 독립이 성립한다. **2단계 분할 전체가 그 한 줄에 걸려 있다.** 그래서 "둘로 나눌 수 있다"에서 멈추지 않고 그 값을 비우거나 지우면 전제가 무너진다는 것까지 runbook에 적었다.
 
 정리하면 형태가 바뀌었다. **경로별 점진 전환에서, 나란히 돌려 동등성을 증명한 뒤 단계적으로 넘기는 방식으로.** 다이얼이 없으면 리스크를 시간축에 분산할 수 없고, 대신 넘기기 전에 같음을 증명해서 깎는 수밖에 없다. 4장의 차등 비교 하네스가 그 증명 장치다. 처음에는 점진 전환의 보조 도구로 만들었는데, 결과적으로 이 방식의 핵심 장치가 됐다.
 
@@ -486,7 +513,11 @@ G1은 쓰기가 성공하므로 오류로 드러나지 않는다. 전환 후 관
 
 ### 남은 것
 
-전환은 아직 1단계도 열지 못했다. 막는 것이 전부 서버 밖(FE 라우팅, worker 소비자, provider 콘솔 설정)에 있어서, 그 게이트를 여는 FE·레거시 작업까지 범위를 넓혀 순차적으로 진행하기로 했다.
+전환은 아직 1단계도 열지 못했다. 다만 두 단계가 막힌 이유는 성격이 다르다.
+
+**1단계(인증)의 게이트는 넷이고, 그중 하나는 내 작업이다.** 두 서버의 JWT 서명 키 동일성 확인, Google OAuth 운영 설정의 병행 등록, 레거시가 신규 access token을 수용하게 하는 작업, 그리고 **신규 로그아웃이 레거시 세션 쿠키까지 만료시키는 작업**이다. 마지막 것은 내가 들고 있고 진행 중이다. 1단계에서 로그인만 넘기면 로그아웃이 레거시로 가서 신규 세션이 남는 구멍이 생기는데, 이건 "세션 연속성을 포기한다"와는 다른 문제라 허용하지 않기로 했다.
+
+**2단계(Product API)를 막는 넷은 전부 서버 밖에 있다.** worker 소비자(G1), 레거시에 남는 비-웹 writer(G2), provider 콘솔 설정(G3), FE의 base 분리(G4)다. 병목이 내 소유 밖이라, 그 게이트를 여는 FE·레거시 작업까지 범위를 넓혀 순차적으로 진행하겠다고 팀에 의사를 전달한 상태다.
 
 ---
 
@@ -500,7 +531,7 @@ G1은 쓰기가 성공하므로 오류로 드러나지 않는다. 전환 후 관
 - 같은 요청이 DB에 **같은 기록**을 남기는가 (응답만 같고 기록이 다른 경우가 실제로 있었다)
 - 그 계약이 다음 PR에서 **조용히 바뀌지 않는가**
 
-셋 다 사람 눈으로 보고 있었다. 실제로 병합 요청의 필드 이름이 레거시와 어긋난 것을 눈으로 발견한 적이 있는데, 그건 자동으로 드러났어야 할 종류의 문제였다.
+셋 다 사람 눈으로 보고 있었다. 실제로 메모리 병합 요청의 필드 이름이 레거시와 어긋난 것(\`target_memory_id\` vs \`merge_target_memory_id\`)을 눈으로 발견한 적이 있는데, 그건 자동으로 드러났어야 할 종류의 문제였다.
 
 ### 해결 (To-Be)
 
@@ -513,6 +544,10 @@ G1은 쓰기가 성공하므로 오류로 드러나지 않는다. 전환 후 관
 | 3층 배포 후 | 실제 환경에서 도는가 | 스모크 |
 
 1층은 레거시 Go 서버와 신규 서버를 **같은 픽스처로 동시에 띄워** 같은 요청을 양쪽에 보내고, 응답과 **요청 이후 DB 기록**을 함께 대조한다. 2층은 \`/v3/api-docs\` 결과를 \`openapi.json\`으로 커밋해 두고, 계약이 바뀌면 PR diff에 남고 갱신을 잊으면 CI가 막는다.
+
+층을 나눈 이유는 1층이 답할 수 있는 질문의 범위가 좁기 때문이다. 이건 만들고 나서 더 분명해졌는데, 처음 golden을 뜬 21건 중 **14건의 golden 본문이 "동일" 한 단어**였다. 그 파일만 봐서는 계약을 지켰는지 알 수 없고 두 서버가 같다는 것만 안다. 둘 다 틀렸을 수도 있고, 레거시에 대응물이 없는 신규 API는 애초에 비교 대상이 없다. 그래서 계약 자체의 검증은 2층(OpenAPI 스냅샷)이, 실제 환경 동작은 3층(스모크)이 갖게 했다.
+
+하네스는 이후 계속 늘어 지금은 **케이스 108개**다. 다만 그것이 덮는 것은 원장 96건 중 **31건**이다. 컷오버 직전이 이 도구를 가장 많이 쓰는 구간이라 커버리지를 계속 넓히는 중이다.
 
 ### 기술적 고민과 결정
 
@@ -546,7 +581,9 @@ scrubber를 켜자 예상 못 한 차이가 나왔다. 신규 서버 응답의 \
 
 세 번째가 특히 뼈아팠다. 검증을 강화하려고 넣은 장치가 검증을 후퇴시켰고, 그 케이스의 주석은 여전히 "픽스처 값 그대로인지 비교합니다"라고 선언하고 있어 **문서가 거짓이 된 상태**였다.
 
-그래서 도구를 믿을 근거를 따로 만들었다. 고쳤던 버그를 **일부러 되돌려 재실행**해서, 해당 케이스가 golden 불일치로 떨어지고 종료 코드가 1이 되는 것을 확인했다. 초록을 신뢰하려면 빨강을 먼저 봐야 한다.
+그래서 도구를 믿을 근거를 따로 만들었다. 고쳤던 버그를 **일부러 되돌려 재실행**해서, 해당 케이스가 golden 불일치로 떨어지고(\`21 · 0\` → \`20 · 1\`) 종료 코드가 1이 되는 것을 확인했다. 복원하니 다시 \`21 · 0\`이 됐다. 초록을 신뢰하려면 빨강을 먼저 봐야 한다.
+
+세 번째 건에는 뒷이야기가 하나 더 있다. 리뷰어는 그 넷을 고치면 golden 파일의 DB 블록이 리터럴 값으로 바뀔 것이라고 예상했는데, **실제로는 golden이 하나도 바뀌지 않았다.** golden에 담기는 건 값이 아니라 *두 서버의 차이*이고, 그 네 케이스는 양쪽이 같아서 "동일"로 기록되기 때문이다. 바뀐 것은 설정 파일 한 줄과 **회귀 민감도**뿐이었다. 지적 자체는 맞았지만 그 근거는 틀렸고, 그대로 뒀으면 "golden diff가 안 바뀌었으니 검증이 회복되지 않았다"는 반대 결론을 낼 수도 있었다. 지적을 받아들이는 것과 그 근거를 확인하는 것은 별개라는 걸 여기서 배웠다.
 
 **5) 스냅샷은 빌드 산출물이 아니라 비교 기준이다**
 
@@ -638,11 +675,11 @@ D5에서 **gRPC를 쓰지 않으면서 proto만 계약으로 쓰기로** 한 것
 
 | 구분 | 판정 | 처리 |
 | --- | --- | --- |
-| R2 다중 audience · R3 클레임 중립 · R4 저장소 확장 · R5 CSRF 지점 | 지금 seam만 놔두면 저비용 | 즉시 반영 |
+| R2 다중 audience · R3 클레임 중립 · R4 저장소 확장 · R5 CSRF 지점 · R7 웹 리다이렉트 골격 | 지금 seam만 놔두면 저비용 | 즉시 반영 (동작은 보류, 자리만) |
 | **R1 비대칭 세션 보안** | 큰 위험 | "세션 폐기에 의존하는 기능을 계약으로 약속하지 않는다"는 **행동 제약** 부과 |
 | **R6 이중 운영 컷오버** | 큰 위험 | 웹이 레거시에 남는 기간의 이중 운영을 사전 합의 대상으로 명시 |
 
-핵심은 리스크를 **나열**한 게 아니라 **비용을 기준으로 나눴다**는 점이다. 값싼 것은 지금 처리하고, 비싼 것은 약속의 범위를 좁히는 쪽으로 대응했다. 덕분에 모바일을 먼저 완성하면서도 웹이 나중에 붙을 자리를 비워둘 수 있었다.
+핵심은 리스크를 **나열**한 게 아니라 **비용을 기준으로 나눴다**는 점이다. 일곱 중 다섯은 지금 자리만 만들어 두면 되는 것이라 즉시 처리했고, 남은 둘은 코드로 닫히지 않아 **약속의 범위를 좁히는 쪽**으로 대응했다. 덕분에 모바일을 먼저 완성하면서도 웹이 나중에 붙을 자리를 비워둘 수 있었다.
 
 API 경로·버저닝 정책도 리드와 직접 논의해 정리했다. 초기에는 "레거시 이관 엔드포인트는 옛 경로를 alias로 두고 버저닝 면제"라는 절충안이 있었는데, 경로가 둘로 갈리면 ingress·문서·매핑·테스트가 전부 이원화되고 엔드포인트마다 판단이 필요해진다. **단기 컷오버 편의보다 장기적 일관성**을 택해 alias를 폐기하고 전 엔드포인트를 버저닝했다.
 
@@ -667,7 +704,7 @@ API 경로·버저닝 정책도 리드와 직접 논의해 정리했다. 초기�
 
 첫 번째가 가장 위험했다. 실패가 아니라 침묵이었기 때문이다. 이후 "조용히 통과하는 것"을 의심하는 습관이 생겼고, 이 경험이 1번 케이스의 Dockerfile 정합성 검사와 3번 케이스의 회귀 검출 증명으로 이어졌다.
 
-같은 유형을 한참 뒤에 또 만났다. 운영 프로필은 API 문서를 노출하지 않으려고 springdoc을 끄는데, 관련 설정 클래스가 조건 없이 등록돼 있어 그 빈이 사라지면 컨텍스트 생성이 실패한다. 즉 **운영 프로필로는 애플리케이션이 기동조차 하지 않는 상태가 스켈레톤 커밋 이후 계속 유지되고 있었다.** 개발 환경만 띄워 쓰는 동안에는 아무도 모른다. 운영 전환을 준비하다 발견했는데, 발견하지 못했다면 부트스트랩이 성공해도 Pod는 이 이유로 죽었을 것이다. 조건부 등록으로 클래스 단위로 껐다. 관련 빈 넷이 전부 springdoc이 켜져야 의미가 있어서, 빈마다 조건을 흩뿌리는 대신 클래스 단위로 묶었다.
+같은 유형을 한참 뒤에 또 만났다. 운영 프로필은 API 문서를 노출하지 않으려고 springdoc을 끄는데, 관련 설정 클래스가 조건 없이 등록돼 있어 그 빈이 사라지면 컨텍스트 생성이 실패한다. 즉 **운영 프로필로는 애플리케이션이 기동조차 하지 않는 상태가 계속 유지되고 있었다.** 원인은 두 커밋의 조합이었다 — 스켈레톤이 운영 프로필의 springdoc을 껐고, 그 뒤에 들어온 설정 클래스가 조건 없이 등록됐다. 어느 쪽도 단독으로는 문제가 아니라 리뷰에서 걸릴 형태가 아니었고, 개발 환경만 띄워 쓰는 동안에는 아무도 모른다. 운영 전환을 준비하다 발견했는데, 발견하지 못했다면 부트스트랩이 성공해도 Pod는 이 이유로 죽었을 것이다. 조건부 등록으로 클래스 단위로 껐다. 관련 빈 넷이 전부 springdoc이 켜져야 의미가 있어서, 빈마다 조건을 흩뿌리는 대신 클래스 단위로 묶었다.
 
 의존성도 서버의 성격을 드러내도록 골랐다. 포괄적인 \`starter-web\` 대신 \`starter-webmvc\`를 명시해 "이 서버는 MVC 기반 Servlet WAS"라는 선택이 빌드 파일에서 바로 읽히게 했다.
 
@@ -764,25 +801,30 @@ Momens는 프로젝트 맥락과 태스크를 관리하는 도구다. 그래서 
 - **CI가 연결을 검사한다.** PR 본문의 작업 라벨과 브랜치 라벨, 작업 URL의 일치를 CI가 확인해 추적이 사람의 성실함에 의존하지 않게 했다
 - **AI 에이전트가 원장을 직접 읽는다.** 제품이 MCP 서버를 제공해, 코딩 에이전트가 프로젝트·마일스톤·태스크를 직접 조회하고 갱신한다. 워크스페이스에는 AI 팀원(\`민수\`)도 구성원으로 들어와 있다
 
-이 방식으로 관리한 결과가 마일스톤 18개, 내 담당 태스크 135개다. 위 본문의 의사결정 기록도 대부분 이 원장 위에서 티켓 단위로 남았다.
+이 방식으로 관리한 결과가 내 담당 태스크 **137개**(워크스페이스 전체 마일스톤 20개)다. 위 본문의 의사결정 기록도 대부분 이 원장 위에서 티켓 단위로 남았다.
 
 ---
 
 ## 11. 프로젝트 규모 상세
 
+모두 **2026-09-10 재측정값**이다.
+
 | 항목 | 수치 |
 | --- | --- |
 | 개발 기간 | 2026.06 ~ 진행 중 |
 | 역할 | 서버 리드 (모듈 설계 · 크로스팀 계약 · dev 인프라) |
-| 커밋 | 1,065개 (전 브랜치 기준 / 저장소 전체 1,410개) |
+| 커밋 | 1,055개 (전 브랜치 기준 / 저장소 전체 1,392개) |
 | Gradle 모듈 | 16개 (\`app\` · \`common\` + capability 14) |
-| 메인 코드 | Java 26,821줄 (578파일) |
-| 테스트 | 28,590줄 (195파일), 모듈별 슬라이스 + Testcontainers 통합 |
-| Flyway 마이그레이션 | 42단계 (모듈별 소유 · 타임스탬프 버전) |
+| 메인 코드 | Java 27,215줄 (592파일) |
+| 테스트 | 28,547줄 (192파일), 모듈별 슬라이스 + Testcontainers 통합 |
+| Flyway 마이그레이션 | 45단계 (모듈별 소유 · 타임스탬프 버전) |
 | ADR | 22건 |
-| 레거시 이관 원장 | 96건 (구현 46 · 추적 50 / 전환 준비 이상 0 — 전환 단위 확정 후 1단계 착수 전) |
-| 설계·규칙·명세 문서 | 20건 |
+| 레거시 이관 원장 | HTTP 96건 (구현 46 · 추적 50 / 전환 준비 이상 0) + 비-HTTP 19건. 명시적 제외·전환 대상 아님·보류를 빼면 **실제 남은 이관 대상 27건** |
+| 차등 비교 하네스 | 케이스 108개 (원장 31건 커버) |
+| 설계·규칙·명세 문서 | 20건 (상세 설계 10 · 공통 규칙 6 · 서버 명세 4) |
 | CI 워크플로 | 6종 (build/배포 · CI · PR 형식 검사 · CodeQL · OpenAPI 변경 알림 · 릴리즈 노트) |
+
+원장 기준선은 \`momens-api@71bbd076\`(2026-07-15)이고, 2장 As-Is 표의 레거시 규모만 이관을 계획하던 2026-06 시점 값이다.
 `,nS={slug:"momens-server",title:"Momens",description:"흩어진 업무 맥락을 연결하는 AI 운영 도구의 백엔드. 모듈러 모놀리스로 레거시 서버를 대체하며 팀 간 책임 경계를 설계한 프로젝트",projectType:"Main",image:Qw,tags:["Java 21","Spring Boot 4","Spring Modulith","PostgreSQL","Kubernetes","Team Lead"],github:"https://github.com/Momens-Works/momens-server",demo:"https://momens.works",categories:["Backend"],techStack:{backend:["Java 21","Spring Boot 4","Spring Modulith","Spring Security","Spring Data JPA","Gradle 멀티모듈"],database:["PostgreSQL","Flyway","Testcontainers"],deployment:["Docker","Kubernetes (dev GKE)","GitHub Actions","OpenTelemetry"]},duration:"2026.06 ~ 진행 중",teamSize:"서버 2명 (전체 12명)",role:"서버 리드 (모듈 경계 설계 · 크로스팀 계약 · dev 인프라 구축)",markdownContent:tS,markdownImages:eS},rS="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2NzUiIHZpZXdCb3g9IjAgMCAxMjAwIDY3NSIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iYmciIHgxPSIwIiB5MT0iMCIgeDI9IjEyMDAiIHkyPSI2NzUiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjMGYxNzJhIi8+CiAgICAgIDxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzAyMDYxNyIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iYWNjZW50IiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMCI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzM0ZDM5OSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMxMGI5ODEiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgoKICA8cmVjdCB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2NzUiIGZpbGw9InVybCgjYmcpIi8+CgogIDwhLS0gc3VidGxlIGdyaWQgLS0+CiAgPGcgc3Ryb2tlPSIjMWUyOTNiIiBzdHJva2Utd2lkdGg9IjEiIG9wYWNpdHk9IjAuNSI+CiAgICA8bGluZSB4MT0iMCIgeTE9IjE2OCIgeDI9IjEyMDAiIHkyPSIxNjgiLz4KICAgIDxsaW5lIHgxPSIwIiB5MT0iNTA2IiB4Mj0iMTIwMCIgeTI9IjUwNiIvPgogIDwvZz4KCiAgPCEtLSBhY2NlbnQgYmFyIC0tPgogIDxyZWN0IHg9IjEyMCIgeT0iMjUwIiB3aWR0aD0iNjQiIGhlaWdodD0iOCIgcng9IjQiIGZpbGw9InVybCgjYWNjZW50KSIvPgoKICA8IS0tIGxvZ290eXBlIC0tPgogIDx0ZXh0IHg9IjExNiIgeT0iMzcyIiBmb250LWZhbWlseT0iJ1NGIFBybyBEaXNwbGF5JywgJ1NlZ29lIFVJJywgc3lzdGVtLXVpLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjEyNCIgZm9udC13ZWlnaHQ9IjgwMCIgbGV0dGVyLXNwYWNpbmc9Ii0zIj4KICAgIDx0c3BhbiBmaWxsPSIjZjFmNWY5Ij5QZWVrPC90c3Bhbj48dHNwYW4gZmlsbD0iIzM0ZDM5OSI+Q2FydDwvdHNwYW4+CiAgPC90ZXh0PgoKICA8IS0tIHRhZ2xpbmUgLS0+CiAgPHRleHQgeD0iMTIwIiB5PSI0NDAiIGZvbnQtZmFtaWx5PSInU0YgUHJvIFRleHQnLCAnU2Vnb2UgVUknLCBzeXN0ZW0tdWksIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMzQiIGZvbnQtd2VpZ2h0PSI1MDAiIGZpbGw9IiM5NGEzYjgiIGxldHRlci1zcGFjaW5nPSIwLjUiPgogICAgU2NhbGFibGUgRS1Db21tZXJjZSBCYWNrZW5kCiAgPC90ZXh0PgogIDx0ZXh0IHg9IjEyMCIgeT0iNDg2IiBmb250LWZhbWlseT0iJ1NGIFBybyBUZXh0JywgJ1NlZ29lIFVJJywgc3lzdGVtLXVpLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjIwIiBmb250LXdlaWdodD0iNDAwIiBmaWxsPSIjNjQ3NDhiIiBsZXR0ZXItc3BhY2luZz0iMC4zIj4KICAgIE1vbm9saXRoIOKGkiBNU0EgwrcgSmF2YSAxNyDCtyBTcHJpbmcgQm9vdCDCtyBLYWZrYSDCtyBSZWRpcyDCtyBLdWJlcm5ldGVzCiAgPC90ZXh0Pgo8L3N2Zz4K",iS="/portfolio/assets/diagram-evolution-CWOpomwy.svg",oS="/portfolio/assets/diagram-lock-q9oxcav4.png",sS="/portfolio/assets/diagram-event-slu78xFx.png",aS="/portfolio/assets/diagram-architecture-DPstG2wG.png",lS="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMzQwIDQxMCIgd2lkdGg9IjEzNDAiIGhlaWdodD0iNDEwIiBmb250LWZhbWlseT0iJ0FwcGxlIFNEIEdvdGhpYyBOZW8nLCdOb3RvIFNhbnMgS1InLCdNYWxndW4gR290aGljJywtYXBwbGUtc3lzdGVtLEJsaW5rTWFjU3lzdGVtRm9udCxzYW5zLXNlcmlmIj4KICA8ZGVmcz4KICAgIDxtYXJrZXIgaWQ9ImgxIiB2aWV3Qm94PSIwIDAgMTAgMTAiIHJlZlg9IjkiIHJlZlk9IjUiIG1hcmtlcldpZHRoPSI3IiBtYXJrZXJIZWlnaHQ9IjciIG9yaWVudD0iYXV0by1zdGFydC1yZXZlcnNlIj4KICAgICAgPHBhdGggZD0iTSAwIDAgTCAxMCA1IEwgMCAxMCB6IiBmaWxsPSIjMTExIi8+CiAgICA8L21hcmtlcj4KICAgIDxtYXJrZXIgaWQ9ImgyIiB2aWV3Qm94PSIwIDAgMTAgMTAiIHJlZlg9IjkiIHJlZlk9IjUiIG1hcmtlcldpZHRoPSI3IiBtYXJrZXJIZWlnaHQ9IjciIG9yaWVudD0iYXV0by1zdGFydC1yZXZlcnNlIj4KICAgICAgPHBhdGggZD0iTSAwIDAgTCAxMCA1IEwgMCAxMCB6IiBmaWxsPSIjNzc3Ii8+CiAgICA8L21hcmtlcj4KICA8L2RlZnM+CgogIDxyZWN0IHdpZHRoPSIxMzQwIiBoZWlnaHQ9IjQxMCIgZmlsbD0iI2ZmZmZmZiIvPgogIDx0ZXh0IHg9IjQwIiB5PSI0MCIgZm9udC1zaXplPSIxNyIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iIzExMSI+7J6R7JeFIO2dkOumhCAmIzgyMTI7IOyEuCDri6jqs4TsmYAg7IKs656M7J20IOqwnOyehe2VmOuKlCDsp4DsoJA8L3RleHQ+CgogIDwhLS0gQ2xhdWRlIC0tPgogIDxyZWN0IHg9IjQ0MCIgeT0iNjYiIHdpZHRoPSI0NjAiIGhlaWdodD0iNTYiIGZpbGw9IiMxMTEiIHN0cm9rZT0iIzExMSIgc3Ryb2tlLXdpZHRoPSIyIiByeD0iMyIvPgogIDx0ZXh0IHg9IjY3MCIgeT0iMTAwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjE1IiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjZmZmZmZmIj5DbGF1ZGUgJiM4MjEyOyDqs4Ttmo0gwrcg6rWs7ZiEIMK3IOyYpOy8gOyKpO2KuOugiOydtOyFmDwvdGV4dD4KCiAgPGxpbmUgeDE9IjY3MCIgeTE9IjEyNCIgeDI9IjY3MCIgeTI9IjE1OCIgc3Ryb2tlPSIjMTExIiBzdHJva2Utd2lkdGg9IjIiIG1hcmtlci1lbmQ9InVybCgjaDEpIi8+CgogIDwhLS0gc3RhZ2VzIC0tPgogIDxyZWN0IHg9IjEyMCIgeT0iMTYwIiB3aWR0aD0iMTEwMCIgaGVpZ2h0PSIxNTAiIGZpbGw9IiNmN2Y3ZjciIHN0cm9rZT0iIzk5OSIgc3Ryb2tlLXdpZHRoPSIxLjUiIHJ4PSIzIi8+CgogIDxyZWN0IHg9IjE1MCIgeT0iMTkyIiB3aWR0aD0iMjkwIiBoZWlnaHQ9Ijg4IiBmaWxsPSIjZmZmZmZmIiBzdHJva2U9IiMxMTEiIHN0cm9rZS13aWR0aD0iMiIgcng9IjMiLz4KICA8dGV4dCB4PSIyOTUiIHk9IjIyMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxNSIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iIzExMSI+L3BsYW48L3RleHQ+CiAgPHRleHQgeD0iMjk1IiB5PSIyNDQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTIuNSIgZmlsbD0iIzMzMyI+7LCp7IiYIOyghCDsoITsoJzrpbwgPHRzcGFuIGZvbnQtd2VpZ2h0PSI3MDAiPuy9lOuTnOuhnDwvdHNwYW4+IO2ZleyduDwvdGV4dD4KICA8dGV4dCB4PSIyOTUiIHk9IjI2NiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxMi41IiBmaWxsPSIjNjY2Ij7rspTsnITqsIAg7Jes6riw7IScIOyekOyjvCDrkqTsp5Htnozri6Q8L3RleHQ+CgogIDxsaW5lIHgxPSI0NDIiIHkxPSIyMzYiIHgyPSI1MTYiIHkyPSIyMzYiIHN0cm9rZT0iIzExMSIgc3Ryb2tlLXdpZHRoPSIyIiBtYXJrZXItZW5kPSJ1cmwoI2gxKSIvPgoKICA8cmVjdCB4PSI1MTgiIHk9IjE5MiIgd2lkdGg9IjI5MCIgaGVpZ2h0PSI4OCIgZmlsbD0iI2ZmZmZmZiIgc3Ryb2tlPSIjMTExIiBzdHJva2Utd2lkdGg9IjIiIHJ4PSIzIi8+CiAgPHRleHQgeD0iNjYzIiB5PSIyMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTUiIGZvbnQtd2VpZ2h0PSI3MDAiIGZpbGw9IiMxMTEiPi93b3JrPC90ZXh0PgogIDx0ZXh0IHg9IjY2MyIgeT0iMjQ0IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjEyLjUiIGZpbGw9IiMzMzMiPuq1rO2YhCDCtyDrj4Xrpr0g6rKA7YagIMK3IOyImOugtCDtjJDsoJU8L3RleHQ+CiAgPHRleHQgeD0iNjYzIiB5PSIyNjYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTIuNSIgZmlsbD0iIzY2NiI+7IOIIOqzhOyVvSDtkZzrqbTsnbQg64qY7KeAIOyViuycvOuptCDsooXro4w8L3RleHQ+CgogIDxsaW5lIHgxPSI4MTAiIHkxPSIyMzYiIHgyPSI4ODQiIHkyPSIyMzYiIHN0cm9rZT0iIzExMSIgc3Ryb2tlLXdpZHRoPSIyIiBtYXJrZXItZW5kPSJ1cmwoI2gxKSIvPgoKICA8cmVjdCB4PSI4ODYiIHk9IjE5MiIgd2lkdGg9IjI5MCIgaGVpZ2h0PSI4OCIgZmlsbD0iI2ZmZmZmZiIgc3Ryb2tlPSIjMTExIiBzdHJva2Utd2lkdGg9IjIiIHJ4PSIzIi8+CiAgPHRleHQgeD0iMTAzMSIgeT0iMjIwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjE1IiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjMTExIj4vc2hpcDwvdGV4dD4KICA8dGV4dCB4PSIxMDMxIiB5PSIyNDQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTIuNSIgZmlsbD0iIzMzMyI+7Luk67CLIOu2hO2VoCDCtyBQUiDrs7jrrLg8L3RleHQ+CiAgPHRleHQgeD0iMTAzMSIgeT0iMjY2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjEyLjUiIGZpbGw9IiM2NjYiPuynhO2WiSDsg4Htg5zripQg6rOE7ZqN7ISc7JmAIGdpdCDsnbTroKXsl5A8L3RleHQ+CgogIDwhLS0gdXNlciBnYXRlIC0tPgogIDxsaW5lIHgxPSIyOTUiIHkxPSIyODIiIHgyPSIyOTUiIHkyPSIzMzAiIHN0cm9rZT0iIzc3NyIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtZGFzaGFycmF5PSI1IDQiIG1hcmtlci1lbmQ9InVybCgjaDIpIi8+CiAgPGxpbmUgeDE9IjY2MyIgeTE9IjI4MiIgeDI9IjY2MyIgeTI9IjMzMCIgc3Ryb2tlPSIjNzc3IiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1kYXNoYXJyYXk9IjUgNCIgbWFya2VyLWVuZD0idXJsKCNoMikiLz4KICA8bGluZSB4MT0iMTAzMSIgeTE9IjI4MiIgeDI9IjEwMzEiIHkyPSIzMzAiIHN0cm9rZT0iIzc3NyIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtZGFzaGFycmF5PSI1IDQiIG1hcmtlci1lbmQ9InVybCgjaDIpIi8+CgogIDxyZWN0IHg9IjE1MCIgeT0iMzMyIiB3aWR0aD0iMTAyNiIgaGVpZ2h0PSI1MiIgZmlsbD0iI2ZmZmZmZiIgc3Ryb2tlPSIjMTExIiBzdHJva2Utd2lkdGg9IjIiIHJ4PSIzIi8+CiAgPHRleHQgeD0iNjYzIiB5PSIzNjMiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTQiIGZvbnQtd2VpZ2h0PSI3MDAiIGZpbGw9IiMxMTEiPuyCrOuejOydmCDqsJzsnoXsnYAg7KCV7ZW07KeEIOqyjOydtO2KuOyXkOyEnOunjCAmIzgyMTI7IOqzhO2ajSDsirnsnbggwrcg67CY7JiBIOyXrOu2gCDCtyDsu6TrsIsg67aE7ZWgIMK3IFBSIOuzuOusuDwvdGV4dD4KCjwvc3ZnPgo=",uS="/portfolio/assets/diagram-infra-CtkPKuGT.png",cS="/portfolio/assets/diagram-decomposition-Cfk3uO6u.svg",fS="/portfolio/assets/diagram-gateway-auth-DphzcLXi.svg",dS="/portfolio/assets/diagram-saga-CTRzhSOM.svg",hS={diagram_evolution:iS,diagram_lock:oS,diagram_event:sS,diagram_architecture:aS,diagram_harness:lS,diagram_infra:uS,diagram_decomposition:cS,diagram_gateway_auth:fS,diagram_saga:dS},pS=`## 프로젝트 개요
 
 **PeekCart**는 대용량 트래픽을 가정한 이커머스 백엔드 플랫폼이다. 단순 CRUD를 넘어 **성능·정합성·안정성·운영**을 검증 대상으로 삼았고, **모놀리식으로 구현한 뒤 5개 서비스로 실제 분해하는 단계(Phase 4)까지** 진행했다.
