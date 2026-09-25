@@ -25,11 +25,11 @@ Read [voice.md](references/voice.md) for every article. Read [repository.md](ref
 
 ## Work from the source
 
-1. Identify the intended reader, central point, article type, and facts supplied by the user. Keep the original's useful detail: constraints, code, decisions, failures, measurements, and uncertainty.
+1. Identify the intended reader, central point, article type, and facts supplied by the user. When revising a substantial source, make a coverage inventory of its distinct evidence, constraints, alternatives, code or configuration, measurements, and limits. Keep details needed to understand the conclusion or reproduce the work; the inventory is a drafting aid, not a required section in the article.
 2. Distinguish observed facts, the author's interpretation, plans, and missing information. Do not invent firsthand events, tests, metrics, quotes, dates, or outcomes. If a missing fact is essential to the conclusion, ask for it; otherwise write around it or mark a specific item for the author's review.
 3. Check version-sensitive technical claims against the relevant code or authoritative documentation when the source does not establish them. Cite external factual sources when they matter to the article. Inspiration blogs are style references, not evidence for technical claims.
 4. Draft for the chosen reader question. Use the type guide as a coverage check, not a fixed heading template. Make the opening concrete and let the conclusion follow from the evidence.
-5. Edit for factual fidelity, technical accuracy, a consistent voice, useful detail, and readable flow. Remove unsupported certainty, generic praise, repeated explanations, and search-keyword stuffing.
+5. Edit for factual fidelity, technical accuracy, a consistent voice, useful detail, and readable flow. Compare the draft with the coverage inventory: restore any missing observation, decision reason, operative setting, verification condition, or limitation that a reader needs. Consolidate repeated explanations and omit incidental boilerplate without setting a target length or preserving the source's layout. If the source explains terms that the intended reader needs, keep those explanations in a glossary or in the flow of the article. Remove unsupported certainty, generic praise, and search-keyword stuffing.
 
 ## Deliver the draft
 
