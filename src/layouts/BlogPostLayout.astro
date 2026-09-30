@@ -24,6 +24,10 @@ const tocItems = headings.filter((heading) => heading.depth === 2 || heading.dep
 const category = getCategoryMeta(post.data.category);
 const allPosts = await getPublishedPosts();
 const relatedPosts = getRelatedPosts(post, allPosts, 3);
+const coverImage = post.data.image && /\/thumbnail\.(?:jpe?g|png|webp|svg)$/i.test(post.data.image)
+  ? post.data.image
+  : undefined;
+const vectorCover = coverImage?.endsWith('.svg');
 ---
 
 <BaseLayout title={post.data.title} description={post.data.description} image={post.data.image}>
@@ -36,25 +40,49 @@ const relatedPosts = getRelatedPosts(post, allPosts, 3);
         <div class="meta">
           <a class="category-badge" href={getCategoryUrl(category.slug)}>{category.label}</a>
           <time datetime={post.data.pubDate.toISOString()}>{formatDate(post.data.pubDate)}</time>
-          <span>태그 {post.data.tags.length}개</span>
         </div>
         <h1>{post.data.title}</h1>
-        <p class="lead">{post.data.description}</p>
-        <ul class="tag-list" aria-label="태그">
-          {
-            post.data.tags.map((tag) => (
-              <li>
-                <a class="tag" href={`/blog/tag/${tag}/`}>
-                  #{tag}
-                </a>
-              </li>
-            ))
-          }
-        </ul>
       </header>
+      {
+        coverImage && (
+          <figure class:list={['article-cover', { 'article-cover--vector': vectorCover }]}>
+            <img src={coverImage} alt="" loading="eager" decoding="async" />
+          </figure>
+        )
+      }
+      {
+        tocItems.length > 0 && (
+          <details class="toc-mobile">
+            <summary>이 글의 목차</summary>
+            <ol>
+              {tocItems.map((heading) => (
+                <li class={`toc-depth-${heading.depth}`}>
+                  <a href={`#${heading.slug}`}>{heading.text}</a>
+                </li>
+              ))}
+            </ol>
+          </details>
+        )
+      }
       <div class="article-body">
         <slot />
       </div>
+      {
+        post.data.tags.length > 0 && (
+          <footer class="article-footer">
+            <p class="article-footer-label">이 글의 주제</p>
+            <ul class="tag-list" aria-label="태그">
+              {post.data.tags.map((tag) => (
+                <li>
+                  <a class="tag" href={`/blog/tag/${tag}/`}>
+                    #{tag}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </footer>
+        )
+      }
       {
         relatedPosts.length > 0 && (
           <section class="related-posts" aria-label="다음 읽을거리">
