@@ -1,6 +1,6 @@
 ---
 name: developer-blog-writer
-description: Write or revise Korean developer-blog posts from source notes, drafts, code, or links for this repository. Use for article drafting and editing, not ordinary code changes.
+description: Write or revise Korean developer-blog posts from source notes, drafts, code, or links for this repository, including explanatory visual planning when useful. Use for article drafting and editing, not ordinary code changes.
 ---
 
 # Developer blog writer
@@ -22,6 +22,7 @@ Choose the type by the main question the reader should have answered. A topic or
 | How is an algorithm problem solved? | [Algorithm solution](references/types/algorithm.md) |
 
 Read [voice.md](references/voice.md) for every article. Read [repository.md](references/repository.md) when creating or changing a post file in this repository.
+Read [visuals.md](references/visuals.md) when the user requests an animation or interaction, or a process, comparison, or state change would materially benefit from one. Visuals are optional; do not add them to an article merely because components are available.
 
 ## Work from the source
 
@@ -29,6 +30,7 @@ Read [voice.md](references/voice.md) for every article. Read [repository.md](ref
 2. Distinguish observed facts, the author's interpretation, plans, and missing information. Do not invent firsthand events, tests, metrics, quotes, dates, or outcomes. If a missing fact is essential to the conclusion, ask for it; otherwise write around it or mark a specific item for the author's review.
 3. Check version-sensitive technical claims against the relevant code or authoritative documentation when the source does not establish them. Cite external factual sources when they matter to the article. Inspiration blogs are style references, not evidence for technical claims.
 4. Draft for the chosen reader question. Use the type guide as a coverage check, not a fixed heading template. Make the opening concrete and let the conclusion follow from the evidence.
+   When planning a visual, identify the one question its motion or control helps the reader answer, then place it beside the relevant explanation. Keep technical claims and limits readable in the prose.
 5. Edit for factual fidelity, technical accuracy, a consistent voice, useful detail, and readable flow. Compare the draft with the coverage inventory: restore any missing observation, decision reason, operative setting, verification condition, or limitation that a reader needs. Consolidate repeated explanations and omit incidental boilerplate without setting a target length or preserving the source's layout. If the source explains terms that the intended reader needs, keep those explanations in a glossary or in the flow of the article. Remove unsupported certainty, generic praise, and search-keyword stuffing.
 
 ## Deliver the draft

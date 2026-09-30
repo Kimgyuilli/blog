@@ -1,11 +1,8 @@
 ---
-import '../../styles/database-motions.css';
+import AutoMotionFigure from './AutoMotionFigure.astro';
 ---
 
-<figure class="db-motion db-transaction-motion" data-db-auto-motion aria-label="트랜잭션 커밋과 롤백의 결과 비교">
-  <div class="db-motion-heading">
-    <strong>같은 시작, 다른 결과: 커밋과 롤백</strong>
-  </div>
+<AutoMotionFigure className="db-transaction-motion" ariaLabel="트랜잭션 커밋과 롤백의 결과 비교" title="같은 시작, 다른 결과: 커밋과 롤백" caption="커밋하면 두 변경이 함께 반영됩니다. 롤백하면 앞서 성공한 고객 추가까지 취소됩니다.">
   <p class="db-tx-start">시작 상태 · 고객 3명 / 주문 3건</p>
   <div class="db-tx-lanes">
     <div class="db-tx-lane db-tx-commit">
@@ -32,9 +29,4 @@ import '../../styles/database-motions.css';
       <strong class="db-tx-outcome">고객 3명 / 주문 3건</strong>
     </div>
   </div>
-  <figcaption>커밋하면 두 변경이 함께 반영됩니다. 롤백하면 앞서 성공한 고객 추가까지 취소됩니다.</figcaption>
-</figure>
-
-<script>
-  import '../../scripts/database-motions';
-</script>
+</AutoMotionFigure>

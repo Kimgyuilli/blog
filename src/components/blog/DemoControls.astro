@@ -1,0 +1,8 @@
+---
+type Props = { ariaLabel: string };
+const { ariaLabel } = Astro.props;
+---
+
+<div class="db-demo-controls" aria-label={ariaLabel}>
+  <slot />
+</div>

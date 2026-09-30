@@ -1,0 +1,22 @@
+---
+import '../../styles/database-motions.css';
+
+type Props = {
+  ariaLabel: string;
+  title: string;
+  caption: string;
+  className?: string;
+};
+
+const { ariaLabel, title, caption, className } = Astro.props;
+---
+
+<figure class:list={['db-motion', className]} data-db-auto-motion aria-label={ariaLabel}>
+  <div class="db-motion-heading"><strong>{title}</strong></div>
+  <slot />
+  <figcaption>{caption}</figcaption>
+</figure>
+
+<script>
+  import '../../scripts/database-motions';
+</script>

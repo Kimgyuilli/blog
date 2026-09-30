@@ -1,4 +1,5 @@
 import { animate, type AnimationSequence } from 'motion';
+import { watchDemoPlayback, type DemoPlaybackState } from './blog/watch-demo-playback';
 
 const stage = document.querySelector<HTMLElement>('[data-motion-join]');
 
@@ -16,9 +17,7 @@ if (stage) {
   const resultCells = stage.querySelectorAll<HTMLElement>('[data-result-cell]');
   const check = get('[data-result-check]');
   const toggle = get('[data-motion-toggle]') as HTMLButtonElement;
-  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-
-  let visible = true;
+  let playbackState: DemoPlaybackState = { visible: false, reducedMotion: false, shouldPlay: false };
   let pausedByUser = false;
   let controls: ReturnType<typeof animate> | undefined;
 
@@ -81,7 +80,7 @@ if (stage) {
   ];
 
   const syncPlayback = () => {
-    if (reducedMotion.matches) {
+    if (playbackState.reducedMotion) {
       controls?.stop();
       controls = undefined;
       showStillFrame();
@@ -94,7 +93,7 @@ if (stage) {
       resetFrame();
       controls = animate(sequence, { repeat: Infinity, repeatDelay: 0.35 });
     }
-    if (visible && !document.hidden && !pausedByUser) controls.play();
+    if (playbackState.shouldPlay && !pausedByUser) controls.play();
     else controls.pause();
     toggle.textContent = pausedByUser ? '재생' : '일시정지';
     toggle.setAttribute('aria-label', pausedByUser ? '애니메이션 재생' : '애니메이션 일시정지');
@@ -104,19 +103,12 @@ if (stage) {
     pausedByUser = !pausedByUser;
     syncPlayback();
   });
-  reducedMotion.addEventListener('change', () => {
-    controls?.stop();
-    controls = undefined;
+  watchDemoPlayback(stage, (state) => {
+    if (playbackState.reducedMotion !== state.reducedMotion) {
+      controls?.stop();
+      controls = undefined;
+    }
+    playbackState = state;
     syncPlayback();
-  });
-  document.addEventListener('visibilitychange', syncPlayback);
-
-  if ('IntersectionObserver' in window) {
-    new IntersectionObserver(([entry]) => {
-      visible = entry.isIntersecting;
-      syncPlayback();
-    }, { threshold: 0.15 }).observe(stage);
-  } else {
-    syncPlayback();
-  }
+  }, { threshold: 0.15 });
 }

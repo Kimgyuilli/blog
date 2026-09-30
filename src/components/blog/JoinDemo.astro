@@ -1,12 +1,9 @@
 ---
-import '../../styles/database-demos.css';
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
 ---
 
-<section class="db-demo" data-db-join aria-label="INNER JOIN과 LEFT JOIN 결과 비교">
-  <div class="db-demo-heading">
-    <h3>주문하지 않은 고객은 결과에 남을까요?</h3>
-    <p>왼쪽 고객 3명과 오른쪽 주문 3건을 customer_id로 연결합니다.</p>
-  </div>
+<InteractiveDemoFrame demoId="join" ariaLabel="INNER JOIN과 LEFT JOIN 결과 비교" title="주문하지 않은 고객은 결과에 남을까요?" description="왼쪽 고객 3명과 오른쪽 주문 3건을 customer_id로 연결합니다.">
 
   <div class="db-demo-split db-demo-inputs">
     <div>
@@ -37,10 +34,10 @@ import '../../styles/database-demos.css';
     </div>
   </div>
 
-  <div class="db-demo-controls" aria-label="조인 종류">
+  <DemoControls ariaLabel="조인 종류">
     <button type="button" data-join-kind="inner" aria-pressed="true">INNER JOIN</button>
     <button type="button" data-join-kind="left" aria-pressed="false">LEFT JOIN</button>
-  </div>
+  </DemoControls>
 
   <div class="db-demo-panel" data-join-result="inner">
     <p class="db-demo-label">결과 · 조건이 맞는 쌍만 남김</p>
@@ -72,10 +69,10 @@ import '../../styles/database-demos.css';
     </div>
     <p class="db-demo-note" role="status">주문이 없는 박서연도 남습니다. 연결되지 않은 주문 열은 NULL입니다.</p>
   </div>
-</section>
+</InteractiveDemoFrame>
 
 <script>
-  document.querySelectorAll<HTMLElement>('[data-db-join]').forEach((demo) => {
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="join"]').forEach((demo) => {
     const buttons = demo.querySelectorAll<HTMLButtonElement>('[data-join-kind]');
     const panels = demo.querySelectorAll<HTMLElement>('[data-join-result]');
 

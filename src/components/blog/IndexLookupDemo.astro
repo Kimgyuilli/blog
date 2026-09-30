@@ -1,17 +1,14 @@
 ---
-import '../../styles/database-demos.css';
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
 ---
 
-<section class="db-demo" data-db-index aria-label="전체 탐색과 인덱스 경로 비교">
-  <div class="db-demo-heading">
-    <h3>같은 주문을 찾는 경로를 비교해 보세요</h3>
-    <p>화면에 들어오면 두 탐색 경로가 자동으로 진행되고 반복됩니다. 오른쪽은 B-tree 탐색을 단순화한 그림입니다.</p>
-  </div>
+<InteractiveDemoFrame demoId="index" ariaLabel="전체 탐색과 인덱스 경로 비교" title="같은 주문을 찾는 경로를 비교해 보세요" description="화면에 들어오면 두 탐색 경로가 자동으로 진행되고 반복됩니다. 오른쪽은 B-tree 탐색을 단순화한 그림입니다.">
 
-  <div class="db-demo-controls" aria-label="찾을 주문">
+  <DemoControls ariaLabel="찾을 주문">
     <button type="button" data-target="103" aria-pressed="false">주문 103 찾기</button>
     <button type="button" data-target="107" aria-pressed="true">주문 107 찾기</button>
-  </div>
+  </DemoControls>
 
   <div class="db-demo-split db-index-columns">
     <div class="db-index-track">
@@ -44,10 +41,12 @@ import '../../styles/database-demos.css';
 
   <p class="db-demo-note" data-index-status>주문 107을 찾습니다. 두 경로가 자동으로 진행됩니다.</p>
   <p class="db-demo-disclaimer">이 그림은 탐색 원리를 설명하는 모형입니다. 단계 수는 실제 디스크 읽기 횟수나 쿼리 실행 시간이 아닙니다.</p>
-</section>
+</InteractiveDemoFrame>
 
 <script>
-  document.querySelectorAll<HTMLElement>('[data-db-index]').forEach((demo) => {
+  import { watchDemoPlayback } from '../../scripts/blog/watch-demo-playback';
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="index"]').forEach((demo) => {
     const targets = demo.querySelectorAll<HTMLButtonElement>('[data-target]');
     const rows = demo.querySelectorAll<HTMLElement>('[data-row]');
     const nodes = demo.querySelectorAll<HTMLElement>('[data-index-node]');
@@ -59,9 +58,9 @@ import '../../styles/database-demos.css';
 
     let target = 107;
     let step = 0;
-    let visible = false;
+    let canPlay = false;
+    let reduced = false;
     let timer: number | undefined;
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
     const render = () => {
       const scanSteps = target - 100;
@@ -95,7 +94,7 @@ import '../../styles/database-demos.css';
 
     const advance = () => {
       stop();
-      if (!visible || reducedMotion.matches) return;
+      if (!canPlay) return;
       const lastStep = Math.max(target - 100, 3);
       timer = window.setTimeout(() => {
         step = step >= lastStep ? 0 : step + 1;
@@ -106,29 +105,21 @@ import '../../styles/database-demos.css';
 
     targets.forEach((button) => button.addEventListener('click', () => {
       target = Number(button.dataset.target);
-      step = reducedMotion.matches ? Math.max(target - 100, 3) : 0;
+      step = reduced ? Math.max(target - 100, 3) : 0;
       render();
       advance();
     }));
 
-    if ('IntersectionObserver' in window) {
-      new IntersectionObserver((entries) => {
-        visible = entries[0]?.isIntersecting ?? false;
-        if (visible) advance();
-        else stop();
-      }, { threshold: 0.25 }).observe(demo);
-    } else {
-      visible = true;
-      advance();
-    }
-
-    reducedMotion.addEventListener('change', () => {
-      step = reducedMotion.matches ? Math.max(target - 100, 3) : 0;
-      render();
-      advance();
-    });
-
-    if (reducedMotion.matches) step = Math.max(target - 100, 3);
     render();
+    watchDemoPlayback(demo, ({ shouldPlay, reducedMotion }) => {
+      if (reduced !== reducedMotion) {
+        reduced = reducedMotion;
+        step = reduced ? Math.max(target - 100, 3) : 0;
+        render();
+      }
+      canPlay = shouldPlay;
+      if (canPlay) advance();
+      else stop();
+    }, { threshold: 0.25 });
   });
 </script>
