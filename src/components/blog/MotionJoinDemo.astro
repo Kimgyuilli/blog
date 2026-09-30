@@ -1,0 +1,70 @@
+---
+import '../../styles/motion-join-demo.css';
+---
+
+<section class="join-stage" data-motion-join aria-label="주문과 고객의 JOIN 과정을 보여주는 애니메이션">
+  <div class="join-stage-topline">
+    <div>
+      <span class="join-live-dot" aria-hidden="true"></span>
+      <span class="join-stage-kicker">INNER JOIN · 주문 102</span>
+    </div>
+    <button type="button" class="join-control" data-motion-toggle aria-label="애니메이션 일시정지">일시정지</button>
+  </div>
+
+  <div class="join-tables">
+    <div class="join-table-card join-orders">
+      <div class="join-table-header">
+        <span class="join-table-icon join-table-icon-order" aria-hidden="true">O</span>
+        <div><strong>orders</strong><span>주문 테이블</span></div>
+      </div>
+      <div class="join-table-columns"><span>order_id</span><span>customer_id</span><span>item_name</span></div>
+      <div class="join-table-row"><span>101</span><span>1</span><span>키보드</span></div>
+      <div class="join-table-row" data-order-row><span>102</span><span class="join-key" data-order-key>1</span><span>마우스</span></div>
+      <div class="join-table-row"><span>103</span><span>2</span><span>모니터</span></div>
+    </div>
+
+    <div class="join-operator" aria-hidden="true">
+      <span>ON</span>
+      <b>=</b>
+    </div>
+
+    <div class="join-table-card join-customers">
+      <div class="join-table-header">
+        <span class="join-table-icon join-table-icon-customer" aria-hidden="true">C</span>
+        <div><strong>customers</strong><span>고객 테이블</span></div>
+      </div>
+      <div class="join-table-columns join-customer-columns"><span>customer_id</span><span>customer_name</span></div>
+      <div class="join-table-row join-customer-row" data-customer-row><span class="join-key" data-customer-key>1</span><span>김민아</span></div>
+      <div class="join-table-row join-customer-row"><span>2</span><span>이준</span></div>
+      <div class="join-table-row join-customer-row"><span>3</span><span>박서연</span></div>
+    </div>
+  </div>
+
+  <div class="join-link" aria-hidden="true">
+    <span class="join-link-key" data-link-left>orders.customer_id = 1</span>
+    <svg viewBox="0 0 290 28" preserveAspectRatio="none" role="presentation">
+      <path class="join-link-track" d="M 2 14 H 288" />
+      <path class="join-link-progress" data-link-line d="M 2 14 H 288" />
+      <circle class="join-link-spark" data-link-spark cx="2" cy="14" r="5" />
+    </svg>
+    <span class="join-link-key" data-link-right>customers.customer_id = 1</span>
+  </div>
+
+  <div class="join-result">
+    <div class="join-result-heading">
+      <span class="join-result-check" data-result-check aria-hidden="true">✓</span>
+      <div><strong>결과 행</strong><span>같은 customer_id를 가진 행을 연결합니다</span></div>
+    </div>
+    <div class="join-result-table">
+      <div class="join-result-columns"><span>order_id</span><span>customer_name</span><span>item_name</span></div>
+      <div class="join-result-row" data-result-row>
+        <span data-result-cell>102</span><span data-result-cell>김민아</span><span data-result-cell>마우스</span>
+      </div>
+    </div>
+  </div>
+  <p class="join-stage-caption">주문 102의 <code>customer_id = 1</code>이 고객 1과 연결되어 결과 행이 만들어집니다. 행 하나를 따라가는 설명용 장면이며 실제 실행 순서나 처리 시간을 나타내지 않습니다.</p>
+</section>
+
+<script>
+  import '../../scripts/motion-join-demo';
+</script>

@@ -11,6 +11,7 @@ slug: "cs-database-normalization-joins-indexes"
 
 import NormalizationDemo from '../../components/blog/NormalizationDemo.astro';
 import JoinDemo from '../../components/blog/JoinDemo.astro';
+import MotionJoinDemo from '../../components/blog/MotionJoinDemo.astro';
 import IndexLookupDemo from '../../components/blog/IndexLookupDemo.astro';
 import RelationMapMotion from '../../components/blog/RelationMapMotion.astro';
 import TransactionMotion from '../../components/blog/TransactionMotion.astro';
@@ -148,6 +149,10 @@ ORDER BY c.customer_id, o.order_id;
 ```
 
 고객 1의 주문 101과 102는 각각 고객 1과 연결됩니다. 주문이 없는 박서연은 결과에 나타나지 않습니다.
+
+아래 장면에서는 그중 주문 102 한 행을 따라가며 연결 조건이 결과에 어떻게 반영되는지 봅니다.
+
+<MotionJoinDemo />
 
 ### 주문이 없는 고객도 남기기: LEFT JOIN
 
