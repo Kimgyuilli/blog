@@ -1,0 +1,90 @@
+---
+import '../../styles/database-demos.css';
+---
+
+<section class="db-demo" data-db-join aria-label="INNER JOIN과 LEFT JOIN 결과 비교">
+  <div class="db-demo-heading">
+    <h3>주문하지 않은 고객은 결과에 남을까요?</h3>
+    <p>왼쪽 고객 3명과 오른쪽 주문 3건을 customer_id로 연결합니다.</p>
+  </div>
+
+  <div class="db-demo-split db-demo-inputs">
+    <div>
+      <p class="db-demo-label">customers</p>
+      <div class="db-demo-table-wrap">
+        <table>
+          <thead><tr><th>customer_id</th><th>customer_name</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>김민아</td></tr>
+            <tr><td>2</td><td>이준</td></tr>
+            <tr class="db-emphasis"><td>3</td><td>박서연 · 주문 없음</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div>
+      <p class="db-demo-label">orders</p>
+      <div class="db-demo-table-wrap">
+        <table>
+          <thead><tr><th>order_id</th><th>customer_id</th><th>item_name</th></tr></thead>
+          <tbody>
+            <tr><td>101</td><td>1</td><td>키보드</td></tr>
+            <tr><td>102</td><td>1</td><td>마우스</td></tr>
+            <tr><td>103</td><td>2</td><td>모니터</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="db-demo-controls" aria-label="조인 종류">
+    <button type="button" data-join-kind="inner" aria-pressed="true">INNER JOIN</button>
+    <button type="button" data-join-kind="left" aria-pressed="false">LEFT JOIN</button>
+  </div>
+
+  <div class="db-demo-panel" data-join-result="inner">
+    <p class="db-demo-label">결과 · 조건이 맞는 쌍만 남김</p>
+    <div class="db-demo-table-wrap">
+      <table>
+        <thead><tr><th>customer_name</th><th>order_id</th><th>item_name</th></tr></thead>
+        <tbody>
+          <tr><td>김민아</td><td>101</td><td>키보드</td></tr>
+          <tr><td>김민아</td><td>102</td><td>마우스</td></tr>
+          <tr><td>이준</td><td>103</td><td>모니터</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="db-demo-note" role="status">박서연은 연결되는 주문이 없어 결과에 나오지 않습니다.</p>
+  </div>
+
+  <div class="db-demo-panel" data-join-result="left" hidden>
+    <p class="db-demo-label">결과 · 왼쪽 고객을 모두 남김</p>
+    <div class="db-demo-table-wrap">
+      <table>
+        <thead><tr><th>customer_name</th><th>order_id</th><th>item_name</th></tr></thead>
+        <tbody>
+          <tr><td>김민아</td><td>101</td><td>키보드</td></tr>
+          <tr><td>김민아</td><td>102</td><td>마우스</td></tr>
+          <tr><td>이준</td><td>103</td><td>모니터</td></tr>
+          <tr class="db-changed"><td>박서연</td><td>NULL</td><td>NULL</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="db-demo-note" role="status">주문이 없는 박서연도 남습니다. 연결되지 않은 주문 열은 NULL입니다.</p>
+  </div>
+</section>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-db-join]').forEach((demo) => {
+    const buttons = demo.querySelectorAll<HTMLButtonElement>('[data-join-kind]');
+    const panels = demo.querySelectorAll<HTMLElement>('[data-join-result]');
+
+    buttons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const kind = button.dataset.joinKind;
+        buttons.forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+        panels.forEach((panel) => { panel.hidden = panel.dataset.joinResult !== kind; });
+      });
+    });
+  });
+</script>

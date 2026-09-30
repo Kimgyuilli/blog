@@ -1,0 +1,92 @@
+---
+import '../../styles/database-demos.css';
+---
+
+<section class="db-demo" data-db-normalization aria-label="정규화와 갱신 이상 체험">
+  <div class="db-demo-heading">
+    <h3>고객 이름을 바꾸면 어디를 수정해야 할까요?</h3>
+    <p>같은 고객이 두 번 주문한 상태에서 시작합니다. 단계를 눌러 데이터가 달라지는 모습을 보세요.</p>
+  </div>
+
+  <div class="db-demo-controls" aria-label="정규화 시나리오">
+    <button type="button" data-stage="0" aria-pressed="true">① 중복된 표</button>
+    <button type="button" data-stage="1" aria-pressed="false">② 한 행만 수정</button>
+    <button type="button" data-stage="2" aria-pressed="false">③ 분리 후 수정</button>
+  </div>
+
+  <div class="db-demo-panel" data-panel="0">
+    <p class="db-demo-label">orders_flat · 고객 이름이 주문마다 저장됨</p>
+    <div class="db-demo-table-wrap">
+      <table>
+        <thead><tr><th>order_id</th><th>customer_id</th><th>customer_name</th><th>item_name</th></tr></thead>
+        <tbody>
+          <tr><td>101</td><td>1</td><td class="db-emphasis">김민지</td><td>키보드</td></tr>
+          <tr><td>102</td><td>1</td><td class="db-emphasis">김민지</td><td>마우스</td></tr>
+          <tr><td>103</td><td>2</td><td>이준</td><td>모니터</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="db-demo-note" role="status">고객 1의 이름이 두 행에 중복됩니다. 이름이 바뀌면 두 행 모두 수정해야 합니다.</p>
+  </div>
+
+  <div class="db-demo-panel" data-panel="1" hidden>
+    <p class="db-demo-label">orders_flat · 주문 101만 이름 수정</p>
+    <div class="db-demo-table-wrap">
+      <table>
+        <thead><tr><th>order_id</th><th>customer_id</th><th>customer_name</th><th>item_name</th></tr></thead>
+        <tbody>
+          <tr><td>101</td><td>1</td><td class="db-changed">김민아</td><td>키보드</td></tr>
+          <tr><td>102</td><td>1</td><td class="db-conflict">김민지</td><td>마우스</td></tr>
+          <tr><td>103</td><td>2</td><td>이준</td><td>모니터</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="db-demo-note" role="status">같은 customer_id 1에 이름이 둘입니다. 중복된 값을 일부만 바꾸면 갱신 이상이 생깁니다.</p>
+  </div>
+
+  <div class="db-demo-panel" data-panel="2" hidden>
+    <div class="db-demo-split">
+      <div>
+        <p class="db-demo-label">customers · 이름은 고객 행 한 곳에</p>
+        <div class="db-demo-table-wrap">
+          <table>
+            <thead><tr><th>customer_id</th><th>customer_name</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td class="db-changed">김민아</td></tr>
+              <tr><td>2</td><td>이준</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <p class="db-demo-label">orders · 고객 ID만 참조</p>
+        <div class="db-demo-table-wrap">
+          <table>
+            <thead><tr><th>order_id</th><th>customer_id</th><th>item_name</th></tr></thead>
+            <tbody>
+              <tr><td>101</td><td>1</td><td>키보드</td></tr>
+              <tr><td>102</td><td>1</td><td>마우스</td></tr>
+              <tr><td>103</td><td>2</td><td>모니터</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <p class="db-demo-note" role="status">고객 이름은 customers의 한 행만 바꾸면 됩니다. orders는 customer_id로 그 고객을 참조합니다.</p>
+  </div>
+</section>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-db-normalization]').forEach((demo) => {
+    const buttons = demo.querySelectorAll<HTMLButtonElement>('[data-stage]');
+    const panels = demo.querySelectorAll<HTMLElement>('[data-panel]');
+
+    buttons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const stage = button.dataset.stage;
+        buttons.forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+        panels.forEach((panel) => { panel.hidden = panel.dataset.panel !== stage; });
+      });
+    });
+  });
+</script>

@@ -1,0 +1,134 @@
+---
+import '../../styles/database-demos.css';
+---
+
+<section class="db-demo" data-db-index aria-label="전체 탐색과 인덱스 경로 비교">
+  <div class="db-demo-heading">
+    <h3>같은 주문을 찾는 경로를 비교해 보세요</h3>
+    <p>화면에 들어오면 두 탐색 경로가 자동으로 진행되고 반복됩니다. 오른쪽은 B-tree 탐색을 단순화한 그림입니다.</p>
+  </div>
+
+  <div class="db-demo-controls" aria-label="찾을 주문">
+    <button type="button" data-target="103" aria-pressed="false">주문 103 찾기</button>
+    <button type="button" data-target="107" aria-pressed="true">주문 107 찾기</button>
+  </div>
+
+  <div class="db-demo-split db-index-columns">
+    <div class="db-index-track">
+      <p class="db-demo-label">전체 탐색 · 앞에서부터 확인</p>
+      <ol class="db-index-row-list" aria-label="테이블의 주문 행">
+        <li data-row="101">101</li>
+        <li data-row="102">102</li>
+        <li data-row="103">103</li>
+        <li data-row="104">104</li>
+        <li data-row="105">105</li>
+        <li data-row="106">106</li>
+        <li data-row="107">107</li>
+        <li data-row="108">108</li>
+      </ol>
+      <p class="db-index-count" data-scan-count>확인한 행 0개</p>
+    </div>
+    <div class="db-index-track">
+      <p class="db-demo-label">인덱스 경로 · 범위를 좁혀 이동</p>
+      <div class="db-index-tree" aria-label="단순화한 B-tree 인덱스">
+        <div class="db-index-node" data-index-node="root">분기: 105보다 작은가?</div>
+        <div class="db-index-branches">
+          <div class="db-index-node" data-index-node="low">101 · 102 · 103 · 104</div>
+          <div class="db-index-node" data-index-node="high">105 · 106 · 107 · 108</div>
+        </div>
+        <div class="db-index-node db-index-found" data-index-node="result">찾은 행: <strong data-index-result>107</strong></div>
+      </div>
+      <p class="db-index-count" data-index-count>진행한 단계 0/3</p>
+    </div>
+  </div>
+
+  <p class="db-demo-note" data-index-status>주문 107을 찾습니다. 두 경로가 자동으로 진행됩니다.</p>
+  <p class="db-demo-disclaimer">이 그림은 탐색 원리를 설명하는 모형입니다. 단계 수는 실제 디스크 읽기 횟수나 쿼리 실행 시간이 아닙니다.</p>
+</section>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-db-index]').forEach((demo) => {
+    const targets = demo.querySelectorAll<HTMLButtonElement>('[data-target]');
+    const rows = demo.querySelectorAll<HTMLElement>('[data-row]');
+    const nodes = demo.querySelectorAll<HTMLElement>('[data-index-node]');
+    const scanCount = demo.querySelector<HTMLElement>('[data-scan-count]');
+    const indexCount = demo.querySelector<HTMLElement>('[data-index-count]');
+    const result = demo.querySelector<HTMLElement>('[data-index-result]');
+    const status = demo.querySelector<HTMLElement>('[data-index-status]');
+    if (!scanCount || !indexCount || !result || !status) return;
+
+    let target = 107;
+    let step = 0;
+    let visible = false;
+    let timer: number | undefined;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    const render = () => {
+      const scanSteps = target - 100;
+      const currentScan = Math.min(step, scanSteps);
+      const indexSteps = Math.min(step, 3);
+      const branch = target < 105 ? 'low' : 'high';
+
+      targets.forEach((button) => button.setAttribute('aria-pressed', String(Number(button.dataset.target) === target)));
+      rows.forEach((row) => {
+        const id = Number(row.dataset.row);
+        row.classList.toggle('is-seen', id < 101 + currentScan);
+        row.classList.toggle('is-current', currentScan > 0 && id === 100 + currentScan);
+        row.classList.toggle('is-found', currentScan === scanSteps && id === target);
+      });
+      nodes.forEach((node) => {
+        const name = node.dataset.indexNode;
+        node.classList.toggle('is-active', (name === 'root' && step >= 1) || (name === branch && step >= 2) || (name === 'result' && step >= 3));
+      });
+      result.textContent = String(target);
+      scanCount.textContent = `확인한 행 ${currentScan}개${currentScan === scanSteps ? ' · 찾음' : ''}`;
+      indexCount.textContent = `진행한 단계 ${indexSteps}/3${indexSteps === 3 ? ' · 찾음' : ''}`;
+      status.textContent = step === 0
+        ? `주문 ${target}을 찾습니다. 두 경로가 자동으로 진행됩니다.`
+        : `전체 탐색은 ${currentScan}개 행을 확인했고, 인덱스 모형은 ${indexSteps}단계를 진행했습니다.`;
+    };
+
+    const stop = () => {
+      window.clearTimeout(timer);
+      timer = undefined;
+    };
+
+    const advance = () => {
+      stop();
+      if (!visible || reducedMotion.matches) return;
+      const lastStep = Math.max(target - 100, 3);
+      timer = window.setTimeout(() => {
+        step = step >= lastStep ? 0 : step + 1;
+        render();
+        advance();
+      }, step === lastStep ? 2200 : 850);
+    };
+
+    targets.forEach((button) => button.addEventListener('click', () => {
+      target = Number(button.dataset.target);
+      step = reducedMotion.matches ? Math.max(target - 100, 3) : 0;
+      render();
+      advance();
+    }));
+
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver((entries) => {
+        visible = entries[0]?.isIntersecting ?? false;
+        if (visible) advance();
+        else stop();
+      }, { threshold: 0.25 }).observe(demo);
+    } else {
+      visible = true;
+      advance();
+    }
+
+    reducedMotion.addEventListener('change', () => {
+      step = reducedMotion.matches ? Math.max(target - 100, 3) : 0;
+      render();
+      advance();
+    });
+
+    if (reducedMotion.matches) step = Math.max(target - 100, 3);
+    render();
+  });
+</script>
