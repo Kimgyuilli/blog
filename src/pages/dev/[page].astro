@@ -1,0 +1,14 @@
+---
+// 개발 서버에서만 보이는 도구 페이지. 운영 빌드에서는 경로를 만들지 않습니다.
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import SceneKitShowcase from '@/components/dev/SceneKitShowcase.astro';
+
+export function getStaticPaths() {
+  if (!import.meta.env.DEV) return [];
+  return [{ params: { page: 'scene-kit' } }];
+}
+---
+
+<BaseLayout title="장면 키트">
+  <SceneKitShowcase />
+</BaseLayout>

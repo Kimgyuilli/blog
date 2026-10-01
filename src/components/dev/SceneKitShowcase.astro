@@ -1,0 +1,289 @@
+---
+/**
+ * 장면 키트 견본. 개발 서버의 /dev/scene-kit/ 에서만 보입니다.
+ * 새 글의 장면을 만들기 전에 여기서 부품과 움직임을 고르고, 기준은 docs/animation-standards.md를 따릅니다.
+ */
+import InteractiveDemoFrame from '../blog/InteractiveDemoFrame.astro';
+import DemoControls from '../blog/DemoControls.astro';
+import SceneTimeline from '../blog/SceneTimeline.astro';
+import SceneLegend from '../blog/SceneLegend.astro';
+import { duration } from '../../scripts/blog/scene/core';
+import '../../styles/scene.css';
+
+const colours = [
+  { token: '--scene-dep', meaning: '의존·참조 (중립)' },
+  { token: '--scene-danger', meaning: '끊어야 할 연결·실패' },
+  { token: '--scene-flow', meaning: '새 흐름·성공·완료' },
+  { token: '--scene-temp', meaning: '임시 상태·계획과 다름' },
+];
+const hues = ['blue', 'amber', 'violet', 'cyan', 'gray', 'pink'];
+---
+
+<div class="kit article-body">
+  <header class="kit-intro">
+    <p class="kit-kicker">dev only · /dev/scene-kit/</p>
+    <h1>장면 키트</h1>
+    <p>글 속 애니메이션에 쓰는 부품과 움직임입니다. 의미 하나에 움직임 하나를 대응시킵니다. 기준은 <code>docs/animation-standards.md</code>에 있습니다.</p>
+  </header>
+
+  <InteractiveDemoFrame demoId="kit-tokens" ariaLabel="색과 시간 토큰" title="토큰" description="색은 의미로만 고르고, 노드 구분 색(hue)에는 의미를 싣지 않습니다. 시간은 core.ts의 duration에서 시작합니다.">
+    <div class="kit-swatches">
+      {colours.map((c) => <div class="kit-swatch"><i style={`background: var(${c.token})`}></i><code>{c.token}</code><span>{c.meaning}</span></div>)}
+    </div>
+    <div class="kit-hues">{hues.map((h) => <span class="scene-chip" style={`--node-hue: var(--scene-hue-${h})`}>{h}</span>)}</div>
+    <table class="kit-table">
+      <thead><tr><th>duration</th><th>ms</th></tr></thead>
+      <tbody>{Object.entries(duration).map(([name, ms]) => <tr><td><code>{name}</code></td><td>{ms}</td></tr>)}</tbody>
+    </table>
+  </InteractiveDemoFrame>
+
+  <InteractiveDemoFrame demoId="kit-flip" ariaLabel="createFlipLink" title="createFlipLink — 방향이 반대다 / 끊겼다" description="같은 연결을 두 시선으로 봅니다. flip 0→1이면 화살촉이 선을 따라 미끄러지며 돌고 색이 의존→위험으로 섞입니다. brk는 가운데를 벌리고 ✕를 띄웁니다.">
+    <DemoControls ariaLabel="연결 조작">
+      <button type="button" data-act="flip">뒤집기</button>
+      <button type="button" data-act="break">끊기 + 흔들기</button>
+      <button type="button" data-act="mend">잇기</button>
+    </DemoControls>
+    <div class="scene-stage"><svg data-svg viewBox="0 0 560 180"></svg></div>
+  </InteractiveDemoFrame>
+
+  <InteractiveDemoFrame demoId="kit-cut" ariaLabel="createCallLine과 createCurve" title="createCallLine · createCurve — 끊어 내고 새로 잇는다" description="2단계 전환: 먼저 취소선을 긋고(duration.cut), 그다음 선을 거두며 새 흐름을 그립니다(duration.draw). 거꾸로 돌아갈 때도 같은 상태 보간으로 되돌아옵니다.">
+    <DemoControls ariaLabel="전환">
+      <button type="button" data-act="forward">호출 → 이벤트</button>
+      <button type="button" data-act="back">되돌리기</button>
+    </DemoControls>
+    <div class="scene-stage">
+      <div class="scene-metrics" aria-hidden="true"><div class="scene-metric is-danger"><b data-count>1</b><span>동기 호출</span></div></div>
+      <svg data-svg viewBox="0 0 560 220"></svg>
+    </div>
+    <SceneLegend items={[{ kind: 'danger', label: 'createCallLine' }, { kind: 'flow', label: 'createCurve' }]} />
+  </InteractiveDemoFrame>
+
+  <InteractiveDemoFrame demoId="kit-nodes" ariaLabel="노드 상태" title="createNode — 상태 클래스" description="flash(className)로 켭니다. is-shaking·is-ok는 켤 때마다 다시 재생됩니다.">
+    <DemoControls ariaLabel="노드 상태">
+      <button type="button" data-state="is-done">is-done</button>
+      <button type="button" data-state="is-error">is-error + is-shaking</button>
+      <button type="button" data-state="is-temp">is-temp</button>
+      <button type="button" data-state="is-ok">is-ok</button>
+      <button type="button" data-state="">초기화</button>
+    </DemoControls>
+    <div class="scene-stage"><svg data-svg viewBox="0 0 560 120"></svg></div>
+  </InteractiveDemoFrame>
+
+  <InteractiveDemoFrame demoId="kit-flip-move" ariaLabel="createFlipMover" title="createFlipMover — 옮겨졌다" description="다른 컨테이너로 가는 요소는 떠올라 호를 그리며 날아가 착지 링을 남기고, 남은 요소는 짧게 자리를 메웁니다.">
+    <DemoControls ariaLabel="블록 이동"><button type="button" data-act="move">하나 옮기기</button><button type="button" data-act="back">모두 되돌리기</button></DemoControls>
+    <div class="kit-flip">
+      <div class="kit-bin" data-from>
+        <div class="scene-block" style="--node-hue: var(--scene-hue-blue)">User</div>
+        <div class="scene-block" style="--node-hue: var(--scene-hue-amber)">Product</div>
+        <div class="scene-block" style="--node-hue: var(--scene-hue-violet)">Order</div>
+        <div class="scene-block is-muted">common</div>
+      </div>
+      <div class="kit-bin" data-to></div>
+    </div>
+  </InteractiveDemoFrame>
+
+  <InteractiveDemoFrame demoId="kit-console" ariaLabel="실행 로그와 칩" title="createConsole · 칩 · 지표 — 결과를 확인한다" description="대기(…) 줄을 먼저 찍고 duration.beat 뒤에 성공·실패로 바꿉니다. 다음에 누를 칩은 data-state=&quot;next&quot;로 부릅니다.">
+    <div class="scene-chips">
+      <span class="scene-chips-label">칩</span>
+      <button type="button" class="scene-chip" data-state="next" data-act="ok" style="--node-hue: var(--scene-hue-gray)">성공 실행</button>
+      <button type="button" class="scene-chip" data-act="fail" style="--node-hue: var(--scene-hue-amber)">실패 실행</button>
+      <span class="scene-chip" data-state="ok">ok</span>
+      <span class="scene-chip" data-state="fail">fail</span>
+      <span class="scene-chip" data-state="locked">locked</span>
+    </div>
+    <ol class="scene-console" data-console aria-live="polite"></ol>
+    <p class="scene-note" data-note hidden></p>
+  </InteractiveDemoFrame>
+
+  <InteractiveDemoFrame demoId="kit-timeline" ariaLabel="createStepPlayer" title="SceneTimeline + createStepPlayer — 단계를 따라간다" description="화면에 보이면 자동 진행하고, 단계를 누르면 멈춥니다. 움직임 줄이기 설정이면 마지막 단계를 정지 화면으로 보여줍니다.">
+    <SceneTimeline ariaLabel="견본 단계" steps={[{ name: '왼쪽', detail: 'x 80' }, { name: '가운데', detail: 'x 280' }, { name: '오른쪽', detail: 'x 480' }]} />
+    <div class="scene-stage"><svg data-svg viewBox="0 0 560 120"></svg></div>
+    <p class="scene-note" data-note role="status"></p>
+  </InteractiveDemoFrame>
+</div>
+
+<script>
+  import { createScene, duration, ease, svg, type Box } from '../../scripts/blog/scene/core';
+  import { createBoundary, createCallLine, createCurve, createFlipLink, createNode } from '../../scripts/blog/scene/parts';
+  import { createFlipMover } from '../../scripts/blog/scene/flip';
+  import { createConsole } from '../../scripts/blog/scene/console';
+  import { createStepPlayer } from '../../scripts/blog/scene/step-player';
+  import { bumpText, replayClass } from '../../scripts/blog/scene/core';
+
+  const demo = (id: string) => document.querySelector<HTMLElement>(`[data-blog-demo="${id}"]`)!;
+  const size = { w: 110, h: 48 };
+
+  // ── createFlipLink ───────────────────────────────────
+  {
+    const root = demo('kit-flip');
+    const stage = root.querySelector<SVGSVGElement>('[data-svg]')!;
+    const link = createFlipLink(stage, { forward: 'A가 B를 import', backward: 'B가 A를 호출' });
+    const a = createNode(stage, { label: 'A', hue: 'var(--scene-hue-amber)' });
+    const b = createNode(stage, { label: 'B', hue: 'var(--scene-hue-violet)' });
+    const boxA: Box = { x: 120, y: 100, ...size };
+    const boxB: Box = { x: 440, y: 100, ...size };
+    const scene = createScene({ flip: 0, show: 1, brk: 0 }, (state) => {
+      a.setBox(boxA);
+      b.setBox(boxB);
+      link.draw(boxA, boxB, state, { dx: 0, dy: -24, anchor: 'middle' });
+    });
+    scene.redraw();
+    root.querySelector('[data-act="flip"]')!.addEventListener('click', () => scene.go({ ...scene.state, flip: scene.state.flip > 0.5 ? 0 : 1 }, duration.flip));
+    root.querySelector('[data-act="break"]')!.addEventListener('click', () => {
+      b.flash('is-error');
+      b.flash('is-shaking');
+      scene.go({ ...scene.state, brk: 1 }, duration.snap, ease.overshoot);
+    });
+    root.querySelector('[data-act="mend"]')!.addEventListener('click', () => {
+      b.flash('is-error', false);
+      scene.go({ ...scene.state, brk: 0 }, duration.move);
+    });
+  }
+
+  // ── createCallLine + createCurve ─────────────────────
+  {
+    const root = demo('kit-cut');
+    const stage = root.querySelector<SVGSVGElement>('[data-svg]')!;
+    const count = root.querySelector<HTMLElement>('[data-count]')!;
+    const boundary = createBoundary(stage, '한 애플리케이션');
+    const curve = createCurve(stage, 'order.created');
+    const call = createCallLine(stage, '재고 차감');
+    const order = createNode(stage, { label: 'Order', hue: 'var(--scene-hue-violet)' });
+    const product = createNode(stage, { label: 'Product', hue: 'var(--scene-hue-amber)' });
+    type S = { call: { show: number; strike: number }; event: number; boundary: { x: number; y: number; w: number; h: number; o: number } };
+    const before: S = { call: { show: 1, strike: 0 }, event: 0, boundary: { x: 8, y: 8, w: 544, h: 204, o: 1 } };
+    const after: S = { call: { show: 0, strike: 1 }, event: 1, boundary: { x: 280, y: 8, w: 272, h: 204, o: 1 } };
+    const scene = createScene(before, (state) => {
+      const o: Box = { x: 420, y: 130, ...size };
+      const p: Box = { x: 140, y: 130, ...size };
+      boundary.place(state.boundary);
+      order.setBox(o);
+      product.setBox(p);
+      call.draw({ x: o.x - size.w / 2 - 2, y: o.y }, { x: p.x + size.w / 2 + 4, y: p.y }, state.call);
+      curve.draw({ x: o.x - 30, y: o.y - 26 }, { x: 280, y: 0 }, { x: p.x + 30, y: p.y - 26 }, state.event, { x: 280, y: 52, anchor: 'middle' });
+    });
+    scene.redraw();
+    root.querySelector('[data-act="forward"]')!.addEventListener('click', async () => {
+      const alive = scene.begin();
+      await scene.go({ ...scene.state, call: { show: 1, strike: 1 } }, duration.cut);
+      if (!alive()) return;
+      bumpText(count, '0');
+      await scene.go(after, duration.draw);
+    });
+    root.querySelector('[data-act="back"]')!.addEventListener('click', () => {
+      scene.begin();
+      bumpText(count, '1');
+      scene.go(before, duration.draw);
+    });
+  }
+
+  // ── createNode 상태 ──────────────────────────────────
+  {
+    const root = demo('kit-nodes');
+    const stage = root.querySelector<SVGSVGElement>('[data-svg]')!;
+    const node = createNode(stage, { label: 'Order', hue: 'var(--scene-hue-violet)', sub: 'order 패키지' });
+    node.setBox({ x: 280, y: 60, w: 140, h: 56 });
+    const subs: Record<string, string> = { 'is-done': 'service 모듈', 'is-error': '빈 주입 실패', 'is-temp': '예약 = 이미 차감', 'is-ok': 'order 패키지', '': 'order 패키지' };
+    root.querySelectorAll<HTMLButtonElement>('[data-state]').forEach((button) => button.addEventListener('click', () => {
+      const name = button.dataset.state!;
+      ['is-done', 'is-error', 'is-temp', 'is-ok', 'is-shaking'].forEach((c) => node.flash(c, false));
+      node.setSub(subs[name]);
+      if (name) node.flash(name);
+      if (name === 'is-error') node.flash('is-shaking');
+    }));
+  }
+
+  // ── createFlipMover ──────────────────────────────────
+  {
+    const root = demo('kit-flip-move');
+    const from = root.querySelector<HTMLElement>('[data-from]')!;
+    const to = root.querySelector<HTMLElement>('[data-to]')!;
+    const blocks = [...root.querySelectorAll<HTMLElement>('.scene-block')];
+    const move = createFlipMover(blocks);
+    root.querySelector('[data-act="move"]')!.addEventListener('click', () => {
+      const next = from.querySelector<HTMLElement>('.scene-block');
+      if (next) move(() => to.append(next));
+    });
+    root.querySelector('[data-act="back"]')!.addEventListener('click', () => move(() => blocks.forEach((b) => from.append(b))));
+  }
+
+  // ── createConsole + 칩 ───────────────────────────────
+  {
+    const root = demo('kit-console');
+    const terminal = createConsole(root.querySelector<HTMLOListElement>('[data-console]')!, '칩을 눌러 실행해 보세요.');
+    const note = root.querySelector<HTMLElement>('[data-note]')!;
+    const scene = createScene(0, () => {});
+    const run = async (fail: boolean) => {
+      const alive = scene.begin();
+      terminal.clear();
+      terminal.log('모듈 이동');
+      const step = terminal.log('컴파일', 'pending');
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      step('컴파일', 'ok');
+      const boot = terminal.log('부팅', 'pending');
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      boot('부팅', fail ? 'fail' : 'ok');
+      if (fail) terminal.log('APPLICATION FAILED TO START', 'trace');
+      else terminal.log('경고 예시', 'warn');
+      note.hidden = false;
+      note.classList.toggle('is-alert', fail);
+      note.textContent = fail ? 'is-alert 설명 상자: 실패의 원인을 한 문장으로.' : '설명 상자: 방금 본 결과가 무엇을 뜻하는지 한 문장으로.';
+      replayClass(note, 'is-entering');
+    };
+    root.querySelector('[data-act="ok"]')!.addEventListener('click', () => run(false));
+    root.querySelector('[data-act="fail"]')!.addEventListener('click', () => run(true));
+  }
+
+  // ── SceneTimeline + createStepPlayer ─────────────────
+  {
+    const root = demo('kit-timeline');
+    const stage = root.querySelector<SVGSVGElement>('[data-svg]')!;
+    const note = root.querySelector<HTMLElement>('[data-note]')!;
+    svg('line', { x1: 80, x2: 480, y1: 60, y2: 60, stroke: 'var(--hairline)', 'stroke-width': 2, 'stroke-dasharray': '4 6' }, stage);
+    const node = createNode(stage, { label: 'Step', hue: 'var(--scene-hue-cyan)' });
+    const xs = [80, 280, 480];
+    const scene = createScene({ x: xs[0] }, (state) => node.setBox({ x: state.x, y: 60, ...size }));
+    createStepPlayer(root, {
+      dwell: (index) => (index === xs.length - 1 ? duration.dwellLast : duration.dwell),
+      onStep: (index, instant) => {
+        note.textContent = `${index + 1}단계: 노드가 x ${xs[index]}로 이동합니다.`;
+        if (instant) scene.set({ x: xs[index] });
+        else scene.go({ x: xs[index] }, duration.move);
+      },
+    });
+  }
+</script>
+
+<style>
+  .kit {
+    width: min(100% - 32px, var(--content-width));
+    margin: 40px auto 80px;
+  }
+
+  .kit-kicker { margin: 0; color: var(--brand-green-deep); font-family: var(--font-mono); font-size: 0.78rem; }
+  .kit-intro h1 { margin: 6px 0 8px; }
+  .kit-intro p { color: var(--slate); }
+  .kit :global(.db-demo) { margin-block: 30px; }
+
+  .kit-swatches { display: grid; gap: 8px; margin: 18px 0; }
+  .kit-swatch { display: grid; grid-template-columns: 28px 160px 1fr; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--charcoal); }
+  .kit-swatch i { width: 28px; height: 16px; border-radius: 4px; }
+  .kit-hues { display: flex; flex-wrap: wrap; gap: 6px; }
+  .kit-table { margin-top: 16px; border-collapse: collapse; font-size: 0.82rem; }
+  .kit-table :is(th, td) { padding: 4px 14px 4px 0; text-align: left; color: var(--charcoal); }
+
+  .kit-flip { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .kit-bin {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 8px;
+    min-height: 110px;
+    padding: 12px;
+    border: 1.5px dashed var(--hairline);
+    border-radius: 12px;
+    background: var(--canvas);
+  }
+</style>
