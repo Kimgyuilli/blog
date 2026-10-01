@@ -1,73 +1,256 @@
 ---
 import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
 import DemoControls from './DemoControls.astro';
+import '../../styles/scene.css';
 ---
 
-<InteractiveDemoFrame demoId="peel-dependencies" ariaLabel="PeekCart의 import와 빈 호출 방향 비교" title="import 화살표와 호출 화살표는 반대였습니다" description="같은 다섯 도메인을 두 방향으로 살펴봅니다. 화살표는 의존하거나 호출하는 쪽에서 받는 쪽을 향합니다.">
-  <DemoControls ariaLabel="의존 관계 보기">
-    <button type="button" data-peel-view="imports" aria-pressed="true">import 그래프</button>
-    <button type="button" data-peel-view="calls" aria-pressed="false">실행 시점 빈 호출 그래프</button>
+<InteractiveDemoFrame demoId="peel-dependencies" ariaLabel="모놀리스에서 도메인을 직접 떼어내 보는 실험" title="계획대로 직접 떼어내 보세요" description="초기 계획 순서대로 도메인을 눌러 모놀리스 밖으로 꺼내 보세요. 남은 모놀리스가 컴파일되고 부팅되는지 확인합니다.">
+  <DemoControls ariaLabel="화살표 기준">
+    <button type="button" data-peel-lens="import" aria-pressed="true">import 화살표로 보기</button>
+    <button type="button" data-peel-lens="call" aria-pressed="false">실행 시점 호출로 보기</button>
   </DemoControls>
 
-  <div class="peel-graph-panel" data-peel-panel="imports">
-    <svg viewBox="0 0 560 260" role="img" aria-label="Product에서 Order로, Order에서 Payment로 import. User와 Notification에는 표시한 간선이 없습니다.">
-      <defs><marker id="peel-import-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" /></marker></defs>
-      <path class="peel-edge" d="M 150 70 H 226" marker-end="url(#peel-import-arrow)" />
-      <path class="peel-edge" d="M 334 70 H 410" marker-end="url(#peel-import-arrow)" />
-      <g class="peel-node"><rect x="20" y="42" width="130" height="56" rx="10" /><text x="85" y="76">Product</text></g>
-      <g class="peel-node"><rect x="226" y="42" width="108" height="56" rx="10" /><text x="280" y="76">Order</text></g>
-      <g class="peel-node"><rect x="410" y="42" width="130" height="56" rx="10" /><text x="475" y="76">Payment</text></g>
-      <g class="peel-node peel-node-muted"><rect x="80" y="164" width="130" height="56" rx="10" /><text x="145" y="198">User</text></g>
-      <g class="peel-node peel-node-muted"><rect x="350" y="164" width="130" height="56" rx="10" /><text x="415" y="198">Notification</text></g>
-    </svg>
-    <ul class="peel-graph-details">
-      <li><strong>Product → Order</strong>: Product의 <code>ProductPortAdapter</code>가 <code>order.application.port.ProductPort</code>를 구현합니다.</li>
-      <li><strong>Order → Payment</strong>: Order의 <code>OrderPortAdapter</code>가 <code>payment.application.port.OrderPort</code>를 구현합니다.</li>
-    </ul>
+  <div class="scene-stage">
+    <svg data-peel-svg role="img" aria-label="peekcart 모놀리스 안의 Product, Order, Payment, User, Notification. import 기준으로는 Product가 Order를, Order가 Payment를 향하지만, 실행 시점 호출은 Order가 Product를, Payment가 Order를 향합니다."></svg>
   </div>
 
-  <div class="peel-graph-panel" data-peel-panel="calls" hidden>
-    <svg viewBox="0 0 560 260" role="img" aria-label="Order에서 Product로, Payment에서 Order로 빈 호출. User와 Notification에는 표시한 간선이 없습니다.">
-      <defs><marker id="peel-call-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" /></marker></defs>
-      <path class="peel-edge peel-call-edge" d="M 226 70 H 150" marker-end="url(#peel-call-arrow)" />
-      <path class="peel-edge peel-call-edge" d="M 410 70 H 334" marker-end="url(#peel-call-arrow)" />
-      <g class="peel-node"><rect x="20" y="42" width="130" height="56" rx="10" /><text x="85" y="76">Product</text></g>
-      <g class="peel-node"><rect x="226" y="42" width="108" height="56" rx="10" /><text x="280" y="76">Order</text></g>
-      <g class="peel-node"><rect x="410" y="42" width="130" height="56" rx="10" /><text x="475" y="76">Payment</text></g>
-      <g class="peel-node peel-node-muted"><rect x="80" y="164" width="130" height="56" rx="10" /><text x="145" y="198">User</text></g>
-      <g class="peel-node peel-node-muted"><rect x="350" y="164" width="130" height="56" rx="10" /><text x="415" y="198">Notification</text></g>
-    </svg>
-    <ul class="peel-graph-details">
-      <li><strong>Order → Product</strong>: <code>ProductPort</code>로 재고 차감·단가 조회·상품 존재 확인을 호출했습니다.</li>
-      <li><strong>Payment → Order</strong>: <code>OrderPort</code>로 주문 소유자 확인·상태 전이를 호출했습니다.</li>
-    </ul>
+  <div class="scene-chips" role="group" aria-label="초기 분리 계획">
+    <span class="scene-chips-label">초기 계획</span>
+    <button type="button" class="scene-chip" data-peel-target="notification" style="--node-hue: var(--scene-hue-gray)">Notification<span class="scene-chip-mark" data-mark></span></button>
+    <span class="scene-chips-sep" aria-hidden="true">→</span>
+    <button type="button" class="scene-chip" data-peel-target="product" style="--node-hue: var(--scene-hue-amber)">Product<span class="scene-chip-mark" data-mark></span></button>
+    <span class="scene-chips-sep" aria-hidden="true">→</span>
+    <button type="button" class="scene-chip" data-peel-target="user" style="--node-hue: var(--scene-hue-blue)">User<span class="scene-chip-mark" data-mark></span></button>
+    <span class="scene-chips-sep" aria-hidden="true">→</span>
+    <button type="button" class="scene-chip" data-state="locked" disabled title="Saga로 묶여 있어 마지막에 떼어냅니다">Order + Payment<span class="scene-chip-mark">마지막</span></button>
+    <button type="button" class="scene-chip is-plain" data-peel-reset hidden>↺ 처음부터</button>
   </div>
-  <p class="db-demo-disclaimer">당시 코드의 대표 호출만 표시했습니다. 이벤트, 공유 DB, 문자열로 이어진 결합은 이 그래프에 포함하지 않았습니다.</p>
+
+  <ol class="scene-console" data-peel-console aria-live="polite"></ol>
+  <p class="scene-note" data-peel-takeaway hidden></p>
+  <p class="db-demo-disclaimer">당시 코드의 대표 연결만 그린 모형입니다. 이벤트, 공유 DB, 이름으로 이어진 결합은 그리지 않았습니다. 부팅 실패 메시지는 Spring Boot의 형식을 줄여 쓴 예시입니다.</p>
 </InteractiveDemoFrame>
 
 <script>
+  import { createScene, duration, ease, lerp, clamp01, setAttrs, watchNarrow, replayClass, type Box, type Point } from '../../scripts/blog/scene/core';
+  import { createBoundary, createFlipLink, createNode, type FlipLinkState, type LabelSpot, type NodeView } from '../../scripts/blog/scene/parts';
+  import { createConsole } from '../../scripts/blog/scene/console';
+
+  type Id = 'product' | 'order' | 'payment' | 'user' | 'notification';
+  type Peelable = 'notification' | 'product' | 'user';
+  type State = { nodes: Record<Id, Point>; productOrder: FlipLinkState; orderPayment: FlipLinkState };
+
+  const NODES: { id: Id; label: string; hue: string }[] = [
+    { id: 'product', label: 'Product', hue: 'var(--scene-hue-amber)' },
+    { id: 'order', label: 'Order', hue: 'var(--scene-hue-violet)' },
+    { id: 'payment', label: 'Payment', hue: 'var(--scene-hue-cyan)' },
+    { id: 'user', label: 'User', hue: 'var(--scene-hue-blue)' },
+    { id: 'notification', label: 'Notification', hue: 'var(--scene-hue-gray)' },
+  ];
+
+  type Layout = {
+    view: [number, number];
+    size: { w: number; h: number };
+    monolith: { x: number; y: number; w: number; h: number };
+    zone: { x: number; y: number; w: number; h: number };
+    monolithCaption: Point & { anchor: LabelSpot['anchor'] };
+    zoneCaption: Point & { anchor: LabelSpot['anchor'] };
+    home: Record<Id, Point>;
+    slot: Record<Peelable, Point>;
+    /** Product가 밖으로 나가면 늘어난 선 위쪽에 Payment가 있어, 라벨을 outDy로 옮깁니다. */
+    label: Record<'productOrder' | 'orderPayment', LabelSpot & { outDy: number }>;
+  };
+
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 320],
+      size: { w: 100, h: 46 },
+      monolith: { x: 8, y: 8, w: 380, h: 304 },
+      zone: { x: 398, y: 8, w: 154, h: 304 },
+      monolithCaption: { x: 22, y: 32, anchor: 'start' },
+      zoneCaption: { x: 475, y: 32, anchor: 'middle' },
+      home: { product: { x: 66, y: 140 }, order: { x: 198, y: 140 }, payment: { x: 330, y: 140 }, user: { x: 120, y: 250 }, notification: { x: 280, y: 250 } },
+      slot: { notification: { x: 475, y: 90 }, user: { x: 475, y: 170 }, product: { x: 475, y: 250 } },
+      label: { productOrder: { dx: 0, dy: -38, outDy: 26, anchor: 'middle' }, orderPayment: { dx: 0, dy: 44, outDy: 44, anchor: 'middle' } },
+    },
+    narrow: {
+      view: [360, 540],
+      size: { w: 116, h: 46 },
+      monolith: { x: 10, y: 10, w: 340, h: 366 },
+      zone: { x: 10, y: 392, w: 340, h: 138 },
+      monolithCaption: { x: 24, y: 34, anchor: 'start' },
+      zoneCaption: { x: 24, y: 416, anchor: 'start' },
+      home: { product: { x: 84, y: 100 }, order: { x: 84, y: 214 }, payment: { x: 84, y: 328 }, user: { x: 272, y: 100 }, notification: { x: 272, y: 328 } },
+      slot: { notification: { x: 66, y: 472 }, user: { x: 180, y: 472 }, product: { x: 294, y: 472 } },
+      label: { productOrder: { dx: 14, dy: 4, outDy: 4, anchor: 'start' }, orderPayment: { dx: 14, dy: 4, outDy: 4, anchor: 'start' } },
+    },
+  };
+
+  const PLAN: Peelable[] = ['notification', 'product', 'user'];
+  const IDLE = '도메인을 눌러 모놀리스에서 떼어내 보세요.';
+
   document.querySelectorAll<HTMLElement>('[data-blog-demo="peel-dependencies"]').forEach((demo) => {
-    const buttons = demo.querySelectorAll<HTMLButtonElement>('[data-peel-view]');
-    const panels = demo.querySelectorAll<HTMLElement>('[data-peel-panel]');
-    buttons.forEach((button) => button.addEventListener('click', () => {
-      buttons.forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
-      panels.forEach((panel) => { panel.hidden = panel.dataset.peelPanel !== button.dataset.peelView; });
+    const root = demo.querySelector<SVGSVGElement>('[data-peel-svg]')!;
+    const takeaway = demo.querySelector<HTMLParagraphElement>('[data-peel-takeaway]')!;
+    const lensButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-peel-lens]')];
+    const chips = [...demo.querySelectorAll<HTMLButtonElement>('[data-peel-target]')];
+    const resetButton = demo.querySelector<HTMLButtonElement>('[data-peel-reset]')!;
+    const terminal = createConsole(demo.querySelector<HTMLOListElement>('[data-peel-console]')!, IDLE);
+
+    let layout = LAYOUTS.wide;
+    let lensFlip = 0;
+    let busy = false;
+    const peeled = new Set<Peelable>();
+    const results: Partial<Record<Peelable, 'ok' | 'fail'>> = {};
+
+    const monolith = createBoundary(root, 'peekcart 모놀리스 · 한 애플리케이션');
+    const zone = createBoundary(root, '떼어낸 모듈', 'zone');
+    const productOrder = createFlipLink(root, { forward: 'implements ProductPort', backward: '재고 차감 · 단가 조회' });
+    const orderPayment = createFlipLink(root, { forward: 'implements OrderPort', backward: '소유자 확인 · 상태 전이' });
+    const views = Object.fromEntries(NODES.map(({ id, label, hue }) => [id, createNode(root, { label, hue })])) as Record<Id, NodeView>;
+
+    const restingState = (): State => ({
+      nodes: Object.fromEntries(NODES.map(({ id }) => [id, peeled.has(id as Peelable) ? layout.slot[id as Peelable] : layout.home[id]])) as Record<Id, Point>,
+      productOrder: { flip: lensFlip, show: 1, brk: 0 },
+      orderPayment: { flip: lensFlip, show: 1, brk: 0 },
+    });
+
+    const scene = createScene<State>(restingState(), (state) => {
+      const box = (id: Id): Box => ({ ...state.nodes[id], ...layout.size });
+      NODES.forEach(({ id }) => views[id].setBox(box(id)));
+      const { home, slot } = layout;
+      const product = state.nodes.product;
+      const out = clamp01((product.x - home.product.x + product.y - home.product.y) / (slot.product.x - home.product.x + slot.product.y - home.product.y));
+      const spot = (key: 'productOrder' | 'orderPayment', amount: number) => ({ ...layout.label[key], dy: lerp(layout.label[key].dy, layout.label[key].outDy, amount) });
+      productOrder.draw(box('product'), box('order'), state.productOrder, spot('productOrder', out));
+      orderPayment.draw(box('order'), box('payment'), state.orderPayment, spot('orderPayment', 0));
+    });
+
+    const applyLayout = () => {
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      monolith.place(layout.monolith, layout.monolithCaption);
+      zone.place(layout.zone, layout.zoneCaption);
+      scene.set({ ...restingState(), productOrder: scene.state.productOrder, orderPayment: scene.state.orderPayment });
+    };
+
+    const refreshChips = () => {
+      const next = PLAN.find((id) => !results[id]);
+      chips.forEach((chip) => {
+        const id = chip.dataset.peelTarget as Peelable;
+        const result = results[id];
+        chip.dataset.state = result ?? (id === next ? 'next' : 'idle');
+        chip.disabled = busy || result === 'ok';
+        chip.querySelector('[data-mark]')!.textContent = result === 'ok' ? '✓' : result === 'fail' ? '✕ 부팅 실패' : '';
+      });
+      lensButtons.forEach((button) => { button.disabled = busy; });
+      resetButton.hidden = Object.keys(results).length === 0;
+      resetButton.disabled = busy;
+    };
+
+    const say = (text: string, alert = false) => {
+      takeaway.hidden = false;
+      takeaway.classList.toggle('is-alert', alert);
+      takeaway.textContent = text;
+      replayClass(takeaway, 'is-entering');
+    };
+
+    const peel = async (id: Peelable) => {
+      const alive = scene.begin();
+      busy = true;
+      refreshChips();
+      terminal.clear();
+      const label = NODES.find((node) => node.id === id)!.label;
+      const object = `${label}${id === 'notification' ? '을' : '를'}`;
+
+      terminal.log(`${id} 패키지 → ${id}-service 모듈로 이동`);
+      peeled.add(id);
+      views[id].setSub('service 모듈');
+      views[id].flash('is-done');
+      await scene.go(restingState(), duration.move);
+      if (!alive()) return;
+
+      const compile = terminal.log('남은 모놀리스 컴파일', 'pending');
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      compile(`남은 모놀리스 컴파일 — ${object} import하는 코드 없음`, 'ok');
+
+      const boot = terminal.log('남은 모놀리스 부팅', 'pending');
+      await scene.pause(duration.beat + 200);
+      if (!alive()) return;
+
+      if (id !== 'product') {
+        boot('남은 모놀리스 부팅', 'ok');
+        views[id].flash('is-ok');
+        if (id === 'notification') {
+          terminal.log('남은 통합 테스트 일부가 Notification의 이벤트 소비로 결과를 확인하고 있었음', 'warn');
+          say('Notification은 이벤트를 받기만 해서 바로 떨어집니다. 다만 남은 모놀리스의 멱등성·Outbox·DLQ 테스트가 Notification의 소비 결과를 검증 수단으로 쓰고 있어 다시 써야 했습니다.');
+        } else {
+          say(results.product === 'fail'
+            ? 'User는 어디에서도 import되거나 호출되지 않아 바로 떨어집니다. 그래서 실제로는 User를 먼저 떼어내고, Product는 동기 호출을 걷어낸 다음에 떼어냈습니다.'
+            : 'User는 다른 도메인과 이어진 선이 없어 바로 떨어집니다.');
+        }
+        results[id] = 'ok';
+      } else {
+        // import로는 보이지 않던 호출이 뒤집혀 나타났다가 끊어집니다.
+        await scene.go({ ...scene.state, productOrder: { flip: 1, show: 1, brk: 0 } }, duration.flip);
+        if (!alive()) return;
+        views.order.flash('is-error');
+        views.order.setSub('빈 주입 실패');
+        await scene.pause(250);
+        views.order.flash('is-shaking');
+        await scene.go({ ...scene.state, productOrder: { flip: 1, show: 1, brk: 1 } }, duration.snap, ease.overshoot);
+        if (!alive()) return;
+        boot('남은 모놀리스 부팅', 'fail');
+        terminal.log('APPLICATION FAILED TO START', 'trace');
+        terminal.log("A component required a bean of type 'ProductPort' that could not be found.", 'trace');
+        results.product = 'fail';
+        say('import 그래프에는 Product로 들어오는 화살표가 없었습니다. 그런데 실행 시점에는 Order가 주문 트랜잭션 안에서 Product의 빈을 불러 재고를 차감하고 단가를 읽고 있었습니다.', true);
+        refreshChips();
+
+        await scene.pause(duration.read);
+        if (!alive()) return;
+        terminal.log('Product를 모놀리스로 되돌립니다');
+        peeled.delete('product');
+        views.product.setSub('');
+        views.product.flash('is-done', false);
+        views.order.flash('is-error', false);
+        views.order.setSub('');
+        await scene.go(restingState(), duration.move);
+        if (!alive()) return;
+      }
+
+      busy = false;
+      refreshChips();
+    };
+
+    const reset = () => {
+      scene.begin();
+      busy = false;
+      peeled.clear();
+      PLAN.forEach((id) => { delete results[id]; });
+      NODES.forEach(({ id }) => {
+        views[id].setSub('');
+        ['is-done', 'is-error', 'is-ok', 'is-shaking'].forEach((name) => views[id].flash(name, false));
+      });
+      terminal.reset();
+      takeaway.hidden = true;
+      refreshChips();
+      scene.go(restingState(), duration.move);
+    };
+
+    chips.forEach((chip) => chip.addEventListener('click', () => peel(chip.dataset.peelTarget as Peelable)));
+    resetButton.addEventListener('click', reset);
+    lensButtons.forEach((button) => button.addEventListener('click', () => {
+      lensFlip = button.dataset.peelLens === 'call' ? 1 : 0;
+      lensButtons.forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+      const { productOrder: a, orderPayment: b } = scene.state;
+      scene.go({ ...scene.state, productOrder: { ...a, flip: lensFlip }, orderPayment: { ...b, flip: lensFlip } }, duration.flip);
     }));
+
+    watchNarrow(demo, (narrow) => {
+      layout = narrow ? LAYOUTS.narrow : LAYOUTS.wide;
+      applyLayout();
+    });
+    refreshChips();
   });
 </script>
-
-<style>
-  .peel-graph-panel { border: 1px solid var(--hairline); border-radius: 10px; background: var(--canvas); }
-  .peel-graph-panel svg { display: block; width: 100%; height: auto; }
-  .peel-edge { fill: none; stroke: var(--brand-green); stroke-width: 3; }
-  .peel-edge + .peel-edge { stroke: var(--slate); }
-  marker path { fill: var(--brand-green); }
-  .peel-node rect { fill: var(--surface); stroke: var(--hairline); stroke-width: 2; }
-  .peel-node text { fill: var(--ink); text-anchor: middle; font-size: 18px; font-weight: 700; }
-  .peel-node-muted { opacity: .72; }
-  .peel-graph-details { margin: 0; padding: 0 20px 18px 38px; color: var(--charcoal); font-size: .84rem; }
-  .peel-graph-details li + li { margin-top: 6px; }
-  .peel-graph-details code { overflow-wrap: anywhere; }
-  @media (prefers-reduced-motion: no-preference) { .peel-graph-panel:not([hidden]) { animation: peel-appear .18s ease-out; } }
-  @keyframes peel-appear { from { opacity: .55; } to { opacity: 1; } }
-</style>

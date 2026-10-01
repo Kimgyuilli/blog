@@ -1,198 +1,356 @@
 ---
 import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
-import DemoControls from './DemoControls.astro';
+import SceneTimeline from './SceneTimeline.astro';
+import '../../styles/scene.css';
 
+const domains = [
+  { id: 'user', label: 'User', hue: 'var(--scene-hue-blue)' },
+  { id: 'product', label: 'Product', hue: 'var(--scene-hue-amber)' },
+  { id: 'order', label: 'Order', hue: 'var(--scene-hue-violet)' },
+  { id: 'payment', label: 'Payment', hue: 'var(--scene-hue-cyan)' },
+  { id: 'notification', label: 'Notification', hue: 'var(--scene-hue-gray)' },
+];
+const commons = [
+  { id: 'common', label: 'common' },
+  { id: 'observability', label: 'observability' },
+];
+// 서비스 슬롯은 실제로 떼어낸 순서대로 놓습니다.
+const slots = [
+  { id: 'notification', planned: 1, actual: 1 },
+  { id: 'user', planned: 3, actual: 2 },
+  { id: 'product', planned: 2, actual: 3 },
+  { id: 'order', planned: 4, actual: 4 },
+  { id: 'payment', planned: 4, actual: 5 },
+];
 const steps = [
-  {
-    title: '한 애플리케이션',
-    root: ['User', 'Product', 'Order', 'Payment', 'Notification'],
-    services: [],
-    moved: '',
-    common: false,
-    note: '다섯 도메인이 패키지로 나뉘어 있었지만 모두 루트 애플리케이션에서 실행됐습니다.',
-  },
-  {
-    title: '공통 코드 추출',
-    root: ['User', 'Product', 'Order', 'Payment', 'Notification'],
-    services: [],
-    moved: '',
-    common: true,
-    note: '서비스를 옮기기 전에 common과 관측성 모듈을 추출했습니다. 루트 애플리케이션은 계속 부팅됐습니다.',
-  },
-  {
-    title: 'Notification 분리',
-    root: ['User', 'Product', 'Order', 'Payment'],
-    services: ['Notification'],
-    moved: 'Notification',
-    common: true,
-    note: '이벤트 소비 전용 서비스부터 떼어내며 분리 절차를 확인했습니다.',
-  },
-  {
-    title: 'User 분리',
-    root: ['Product', 'Order', 'Payment'],
-    services: ['Notification', 'User'],
-    moved: 'User',
-    common: true,
-    note: '초기 계획과 순서를 바꿨습니다. Order가 ProductPort를 동기 호출하고 있었기 때문입니다.',
-  },
-  {
-    title: 'Product 분리',
-    root: ['Order', 'Payment'],
-    services: ['Notification', 'User', 'Product'],
-    moved: 'Product',
-    common: true,
-    note: '재고 변경·단가·상품 존재 확인의 동기 호출을 걷어내고 Product를 떼어냈습니다.',
-  },
-  {
-    title: 'Order 분리',
-    root: ['Payment'],
-    services: ['Notification', 'User', 'Product', 'Order'],
-    moved: 'Order',
-    common: true,
-    note: 'Payment의 OrderPort 호출도 로컬 상태와 이벤트로 바꾼 뒤 Order를 떼어냈습니다.',
-  },
-  {
-    title: 'Payment 분리',
-    root: [],
-    services: ['Notification', 'User', 'Product', 'Order', 'Payment'],
-    moved: 'Payment',
-    common: true,
-    note: '마지막 도메인을 옮겨 루트에는 실행 소스가 남지 않았습니다. 루트는 빌드 설정과 검사만 맡습니다.',
-  },
+  { name: '시작', detail: '루트 5' },
+  { name: '공통 추출', detail: '루트 5' },
+  { name: 'Notification', detail: '루트 4' },
+  { name: 'User', detail: '루트 3' },
+  { name: 'Product', detail: '루트 2' },
+  { name: 'Order', detail: '루트 1' },
+  { name: 'Payment', detail: '루트 0' },
 ];
 ---
 
-<InteractiveDemoFrame demoId="peel-sequence" ariaLabel="PeekCart 모놀리스에서 서비스 모듈을 떼어낸 순서" title="루트 모놀리스에는 무엇이 남았을까요?" description="화면에 보이면 실제 분리 순서가 자동으로 진행됩니다. 이전·다음 버튼으로 원하는 단계를 살펴볼 수 있습니다.">
-  <DemoControls ariaLabel="서비스 분리 단계 이동">
-    <button type="button" data-peel-direction="previous" disabled>← 이전</button>
-    <span class="peel-sequence-count" data-peel-count aria-live="polite">1 / {steps.length}</span>
-    <button type="button" data-peel-direction="next">다음 →</button>
-    <button type="button" data-peel-play-toggle aria-label="애니메이션 일시정지">일시정지</button>
-  </DemoControls>
+<InteractiveDemoFrame demoId="peel-sequence" ariaLabel="PeekCart 모놀리스에서 서비스 모듈을 떼어낸 순서" title="루트 모놀리스에는 무엇이 남았을까요?" description="실제로 떼어낸 순서대로 도메인이 루트를 떠납니다. 단계를 누르면 그 시점에서 멈춥니다.">
+    <SceneTimeline ariaLabel="서비스 분리 단계" steps={steps} />
 
-  {steps.map((step, index) => (
-    <div class="peel-sequence-panel" data-peel-sequence-panel={index} hidden={index !== 0}>
-      <p class="peel-sequence-heading"><span>단계 {index + 1}</span><strong>{step.title}</strong></p>
-      <div class="peel-sequence-map">
-        <div class="peel-sequence-zone peel-sequence-root">
-          <p class="peel-sequence-zone-title">루트 애플리케이션 <span>{step.root.length}개 도메인</span></p>
-          {step.root.length ? (
-            <ul>{step.root.map((domain) => <li>{domain}</li>)}</ul>
-          ) : (
-            <p class="peel-sequence-empty">실행 소스 없음<br /><small>빌드 설정·검사만 남음</small></p>
-          )}
+    <div class="seq-stage" data-seq-stage>
+      <section class="seq-root" data-seq-root aria-label="루트 애플리케이션">
+        <header class="seq-window">
+          <span class="seq-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <strong>peekcart <small>(root)</small></strong>
+          <span class="seq-jar" data-seq-jar>bootJar</span>
+        </header>
+        <p class="seq-count"><b data-seq-count>5</b> 도메인이 이 애플리케이션에서 실행됨</p>
+        <div class="seq-root-blocks" data-zone="root">
+          {domains.map((domain) => <div class="scene-block" data-block={domain.id} style={`--node-hue: ${domain.hue}`}>{domain.label}</div>)}
+          {commons.map((common) => <div class="scene-block is-muted" data-block={common.id}>{common.label}</div>)}
         </div>
-        <span class="peel-sequence-arrow" aria-hidden="true">→</span>
-        <div class="peel-sequence-zone peel-sequence-services">
-          <p class="peel-sequence-zone-title">분리된 서비스 모듈 <span>{step.services.length}개 서비스</span></p>
-          {step.services.length ? (
-            <ul>{step.services.map((service) => <li class={service === step.moved ? 'is-new' : ''}>{service}</li>)}</ul>
-          ) : (
-            <p class="peel-sequence-empty">아직 분리한 서비스 없음</p>
-          )}
+        <p class="seq-empty" data-seq-empty hidden>실행 소스 없음<br /><small>하위 모듈에 빌드 설정을 내려 주고 검사만 돌립니다</small></p>
+      </section>
+
+      <div class="seq-flow" aria-hidden="true"><span></span></div>
+
+      <section class="seq-services" aria-label="떼어낸 서비스 모듈">
+        <p class="seq-heading">서비스 모듈 <span data-seq-service-count>0 / 5</span></p>
+        <ol class="seq-slots">
+          {slots.map((slot) => (
+            <li class="seq-slot" data-slot={slot.id}>
+              <span class="seq-slot-ghost">{slot.id}-service</span>
+              {slot.planned !== slot.actual && slot.id !== 'payment' && (
+                <span class={`seq-swap ${slot.actual < slot.planned ? 'is-early' : 'is-late'}`}>계획 {slot.planned}번째 → 실제 {slot.actual}번째</span>
+              )}
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section class="seq-shelf" aria-label="공통 모듈">
+        <p class="seq-heading">공통 모듈 <span>서비스 모듈은 여기만 의존</span></p>
+        <div class="seq-shelf-blocks" data-zone="common">
+          <span class="seq-shelf-ghost" data-shelf-ghost>아직 루트 안에 있음</span>
         </div>
-      </div>
-      <p class="peel-sequence-common">공통 코드: {step.common ? '별도 모듈로 추출' : '루트에 포함'}</p>
-      <p class="peel-sequence-note" role="status">{step.note}</p>
+      </section>
     </div>
-  ))}
-  <p class="db-demo-disclaimer">코드와 실행 모듈이 옮겨지는 과정만 표시했습니다. 이 단계에서도 데이터베이스는 공유했고, 물리적 DB 분리는 뒤의 작업이었습니다.</p>
-</InteractiveDemoFrame>
+
+    <p class="scene-note" data-seq-note role="status"></p>
+    <p class="db-demo-disclaimer">코드와 실행 모듈이 옮겨지는 과정만 표시했습니다. 이 단계에서도 데이터베이스는 공유했고, 물리적 DB 분리는 뒤의 작업이었습니다. 인증 검증 모듈(peekcart-common-auth)은 생략했습니다.</p>
+  </InteractiveDemoFrame>
 
 <script>
-  import { watchDemoPlayback } from '../../scripts/blog/watch-demo-playback';
+  import { createFlipMover } from '../../scripts/blog/scene/flip';
+  import { createStepPlayer } from '../../scripts/blog/scene/step-player';
+  import { duration } from '../../scripts/blog/scene/core';
+
+  type Where = 'root' | 'common' | 'slot';
+  const DOMAINS = ['user', 'product', 'order', 'payment', 'notification'];
+  const COMMONS = ['common', 'observability'];
+  const LEAVE_ORDER = ['notification', 'user', 'product', 'order', 'payment'];
+
+  const NOTES = [
+    '다섯 도메인이 <strong>패키지로는 나뉘어</strong> 있었지만, 모두 루트 애플리케이션 하나에서 실행됐습니다.',
+    '서비스를 하나도 떼지 않고 <strong>공통 코드부터</strong> common과 관측성 모듈로 뺐습니다. 루트는 이 두 모듈을 의존해 그대로 부팅됐습니다.',
+    '이벤트를 받기만 하는 <strong>Notification</strong>부터 떼어내며 분리 절차를 확립했습니다.',
+    '계획에서는 Product 차례였지만 <strong>User를 먼저</strong> 떼어냈습니다. Order가 <code>ProductPort</code>로 Product의 빈을 부르고 있었기 때문입니다.',
+    '재고 차감·단가 조회·상품 존재 확인을 이벤트와 캐시로 바꾼 뒤에야 <strong>Product</strong>를 떼어냈습니다.',
+    'Payment의 <code>OrderPort</code> 호출을 로컬 상태와 이벤트로 바꾼 뒤 <strong>Order</strong>를 떼어냈습니다.',
+    '마지막으로 <strong>Payment</strong>를 옮기자 루트에는 소스가 하나도 남지 않았습니다. 루트는 실행 파일을 만들지 않는 <strong>빌드 집합점</strong>이 됐습니다.',
+  ];
 
   document.querySelectorAll<HTMLElement>('[data-blog-demo="peel-sequence"]').forEach((demo) => {
-    const panels = [...demo.querySelectorAll<HTMLElement>('[data-peel-sequence-panel]')];
-    const previous = demo.querySelector<HTMLButtonElement>('[data-peel-direction="previous"]');
-    const next = demo.querySelector<HTMLButtonElement>('[data-peel-direction="next"]');
-    const count = demo.querySelector<HTMLElement>('[data-peel-count]');
-    const playToggle = demo.querySelector<HTMLButtonElement>('[data-peel-play-toggle]');
-    if (!previous || !next || !count || !playToggle || panels.length === 0) return;
+    const rootZone = demo.querySelector<HTMLElement>('[data-zone="root"]')!;
+    const commonZone = demo.querySelector<HTMLElement>('[data-zone="common"]')!;
+    const rootBox = demo.querySelector<HTMLElement>('[data-seq-root]')!;
+    const blocks = new Map([...demo.querySelectorAll<HTMLElement>('[data-block]')].map((block) => [block.dataset.block!, block]));
+    const slots = new Map([...demo.querySelectorAll<HTMLElement>('[data-slot]')].map((slot) => [slot.dataset.slot!, slot]));
+    const count = demo.querySelector<HTMLElement>('[data-seq-count]')!;
+    const serviceCount = demo.querySelector<HTMLElement>('[data-seq-service-count]')!;
+    const empty = demo.querySelector<HTMLElement>('[data-seq-empty]')!;
+    const shelfGhost = demo.querySelector<HTMLElement>('[data-shelf-ghost]')!;
+    const note = demo.querySelector<HTMLElement>('[data-seq-note]')!;
+    const move = createFlipMover(blocks.values());
 
-    let current = 0;
-    let canPlay = false;
-    let reducedMotion = false;
-    let pausedByUser = false;
-    let timer: number | undefined;
+    const whereAt = (id: string, step: number): Where => {
+      if (COMMONS.includes(id)) return step >= 1 ? 'common' : 'root';
+      return LEAVE_ORDER.indexOf(id) + 2 <= step ? 'slot' : 'root';
+    };
+    const containerOf = (id: string, where: Where) => (where === 'root' ? rootZone : where === 'common' ? commonZone : slots.get(id)!);
 
-    const stop = () => {
-      window.clearTimeout(timer);
-      timer = undefined;
-    };
-    const show = (index: number) => {
-      current = Math.max(0, Math.min(index, panels.length - 1));
-      panels.forEach((panel, panelIndex) => { panel.hidden = panelIndex !== current; });
-      previous.disabled = current === 0;
-      next.disabled = current === panels.length - 1;
-      count.textContent = `${current + 1} / ${panels.length}`;
-    };
-    const updateToggle = () => {
-      playToggle.hidden = reducedMotion;
-      playToggle.textContent = pausedByUser ? '재생' : '일시정지';
-      playToggle.setAttribute('aria-label', pausedByUser ? '애니메이션 재생' : '애니메이션 일시정지');
-    };
-    const schedule = () => {
-      stop();
-      if (!canPlay || pausedByUser || reducedMotion) return;
-      timer = window.setTimeout(() => {
-        show(current === panels.length - 1 ? 0 : current + 1);
-        schedule();
-      }, current === panels.length - 1 ? 3400 : 2300);
-    };
-    const choose = (index: number) => {
-      pausedByUser = true;
-      show(index);
-      updateToggle();
-      schedule();
-    };
+    const show = (step: number, instant: boolean) => move(() => {
+      [...DOMAINS, ...COMMONS].forEach((id) => {
+        const container = containerOf(id, whereAt(id, step));
+        container.append(blocks.get(id)!);
+        slots.get(id)?.classList.toggle('is-filled', container === slots.get(id));
+      });
+      const remaining = DOMAINS.filter((id) => whereAt(id, step) === 'root').length;
+      count.textContent = String(remaining);
+      serviceCount.textContent = `${5 - remaining} / 5`;
+      empty.hidden = remaining > 0;
+      rootBox.classList.toggle('is-empty', remaining === 0);
+      shelfGhost.hidden = step >= 1;
+      note.innerHTML = NOTES[step];
+    }, { instant });
 
-    previous.addEventListener('click', () => choose(current - 1));
-    next.addEventListener('click', () => choose(current + 1));
-    playToggle.addEventListener('click', () => {
-      pausedByUser = !pausedByUser;
-      updateToggle();
-      schedule();
+    createStepPlayer(demo, {
+      dwell: (index) => (index === NOTES.length - 1 ? duration.dwellLast : duration.dwell),
+      onStep: show,
     });
-    watchDemoPlayback(demo, ({ shouldPlay, reducedMotion: prefersReducedMotion }) => {
-      canPlay = shouldPlay;
-      if (reducedMotion !== prefersReducedMotion) {
-        reducedMotion = prefersReducedMotion;
-        show(reducedMotion ? panels.length - 1 : 0);
-      }
-      updateToggle();
-      schedule();
-    }, { threshold: 0.15 });
   });
 </script>
 
 <style>
-  .peel-sequence-count { display: inline-flex; align-items: center; padding-inline: 8px; color: var(--slate); font-size: .86rem; font-variant-numeric: tabular-nums; }
-  .peel-sequence-panel { padding: 16px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--canvas); }
-  .peel-sequence-heading { display: flex; align-items: baseline; gap: 9px; margin: 0 0 14px; color: var(--ink); }
-  .peel-sequence-heading span { color: var(--slate); font-size: .78rem; font-weight: 700; }
-  .peel-sequence-heading strong { font-size: 1rem; }
-  .peel-sequence-map { display: grid; grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1fr); align-items: center; gap: 8px; }
-  .peel-sequence-zone { min-width: 0; min-height: 166px; padding: 13px; border: 1px solid var(--hairline); border-radius: 9px; background: var(--surface); }
-  .peel-sequence-zone-title { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 3px 8px; margin: 0 0 12px; color: var(--ink); font-size: .85rem; font-weight: 750; }
-  .peel-sequence-zone-title span { color: var(--slate); font-size: .75rem; font-weight: 500; }
-  .peel-sequence-zone ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
-  .peel-sequence-zone li { padding: 5px 8px; border: 1px solid var(--hairline); border-radius: 6px; color: var(--charcoal); background: var(--canvas); font-size: .76rem; font-weight: 650; }
-  .peel-sequence-zone li.is-new { border-color: var(--brand-green); color: var(--brand-green-deep); background: var(--brand-green-soft); }
-  .peel-sequence-arrow { color: var(--brand-green-deep); font-size: 1.4rem; font-weight: 700; text-align: center; }
-  .peel-sequence-empty { margin: 22px 0 0; color: var(--slate); font-size: .83rem; }
-  .peel-sequence-empty small { font-size: .75rem; }
-  .peel-sequence-common { margin: 13px 0 0; color: var(--slate); font-size: .8rem; }
-  .peel-sequence-note { margin: 10px 0 0; padding: 10px 12px; border-left: 3px solid var(--brand-green); border-radius: 0 6px 6px 0; color: var(--charcoal); background: var(--brand-green-soft); font-size: .85rem; }
-  @media (max-width: 560px) {
-    .peel-sequence-map { grid-template-columns: 1fr; }
-    .peel-sequence-zone { min-height: 112px; }
-    .peel-sequence-arrow { transform: rotate(90deg); line-height: 1; }
+  .seq-stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr);
+    gap: 12px 6px;
+    padding: 16px;
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    background:
+      radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--slate) 22%, transparent) 1px, transparent 0) 0 0 / 18px 18px,
+      var(--canvas);
   }
-  @media (prefers-reduced-motion: no-preference) {
-    .peel-sequence-panel:not([hidden]) { animation: peel-sequence-appear .3s ease-out; }
-    .peel-sequence-panel:not([hidden]) li.is-new { animation: peel-sequence-new .55s ease-out both; }
+
+  .seq-root {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border: 1.5px solid var(--hairline);
+    border-radius: 12px;
+    background: var(--surface);
+    overflow: hidden;
+    transition: border-color 400ms ease, background-color 400ms ease;
   }
-  @keyframes peel-sequence-appear { from { opacity: .55; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes peel-sequence-new { from { opacity: 0; transform: translateX(-10px) scale(.93); } to { opacity: 1; transform: translateX(0) scale(1); } }
+
+  .seq-root.is-empty {
+    border-style: dashed;
+    background: transparent;
+  }
+
+  .seq-window {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--hairline);
+    background: var(--canvas);
+  }
+
+  .seq-window strong { flex: 1; color: var(--ink); font-size: 0.86rem; }
+  .seq-window small { color: var(--slate); font-weight: 600; }
+  .seq-dots { display: inline-flex; gap: 4px; }
+  .seq-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--hairline); }
+
+  .seq-jar {
+    padding: 2px 7px;
+    border-radius: 5px;
+    color: var(--brand-green-deep);
+    background: var(--brand-green-soft);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 700;
+    transition: color 300ms ease, background-color 300ms ease;
+  }
+
+  .seq-root.is-empty .seq-root-blocks { min-height: 0; padding-block: 0; }
+
+  .seq-root.is-empty .seq-jar {
+    color: var(--slate);
+    background: transparent;
+    text-decoration: line-through 2px;
+  }
+
+  .seq-root .seq-count {
+    margin: 12px 14px 0;
+    color: var(--slate);
+    font-size: 0.78rem;
+  }
+
+  .seq-count b {
+    color: var(--ink);
+    font-size: 1.05rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .seq-root-blocks {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 8px;
+    min-height: 122px;
+    padding: 12px 14px 14px;
+  }
+
+  .seq-root .seq-empty {
+    margin: 0 14px 18px;
+    color: var(--slate);
+    font-size: 0.86rem;
+    font-weight: 700;
+    text-align: center;
+    animation: scene-rise 420ms ease-out both;
+  }
+
+  .seq-empty small { font-weight: 500; font-size: 0.76rem; }
+
+  .seq-flow {
+    display: grid;
+    place-items: center;
+  }
+
+  .seq-flow span {
+    width: 100%;
+    height: 2px;
+    background: repeating-linear-gradient(90deg, var(--brand-green) 0 6px, transparent 6px 12px);
+    background-size: 24px 2px;
+    animation: seq-flow 900ms linear infinite;
+  }
+
+  .seq-services { min-width: 0; }
+
+  .seq-stage .seq-heading {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 2px 8px;
+    margin: 0 0 9px;
+    color: var(--ink);
+    font-size: 0.84rem;
+    font-weight: 750;
+  }
+
+  .seq-heading span {
+    color: var(--slate);
+    font-size: 0.74rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .seq-stage .seq-slots {
+    display: grid;
+    gap: 7px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .seq-slots .seq-slot {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-height: 48px;
+    margin: 0;
+    padding: 4px;
+    border: 1.5px dashed var(--hairline);
+    border-radius: 10px;
+    transition: border-color 300ms ease, background-color 300ms ease;
+  }
+
+  .seq-slot .scene-block { order: -1; }
+
+  .seq-slot.is-filled {
+    border-style: solid;
+    border-color: color-mix(in srgb, var(--brand-green) 55%, var(--hairline));
+    background: color-mix(in srgb, var(--brand-green) 7%, transparent);
+  }
+
+  .seq-slot-ghost {
+    position: absolute;
+    left: 12px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    transition: opacity 200ms ease;
+  }
+
+  .seq-slot.is-filled .seq-slot-ghost { opacity: 0; }
+
+  .seq-swap {
+    margin-left: auto;
+    padding: 2px 7px;
+    border-radius: 999px;
+    color: var(--scene-temp);
+    background: var(--scene-temp-soft);
+    font-size: 0.68rem;
+    font-weight: 700;
+    white-space: nowrap;
+    opacity: 0.45;
+    transition: opacity 300ms ease;
+  }
+
+  .seq-slot.is-filled .seq-swap { opacity: 1; }
+
+  .seq-shelf {
+    grid-column: 1 / -1;
+    padding-top: 12px;
+    border-top: 1px dashed var(--hairline);
+  }
+
+  .seq-shelf-blocks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 36px;
+    align-items: center;
+  }
+
+  .seq-shelf-ghost { color: var(--muted); font-size: 0.78rem; }
+
+  @media (max-width: 600px) {
+    .seq-stage { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+    .seq-flow { height: 26px; }
+    .seq-flow span { width: 2px; height: 100%; background: repeating-linear-gradient(180deg, var(--brand-green) 0 6px, transparent 6px 12px); background-size: 2px 24px; animation-name: seq-flow-down; }
+    .seq-root-blocks { min-height: 96px; }
+  }
+
+  @keyframes seq-flow { to { background-position: 24px 0; } }
+  @keyframes seq-flow-down { to { background-position: 0 24px; } }
+
+
+  @media (prefers-reduced-motion: reduce) {
+    .seq-flow span, .seq-empty { animation: none; }
+  }
 </style>

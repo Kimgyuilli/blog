@@ -1,123 +1,247 @@
 ---
 import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
-import DemoControls from './DemoControls.astro';
+import SceneTimeline from './SceneTimeline.astro';
+import SceneLegend from './SceneLegend.astro';
+import '../../styles/scene.css';
 
 const steps = [
-  { name: '초기', status: '모놀리스 안의 동기 빈 호출', sync: ['Order → Product · 재고 차감', 'Order → Product · 단가 조회', 'Order → Product · 상품 존재 확인', 'Payment → Order · 소유자 확인·상태 전이'], async: ['기존 주문·결제 이벤트'], note: '주문 생성 트랜잭션이 Product 빈의 재고 차감까지 포함했습니다.' },
-  { name: '1. 재고 예약', status: '재고 변경 경로 전환', sync: ['Order → Product · 단가 조회', 'Order → Product · 상품 존재 확인', 'Payment → Order · 소유자 확인·상태 전이'], async: ['Order → Product · order.created', 'Product → Order · stock.reservation.result'], note: '이 단계의 예약 성공은 아직 “이미 재고 차감됨”이라는 임시 의미입니다.' },
-  { name: '2. 단가 캐시', status: '읽기 경로 전환', sync: ['Order → Product · 상품 존재 확인', 'Payment → Order · 소유자 확인·상태 전이'], async: ['Order → Product · order.created', 'Product → Order · stock.reservation.result', 'Product → Order · product.updated → 로컬 단가 캐시'], note: 'Order가 단가를 로컬 캐시에서 읽습니다. ProductPort의 존재 확인은 남아 있습니다.' },
-  { name: '3. 예약 정리', status: '예약 확정·해제와 결제 게이트', sync: ['Order → Product · 상품 존재 확인', 'Payment → Order · 소유자 확인·상태 전이'], async: ['Order ↔ Product · 재고 예약·결과 이벤트', 'Product → Order · product.updated → 로컬 단가 캐시'], note: '예약 확정·해제와 결제 전 확인을 갖췄지만, 상품 존재 확인은 아직 동기 호출입니다.' },
-  { name: '4. Product 분리', status: 'Order → Product 동기 호출 0', sync: ['Payment → Order · 소유자 확인·상태 전이'], async: ['Order ↔ Product · 재고 예약·결과 이벤트', 'Product → Order · product.updated → 로컬 상품 캐시'], note: '장바구니의 상품 존재 확인도 캐시로 바꾸고 ProductPort를 삭제한 뒤 Product를 떼어냈습니다.' },
-  { name: '5. Order·Payment 분리', status: 'Payment → Order 동기 호출 0', sync: [], async: ['Order ↔ Product · 재고 예약·결과 이벤트', 'Product → Order · product.updated → 로컬 상품 캐시', 'Payment → Order · payment.requested'], note: 'Payment는 필요한 소유자 정보를 로컬 상태로 갖고, 결제 시작을 이벤트로 알립니다. Order와 Payment를 각각 분리했습니다.' },
+  { name: '초기', detail: '동기 4' },
+  { name: '재고 예약', detail: '동기 3' },
+  { name: '단가 캐시', detail: '동기 2' },
+  { name: '예약 정리', detail: '동기 2' },
+  { name: 'Product 분리', detail: '동기 1' },
+  { name: 'Order·\u200bPayment 분리', detail: '동기 0' },
 ];
 ---
 
-<InteractiveDemoFrame demoId="peel-steps" ariaLabel="PeekCart 동기 호출 해체 단계" title="호출을 지운 다음 서비스를 떼어냈습니다" description="화면에 보이면 단계가 자동으로 넘어갑니다. 버튼을 누르면 원하는 단계에서 멈춰 Order·Product·Payment 사이의 연결을 살펴볼 수 있습니다.">
-  <DemoControls ariaLabel="전환 단계">
-    {steps.map((step, index) => <button type="button" data-peel-step={index} aria-pressed={index === 0 ? 'true' : 'false'}>{step.name}</button>)}
-    <button type="button" data-peel-play-toggle aria-label="애니메이션 일시정지">일시정지</button>
-  </DemoControls>
-  {steps.map((step, index) => (
-    <div class="peel-step-panel" data-peel-step-panel={index} hidden={index !== 0}>
-      <div class="peel-step-nodes" aria-hidden="true"><span>Order</span><span>Product</span><span>Payment</span></div>
-      <p class="peel-step-status" role="status">{step.status}</p>
-      <div class="peel-step-edges">
-        <div class="peel-step-sync">
-          <h4>동기 빈 호출</h4>
-          {step.sync.length ? <ul>{step.sync.map((edge) => <li>{edge}</li>)}</ul> : <p>남은 호출 없음</p>}
-        </div>
-        <div class="peel-step-async">
-          <h4>이벤트·로컬 캐시</h4>
-          <ul>{step.async.map((edge) => <li>{edge}</li>)}</ul>
-        </div>
-      </div>
-      <p class="peel-step-note">{step.note}</p>
+<InteractiveDemoFrame demoId="peel-steps" ariaLabel="PeekCart 동기 호출 해체 단계" title="호출을 하나씩 끊은 다음 떼어냈습니다" description="빨간 실선은 같은 프로세스 안의 동기 빈 호출, 초록 점선은 Kafka 이벤트입니다. 화면에 보이면 단계가 자동으로 넘어가고, 단계를 누르면 그 자리에서 멈춥니다.">
+  <SceneTimeline ariaLabel="전환 단계" steps={steps} />
+
+  <div class="scene-stage">
+    <div class="scene-metrics" aria-hidden="true">
+      <div class="scene-metric is-danger"><b data-sync-count>4</b><span>남은 동기 호출</span></div>
+      <div class="scene-metric is-flow"><b data-topic-count>+0</b><span>새 토픽</span></div>
     </div>
-  ))}
+    <svg data-peel-svg role="img" aria-label="Order, Product, Payment 사이의 동기 호출과 이벤트 흐름"></svg>
+  </div>
+  <SceneLegend items={[{ kind: 'danger', label: '동기 빈 호출 (화살표는 호출받는 쪽)' }, { kind: 'flow', label: '이벤트 (화살표는 받는 쪽)' }]} />
+  <p class="scene-note" data-peel-note role="status"></p>
   <p class="db-demo-disclaimer">대표 호출만 표시한 모형입니다. 이벤트 지연, 실패 경로, DB 분리 시점은 표현하지 않았습니다.</p>
 </InteractiveDemoFrame>
 
 <script>
-  import { watchDemoPlayback } from '../../scripts/blog/watch-demo-playback';
+  import { bumpText, createScene, duration, exitPoint, lerp, setAttrs, watchNarrow, type Box, type Point } from '../../scripts/blog/scene/core';
+  import { createBoundary, createCallLine, createCurve, createNode, type LabelSpot, type NodeView, type Rect } from '../../scripts/blog/scene/parts';
+  import { createStepPlayer } from '../../scripts/blog/scene/step-player';
+
+  type Id = 'product' | 'order' | 'payment';
+  type SyncId = 'stock' | 'price' | 'exists' | 'owner';
+  type EventId = 'created' | 'reserved' | 'updated' | 'requested';
+  type State = {
+    nodes: Record<Id, Point>;
+    sync: Record<SyncId, { show: number; strike: number }>;
+    events: Record<EventId, number>;
+    boundary: Rect & { o: number };
+  };
+  type Anchor = { node: Id; dx: number; dy: number };
+  type AnchoredLabel = Anchor & { anchor: LabelSpot['anchor'] };
+
+  const SYNC: { id: SyncId; from: Id; to: Id; text: string }[] = [
+    { id: 'stock', from: 'order', to: 'product', text: '재고 차감' },
+    { id: 'price', from: 'order', to: 'product', text: '단가 조회' },
+    { id: 'exists', from: 'order', to: 'product', text: '상품 존재 확인' },
+    { id: 'owner', from: 'payment', to: 'order', text: '소유자·상태 전이' },
+  ];
+  const EVENTS: { id: EventId; text: string }[] = [
+    { id: 'created', text: 'order.created' },
+    { id: 'reserved', text: 'stock.reservation.result' },
+    { id: 'updated', text: 'product.updated' },
+    { id: 'requested', text: 'payment.requested' },
+  ];
+
+  const at = (node: Id, dx: number, dy: number): Anchor => ({ node, dx, dy });
+  const spot = (node: Id, dx: number, dy: number, anchor: LabelSpot['anchor'] = 'middle'): AnchoredLabel => ({ node, dx, dy, anchor });
+
+  const LAYOUTS = {
+    wide: {
+      view: [560, 320],
+      size: { w: 104, h: 54 },
+      home: { product: { x: 68, y: 170 }, order: { x: 280, y: 170 }, payment: { x: 492, y: 170 } },
+      productOut: { x: 62, y: 170 },
+      boundary: { x: 6, y: 6, w: 548, h: 308, o: 1 },
+      boundaryAfterProduct: { x: 180, y: 6, w: 374, h: 308, o: 1 },
+      // 동기 선의 평행 오프셋: 가로 배치에서는 y, 세로 배치에서는 x로 벌립니다.
+      syncSpread: { stock: -19, price: 0, exists: 19, owner: 0 } as Record<SyncId, number>,
+      syncAxis: 'y',
+      events: {
+        created: { from: at('order', -26, -27), to: at('product', 26, -27), ctrl: at('order', -106, -140), label: spot('order', -106, -96) },
+        requested: { from: at('payment', -26, -27), to: at('order', 26, -27), ctrl: at('payment', -106, -140), label: spot('payment', -106, -96) },
+        reserved: { from: at('product', 26, 27), to: at('order', -26, 27), ctrl: at('product', 106, 115), label: spot('product', 106, 86) },
+        updated: { from: at('product', -16, 27), to: at('order', 16, 27), ctrl: at('product', 106, 165), label: spot('product', 106, 116) },
+      } as Record<EventId, { from: Anchor; to: Anchor; ctrl: Anchor; label: AnchoredLabel }>,
+    },
+    narrow: {
+      view: [360, 600],
+      size: { w: 150, h: 56 },
+      home: { product: { x: 180, y: 96 }, order: { x: 180, y: 300 }, payment: { x: 180, y: 504 } },
+      productOut: { x: 180, y: 84 },
+      boundary: { x: 8, y: 8, w: 344, h: 584, o: 1 },
+      boundaryAfterProduct: { x: 8, y: 206, w: 344, h: 386, o: 1 },
+      syncSpread: { stock: -24, price: 0, exists: 24, owner: 0 } as Record<SyncId, number>,
+      syncAxis: 'x',
+      events: {
+        created: { from: at('order', -75, -10), to: at('product', -75, 10), ctrl: at('order', -175, -102), label: spot('order', -172, -102, 'start') },
+        requested: { from: at('payment', -75, -10), to: at('order', -75, 10), ctrl: at('payment', -175, -102), label: spot('payment', -172, -102, 'start') },
+        reserved: { from: at('product', 75, 14), to: at('order', 75, -14), ctrl: at('product', 130, 102), label: spot('order', 172, -50, 'end') },
+        updated: { from: at('product', 75, -12), to: at('order', 75, 18), ctrl: at('product', 185, 102), label: spot('order', 172, 52, 'end') },
+      } as Record<EventId, { from: Anchor; to: Anchor; ctrl: Anchor; label: AnchoredLabel }>,
+    },
+  } as const;
+
+  type Layout = (typeof LAYOUTS)['wide'] | (typeof LAYOUTS)['narrow'];
+
+  const STEPS: {
+    removed: SyncId[];
+    events: EventId[];
+    productOut: boolean;
+    boundaryGone: boolean;
+    newTopics: number;
+    sub: Record<Id, string>;
+    temp: boolean;
+    services: Id[];
+    note: string;
+  }[] = [
+    { removed: [], events: [], productOut: false, boundaryGone: false, newTopics: 0, temp: false, services: [],
+      sub: { product: 'product 패키지', order: 'order 패키지', payment: 'payment 패키지' },
+      note: '<strong>주문 생성 트랜잭션</strong>이 Product 빈의 재고 차감까지 포함했습니다. Payment도 <code>OrderPort</code>로 Order를 직접 불렀습니다.' },
+    { removed: ['stock'], events: ['created', 'reserved'], productOut: false, boundaryGone: false, newTopics: 1, temp: true, services: [],
+      sub: { product: '예약 = 이미 차감', order: 'order 패키지', payment: 'payment 패키지' },
+      note: 'Order가 <code>order.created</code>를 발행하면 Product가 재고를 예약하고 결과를 알립니다. 이 단계의 “예약 성공”은 아직 <strong>“이미 차감됨”이라는 임시 의미</strong>입니다.' },
+    { removed: ['stock', 'price'], events: ['created', 'reserved', 'updated'], productOut: false, boundaryGone: false, newTopics: 2, temp: true, services: [],
+      sub: { product: '예약 = 이미 차감', order: '+ 단가 캐시', payment: 'payment 패키지' },
+      note: 'Product가 바뀔 때마다 <code>product.updated</code>를 발행하고, Order는 <strong>단가를 로컬 캐시</strong>에서 읽습니다.' },
+    { removed: ['stock', 'price'], events: ['created', 'reserved', 'updated'], productOut: false, boundaryGone: false, newTopics: 2, temp: false, services: [],
+      sub: { product: '예약 확정·해제', order: '+ 단가 캐시', payment: 'payment 패키지' },
+      note: '예약 확정·해제와 결제 전 확인을 갖췄습니다. 끊은 호출은 없지만 <strong>임시 의미가 사라졌습니다</strong>. 상품 존재 확인은 아직 동기 호출입니다.' },
+    { removed: ['stock', 'price', 'exists'], events: ['created', 'reserved', 'updated'], productOut: true, boundaryGone: false, newTopics: 2, temp: false, services: ['product'],
+      sub: { product: 'service 모듈', order: '+ 상품 캐시', payment: 'payment 패키지' },
+      note: '장바구니의 상품 존재 확인도 캐시로 바꾸고 <code>ProductPort</code>를 지웠습니다. <strong>이제 Product를 떼어냅니다.</strong>' },
+    { removed: ['stock', 'price', 'exists', 'owner'], events: ['created', 'reserved', 'updated', 'requested'], productOut: true, boundaryGone: true, newTopics: 3, temp: false, services: ['product', 'order', 'payment'],
+      sub: { product: 'service 모듈', order: 'service 모듈', payment: 'service 모듈' },
+      note: 'Payment는 필요한 값을 자기 테이블에 들고, 결제 시작은 <code>payment.requested</code>로 알립니다. <code>OrderPort</code>를 지우고 <strong>Order와 Payment를 떼어냈습니다.</strong>' },
+  ];
 
   document.querySelectorAll<HTMLElement>('[data-blog-demo="peel-steps"]').forEach((demo) => {
-    const buttons = demo.querySelectorAll<HTMLButtonElement>('[data-peel-step]');
-    const panels = demo.querySelectorAll<HTMLElement>('[data-peel-step-panel]');
-    const playToggle = demo.querySelector<HTMLButtonElement>('[data-peel-play-toggle]');
-    if (!playToggle || panels.length === 0) return;
+    const root = demo.querySelector<SVGSVGElement>('[data-peel-svg]')!;
+    const note = demo.querySelector<HTMLElement>('[data-peel-note]')!;
+    const syncCount = demo.querySelector<HTMLElement>('[data-sync-count]')!;
+    const topicCount = demo.querySelector<HTMLElement>('[data-topic-count]')!;
+    let layout: Layout = LAYOUTS.wide;
+    let stepIndex = 0;
 
-    let current = 0;
-    let canPlay = false;
-    let reducedMotion = false;
-    let pausedByUser = false;
-    let timer: number | undefined;
-
-    const stop = () => {
-      window.clearTimeout(timer);
-      timer = undefined;
-    };
-    const show = (index: number) => {
-      current = index;
-      buttons.forEach((button) => button.setAttribute('aria-pressed', String(Number(button.dataset.peelStep) === current)));
-      panels.forEach((panel) => { panel.hidden = Number(panel.dataset.peelStepPanel) !== current; });
-    };
-    const updateToggle = () => {
-      playToggle.hidden = reducedMotion;
-      playToggle.textContent = pausedByUser ? '재생' : '일시정지';
-      playToggle.setAttribute('aria-label', pausedByUser ? '애니메이션 재생' : '애니메이션 일시정지');
-    };
-    const schedule = () => {
-      stop();
-      if (!canPlay || pausedByUser || reducedMotion) return;
-      timer = window.setTimeout(() => {
-        show(current === panels.length - 1 ? 0 : current + 1);
-        schedule();
-      }, current === panels.length - 1 ? 3200 : 2200);
+    const target = (index: number): State => {
+      const step = STEPS[index];
+      return {
+        nodes: {
+          product: step.productOut ? layout.productOut : layout.home.product,
+          order: layout.home.order,
+          payment: layout.home.payment,
+        },
+        sync: Object.fromEntries(SYNC.map(({ id }) => [id, step.removed.includes(id) ? { show: 0, strike: 1 } : { show: 1, strike: 0 }])) as State['sync'],
+        events: Object.fromEntries(EVENTS.map(({ id }) => [id, step.events.includes(id) ? 1 : 0])) as State['events'],
+        boundary: step.boundaryGone ? { ...layout.boundaryAfterProduct, o: 0 } : step.productOut ? layout.boundaryAfterProduct : layout.boundary,
+      };
     };
 
-    buttons.forEach((button) => button.addEventListener('click', () => {
-      pausedByUser = true;
-      show(Number(button.dataset.peelStep));
-      updateToggle();
-      schedule();
-    }));
-    playToggle.addEventListener('click', () => {
-      pausedByUser = !pausedByUser;
-      updateToggle();
-      schedule();
+    const boundary = createBoundary(root, 'peekcart 모놀리스');
+    const eventLayer = root.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+    const curves = EVENTS.map(({ id, text }) => ({ id, curve: createCurve(eventLayer, text) }));
+    const syncLayer = root.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'g'));
+    const calls = SYNC.map((sync) => ({ ...sync, line: createCallLine(syncLayer, sync.text) }));
+    const views: Record<Id, NodeView> = {
+      product: createNode(root, { label: 'Product', hue: 'var(--scene-hue-amber)' }),
+      order: createNode(root, { label: 'Order', hue: 'var(--scene-hue-violet)' }),
+      payment: createNode(root, { label: 'Payment', hue: 'var(--scene-hue-cyan)' }),
+    };
+
+    const scene = createScene<State>(target(0), (state) => {
+      const point = (anchor: Anchor) => ({ x: state.nodes[anchor.node].x + anchor.dx, y: state.nodes[anchor.node].y + anchor.dy });
+      const box = (id: Id): Box => ({ ...state.nodes[id], ...layout.size });
+
+      const moved = state.nodes.product.x !== layout.home.product.x || state.nodes.product.y !== layout.home.product.y;
+      boundary.caption.textContent = moved ? '남은 모놀리스' : 'peekcart 모놀리스';
+      boundary.place(state.boundary);
+      (Object.keys(views) as Id[]).forEach((id) => views[id].setBox(box(id)));
+
+      curves.forEach(({ id, curve }) => {
+        const shape = layout.events[id];
+        curve.draw(point(shape.from), point(shape.ctrl), point(shape.to), state.events[id], { ...point(shape.label), anchor: shape.label.anchor });
+      });
+
+      calls.forEach(({ id, from, to, line }) => {
+        // 평행선끼리 겹치지 않도록 두 상자 중심을 같은 만큼 옮긴 뒤 교차점을 구합니다.
+        const spread = layout.syncSpread[id];
+        const offset = layout.syncAxis === 'y' ? { x: 0, y: spread } : { x: spread, y: 0 };
+        const shift = (b: Box): Box => ({ ...b, x: b.x + offset.x, y: b.y + offset.y });
+        const fromBox = shift(box(from));
+        const toBox = shift(box(to));
+        const start = exitPoint(fromBox, toBox, 2);
+        const stop = exitPoint(toBox, fromBox, 4);
+        const mid = { x: lerp(start.x, stop.x, 0.5), y: lerp(start.y, stop.y, 0.5) };
+        const pillAt: Point = layout.syncAxis === 'y' ? mid : { x: mid.x - spread, y: mid.y + spread * 1.4 };
+        line.draw(start, stop, state.sync[id], pillAt);
+      });
     });
-    watchDemoPlayback(demo, ({ shouldPlay, reducedMotion: prefersReducedMotion }) => {
-      canPlay = shouldPlay;
-      if (reducedMotion !== prefersReducedMotion) {
-        reducedMotion = prefersReducedMotion;
-        show(reducedMotion ? panels.length - 1 : 0);
+
+    const decorate = (index: number) => {
+      const step = STEPS[index];
+      (Object.keys(views) as Id[]).forEach((id) => {
+        views[id].setSub(step.sub[id]);
+        views[id].flash('is-done', step.services.includes(id));
+        views[id].flash('is-temp', id === 'product' && step.temp);
+      });
+      const remaining = SYNC.length - step.removed.length;
+      bumpText(syncCount, String(remaining));
+      syncCount.classList.toggle('is-zero', remaining === 0);
+      bumpText(topicCount, `+${step.newTopics}`);
+      note.innerHTML = step.note;
+    };
+
+    const show = async (index: number, instant: boolean) => {
+      const alive = scene.begin();
+      const prev = scene.state;
+      const next = target(index);
+      stepIndex = index;
+      if (instant) {
+        decorate(index);
+        scene.set(next);
+        return;
       }
-      updateToggle();
-      schedule();
-    }, { threshold: 0.15 });
+      // 1단계: 끊기는 호출에 취소선을 긋고, 사라지는 이벤트를 걷어냅니다.
+      const cutting = SYNC.some(({ id }) => next.sync[id].show < prev.sync[id].show);
+      const fading = EVENTS.some(({ id }) => next.events[id] < prev.events[id]);
+      if (cutting || fading) {
+        await scene.go({
+          ...prev,
+          sync: Object.fromEntries(SYNC.map(({ id }) => [id, next.sync[id].show < prev.sync[id].show ? { show: prev.sync[id].show, strike: 1 } : prev.sync[id]])) as State['sync'],
+          events: Object.fromEntries(EVENTS.map(({ id }) => [id, Math.min(prev.events[id], next.events[id])])) as State['events'],
+        }, duration.cut);
+        if (!alive()) return;
+      }
+      // 2단계: 선을 거두고 새 흐름을 그리며 경계를 옮깁니다.
+      decorate(index);
+      await scene.go(next, duration.draw);
+    };
+
+    watchNarrow(demo, (narrow) => {
+      layout = narrow ? LAYOUTS.narrow : LAYOUTS.wide;
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      scene.set(target(stepIndex));
+    });
+
+    createStepPlayer(demo, {
+      dwell: (index) => (index === STEPS.length - 1 ? duration.dwellLast : duration.dwell),
+      onStep: (index, instant) => { show(index, instant); },
+    });
   });
 </script>
-
-<style>
-  .peel-step-panel { border: 1px solid var(--hairline); border-radius: 10px; padding: 16px; background: var(--canvas); }
-  .peel-step-nodes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-  .peel-step-nodes span { padding: 10px 4px; border: 1px solid var(--hairline); border-radius: 8px; color: var(--ink); background: var(--surface); text-align: center; font-weight: 700; }
-  .peel-step-status { margin: 14px 0; color: var(--brand-green-deep); font-weight: 700; }
-  .peel-step-edges { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-  .peel-step-edges > div { min-width: 0; padding: 12px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface); }
-  .peel-step-edges h4 { margin: 0 0 9px; color: var(--ink); font-size: .86rem; }
-  .peel-step-edges ul { margin: 0; padding-left: 18px; }
-  .peel-step-edges li, .peel-step-edges p { margin: 0 0 5px; color: var(--charcoal); font-size: .8rem; overflow-wrap: anywhere; }
-  .peel-step-note { margin: 14px 0 0; color: var(--charcoal); font-size: .86rem; }
-  @media (max-width: 600px) { .peel-step-edges { grid-template-columns: 1fr; } }
-  @media (prefers-reduced-motion: no-preference) {
-    .peel-step-panel:not([hidden]) { animation: peel-step-appear .25s ease-out; }
-    .peel-step-panel:not([hidden]) .peel-step-sync li,
-    .peel-step-panel:not([hidden]) .peel-step-async li { animation: peel-edge-appear .3s ease-out both; }
-    .peel-step-panel:not([hidden]) li:nth-child(2) { animation-delay: .08s; }
-    .peel-step-panel:not([hidden]) li:nth-child(3) { animation-delay: .16s; }
-    .peel-step-panel:not([hidden]) li:nth-child(4) { animation-delay: .24s; }
-  }
-  @keyframes peel-step-appear { from { opacity: .55; } to { opacity: 1; } }
-  @keyframes peel-edge-appear { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-</style>
