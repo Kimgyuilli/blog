@@ -1,0 +1,243 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import SceneTimeline from './SceneTimeline.astro';
+import '../../styles/scene.css';
+
+const steps = [
+  { name: '시작', detail: '전역 100ms' },
+  { name: 'slice 분배', detail: '전역 90ms' },
+  { name: '로컬에서 소모', detail: '전역 90ms' },
+  { name: '남은 몫 반환', detail: '전역 92ms' },
+  { name: '동시 요청', detail: '잔액 5ms에서', newCase: '새 상황' },
+];
+---
+
+<InteractiveDemoFrame demoId="slice-distribution" ariaLabel="cgroup 전역 quota가 CPU별 로컬 slice로 나뉘고, 반환되고, 잠금으로 보호되는 과정" title="100ms quota는 CPU들에게 어떻게 나뉠까요?" description="같은 cgroup의 스레드 T1~T3가 CPU0~2에서 실행됩니다. 단계를 누르면 그 시점에서 멈춥니다.">
+  <SceneTimeline ariaLabel="slice 분배 단계" steps={steps} />
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="위쪽의 전역 quota에서 CPU0과 CPU1이 5ms씩 slice를 받아 로컬에서 소모합니다. CPU1은 실행할 스레드가 없어지자 남은 3ms 중 2ms를 돌려주고 1ms를 남깁니다. 전역 잔액 5ms를 CPU0과 CPU2가 동시에 요청하면 잠금을 먼저 잡은 CPU0만 받고, CPU2의 T3는 throttle됩니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">개념을 보여주는 모형입니다. 숫자는 예시이고, 전역 잔액이 5ms로 줄어드는 과정은 다른 CPU의 사용을 생략하고 줄여 그렸습니다. 어느 CPU가 먼저 잠금을 잡을지도 예시로 정했습니다. 실제로 가져오는 slice 크기는 설정과 전역 잔액에 따라 달라집니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, bumpText, createScene, duration, ease, hopLift, pointAt, setAttrs, svg, watchNarrow, type Point } from '../../scripts/blog/scene/core';
+  import { createGauge, createNode, createPill, landRing, type NodeView } from '../../scripts/blog/scene/parts';
+  import { createStepPlayer } from '../../scripts/blog/scene/step-player';
+
+  type Triple = [number, number, number];
+  type State = { global: number; local: number[]; give: number[]; ret: number; req: number[]; brk: number; lock: number; t3: number; caseB: number };
+  type Layout = { view: [number, number]; pool: { x: number; y: number; w: number; h: number }; lock: Point; cols: Triple; nodeW: number; caption: string };
+
+  const SLICE = 5;
+  const GAUGE = { y: 150, w: 44, h: 84 };
+  const NODE_Y = 280;
+  const layouts: Record<'wide' | 'narrow', Layout> = {
+    wide: { view: [560, 312], pool: { x: 60, y: 56, w: 404, h: 20 }, lock: { x: 526, y: 60 }, cols: [110, 280, 450], nodeW: 104, caption: 'cpu.max 100ms / 100ms · slice 기본 5ms' },
+    narrow: { view: [360, 312], pool: { x: 20, y: 56, w: 236, h: 20 }, lock: { x: 290, y: 60 }, cols: [64, 180, 296], nodeW: 92, caption: 'cpu.max 100ms / 100ms' },
+  };
+  const STATES: State[] = [
+    { global: 100, local: [0, 0, 0], give: [0, 0, 0], ret: 0, req: [0, 0, 0], brk: 0, lock: 0, t3: 0, caseB: 0 },
+    { global: 90, local: [5, 5, 0], give: [0, 0, 0], ret: 0, req: [0, 0, 0], brk: 0, lock: 0, t3: 0, caseB: 0 },
+    { global: 90, local: [2, 3, 0], give: [0, 0, 0], ret: 0, req: [0, 0, 0], brk: 0, lock: 0, t3: 0, caseB: 0 },
+    { global: 92, local: [2, 1, 0], give: [0, 0, 0], ret: 0, req: [0, 0, 0], brk: 0, lock: 0, t3: 0, caseB: 0 },
+    { global: 0, local: [5, 1, 0], give: [0, 0, 0], ret: 0, req: [0, 0, 1], brk: 1, lock: 0, t3: 1, caseB: 1 },
+  ];
+  const SUBS: [string, string, string][] = [
+    ['실행 가능', '실행 가능', ''],
+    ['실행 중', '실행 중', ''],
+    ['실행 중', '실행 중', ''],
+    ['실행 중', '대기', ''],
+    ['실행 중', '대기', 'throttled'],
+  ];
+  const NOTES = [
+    '같은 cgroup의 스레드 T1·T2가 CPU0·CPU1에서 실행 가능해졌습니다. 전역 quota는 100ms이고, 아직 어느 CPU도 몫을 받지 않았습니다.',
+    'CPU0과 CPU1의 그룹 실행 큐가 전역 quota에서 <strong>5ms씩</strong> 받아 옵니다. 새로 생긴 시간이 아니라 전역에서 옮겨 온 몫이라 전역 잔액이 90ms가 됩니다. 이 그룹 스레드가 없는 CPU2는 받지 않습니다.',
+    'T1·T2가 실행되는 동안 쓴 시간은 <strong>각 CPU의 로컬 몫</strong>에서 깎입니다. 전역 잔액은 그대로라, 실행할 때마다 전역 잠금을 잡을 필요가 없습니다.',
+    'CPU1에 실행할 그룹 스레드가 없어지자 남은 3ms 중 <strong>2ms는 전역으로 돌려주고 1ms는 남겨 둡니다.</strong> 같은 CPU에서 곧 다시 실행될 때 전역 풀에 다시 접근하는 비용을 줄이기 위해서입니다.',
+    '<strong>새 상황</strong>: 전역 잔액 5ms를 CPU0과 CPU2가 동시에 요청했습니다. 전역 잔액의 확인·차감은 <strong>잠금</strong>으로 보호되므로 먼저 잡은 CPU0이 5ms를 받고, CPU2는 갱신된 잔액 0ms를 봅니다. 받을 몫이 없으니 <strong>T3는 throttle</strong>됩니다. 같은 5ms가 두 번 나가지 않습니다.',
+  ];
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="slice-distribution"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    let layout = layouts.wide;
+    let shown = 0;
+    let settled = true;
+
+    const caption = svg('text', { class: 'scene-caption' }, root);
+    const pool = createGauge(root, '전역 quota', 'h');
+    const lock = svg('g', {}, root);
+    const shackle = svg('path', { d: 'M -6 0 V -6 A 6 6 0 0 1 6 -6 V 0', fill: 'none', 'stroke-width': 2.5 }, lock);
+    const body = svg('rect', { x: -9, y: 0, width: 18, height: 14, rx: 3 }, lock);
+    const lockLabel = svg('text', { class: 'scene-label', 'text-anchor': 'middle', y: 32 }, lock);
+    const columns = [0, 1, 2].map((i) => {
+      const gauge = createGauge(root, `CPU${i} 몫`);
+      const line = svg('path', { class: 'scene-line' }, root);
+      const mark = svg('text', { class: 'scene-break' }, root);
+      mark.textContent = '✕';
+      const give = createPill(root, '5ms');
+      give.group.querySelector('rect')!.style.stroke = 'var(--scene-flow)';
+      give.group.querySelector('text')!.style.fill = 'var(--scene-flow-ink)';
+      return { gauge, line, mark, give };
+    });
+    const retPill = createPill(root, '2ms 반환');
+    retPill.group.querySelector('rect')!.style.stroke = 'var(--scene-flow)';
+    retPill.group.querySelector('text')!.style.fill = 'var(--scene-flow-ink)';
+    const hues = ['var(--scene-hue-cyan)', 'var(--scene-hue-amber)', 'var(--scene-hue-gray)'];
+    const threads: NodeView[] = [0, 1, 2].map((i) => createNode(root, { label: `T${i + 1}`, hue: hues[i] }));
+    const placeholder = svg('text', { class: 'scene-label', 'text-anchor': 'middle' }, root);
+    placeholder.textContent = '그룹 스레드 없음';
+    placeholder.style.fill = 'var(--muted)';
+    const rings = svg('g', {}, root);
+    // 앞 단계에서 이어지지 않는 별개의 상황임을 알리는 배지
+    const caseBadge = svg('g', {}, root);
+    const caseRect = svg('rect', { rx: 9, height: 20, y: -14 }, caseBadge);
+    caseRect.style.fill = 'var(--scene-temp-soft)';
+    caseRect.style.stroke = 'var(--scene-temp)';
+    const caseText = svg('text', { class: 'scene-label', 'text-anchor': 'end', x: -10 }, caseBadge);
+    caseText.textContent = '새 상황 · 앞 단계와 별개';
+    caseText.style.fill = 'var(--scene-temp)';
+    caseText.style.stroke = 'none';
+
+    const poolPoint = (i: number): Point => ({ x: Math.min(layout.cols[i], layout.pool.x + layout.pool.w - 20), y: layout.pool.y + layout.pool.h / 2 });
+    const localTop = (i: number): Point => ({ x: layout.cols[i], y: GAUGE.y + 14 });
+    const flying = (t: number) => (t > 0.001 && t < 0.999 ? '1' : '0');
+
+    const scene = createScene<State>(STATES[0], (s) => {
+      pool.place(layout.pool, s.global / 100);
+      pool.value.textContent = `${Math.round(s.global)}ms`;
+      const held = s.lock > 0.5;
+      const lockColour = held ? 'var(--scene-flow)' : 'var(--scene-dep)';
+      shackle.style.stroke = lockColour;
+      body.style.fill = lockColour;
+      lockLabel.style.fill = lockColour;
+      lockLabel.textContent = held ? 'CPU0 보유' : '잠금';
+      setAttrs(lock, { transform: `translate(${layout.lock.x} ${layout.lock.y})` });
+      columns.forEach(({ gauge, line, mark, give }, i) => {
+        const x = layout.cols[i];
+        gauge.place({ x: x - GAUGE.w / 2, y: GAUGE.y, w: GAUGE.w, h: GAUGE.h }, s.local[i] / SLICE, 'v');
+        gauge.value.textContent = `${Math.round(s.local[i])}ms`;
+        // 아직 받지 않은 0과, 요청했는데 받지 못한 0을 구별합니다.
+        if (!(i === 2 && s.brk > 0.5)) gauge.group.classList.remove('is-empty');
+        // 몫 요청: CPU의 로컬 몫 → 전역 quota. 받지 못하면 가운데가 벌어지고 ✕.
+        const from = { x: x + GAUGE.w / 2 + 14, y: GAUGE.y + GAUGE.h / 2 };
+        const to = { x: x + GAUGE.w / 2 + 14, y: layout.pool.y + layout.pool.h + 6 };
+        const tip = pointAt(from, to, s.req[i]);
+        const brk = i === 2 ? s.brk : 0;
+        const p = pointAt(from, tip, 0.5 - 0.22 * brk);
+        const q = pointAt(from, tip, 0.5 + 0.22 * brk);
+        setAttrs(line, { d: brk > 0.01 ? `M ${from.x} ${from.y} L ${p.x} ${p.y} M ${q.x} ${q.y} L ${tip.x} ${tip.y}` : `M ${from.x} ${from.y} L ${tip.x} ${tip.y}`, opacity: Math.min(1, s.req[i] * 3) });
+        line.style.stroke = brk > 0.01 ? 'var(--scene-danger)' : 'var(--scene-dep)';
+        line.style.strokeDasharray = '5 4';
+        const mid = pointAt(from, to, 0.5);
+        setAttrs(mark, { x: mid.x, y: mid.y, opacity: brk });
+        give.place(bowAt(poolPoint(i), localTop(i), s.give[i], hopLift(s.give[i], 16)), 0);
+        give.group.style.opacity = flying(s.give[i]);
+        threads[i].setBox({ x, y: NODE_Y, w: layout.nodeW, h: 44 });
+      });
+      // 새 상황에서는 관계없는 CPU1과 T2를 흐리게 둡니다.
+      const aside = String(1 - 0.7 * s.caseB);
+      columns[1].gauge.group.style.opacity = aside;
+      threads[1].group.style.opacity = aside;
+      const textWidth = caseText.getComputedTextLength() || 140;
+      setAttrs(caseRect, { x: -textWidth - 20, width: textWidth + 20 });
+      setAttrs(caseBadge, { transform: `translate(${layout.view[0] - 12} 22)`, opacity: s.caseB });
+      threads[2].group.style.opacity = String(s.t3);
+      setAttrs(placeholder, { x: layout.cols[2], y: NODE_Y + 4, opacity: 1 - s.t3 });
+      retPill.place(bowAt(localTop(1), poolPoint(1), s.ret, -hopLift(s.ret, 16)), 0);
+      retPill.group.style.opacity = flying(s.ret);
+    });
+
+    const say = (index: number) => {
+      note.innerHTML = NOTES[index];
+      note.classList.toggle('is-alert', index === 4);
+      threads.forEach((thread, i) => {
+        thread.setSub(SUBS[index][i]);
+        thread.flash('is-temp', SUBS[index][i] === '대기' || SUBS[index][i] === 'throttled');
+      });
+    };
+    const at = (patch: Partial<State>): State => ({ ...scene.state, ...patch });
+    const pulse = (i: number) => landRing(rings, { x: layout.cols[i], y: GAUGE.y + GAUGE.h / 2, w: GAUGE.w + 6, h: GAUGE.h + 6 });
+
+    const sequences: Record<number, (alive: () => boolean) => Promise<boolean>> = {
+      1: async (alive) => {
+        if (!(await scene.go(at({ give: [1, 1, 0], global: 90 }), duration.fly)) || !alive()) return false;
+        scene.set(at({ give: [0, 0, 0], local: [5, 5, 0] }));
+        bumpText(columns[0].gauge.value, '5ms');
+        bumpText(columns[1].gauge.value, '5ms');
+        pulse(0); pulse(1);
+        return true;
+      },
+      2: async (alive) => scene.go(at({ local: [2, 3, 0] }), 1600, ease.linear).then((done) => done && alive()),
+      3: async (alive) => {
+        if (!(await scene.go(at({ ret: 1, local: [2, 1, 0] }), duration.fly)) || !alive()) return false;
+        scene.set(at({ ret: 0, global: 92 }));
+        bumpText(pool.value, '92ms');
+        return true;
+      },
+      4: async (alive) => {
+        // 결과는 요청이 부딪친 뒤에 보여줍니다.
+        threads[2].setSub('실행 가능');
+        threads[2].flash('is-temp', false);
+        note.classList.remove('is-alert');
+        note.innerHTML = '<strong>새 상황입니다.</strong> 앞의 흐름과 별개로, 다른 CPU들이 쓰고 전역 잔액이 <strong>5ms</strong>만 남았다고 가정합니다. CPU0은 몫을 다 썼고, CPU2에서는 T3가 실행 가능해졌습니다.';
+        if (!(await scene.go(at({ caseB: 1, global: 5, local: [0, 1, 0], t3: 1 }), duration.draw)) || !alive()) return false;
+        bumpText(pool.value, '5ms');
+        await scene.pause(duration.read);
+        if (!alive()) return false;
+        note.innerHTML = 'CPU0과 CPU2가 <strong>동시에</strong> 남은 5ms를 요청합니다. 누가 받을까요?';
+        if (!(await scene.go(at({ req: [1, 0, 1] }), duration.move)) || !alive()) return false;
+        await scene.pause(duration.beat);
+        if (!alive()) return false;
+        if (!(await scene.go(at({ lock: 1, req: [0, 0, 1], give: [1, 0, 0], global: 0 }), duration.fly)) || !alive()) return false;
+        scene.set(at({ give: [0, 0, 0], local: [5, 1, 0] }));
+        bumpText(columns[0].gauge.value, '5ms');
+        pulse(0);
+        await scene.pause(duration.beat);
+        if (!alive()) return false;
+        if (!(await scene.go(at({ brk: 1, lock: 0 }), duration.snap, ease.overshoot)) || !alive()) return false;
+        threads[2].flash('is-shaking');
+        say(4);
+        return true;
+      },
+    };
+
+    // 앞 단계의 동작이 끝나기 전에 다음 단계를 누르면, 앞 단계의 끝 장면부터 맞춘 뒤 이어 갑니다.
+    const show = (index: number, instant: boolean) => {
+      const alive = scene.begin();
+      const previous = shown;
+      const wasSettled = settled;
+      shown = index;
+      settled = false;
+      say(index);
+      const sequence = sequences[index];
+      if (!instant && sequence && index === previous + 1) {
+        void (async () => {
+          if (!wasSettled) {
+            if (!(await scene.go(STATES[previous], duration.snap)) || !alive()) return;
+          }
+          if (await sequence(alive)) settled = true;
+        })();
+        return;
+      }
+      if (instant) { scene.set(STATES[index]); settled = true; return; }
+      void scene.go(STATES[index], duration.move).then((done) => { if (done && alive()) settled = true; });
+    };
+
+    watchNarrow(stage, (narrow) => {
+      layout = layouts[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      caption.textContent = layout.caption;
+      setAttrs(caption, { x: layout.pool.x, y: 22 });
+      scene.redraw();
+    });
+
+    createStepPlayer(demo, {
+      dwell: (index) => [2600, 3600, 3400, 3800, 8600][index] ?? duration.dwell,
+      onStep: show,
+    });
+  });
+</script>

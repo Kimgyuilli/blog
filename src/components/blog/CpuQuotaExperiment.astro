@@ -1,0 +1,222 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import '../../styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="cpu-quota-experiment" ariaLabel="한 cgroup의 CPU quota를 여러 CPU가 함께 소비하는 실험" title="CPU가 늘면 100ms quota는 언제 바닥날까요?" description="cpu.max = 100000 100000인 cgroup의 스레드가 CPU 여러 개에서 동시에 실행된다고 가정합니다. CPU 수를 고르고, 바닥나는 시점을 예상한 뒤 재생해 보세요.">
+  <DemoControls ariaLabel="그룹 스레드가 동시에 실행되는 CPU 수">
+    <button type="button" data-cores="1" aria-pressed="true">CPU 1개</button>
+    <button type="button" data-cores="2" aria-pressed="false">CPU 2개</button>
+    <button type="button" data-cores="4" aria-pressed="false">CPU 4개</button>
+    <button type="button" data-run>▶ 실제 시간 200ms 재생</button>
+  </DemoControls>
+
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="왼쪽의 그룹 quota 하나에서 각 CPU로 흐름이 이어집니다. 실제 시간 0~200ms 동안 CPU별 실행 구간과 throttle 구간, quota 잔액이 함께 바뀝니다."></svg>
+  </div>
+  <div class="quota-readouts" aria-label="모형의 시간과 CPU 예산">
+    <span>실제 시간 <b data-elapsed>0ms</b></span>
+    <span>이번 period에 쓴 합산 CPU 시간 <b data-used>0ms</b></span>
+    <span>남은 quota <b data-left>100ms</b></span>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">그룹의 FAIR 스레드가 고른 CPU마다 하나씩 쉬지 않고 실행되는 교육용 계산입니다. 다른 작업과의 경쟁, CPU별 slice와 잔여 slice, 실제 커널의 정산 경계는 생략했습니다. 실제 측정값이 아닙니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, clamp01, createScene, ease, setAttrs, svg, watchNarrow } from '../../scripts/blog/scene/core';
+  import { createCurve, createGauge } from '../../scripts/blog/scene/parts';
+
+  const ROWS = 4;
+  const PERIOD = 100;
+  const END = 200;
+  const PLAY_MS = 5600;
+  type State = { time: number; active: number[] };
+  type Layout = { view: [number, number]; x0: number; x1: number; rowTop: number; rowGap: number; rowH: number; tank: { x: number; y: number; w: number; h: number }; caption: string; rowLabel: (i: number) => string };
+  const layouts: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 282], x0: 150, x1: 540, rowTop: 90, rowGap: 44, rowH: 24,
+      tank: { x: 30, y: 116, w: 56, h: 124 }, caption: 'cpu.max = 100000 100000 · 100ms마다 그룹 합산 100ms',
+      rowLabel: (i) => `CPU${i} · T${i + 1}`,
+    },
+    narrow: {
+      view: [360, 282], x0: 96, x1: 346, rowTop: 90, rowGap: 44, rowH: 24,
+      tank: { x: 14, y: 116, w: 44, h: 124 }, caption: 'cpu.max = 100000 100000',
+      rowLabel: (i) => `CPU${i}`,
+    },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="cpu-quota-experiment"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const coreButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-cores]')];
+    const runButton = demo.querySelector<HTMLButtonElement>('[data-run]')!;
+    const elapsed = demo.querySelector<HTMLElement>('[data-elapsed]')!;
+    const used = demo.querySelector<HTMLElement>('[data-used]')!;
+    const left = demo.querySelector<HTMLElement>('[data-left]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    let layout = layouts.wide;
+    let cores = 1;
+    let lastTime = 0;
+
+    const text = (value: string, attrs: Record<string, string | number>, parent: Element = root, cls = 'scene-caption') => {
+      const element = svg('text', { class: cls, ...attrs }, parent);
+      element.textContent = value;
+      return element;
+    };
+    const caption = text('', {});
+    const periodLabels = [text('period 1', { 'text-anchor': 'middle' }), text('period 2', { 'text-anchor': 'middle' })];
+    const ticks = [0, 50, 100, 150, 200].map((ms) => ({
+      ms,
+      line: svg('line', { stroke: 'var(--hairline)', 'stroke-dasharray': ms % PERIOD === 0 ? '0' : '3 5', 'stroke-width': ms % PERIOD === 0 ? 1.5 : 1 }, root),
+      label: text(`${ms}ms`, { 'text-anchor': ms === 0 ? 'start' : ms === END ? 'end' : 'middle' }),
+    }));
+    const gauge = createGauge(root, '그룹 quota');
+    const rows = Array.from({ length: ROWS }, (_, i) => {
+      const group = svg('g', {}, root);
+      const track = svg('rect', { rx: 6, fill: 'var(--surface)', stroke: 'var(--hairline)' }, group);
+      const runs = [0, 1].map(() => svg('rect', { rx: 6, fill: 'var(--scene-flow)', opacity: 0.85 }, group));
+      const stops = [0, 1].map(() => svg('rect', { rx: 6, fill: 'color-mix(in srgb, var(--scene-temp) 22%, transparent)', stroke: 'var(--scene-temp)', 'stroke-dasharray': '4 3' }, group));
+      const stopLabels = [0, 1].map(() => text('throttle', { 'text-anchor': 'middle' }, group, 'scene-label'));
+      stopLabels.forEach((label) => { label.style.fill = 'var(--scene-temp)'; });
+      const label = text('', {}, group, 'scene-label scene-label-dep');
+      const stream = createCurve(root, '');
+      return { i, group, track, runs, stops, stopLabels, label, stream };
+    });
+    const markers = [0, 1].map(() => ({
+      line: svg('line', { stroke: 'var(--scene-temp)', 'stroke-width': 1.5, 'stroke-dasharray': '5 4' }, root),
+      label: text('', { 'text-anchor': 'middle' }, root, 'scene-label'),
+    }));
+    markers.forEach(({ label }) => { label.style.fill = 'var(--scene-temp)'; });
+    const playhead = svg('line', { stroke: 'var(--ink)', 'stroke-width': 1.5 }, root);
+
+    const exhaustAt = () => PERIOD / cores;
+    const xOf = (ms: number) => layout.x0 + ((layout.x1 - layout.x0) * ms) / END;
+    const rowY = (i: number) => layout.rowTop + i * layout.rowGap;
+    const periodOf = (time: number) => (time < PERIOD ? 0 : 1);
+    const usedIn = (time: number) => cores * Math.min(clamp01((time - periodOf(time) * PERIOD) / PERIOD) * PERIOD, exhaustAt());
+
+    const scene = createScene<State>({ time: 0, active: [1, 0, 0, 0] }, (s) => {
+      const time = Math.min(END, Math.max(0, s.time));
+      const e = exhaustAt();
+      const throttles = e < PERIOD;
+      const spent = Math.min(PERIOD, usedIn(time));
+      const remaining = PERIOD - spent;
+      const local = time - periodOf(time) * PERIOD;
+      const draining = local < e;
+
+      gauge.place(layout.tank, remaining / PERIOD);
+      rows.forEach((row) => {
+        const y = rowY(row.i);
+        const mid = y + layout.rowH / 2;
+        const on = s.active[row.i] ?? 0;
+        row.group.style.opacity = String(0.25 + 0.75 * on);
+        setAttrs(row.track, { x: layout.x0, y, width: layout.x1 - layout.x0, height: layout.rowH });
+        setAttrs(row.label, { x: layout.x0 + 2, y: y - 5 });
+        row.label.textContent = layout.rowLabel(row.i);
+        [0, 1].forEach((k) => {
+          const p0 = k * PERIOD;
+          const lp = Math.min(PERIOD, Math.max(0, time - p0));
+          const run = Math.min(lp, e) * (on > 0.5 ? 1 : 0);
+          const stop = (throttles ? Math.max(0, lp - e) : 0) * (on > 0.5 ? 1 : 0);
+          setAttrs(row.runs[k], { x: xOf(p0), y, width: Math.max(0, xOf(p0 + run) - xOf(p0)), height: layout.rowH });
+          setAttrs(row.stops[k], { x: xOf(p0 + e), y: y + 1, width: Math.max(0, xOf(p0 + e + stop) - xOf(p0 + e)), height: layout.rowH - 2, opacity: stop > 0 ? 1 : 0 });
+          const stopWidth = xOf(p0 + e + stop) - xOf(p0 + e);
+          setAttrs(row.stopLabels[k], { x: xOf(p0 + e) + stopWidth / 2, y: mid + 4, opacity: row.i === 0 && stopWidth > 64 ? 1 : 0 });
+        });
+        // 그룹 quota → 각 CPU로 흐르는 예산. 바닥나면 흐름이 거둬지고, period가 바뀌면 다시 그려집니다.
+        const start = { x: layout.tank.x + layout.tank.w + 4, y: Math.min(Math.max(mid, layout.tank.y + 10), layout.tank.y + layout.tank.h - 10) };
+        const end = { x: layout.x0 - 4, y: mid };
+        const flowing = time <= 0 ? 0 : draining ? clamp01(local / 4) : clamp01(1 - (local - e) / 6);
+        row.stream.draw(start, { x: (start.x + end.x) / 2, y: mid }, end, Math.max(0.001, flowing * on), { x: end.x, y: mid, anchor: 'end' });
+      });
+      markers.forEach((marker, k) => {
+        const at = k * PERIOD + e;
+        const shown = throttles && time >= at;
+        setAttrs(marker.line, { x1: xOf(at), x2: xOf(at), y1: layout.rowTop - 6, y2: rowY(ROWS - 1) + layout.rowH + 6, opacity: shown ? 1 : 0 });
+        setAttrs(marker.label, { x: xOf(at), y: rowY(ROWS - 1) + layout.rowH + 22, opacity: shown ? 1 : 0 });
+        marker.label.textContent = `소진 ${Math.round(at)}ms`;
+      });
+      setAttrs(playhead, { x1: xOf(time), x2: xOf(time), y1: layout.rowTop - 8, y2: rowY(ROWS - 1) + layout.rowH + 8, opacity: time > 0 && time < END ? 1 : 0 });
+
+      // 수치: 사건이 일어난 순간에만 튀어 오르게 합니다.
+      const crossed = (at: number) => lastTime < at && time >= at;
+      const exhausted = throttles && [0, 1].some((k) => crossed(k * PERIOD + e));
+      const refilled = crossed(PERIOD) && time < END;
+      const leftText = `${Math.round(remaining)}ms`;
+      if (exhausted || refilled) { bumpText(gauge.value, leftText); bumpText(left, leftText); }
+      else { gauge.value.textContent = leftText; left.textContent = leftText; }
+      left.classList.toggle('is-empty', remaining <= 0.001);
+      elapsed.textContent = `${Math.round(time)}ms`;
+      used.textContent = `${Math.round(spent)}ms`;
+      lastTime = time;
+    });
+
+    const activeFor = (n: number) => Array.from({ length: ROWS }, (_, i) => (i < n ? 1 : 0));
+    const promptNote = () => {
+      note.classList.remove('is-alert');
+      note.innerHTML = cores === 1
+        ? '그룹의 스레드가 <strong>CPU 하나</strong>에서 계속 실행됩니다. quota 100ms는 실제 시간 몇 ms에 바닥날까요? 예상하고 재생해 보세요.'
+        : `그룹의 스레드가 <strong>CPU ${cores}개</strong>에서 동시에 실행됩니다. 같은 quota 100ms는 실제 시간 몇 ms에 바닥날까요? 예상하고 재생해 보세요.`;
+    };
+    const resultNote = () => {
+      const e = exhaustAt();
+      note.classList.toggle('is-alert', cores > 1);
+      note.innerHTML = cores === 1
+        ? 'CPU0 하나가 실제 시간 100ms 동안 합산 100ms를 씁니다. quota는 period가 끝날 때쯤 바닥나고 곧 갱신되므로 <strong>중간에 긴 throttle 구간이 없습니다.</strong>'
+        : `CPU ${cores}개가 <strong>하나의 quota</strong>를 함께 써서 실제 시간 <strong>${e}ms</strong>에 합산 100ms가 됩니다. period의 남은 ${PERIOD - e}ms 동안 그룹의 스레드는 throttle되고, period가 바뀌어 quota가 갱신되면 다시 실행됩니다.`;
+    };
+
+    const select = (n: number) => {
+      cores = n;
+      coreButtons.forEach((button) => button.setAttribute('aria-pressed', String(Number(button.dataset.cores) === n)));
+      scene.begin();
+      lastTime = 0;
+      promptNote();
+      void scene.go({ time: 0, active: activeFor(n) }, 420);
+    };
+
+    const run = async () => {
+      const alive = scene.begin();
+      lastTime = 0;
+      scene.set({ time: 0, active: activeFor(cores) });
+      note.classList.remove('is-alert');
+      note.innerHTML = cores === 1 ? 'CPU0이 그룹 quota를 쓰고 있습니다…' : `CPU ${cores}개가 같은 그룹 quota를 동시에 쓰고 있습니다…`;
+      if (!(await scene.go({ time: END, active: activeFor(cores) }, PLAY_MS, ease.linear)) || !alive()) return;
+      resultNote();
+    };
+
+    coreButtons.forEach((button) => button.addEventListener('click', () => select(Number(button.dataset.cores))));
+    runButton.addEventListener('click', () => { void run(); });
+
+    const applyLayout = () => {
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      caption.textContent = layout.caption;
+      setAttrs(caption, { x: layout.tank.x, y: 24 });
+      periodLabels.forEach((label, k) => setAttrs(label, { x: xOf(k * PERIOD + PERIOD / 2), y: 46 }));
+      ticks.forEach(({ ms, line, label }) => {
+        setAttrs(line, { x1: xOf(ms), x2: xOf(ms), y1: 68, y2: rowY(ROWS - 1) + layout.rowH + 4 });
+        setAttrs(label, { x: xOf(ms), y: 62 });
+        // 좁은 배치에서는 period 경계(0·100·200ms)만 남겨 눈금 글자가 겹치지 않게 합니다.
+        label.style.opacity = layout === layouts.narrow && ms % PERIOD !== 0 ? '0' : '1';
+      });
+      scene.redraw();
+    };
+    watchNarrow(stage, (narrow) => { layout = layouts[narrow ? 'narrow' : 'wide']; applyLayout(); });
+    promptNote();
+    applyLayout();
+  });
+</script>
+
+<style>
+  .quota-readouts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .quota-readouts span { display: inline-flex; align-items: baseline; gap: 6px; }
+  .quota-readouts b { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .quota-readouts b.is-empty { color: var(--scene-temp); }
+  .quota-readouts b:global(.is-bump) { animation: scene-pop 420ms ease-out; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .quota-readouts b:global(.is-bump) { animation: none; }
+  }
+</style>

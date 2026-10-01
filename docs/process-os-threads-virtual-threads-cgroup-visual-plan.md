@@ -1,6 +1,6 @@
-# CPU 실행 글의 시각자료 자리 설계
+# CPU 실행 글의 시각자료 설계와 구현
 
-대상 글: [`process-os-threads-virtual-threads-cgroup-cpu.md`](../src/content/blog/process-os-threads-virtual-threads-cgroup-cpu.md). 본문에는 V1~V4 위치를 HTML 주석으로 표시했습니다. 지금은 장면을 구현하거나 MDX로 바꾸지 않습니다. 본문의 텍스트 도식과 설명은 구현 전에도 완결된 설명으로 남깁니다.
+대상 글: [`process-os-threads-virtual-threads-cgroup-cpu.mdx`](../src/content/blog/process-os-threads-virtual-threads-cgroup-cpu.mdx). V1~V3은 장면 키트로 만든 조작형 시각 자료이고, V4는 정적 요약 도식입니다. 본문의 텍스트 도식과 설명은 시각 자료 없이도 읽히도록 유지했습니다.
 
 ## 글에서 시각자료가 맡을 역할
 
@@ -16,8 +16,8 @@
 ## V1 두 스케줄러의 시선 바꾸기
 
 - **독자 조작:** `JVM이 보는 작업`과 `커널이 보는 스레드`를 전환합니다. `VT A가 I/O 대기`를 누르면 A가 carrier에서 내려오고 B가 같은 carrier로 이동합니다. 커널 시선에서는 B를 실행하는 carrier OS 스레드가 CPU의 실행 후보가 되는 모습을 봅니다.
-- **보일 변화:** 같은 그림의 VT 노드만 carrier 사이로 옮겨집니다. 관점을 바꾸어도 CPU가 직접 VT를 고르는 화살표는 생기지 않습니다.
-- **배치:** VT A·B와 carrier 1·2, CPU 한 개만 그립니다. 본문의 Q3, Q4, Q8, Q9에서 설명한 두 결정 주체를 한 장면에서 가리킵니다. 색만으로 주체를 구별하지 않고 `Java 런타임`, `Linux 커널` 라벨을 둡니다.
+- **보일 변화:** 같은 그림의 VT 노드만 대기 위치와 carrier 자리 사이로 옮겨집니다. 관점을 바꾸어도 CPU가 직접 VT를 고르는 화살표는 생기지 않습니다.
+- **배치:** VT A·B와 carrier T, CPU 한 개만 그립니다. 본문의 Q3, Q4, Q8, Q9에서 설명한 두 결정 주체를 한 장면에서 가리킵니다. 색만으로 주체를 구별하지 않고 `Java 런타임`, `Linux 커널` 라벨을 둡니다.
 - **모형의 한계:** 지원되는 대기 지점에서 VT가 내려오는 경우를 보여줍니다. 모든 I/O가 반드시 unmount되는 것처럼 표현하지 않습니다. syscall 자체와 carrier pinning 경로는 생략했다고 안내합니다.
 - **움직임:** 노드 이동은 명세의 `옮겨졌다` 어휘를 사용합니다. PeekCart의 [`PeelDependencyGraph`](../src/components/blog/PeelDependencyGraph.astro)가 한 그래프를 두 시선으로 보여주는 조작을 참고하되 도메인 노드나 문구를 재사용하지 않습니다.
 
@@ -27,7 +27,7 @@
 - **보일 변화:** CPU 한 개에서는 100ms가 지나며 예산이 소모됩니다. CPU 두 개에서는 각 CPU가 50ms씩 실행한 시점에 전역 잔액이 0이 되고, 남은 period 동안 실행 가능한 FAIR 작업이 제한됩니다. 실제 시간 눈금과 합산 CPU 시간 눈금을 별도로 보여줍니다.
 - **설명 범위:** 전역 quota의 공유만 움직여 보여줍니다. CPU별 5ms slice는 바로 뒤의 본문 도식과 설명에서 다룹니다. slice를 CPU나 스레드의 개인 예산처럼 표시하지 않습니다.
 - **모형의 한계:** 이는 경쟁 작업과 이전 period의 잔여 slice를 생략한 교육용 계산입니다. 실제 throttling 경계나 벤치마크 결과가 아닙니다. `cpu.max`는 일반적인 FAIR 클래스 작업에 적용되며, 문서에 적힌 BPF 스케줄러 예외도 본문 설명과 맞춥니다.
-- **움직임:** 잔액 변화는 명세의 `수치가 바뀌었다` 어휘를 씁니다. quota가 0이 된 상태는 새 의미이므로 구현 시 `animation-standards.md` 모션 어휘와 장면 키트를 함께 확장한 뒤 사용합니다. 기준 숫자와 상태를 한 화면에 남겨 값의 출처를 계속 볼 수 있게 합니다. 이전 글의 [`TransactionMotion`](../src/components/blog/TransactionMotion.astro)과 [`IndexLookupDemo`](../src/components/blog/IndexLookupDemo.astro)는 한 조건을 바꾼 뒤 결과를 유지해 보여주는 방식의 참고입니다.
+- **움직임:** 잔액 수치는 명세의 `수치가 바뀌었다` 어휘를 씁니다. 잔액이 0이 된 상태는 숫자 `0ms`와 막대의 빈 상태로 표시하고 새 모션 어휘를 만들지 않았습니다. 기준 숫자와 상태를 한 화면에 남겨 값의 출처를 계속 볼 수 있게 합니다. 이전 글의 [`TransactionMotion`](../src/components/blog/TransactionMotion.astro)과 [`IndexLookupDemo`](../src/components/blog/IndexLookupDemo.astro)는 한 조건을 바꾼 뒤 결과를 유지해 보여주는 방식의 참고입니다.
 
 ## V3 정책과 실행 대기열
 
@@ -46,12 +46,13 @@ cgroup CPU 제어: FAIR T의 실행 시간을 전역 quota / CPU별 slice에 반
 
 문장으로 떨어져 있던 세 결정을 한눈에 연결하는 **정적 도식**입니다. syscall 화살표는 `같은 T에서 커널 코드 실행 → 같은 T로 복귀 가능`이라고 표시해 스레드 전환과 분리합니다. VT가 커널 `rq`에 직접 들어가는 선은 그리지 않습니다. 본문 마지막 문단 뒤에 두어 새 사실을 추가하지 않고 이미 읽은 경로를 확인하게 합니다. 실제 도식을 만들 때는 `V1`과 같은 노드 색을 사용합니다.
 
-## 구현할 때 따를 기준
+## 구현 위치와 확인 기준
 
 - [`developer-blog-writer`의 시각자료 기획](../.agents/skills/developer-blog-writer/references/visuals.md), [`blog-interactive-demo` 스킬](../.agents/skills/blog-interactive-demo/SKILL.md), [`애니메이션 기준`](animation-standards.md)을 따릅니다.
-- 동적 장면은 `src/scripts/blog/scene/`과 `src/styles/scene.css`로 만들고, 그때만 글을 MDX로 전환합니다. 넓은 장면은 `viewBox` 폭 560, 좁은 장면은 360 안팎의 별도 좌표를 씁니다. 패널을 바꿔 끼우지 않고 같은 숫자 상태를 보간합니다.
-- 본문 설명과 텍스트 도식은 시각자료 없이도 읽히게 둡니다. 구현 뒤에는 중복되는 텍스트 도식을 정리할 수 있지만, Q1~Q35에서 다룬 기술 설명과 제한 조건은 유지합니다.
-- 구현 단계에서는 `/preview/process-os-threads-virtual-threads-cgroup-cpu/`와 `/dev/scene-kit/`에서 모든 조작, 되돌리기, 좁은 폭, 라이트·다크 모드, 움직임 줄이기를 확인하고 빌드를 실행합니다.
+- 조작형 장면은 [`ThreadSchedulerLens`](../src/components/blog/ThreadSchedulerLens.astro), [`CpuQuotaExperiment`](../src/components/blog/CpuQuotaExperiment.astro), [`RunqueuePolicyMotion`](../src/components/blog/RunqueuePolicyMotion.astro)이며, 정적 요약은 [`ExecutionLayersDiagram`](../src/components/blog/ExecutionLayersDiagram.astro)입니다.
+- 동적 장면은 `src/scripts/blog/scene/`과 `src/styles/scene.css`로 만들었습니다. 넓은 장면은 `viewBox` 폭 560, 좁은 장면은 360의 별도 좌표를 씁니다. 패널을 바꿔 끼우지 않고 같은 숫자 상태를 보간합니다.
+- 본문 설명과 텍스트 도식은 시각자료 없이도 읽히게 두었고, Q1~Q35에서 다룬 기술 설명과 제한 조건을 유지했습니다.
+- `/preview/process-os-threads-virtual-threads-cgroup-cpu/`에서 모든 조작, 되돌리기, 좁은 폭, 라이트·다크 모드, 움직임 줄이기를 확인하고 빌드를 실행합니다.
 
 ## 기술 근거
 

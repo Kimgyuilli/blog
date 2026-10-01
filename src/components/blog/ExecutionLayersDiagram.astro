@@ -1,0 +1,302 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import SceneTimeline from './SceneTimeline.astro';
+import '../../styles/scene.css';
+
+const steps = [
+  { name: '시작', detail: 'T는 rq0' },
+  { name: '커널 선택', detail: 'T → CPU0' },
+  { name: '런타임 선택', detail: 'A → T' },
+  { name: 'syscall', detail: '같은 T' },
+  { name: 'A 대기', detail: 'B → T' },
+  { name: 'quota 소진', detail: 'throttle' },
+  { name: 'period 갱신', detail: '다시 후보' },
+];
+---
+
+<InteractiveDemoFrame demoId="execution-layers-diagram" ariaLabel="VT, carrier OS 스레드, Linux 스케줄러와 cgroup CPU 제어가 한 흐름에서 맞물리는 모습" title="누가 무엇을 고르고, 어디서 제한할까요?" description="앞에서 하나씩 떼어 본 결정을 한 흐름으로 이어 봅니다. 단계를 누르면 그 시점에서 멈춥니다.">
+  <SceneTimeline ariaLabel="실행 경로 단계" steps={steps} />
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="커널이 OS 스레드 T를 CPU0에 올리고 cgroup 전역 quota에서 CPU0 몫을 받습니다. Java 런타임은 VT A를 T에 올립니다. A의 시스템 호출 동안 같은 T가 커널 모드로 들어갔다 돌아오고, A가 기다리는 동안 B가 같은 T에 올라갑니다. quota가 바닥나면 T가 B를 실은 채 throttle되고, period가 바뀌면 다시 실행 후보가 됩니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">실행 경로를 보여주는 개념 모형입니다. quota 숫자는 예시이고, 전역 quota가 바닥나는 과정은 다른 CPU의 사용을 생략하고 줄여 그렸습니다. 실제 cgroup 계층, 잔여 slice 반환, 커널의 정산 시점은 생략했습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, bumpText, createScene, duration, ease, hopLift, lerp, pointAt, setAttrs, svg, watchNarrow, type Point } from '../../scripts/blog/scene/core';
+  import { createBoundary, createGauge, createNode, createPill, createTray, landRing } from '../../scripts/blog/scene/parts';
+  import { createStepPlayer } from '../../scripts/blog/scene/step-player';
+
+  type Place = 'rq' | 'user' | 'kernel' | 'throttled';
+  type State = {
+    tMove: number; tHop: number;
+    mountA: number; hopA: number; parkA: number;
+    mountB: number; hopB: number;
+    global: number; local: number; slice: number;
+    reqShow: number; reqBrk: number;
+  };
+  type Rect = { x: number; y: number; w: number; h: number };
+  type Layout = {
+    view: [number, number];
+    jvm: Rect; os: Rect; park: Rect;
+    zones: Record<Place, Rect>;
+    at: Record<Place, Point>;
+    readyA: Point; readyB: Point; parkAt: Point;
+    readyLabel: Point; parkLabel: Point;
+    tray: { w: number; h: number };
+    globalGauge: Rect; localGauge: Rect; orient: 'v' | 'h';
+    sliceFrom: Point; sliceTo: Point;
+    reqFrom: Point; reqTo: Point; reqLabel: Point & { anchor: 'start' | 'middle' | 'end' };
+    cgroupCaption: Point & { anchor: 'start' | 'end' };
+  };
+
+  const VT = { w: 112, h: 36 };
+  const ZONE_CAPTIONS: Record<Place, string> = { rq: 'rq0 · CPU 대기', user: 'CPU0 · 사용자 모드', kernel: 'CPU0 · 커널 모드', throttled: 'throttled · quota 대기' };
+  const layouts: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 404],
+      jvm: { x: 8, y: 8, w: 544, h: 92 }, park: { x: 330, y: 36, w: 210, h: 58 },
+      os: { x: 8, y: 112, w: 544, h: 284 },
+      zones: {
+        rq: { x: 18, y: 142, w: 184, h: 122 }, throttled: { x: 18, y: 272, w: 184, h: 116 },
+        user: { x: 210, y: 142, w: 184, h: 122 }, kernel: { x: 210, y: 272, w: 184, h: 116 },
+      },
+      at: { rq: { x: 110, y: 218 }, throttled: { x: 110, y: 342 }, user: { x: 302, y: 218 }, kernel: { x: 302, y: 342 } },
+      readyA: { x: 150, y: 66 }, readyB: { x: 268, y: 66 }, parkAt: { x: 474, y: 66 },
+      readyLabel: { x: 24, y: 70 }, parkLabel: { x: 344, y: 70 },
+      tray: { w: 160, h: 84 },
+      globalGauge: { x: 418, y: 200, w: 44, h: 180 }, localGauge: { x: 492, y: 300, w: 40, h: 80 }, orient: 'v',
+      sliceFrom: { x: 440, y: 214 }, sliceTo: { x: 512, y: 312 },
+      reqFrom: { x: 506, y: 258 }, reqTo: { x: 468, y: 228 }, reqLabel: { x: 548, y: 212, anchor: 'end' },
+      cgroupCaption: { x: 548, y: 136, anchor: 'end' },
+    },
+    narrow: {
+      view: [360, 632],
+      jvm: { x: 8, y: 8, w: 344, h: 120 }, park: { x: 16, y: 80, w: 328, h: 42 },
+      os: { x: 8, y: 138, w: 344, h: 486 },
+      zones: {
+        rq: { x: 16, y: 168, w: 162, h: 114 }, throttled: { x: 182, y: 168, w: 162, h: 114 },
+        user: { x: 16, y: 290, w: 328, h: 114 }, kernel: { x: 16, y: 412, w: 328, h: 114 },
+      },
+      at: { rq: { x: 97, y: 236 }, throttled: { x: 263, y: 236 }, user: { x: 180, y: 358 }, kernel: { x: 180, y: 480 } },
+      readyA: { x: 158, y: 56 }, readyB: { x: 280, y: 56 }, parkAt: { x: 158, y: 101 },
+      readyLabel: { x: 22, y: 60 }, parkLabel: { x: 26, y: 105 },
+      tray: { w: 150, h: 84 },
+      globalGauge: { x: 16, y: 568, w: 328, h: 14 }, localGauge: { x: 16, y: 608, w: 150, h: 14 }, orient: 'h',
+      sliceFrom: { x: 320, y: 575 }, sliceTo: { x: 90, y: 615 },
+      reqFrom: { x: 200, y: 615 }, reqTo: { x: 200, y: 586 }, reqLabel: { x: 212, y: 604, anchor: 'start' },
+      cgroupCaption: { x: 16, y: 544, anchor: 'start' },
+    },
+  };
+
+  const PLACES: Place[] = ['rq', 'user', 'user', 'kernel', 'user', 'throttled', 'rq'];
+  const TRAY_SUB = ['CPU 대기', '실행 중', '실행 중', '커널 모드', '실행 중', 'throttled', 'CPU 대기'];
+  const NOTES = [
+    '프로세스 안에 VT A·B가 있고, carrier인 OS 스레드 T는 CPU0의 실행 대기열 rq0에서 기다립니다.',
+    '<strong>커널</strong>이 rq0에서 T를 골라 CPU0에 올립니다. T는 FAIR 스레드이므로, CPU0 쪽 그룹 실행 큐가 전역 quota에서 <strong>5ms 몫</strong>을 받아 둡니다.',
+    '<strong>Java 런타임</strong>이 실행할 VT A를 골라 T에 올립니다. CPU0이 실행하는 대상은 여전히 OS 스레드 T이고, 쓴 시간은 CPU0의 몫에서 빠집니다.',
+    'A가 <code>read()</code>를 호출하자 <strong>같은 T</strong>가 커널 모드로 들어가 커널 코드를 실행합니다. 다른 OS 스레드로 바뀐 것이 아닙니다.',
+    'T가 사용자 모드로 돌아오자, 응답을 기다려야 하는 A를 <strong>런타임</strong>이 T에서 내리고 같은 T에 B를 올립니다. CPU0의 T는 그대로입니다.',
+    '같은 cgroup의 다른 CPU들도 쓰면서 전역 quota가 바닥났습니다. CPU0의 몫까지 다 쓰자 다음 몫을 받을 수 없어 T가 <strong>throttle</strong>됩니다. T에 실린 VT B도 함께 멈춥니다.',
+    'period가 바뀌어 전역 quota가 다시 채워지자 T는 다시 <strong>실행 후보</strong>로 rq0에 돌아갑니다. A는 아직 응답을 기다리고, B는 T에 실린 채입니다.',
+  ];
+  const QUOTA: [number, number][] = [[100, 0], [95, 5], [95, 4], [95, 3], [95, 2], [0, 0], [100, 0]];
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="execution-layers-diagram"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    let layout = layouts.wide;
+    let shown = 0;
+    let from: Point = { x: 0, y: 0 };
+    let to: Point = { x: 0, y: 0 };
+
+    const jvmBand = createBoundary(root, 'Java 런타임 · 어떤 VT를 T에 올릴까');
+    const osBand = createBoundary(root, 'Linux 커널 · 어떤 OS 스레드를 CPU0에 올릴까');
+    const park = createBoundary(root, '', 'zone');
+    const zones = (Object.keys(ZONE_CAPTIONS) as Place[]).map((key) => ({ key, view: createBoundary(root, ZONE_CAPTIONS[key], key === 'user' ? 'zone' : 'boundary') }));
+    const label = (text: string) => {
+      const element = svg('text', { class: 'scene-caption' }, root);
+      element.textContent = text;
+      return element;
+    };
+    const readyLabel = label('실행 대기');
+    const parkLabel = label('I/O 대기');
+    const cgroupCaption = label('cgroup · cpu.max 100ms / 100ms');
+    const globalGauge = createGauge(root, '전역 quota');
+    const localGauge = createGauge(root, 'CPU0 몫');
+    const reqLine = svg('path', { class: 'scene-line' }, root);
+    reqLine.style.stroke = 'var(--scene-danger)';
+    const reqMark = svg('text', { class: 'scene-break' }, root);
+    reqMark.textContent = '✕';
+    const reqLabel = svg('text', { class: 'scene-label scene-label-danger' }, root);
+    reqLabel.textContent = '다음 몫 요청';
+    const tray = createTray(root, { label: '스레드 T', hue: 'var(--scene-hue-cyan)', seatSize: VT });
+    const vtA = createNode(root, { label: 'VT A', hue: 'var(--scene-hue-blue)' });
+    const vtB = createNode(root, { label: 'VT B', hue: 'var(--scene-hue-violet)' });
+    const slicePill = createPill(root, '5ms');
+    slicePill.group.querySelector('rect')!.style.stroke = 'var(--scene-flow)';
+    slicePill.group.querySelector('text')!.style.fill = 'var(--scene-flow-ink)';
+    const rings = svg('g', {}, root);
+
+    const tAt = (s: State) => bowAt(from, to, s.tMove, hopLift(s.tHop, 30));
+    const stateFor = (step: number): State => ({
+      tMove: 1, tHop: 1,
+      mountA: step >= 2 && step <= 3 ? 1 : 0, hopA: 0, parkA: step >= 4 ? 1 : 0,
+      mountB: step >= 4 ? 1 : 0, hopB: 0,
+      global: QUOTA[step][0], local: QUOTA[step][1], slice: 0,
+      reqShow: step === 5 ? 1 : 0, reqBrk: step === 5 ? 1 : 0,
+    });
+
+    const scene = createScene<State>(stateFor(0), (s) => {
+      const t = tAt(s);
+      tray.setBox({ ...t, ...layout.tray });
+      const seat = tray.seat(t);
+      const offA = pointAt(layout.readyA, layout.parkAt, s.parkA);
+      vtA.setBox({ ...bowAt(offA, seat, s.mountA, hopLift(s.hopA, 26)), ...VT });
+      vtB.setBox({ ...bowAt(layout.readyB, seat, s.mountB, hopLift(s.hopB, 26)), ...VT });
+      globalGauge.place(layout.globalGauge, s.global / 100, layout.orient);
+      localGauge.place(layout.localGauge, s.local / 5, layout.orient);
+      // 아직 몫을 받지 않은 0과, 다 쓰고 더 받지 못한 0을 구별합니다.
+      if (s.reqShow < 0.01) localGauge.group.classList.remove('is-empty');
+      globalGauge.value.textContent = `${Math.round(s.global)}ms`;
+      localGauge.value.textContent = `${Math.round(s.local)}ms`;
+      const flying = s.slice > 0.001 && s.slice < 0.999;
+      slicePill.place(bowAt(layout.sliceFrom, layout.sliceTo, s.slice, hopLift(s.slice, 24)), 0);
+      slicePill.group.style.opacity = flying ? '1' : '0';
+      // 다음 몫 요청: CPU0 몫 → 전역 quota. 받을 수 없으면 가운데가 벌어지고 ✕.
+      const tip = pointAt(layout.reqFrom, layout.reqTo, s.reqShow);
+      const gap = 0.22 * s.reqBrk;
+      const p = pointAt(layout.reqFrom, tip, 0.5 - gap);
+      const q = pointAt(layout.reqFrom, tip, 0.5 + gap);
+      setAttrs(reqLine, { d: s.reqBrk > 0.01 ? `M ${layout.reqFrom.x} ${layout.reqFrom.y} L ${p.x} ${p.y} M ${q.x} ${q.y} L ${tip.x} ${tip.y}` : `M ${layout.reqFrom.x} ${layout.reqFrom.y} L ${tip.x} ${tip.y}`, opacity: Math.min(1, s.reqShow * 3) });
+      const mid = pointAt(layout.reqFrom, layout.reqTo, 0.5);
+      setAttrs(reqMark, { x: mid.x, y: mid.y, opacity: s.reqBrk });
+      setAttrs(reqLabel, { x: layout.reqLabel.x, y: layout.reqLabel.y, 'text-anchor': layout.reqLabel.anchor, opacity: s.reqShow });
+    });
+
+    /** T를 `place`로 보낼 준비: 지금 보이는 자리에서 출발하게 합니다. */
+    const aim = (place: Place) => {
+      from = tAt(scene.state);
+      to = layout.at[place];
+      const moved = Math.hypot(to.x - from.x, to.y - from.y) > 1;
+      scene.set({ ...scene.state, tMove: 0, tHop: 0 });
+      return moved;
+    };
+    const say = (index: number) => {
+      note.innerHTML = NOTES[index];
+      note.classList.toggle('is-alert', index === 5);
+      note.classList.remove('is-entering');
+      void note.offsetWidth;
+      note.classList.add('is-entering');
+      tray.setSub(TRAY_SUB[index]);
+      tray.flash('is-temp', index === 5);
+    };
+
+    // 한 칸 앞으로 갈 때만 단계 안의 순서를 보여주고, 건너뛰거나 되돌아갈 때는 곧장 그 장면으로 갑니다.
+    const sequences: Record<number, (alive: () => boolean) => Promise<void>> = {
+      1: async (alive) => {
+        aim('user');
+        if (!(await scene.go({ ...scene.state, tMove: 1, tHop: 1 }, duration.fly)) || !alive()) return;
+        landRing(rings, { ...layout.at.user, ...layout.tray });
+        await scene.pause(duration.beat / 2);
+        if (!alive()) return;
+        if (!(await scene.go({ ...scene.state, slice: 1, global: 95 }, duration.move)) || !alive()) return;
+        scene.set({ ...scene.state, slice: 0, local: 5 });
+        bumpText(localGauge.value, '5ms');
+      },
+      2: async (alive) => {
+        if (!(await scene.go({ ...scene.state, mountA: 1, hopA: 1 }, duration.move)) || !alive()) return;
+        landRing(rings, { ...tray.seat(layout.at.user), ...VT });
+        await scene.go({ ...scene.state, local: 4 }, duration.move);
+      },
+      3: async (alive) => {
+        aim('kernel');
+        if (!(await scene.go({ ...scene.state, tMove: 1, tHop: 0, local: 3 }, duration.move)) || !alive()) return;
+      },
+      4: async (alive) => {
+        aim('user');
+        if (!(await scene.go({ ...scene.state, tMove: 1, tHop: 0 }, duration.move)) || !alive()) return;
+        await scene.pause(duration.beat / 2);
+        if (!alive()) return;
+        if (!(await scene.go({ ...scene.state, mountA: 0, hopA: 1, parkA: 1 }, duration.move)) || !alive()) return;
+        if (!(await scene.go({ ...scene.state, mountB: 1, hopB: 1, local: 2 }, duration.move)) || !alive()) return;
+        landRing(rings, { ...tray.seat(layout.at.user), ...VT });
+      },
+      5: async (alive) => {
+        if (!(await scene.go({ ...scene.state, global: 0, local: 0 }, duration.draw)) || !alive()) return;
+        bumpText(globalGauge.value, '0ms');
+        if (!(await scene.go({ ...scene.state, reqShow: 1 }, duration.move)) || !alive()) return;
+        if (!(await scene.go({ ...scene.state, reqBrk: 1 }, duration.snap, ease.overshoot)) || !alive()) return;
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        aim('throttled');
+        if (!(await scene.go({ ...scene.state, tMove: 1, tHop: 1 }, duration.fly)) || !alive()) return;
+        tray.flash('is-shaking');
+      },
+      6: async (alive) => {
+        if (!(await scene.go({ ...scene.state, global: 100, reqShow: 0, reqBrk: 0 }, duration.move)) || !alive()) return;
+        bumpText(globalGauge.value, '100ms');
+        aim('rq');
+        if (!(await scene.go({ ...scene.state, tMove: 1, tHop: 1 }, duration.fly)) || !alive()) return;
+        landRing(rings, { ...layout.at.rq, ...layout.tray });
+      },
+    };
+
+    /** 지금 보이는 자리에서 `step`의 끝 장면으로 갑니다. */
+    const settleTo = (step: number, ms: number) => {
+      const moved = aim(PLACES[step]);
+      const target = { ...stateFor(step), tHop: moved ? 1 : 0 };
+      if (ms <= 0) { scene.set(target); return Promise.resolve(true); }
+      return scene.go(target, ms);
+    };
+
+    // 앞 단계의 동작이 끝나기 전에 다음 단계를 누르면, 앞 단계의 끝 장면부터 맞춘 뒤 이어 갑니다.
+    let settled = true;
+    const show = (index: number, instant: boolean) => {
+      const alive = scene.begin();
+      const previous = shown;
+      const wasSettled = settled;
+      shown = index;
+      settled = false;
+      say(index);
+      const sequence = sequences[index];
+      const finish = (done: boolean) => { if (done && alive()) settled = true; };
+      if (!instant && sequence && index === previous + 1) {
+        void (async () => {
+          if (!wasSettled && !(await settleTo(previous, duration.snap))) return;
+          if (!alive()) return;
+          await sequence(alive);
+          finish(alive());
+        })();
+        return;
+      }
+      void settleTo(index, instant ? 0 : duration.move).then(finish);
+    };
+
+    const applyLayout = () => {
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      const narrow = layout === layouts.narrow;
+      jvmBand.caption.textContent = narrow ? 'Java 런타임' : 'Java 런타임 · 어떤 VT를 T에 올릴까';
+      osBand.caption.textContent = narrow ? 'Linux 커널' : 'Linux 커널 · 어떤 OS 스레드를 CPU0에 올릴까';
+      jvmBand.place(layout.jvm, { x: layout.jvm.x + 14, y: layout.jvm.y + 20 });
+      osBand.place(layout.os, { x: layout.os.x + 14, y: layout.os.y + 22 });
+      park.place(layout.park);
+      zones.forEach(({ key, view }) => view.place(layout.zones[key], { x: layout.zones[key].x + 12, y: layout.zones[key].y + 20 }));
+      setAttrs(readyLabel, { x: layout.readyLabel.x, y: layout.readyLabel.y });
+      setAttrs(parkLabel, { x: layout.parkLabel.x, y: layout.parkLabel.y });
+      setAttrs(cgroupCaption, { x: layout.cgroupCaption.x, y: layout.cgroupCaption.y, 'text-anchor': layout.cgroupCaption.anchor });
+      // 배치가 바뀌면 진행 중인 동작을 끊고, 지금 단계의 장면으로 바로 놓습니다.
+      scene.begin();
+      from = to = layout.at[PLACES[shown]];
+      scene.set(stateFor(shown));
+    };
+    watchNarrow(stage, (narrow) => { layout = layouts[narrow ? 'narrow' : 'wide']; applyLayout(); });
+
+    createStepPlayer(demo, {
+      dwell: (index) => [2600, 3400, 3000, 2800, 4400, 5200, 4600][index] ?? duration.dwell,
+      onStep: show,
+    });
+  });
+</script>

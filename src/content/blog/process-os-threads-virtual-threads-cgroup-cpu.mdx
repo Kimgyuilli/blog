@@ -8,6 +8,12 @@ slug: process-os-threads-virtual-threads-cgroup-cpu
 draft: false
 ---
 
+import ThreadSchedulerLens from '../../components/blog/ThreadSchedulerLens.astro';
+import CpuQuotaExperiment from '../../components/blog/CpuQuotaExperiment.astro';
+import RunqueuePolicyMotion from '../../components/blog/RunqueuePolicyMotion.astro';
+import ExecutionLayersDiagram from '../../components/blog/ExecutionLayersDiagram.astro';
+import SliceDistributionMotion from '../../components/blog/SliceDistributionMotion.astro';
+
 웹 요청 1,000개가 네트워크 응답을 기다리는 동안 CPU는 무엇을 실행할까요? 요청마다 스레드 하나가 붙어 있다면, 기다리는 요청의 스레드도 계속 CPU를 차지하는 걸까요? 가상 스레드를 쓰면 답이 달라질까요?
 
 이 질문에서 출발해 프로세스, OS 스레드, Java virtual thread(VT)를 차례로 구분했습니다. 이어 컨테이너의 CPU 제한이 어디에 적용되는지 따라가다 보니 `cpu.max`의 시간 단위와 CPU별 slice, Linux의 실행 대기열까지 확인하게 됐습니다. 아래 요청 수는 설명을 위한 가정입니다. 실제 서버를 측정한 값은 아닙니다.
@@ -56,7 +62,7 @@ Linux는 프로세스와 스레드를 공통적인 `task` 구조로 다룹니다
 
 ### 작업을 바꾸는 것과 OS의 시분할은 같을까요?
 
-<!-- 시각자료 자리 V1: VT/OS 스레드 스케줄링 렌즈. 설계: docs/process-os-threads-virtual-threads-cgroup-visual-plan.md#v1-두-스케줄러의-시선-바꾸기 -->
+<ThreadSchedulerLens />
 
 둘 다 시간상 번갈아 실행하지만 **전환 대상과 결정 주체가 다릅니다.**
 
@@ -262,7 +268,7 @@ cgroup은 작업들을 부모·자식 관계의 그룹으로 조직하고 자원
 
 컨테이너 설명에서 “컨테이너에 설정된 cgroup”과 “cgroup hierarchy”를 비슷하게 읽기 쉽지만, **엄밀히 같은 말은 아닙니다.** `cgroup`은 그룹 하나 또는 그룹을 다루는 Linux 기능을 가리킬 수 있고, `hierarchy`는 부모·자식 관계로 연결된 **cgroup들의 전체 트리 구조**를 뜻합니다. 따라서 한 cgroup은 트리의 한 위치이고, hierarchy는 그 위치들을 연결한 구조입니다.
 
-“같은 cgroup hierarchy로 묶는다”는 표현은 범위가 넓습니다. cgroup v2에는 기본적으로 하나의 통합 hierarchy가 있으므로, 컨테이너 자원 제한 맥락에서는 **“해당 컨테이너의 cgroup 또는 그 하위 트리에 속하게 한다”**고 읽는 편이 분명합니다. 참고: [Linux 커널 문서 — cgroup v2의 단일 hierarchy와 계층 구조](https://docs.kernel.org/admin-guide/cgroup-v2.html#introduction).
+“같은 cgroup hierarchy로 묶는다”는 표현은 범위가 넓습니다. cgroup v2에는 기본적으로 하나의 통합 hierarchy가 있으므로, 컨테이너 자원 제한 맥락에서는 <strong>“해당 컨테이너의 cgroup 또는 그 하위 트리에 속하게 한다”</strong>고 읽는 편이 분명합니다. 참고: [Linux 커널 문서 — cgroup v2의 단일 hierarchy와 계층 구조](https://docs.kernel.org/admin-guide/cgroup-v2.html#introduction).
 
 ### `cpu.max`의 `MAX PERIOD`는 무엇을 뜻할까요?
 
@@ -270,7 +276,7 @@ cgroup v2의 `cpu.max`는 CPU 사용 한도를 `MAX PERIOD` 두 값으로 표현
 
 ### PERIOD가 1000ms라면 `50000`은 몇 ms일까요?
 
-단위가 다릅니다. `cpu.max`의 두 숫자는 모두 **마이크로초(µs)**입니다. `1000ms = 1,000,000µs`, `50,000µs = 50ms`이므로 `cpu.max = 50000 1000000`은 **실제 시간 1000ms마다 그룹 전체의 합산 CPU 실행 시간 최대 50ms**라는 뜻입니다. 이는 평균적으로 CPU 하나의 5% 분량에 해당합니다. `50,000ns`는 `50µs`이므로 `50000`과 혼동하면 안 됩니다. 참고: [Linux 커널 문서 — CPU 설정 시간 단위와 `cpu.max`](https://docs.kernel.org/admin-guide/cgroup-v2.html#cpu-interface-files).
+단위가 다릅니다. `cpu.max`의 두 숫자는 모두 <strong>마이크로초(µs)</strong>입니다. `1000ms = 1,000,000µs`, `50,000µs = 50ms`이므로 `cpu.max = 50000 1000000`은 **실제 시간 1000ms마다 그룹 전체의 합산 CPU 실행 시간 최대 50ms**라는 뜻입니다. 이는 평균적으로 CPU 하나의 5% 분량에 해당합니다. `50,000ns`는 `50µs`이므로 `50000`과 혼동하면 안 됩니다. 참고: [Linux 커널 문서 — CPU 설정 시간 단위와 `cpu.max`](https://docs.kernel.org/admin-guide/cgroup-v2.html#cpu-interface-files).
 
 ### “1 CPU 분량”의 정확한 의미
 
@@ -278,7 +284,7 @@ Docker 같은 컨테이너의 **CPU 사용 한도를 1 CPU 분량으로 설정�
 
 ### period 중간에 throttle이 생기는 경우
 
-<!-- 시각자료 자리 V2: 1코어·2코어가 같은 quota를 소모하는 실험. 설계: docs/process-os-threads-virtual-threads-cgroup-visual-plan.md#v2-공유-quota-소모-실험 -->
+<CpuQuotaExperiment />
 
 두 코어에서 그룹의 스레드가 동시에 실행되는 다음 예를 보면 period 중간의 throttle을 이해하기 쉽습니다.
 
@@ -317,9 +323,11 @@ Kubernetes CPU limit → cgroup cpu.max = 100000 100000
 
 `cfs_bandwidth`의 `runtime = 100ms`는 기간이 시작될 때의 전역 잔여 예산입니다. CPU0, CPU1, CPU2가 각각 `5ms`를 받는다면, 이는 **100ms와 별도로 새로 생긴 예산이 아니라 전역 예산에서 각 CPU 쪽으로 옮겨 둔 몫**입니다. 셋에 5ms씩 할당했다면 단순 계산상 전역 미할당분은 85ms입니다. 실제로는 필요한 CPU가 작은 몫을 받아서 쓰고, 다 쓰면 다시 요청하는 방식입니다. 이런 분배는 모든 CPU가 전역 잔액을 매 순간 수정하는 비용을 줄입니다. 도식의 `cfs_rq`는 각 CPU에서 해당 cgroup의 실행 대상을 관리하는 큐입니다. 참고: [Linux 커널 문서 — 전역 예산과 CPU별 slice](https://docs.kernel.org/scheduler/sched-bwc.html).
 
+<SliceDistributionMotion />
+
 ### CPU0~2가 100ms 예산을 가져가는 걸까요?
 
-**전역 quota에서 CPU별 실행 큐가 작은 몫을 받아 쓴다는 이해가 맞습니다.** 하지만 `100ms`는 cgroup에 보장된 CPU 배정량이 아니라 그 기간에 사용할 수 있는 **최대치**입니다. 또한 그림의 CPU0~2는 virtual thread가 아니라 CPU의 논리적 실행 단위들입니다. 각각의 CPU에서 그 cgroup 소속 OS 스레드(T1~T3)가 실행되면 그 CPU의 해당 cgroup 실행 큐에 배정된 로컬 slice가 소모됩니다. virtual thread가 OS 스레드 위에서 실행된다면 커널의 CPU 사용량 계산에는 그 **carrier OS 스레드의 실행 시간**이 반영됩니다. 참고: [Linux 커널 문서 — CPU별 실행 큐와 slice](https://docs.kernel.org/scheduler/sched-bwc.html), [Oracle 문서 — virtual thread와 carrier thread](https://docs.oracle.com/en/java/javase/26/core/virtual-threads.html).
+**전역 quota에서 CPU별 실행 큐가 작은 몫을 받아 쓴다는 이해가 맞습니다.** 하지만 `100ms`는 cgroup에 보장된 CPU 배정량이 아니라 그 기간에 사용할 수 있는 **최대치**입니다. 또한 그림의 CPU0\~2는 virtual thread가 아니라 CPU의 논리적 실행 단위들입니다. 각각의 CPU에서 그 cgroup 소속 OS 스레드(T1\~T3)가 실행되면 그 CPU의 해당 cgroup 실행 큐에 배정된 로컬 slice가 소모됩니다. virtual thread가 OS 스레드 위에서 실행된다면 커널의 CPU 사용량 계산에는 그 **carrier OS 스레드의 실행 시간**이 반영됩니다. 참고: [Linux 커널 문서 — CPU별 실행 큐와 slice](https://docs.kernel.org/scheduler/sched-bwc.html), [Oracle 문서 — virtual thread와 carrier thread](https://docs.oracle.com/en/java/javase/26/core/virtual-threads.html).
 
 ### CPU0~2는 각 스레드의 전용 CPU일까요?
 
@@ -386,17 +394,17 @@ Linux의 **EEVDF**는 일반적인 공정 스케줄링에서 실행 가능한 OS
 
 참고: [Linux 커널 문서 — EEVDF](https://docs.kernel.org/scheduler/sched-eevdf.html).
 
-논리적 작업의 전환 기준은 실행 환경마다 다릅니다. 대표적으로 A가 I/O 결과를 기다리거나 스스로 실행을 양보하면, 그 상태를 보관하고 B를 실행할 수 있습니다. 어떤 실행 환경은 오래 실행하는 논리적 작업을 자체적으로 선점하기도 합니다. 예를 들어 Go의 goroutine에는 선점 메커니즘이 있습니다. 그래서 **“논리적 작업은 반드시 기다릴 때에만 멈춘다”**라고 일반화하면 안 됩니다.
+논리적 작업의 전환 기준은 실행 환경마다 다릅니다. 대표적으로 A가 I/O 결과를 기다리거나 스스로 실행을 양보하면, 그 상태를 보관하고 B를 실행할 수 있습니다. 어떤 실행 환경은 오래 실행하는 논리적 작업을 자체적으로 선점하기도 합니다. 예를 들어 Go의 goroutine에는 선점 메커니즘이 있습니다. 그래서 <strong>“논리적 작업은 반드시 기다릴 때에만 멈춘다”</strong>라고 일반화하면 안 됩니다.
 
 참고: [Go 실행 환경 소스 — goroutine 선점](https://go.dev/src/runtime/preempt.go), [Oracle 문서 — virtual thread의 대기와 재배치](https://docs.oracle.com/en/java/javase/26/core/virtual-threads.html).
 
 ### 같은 job이 여러 클래스 큐에 동시에 들어갈까요?
 
-<!-- 시각자료 자리 V3: OS 스레드 정책을 바꾸면 한 큐에서 다른 큐로 이동하는 장면. 설계: docs/process-os-threads-virtual-threads-cgroup-visual-plan.md#v3-정책과-실행-대기열 -->
+<RunqueuePolicyMotion />
 
 그림의 `D1`, `R1`, `A` 등을 **커널이 스케줄링하는 OS 스레드 하나**로 읽는다면, 같은 스레드가 동시에 여러 클래스 큐의 후보가 되지는 않습니다. 각 스레드에는 그 시점의 스케줄링 정책이 하나 있고, 그에 맞는 클래스에서 다뤄집니다. 정책을 바꾸면 소속 클래스도 바뀌는 것이지, 기존 클래스와 새 클래스에 동시에 복제되는 것은 아닙니다. CPU를 옮기는 경우에도 하나의 스레드가 여러 CPU에서 동시에 실행되는 것은 아닙니다.
 
-다만 애플리케이션에서 말하는 **job(논리적인 일)**은 OS 스레드 하나와 같지 않을 수 있습니다. 하나의 job을 여러 OS 스레드로 나눠 수행하고 그 스레드들의 정책이 다르다면, 같은 job에 기여하는 서로 다른 스레드들이 서로 다른 클래스에서 관리될 수 있습니다. virtual thread 같은 런타임 작업 자체는 커널의 이 큐에 직접 들어가지 않고, 이를 실행하는 OS 스레드가 스케줄링 대상입니다. 참고: [Linux 매뉴얼 — 스레드마다 스케줄링 정책이 있음](https://man7.org/linux/man-pages/man7/sched.7.html), [Linux 매뉴얼 — 스레드의 정책 설정](https://man7.org/linux/man-pages/man2/sched_setattr.2.html).
+다만 애플리케이션에서 말하는 <strong>job(논리적인 일)</strong>은 OS 스레드 하나와 같지 않을 수 있습니다. 하나의 job을 여러 OS 스레드로 나눠 수행하고 그 스레드들의 정책이 다르다면, 같은 job에 기여하는 서로 다른 스레드들이 서로 다른 클래스에서 관리될 수 있습니다. virtual thread 같은 런타임 작업 자체는 커널의 이 큐에 직접 들어가지 않고, 이를 실행하는 OS 스레드가 스케줄링 대상입니다. 참고: [Linux 매뉴얼 — 스레드마다 스케줄링 정책이 있음](https://man7.org/linux/man-pages/man7/sched.7.html), [Linux 매뉴얼 — 스레드의 정책 설정](https://man7.org/linux/man-pages/man2/sched_setattr.2.html).
 
 ### 스레드는 DL·RT·FAIR 점수를 모두 계산해 큐를 고를까요?
 
@@ -438,7 +446,7 @@ Java virtual thread(VT)에는 **한 단계가 더 있습니다.** Java 런타임
 
 따라서 “실행 대상을 골라 더 적은 실행 자원에 배치한다”는 큰 그림은 비슷하지만 **JVM의 VT 스케줄러와 Linux의 OS 스레드 스케줄러는 서로 다른 층**입니다. Java VT는 보통 블로킹 작업 등에서 carrier에서 내려오며 다른 VT가 그 carrier를 사용할 수 있습니다. OpenJDK의 VT 스케줄러는 OS 스레드처럼 VT에 일정 CPU 시간마다 강제 시분할을 적용하지 않는다고 설명합니다. 참고: [Oracle — VT와 carrier의 스케줄링](https://docs.oracle.com/en/java/javase/26/core/virtual-threads.html), [OpenJDK JEP 444 — M:N과 VT 스케줄링](https://openjdk.org/jeps/444), [Oracle — VT 우선순위](https://docs.oracle.com/en/java/javase/26/docs/api/java.base/java/lang/Thread.html), [Linux 커널 — cgroup quota와 CPU별 slice](https://docs.kernel.org/scheduler/sched-bwc.html).
 
-<!-- 시각자료 자리 V4: VT → carrier → CPU와 cgroup 적용 위치를 한눈에 보는 정적 도식. 설계: docs/process-os-threads-virtual-threads-cgroup-visual-plan.md#v4-전체-실행-경로-도식 -->
+<ExecutionLayersDiagram />
 
 ## 참고 자료
 
