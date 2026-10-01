@@ -54,17 +54,17 @@ export const ease = {
 
 /** 의미별 기본 시간(ms). 새 장면도 이 값에서 시작합니다. */
 export const duration = {
-  snap: 380, // 끊김, 튕김
-  cut: 520, // 취소선 긋기
-  move: 900, // 노드·블록 이동
-  flip: 1000, // 방향 뒤집기
-  draw: 1100, // 새 흐름 그리기 + 배치 바뀜
-  fly: 950, // FLIP 비행
-  reflow: 480, // 남은 요소가 자리 메우기
-  beat: 550, // 로그 한 줄 사이의 쉼
-  read: 2600, // 결과를 읽을 시간
-  dwell: 3400, // 타임라인 한 단계
-  dwellLast: 5200, // 타임라인 마지막 단계
+  snap: 300, // 끊김, 튕김
+  cut: 420, // 취소선 긋기
+  move: 720, // 노드·블록 이동
+  flip: 800, // 방향 뒤집기
+  draw: 880, // 새 흐름 그리기 + 배치 바뀜
+  fly: 760, // FLIP 비행
+  reflow: 380, // 남은 요소가 자리 메우기
+  beat: 440, // 로그 한 줄 사이의 쉼
+  read: 2100, // 결과를 읽을 시간
+  dwell: 2700, // 타임라인 한 단계
+  dwellLast: 4200, // 타임라인 마지막 단계
 };
 
 export const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;

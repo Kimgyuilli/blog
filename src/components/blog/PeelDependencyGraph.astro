@@ -175,7 +175,7 @@ import '../../styles/scene.css';
       compile(`남은 모놀리스 컴파일 — ${object} import하는 코드 없음`, 'ok');
 
       const boot = terminal.log('남은 모놀리스 부팅', 'pending');
-      await scene.pause(duration.beat + 200);
+      await scene.pause(duration.beat + 160);
       if (!alive()) return;
 
       if (id !== 'product') {
@@ -196,7 +196,7 @@ import '../../styles/scene.css';
         if (!alive()) return;
         views.order.flash('is-error');
         views.order.setSub('빈 주입 실패');
-        await scene.pause(250);
+        await scene.pause(200);
         views.order.flash('is-shaking');
         await scene.go({ ...scene.state, productOrder: { flip: 1, show: 1, brk: 1 } }, duration.snap, ease.overshoot);
         if (!alive()) return;
