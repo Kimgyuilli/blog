@@ -1,0 +1,73 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+---
+
+<InteractiveDemoFrame demoId="peel-dependencies" ariaLabel="PeekCart의 import와 빈 호출 방향 비교" title="import 화살표와 호출 화살표는 반대였습니다" description="같은 다섯 도메인을 두 방향으로 살펴봅니다. 화살표는 의존하거나 호출하는 쪽에서 받는 쪽을 향합니다.">
+  <DemoControls ariaLabel="의존 관계 보기">
+    <button type="button" data-peel-view="imports" aria-pressed="true">import 그래프</button>
+    <button type="button" data-peel-view="calls" aria-pressed="false">실행 시점 빈 호출 그래프</button>
+  </DemoControls>
+
+  <div class="peel-graph-panel" data-peel-panel="imports">
+    <svg viewBox="0 0 560 260" role="img" aria-label="Product에서 Order로, Order에서 Payment로 import. User와 Notification에는 표시한 간선이 없습니다.">
+      <defs><marker id="peel-import-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" /></marker></defs>
+      <path class="peel-edge" d="M 150 70 H 226" marker-end="url(#peel-import-arrow)" />
+      <path class="peel-edge" d="M 334 70 H 410" marker-end="url(#peel-import-arrow)" />
+      <g class="peel-node"><rect x="20" y="42" width="130" height="56" rx="10" /><text x="85" y="76">Product</text></g>
+      <g class="peel-node"><rect x="226" y="42" width="108" height="56" rx="10" /><text x="280" y="76">Order</text></g>
+      <g class="peel-node"><rect x="410" y="42" width="130" height="56" rx="10" /><text x="475" y="76">Payment</text></g>
+      <g class="peel-node peel-node-muted"><rect x="80" y="164" width="130" height="56" rx="10" /><text x="145" y="198">User</text></g>
+      <g class="peel-node peel-node-muted"><rect x="350" y="164" width="130" height="56" rx="10" /><text x="415" y="198">Notification</text></g>
+    </svg>
+    <ul class="peel-graph-details">
+      <li><strong>Product → Order</strong>: Product의 <code>ProductPortAdapter</code>가 <code>order.application.port.ProductPort</code>를 구현합니다.</li>
+      <li><strong>Order → Payment</strong>: Order의 <code>OrderPortAdapter</code>가 <code>payment.application.port.OrderPort</code>를 구현합니다.</li>
+    </ul>
+  </div>
+
+  <div class="peel-graph-panel" data-peel-panel="calls" hidden>
+    <svg viewBox="0 0 560 260" role="img" aria-label="Order에서 Product로, Payment에서 Order로 빈 호출. User와 Notification에는 표시한 간선이 없습니다.">
+      <defs><marker id="peel-call-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" /></marker></defs>
+      <path class="peel-edge peel-call-edge" d="M 226 70 H 150" marker-end="url(#peel-call-arrow)" />
+      <path class="peel-edge peel-call-edge" d="M 410 70 H 334" marker-end="url(#peel-call-arrow)" />
+      <g class="peel-node"><rect x="20" y="42" width="130" height="56" rx="10" /><text x="85" y="76">Product</text></g>
+      <g class="peel-node"><rect x="226" y="42" width="108" height="56" rx="10" /><text x="280" y="76">Order</text></g>
+      <g class="peel-node"><rect x="410" y="42" width="130" height="56" rx="10" /><text x="475" y="76">Payment</text></g>
+      <g class="peel-node peel-node-muted"><rect x="80" y="164" width="130" height="56" rx="10" /><text x="145" y="198">User</text></g>
+      <g class="peel-node peel-node-muted"><rect x="350" y="164" width="130" height="56" rx="10" /><text x="415" y="198">Notification</text></g>
+    </svg>
+    <ul class="peel-graph-details">
+      <li><strong>Order → Product</strong>: <code>ProductPort</code>로 재고 차감·단가 조회·상품 존재 확인을 호출했습니다.</li>
+      <li><strong>Payment → Order</strong>: <code>OrderPort</code>로 주문 소유자 확인·상태 전이를 호출했습니다.</li>
+    </ul>
+  </div>
+  <p class="db-demo-disclaimer">당시 코드의 대표 호출만 표시했습니다. 이벤트, 공유 DB, 문자열로 이어진 결합은 이 그래프에 포함하지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="peel-dependencies"]').forEach((demo) => {
+    const buttons = demo.querySelectorAll<HTMLButtonElement>('[data-peel-view]');
+    const panels = demo.querySelectorAll<HTMLElement>('[data-peel-panel]');
+    buttons.forEach((button) => button.addEventListener('click', () => {
+      buttons.forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+      panels.forEach((panel) => { panel.hidden = panel.dataset.peelPanel !== button.dataset.peelView; });
+    }));
+  });
+</script>
+
+<style>
+  .peel-graph-panel { border: 1px solid var(--hairline); border-radius: 10px; background: var(--canvas); }
+  .peel-graph-panel svg { display: block; width: 100%; height: auto; }
+  .peel-edge { fill: none; stroke: var(--brand-green); stroke-width: 3; }
+  .peel-edge + .peel-edge { stroke: var(--slate); }
+  marker path { fill: var(--brand-green); }
+  .peel-node rect { fill: var(--surface); stroke: var(--hairline); stroke-width: 2; }
+  .peel-node text { fill: var(--ink); text-anchor: middle; font-size: 18px; font-weight: 700; }
+  .peel-node-muted { opacity: .72; }
+  .peel-graph-details { margin: 0; padding: 0 20px 18px 38px; color: var(--charcoal); font-size: .84rem; }
+  .peel-graph-details li + li { margin-top: 6px; }
+  .peel-graph-details code { overflow-wrap: anywhere; }
+  @media (prefers-reduced-motion: no-preference) { .peel-graph-panel:not([hidden]) { animation: peel-appear .18s ease-out; } }
+  @keyframes peel-appear { from { opacity: .55; } to { opacity: 1; } }
+</style>

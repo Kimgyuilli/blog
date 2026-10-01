@@ -1,0 +1,123 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+
+const steps = [
+  { name: '초기', status: '모놀리스 안의 동기 빈 호출', sync: ['Order → Product · 재고 차감', 'Order → Product · 단가 조회', 'Order → Product · 상품 존재 확인', 'Payment → Order · 소유자 확인·상태 전이'], async: ['기존 주문·결제 이벤트'], note: '주문 생성 트랜잭션이 Product 빈의 재고 차감까지 포함했습니다.' },
+  { name: '1. 재고 예약', status: '재고 변경 경로 전환', sync: ['Order → Product · 단가 조회', 'Order → Product · 상품 존재 확인', 'Payment → Order · 소유자 확인·상태 전이'], async: ['Order → Product · order.created', 'Product → Order · stock.reservation.result'], note: '이 단계의 예약 성공은 아직 “이미 재고 차감됨”이라는 임시 의미입니다.' },
+  { name: '2. 단가 캐시', status: '읽기 경로 전환', sync: ['Order → Product · 상품 존재 확인', 'Payment → Order · 소유자 확인·상태 전이'], async: ['Order → Product · order.created', 'Product → Order · stock.reservation.result', 'Product → Order · product.updated → 로컬 단가 캐시'], note: 'Order가 단가를 로컬 캐시에서 읽습니다. ProductPort의 존재 확인은 남아 있습니다.' },
+  { name: '3. 예약 정리', status: '예약 확정·해제와 결제 게이트', sync: ['Order → Product · 상품 존재 확인', 'Payment → Order · 소유자 확인·상태 전이'], async: ['Order ↔ Product · 재고 예약·결과 이벤트', 'Product → Order · product.updated → 로컬 단가 캐시'], note: '예약 확정·해제와 결제 전 확인을 갖췄지만, 상품 존재 확인은 아직 동기 호출입니다.' },
+  { name: '4. Product 분리', status: 'Order → Product 동기 호출 0', sync: ['Payment → Order · 소유자 확인·상태 전이'], async: ['Order ↔ Product · 재고 예약·결과 이벤트', 'Product → Order · product.updated → 로컬 상품 캐시'], note: '장바구니의 상품 존재 확인도 캐시로 바꾸고 ProductPort를 삭제한 뒤 Product를 떼어냈습니다.' },
+  { name: '5. Order·Payment 분리', status: 'Payment → Order 동기 호출 0', sync: [], async: ['Order ↔ Product · 재고 예약·결과 이벤트', 'Product → Order · product.updated → 로컬 상품 캐시', 'Payment → Order · payment.requested'], note: 'Payment는 필요한 소유자 정보를 로컬 상태로 갖고, 결제 시작을 이벤트로 알립니다. Order와 Payment를 각각 분리했습니다.' },
+];
+---
+
+<InteractiveDemoFrame demoId="peel-steps" ariaLabel="PeekCart 동기 호출 해체 단계" title="호출을 지운 다음 서비스를 떼어냈습니다" description="화면에 보이면 단계가 자동으로 넘어갑니다. 버튼을 누르면 원하는 단계에서 멈춰 Order·Product·Payment 사이의 연결을 살펴볼 수 있습니다.">
+  <DemoControls ariaLabel="전환 단계">
+    {steps.map((step, index) => <button type="button" data-peel-step={index} aria-pressed={index === 0 ? 'true' : 'false'}>{step.name}</button>)}
+    <button type="button" data-peel-play-toggle aria-label="애니메이션 일시정지">일시정지</button>
+  </DemoControls>
+  {steps.map((step, index) => (
+    <div class="peel-step-panel" data-peel-step-panel={index} hidden={index !== 0}>
+      <div class="peel-step-nodes" aria-hidden="true"><span>Order</span><span>Product</span><span>Payment</span></div>
+      <p class="peel-step-status" role="status">{step.status}</p>
+      <div class="peel-step-edges">
+        <div class="peel-step-sync">
+          <h4>동기 빈 호출</h4>
+          {step.sync.length ? <ul>{step.sync.map((edge) => <li>{edge}</li>)}</ul> : <p>남은 호출 없음</p>}
+        </div>
+        <div class="peel-step-async">
+          <h4>이벤트·로컬 캐시</h4>
+          <ul>{step.async.map((edge) => <li>{edge}</li>)}</ul>
+        </div>
+      </div>
+      <p class="peel-step-note">{step.note}</p>
+    </div>
+  ))}
+  <p class="db-demo-disclaimer">대표 호출만 표시한 모형입니다. 이벤트 지연, 실패 경로, DB 분리 시점은 표현하지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { watchDemoPlayback } from '../../scripts/blog/watch-demo-playback';
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="peel-steps"]').forEach((demo) => {
+    const buttons = demo.querySelectorAll<HTMLButtonElement>('[data-peel-step]');
+    const panels = demo.querySelectorAll<HTMLElement>('[data-peel-step-panel]');
+    const playToggle = demo.querySelector<HTMLButtonElement>('[data-peel-play-toggle]');
+    if (!playToggle || panels.length === 0) return;
+
+    let current = 0;
+    let canPlay = false;
+    let reducedMotion = false;
+    let pausedByUser = false;
+    let timer: number | undefined;
+
+    const stop = () => {
+      window.clearTimeout(timer);
+      timer = undefined;
+    };
+    const show = (index: number) => {
+      current = index;
+      buttons.forEach((button) => button.setAttribute('aria-pressed', String(Number(button.dataset.peelStep) === current)));
+      panels.forEach((panel) => { panel.hidden = Number(panel.dataset.peelStepPanel) !== current; });
+    };
+    const updateToggle = () => {
+      playToggle.hidden = reducedMotion;
+      playToggle.textContent = pausedByUser ? '재생' : '일시정지';
+      playToggle.setAttribute('aria-label', pausedByUser ? '애니메이션 재생' : '애니메이션 일시정지');
+    };
+    const schedule = () => {
+      stop();
+      if (!canPlay || pausedByUser || reducedMotion) return;
+      timer = window.setTimeout(() => {
+        show(current === panels.length - 1 ? 0 : current + 1);
+        schedule();
+      }, current === panels.length - 1 ? 3200 : 2200);
+    };
+
+    buttons.forEach((button) => button.addEventListener('click', () => {
+      pausedByUser = true;
+      show(Number(button.dataset.peelStep));
+      updateToggle();
+      schedule();
+    }));
+    playToggle.addEventListener('click', () => {
+      pausedByUser = !pausedByUser;
+      updateToggle();
+      schedule();
+    });
+    watchDemoPlayback(demo, ({ shouldPlay, reducedMotion: prefersReducedMotion }) => {
+      canPlay = shouldPlay;
+      if (reducedMotion !== prefersReducedMotion) {
+        reducedMotion = prefersReducedMotion;
+        show(reducedMotion ? panels.length - 1 : 0);
+      }
+      updateToggle();
+      schedule();
+    }, { threshold: 0.15 });
+  });
+</script>
+
+<style>
+  .peel-step-panel { border: 1px solid var(--hairline); border-radius: 10px; padding: 16px; background: var(--canvas); }
+  .peel-step-nodes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .peel-step-nodes span { padding: 10px 4px; border: 1px solid var(--hairline); border-radius: 8px; color: var(--ink); background: var(--surface); text-align: center; font-weight: 700; }
+  .peel-step-status { margin: 14px 0; color: var(--brand-green-deep); font-weight: 700; }
+  .peel-step-edges { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .peel-step-edges > div { min-width: 0; padding: 12px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface); }
+  .peel-step-edges h4 { margin: 0 0 9px; color: var(--ink); font-size: .86rem; }
+  .peel-step-edges ul { margin: 0; padding-left: 18px; }
+  .peel-step-edges li, .peel-step-edges p { margin: 0 0 5px; color: var(--charcoal); font-size: .8rem; overflow-wrap: anywhere; }
+  .peel-step-note { margin: 14px 0 0; color: var(--charcoal); font-size: .86rem; }
+  @media (max-width: 600px) { .peel-step-edges { grid-template-columns: 1fr; } }
+  @media (prefers-reduced-motion: no-preference) {
+    .peel-step-panel:not([hidden]) { animation: peel-step-appear .25s ease-out; }
+    .peel-step-panel:not([hidden]) .peel-step-sync li,
+    .peel-step-panel:not([hidden]) .peel-step-async li { animation: peel-edge-appear .3s ease-out both; }
+    .peel-step-panel:not([hidden]) li:nth-child(2) { animation-delay: .08s; }
+    .peel-step-panel:not([hidden]) li:nth-child(3) { animation-delay: .16s; }
+    .peel-step-panel:not([hidden]) li:nth-child(4) { animation-delay: .24s; }
+  }
+  @keyframes peel-step-appear { from { opacity: .55; } to { opacity: 1; } }
+  @keyframes peel-edge-appear { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+</style>

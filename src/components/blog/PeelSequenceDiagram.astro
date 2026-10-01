@@ -1,0 +1,198 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+
+const steps = [
+  {
+    title: '한 애플리케이션',
+    root: ['User', 'Product', 'Order', 'Payment', 'Notification'],
+    services: [],
+    moved: '',
+    common: false,
+    note: '다섯 도메인이 패키지로 나뉘어 있었지만 모두 루트 애플리케이션에서 실행됐습니다.',
+  },
+  {
+    title: '공통 코드 추출',
+    root: ['User', 'Product', 'Order', 'Payment', 'Notification'],
+    services: [],
+    moved: '',
+    common: true,
+    note: '서비스를 옮기기 전에 common과 관측성 모듈을 추출했습니다. 루트 애플리케이션은 계속 부팅됐습니다.',
+  },
+  {
+    title: 'Notification 분리',
+    root: ['User', 'Product', 'Order', 'Payment'],
+    services: ['Notification'],
+    moved: 'Notification',
+    common: true,
+    note: '이벤트 소비 전용 서비스부터 떼어내며 분리 절차를 확인했습니다.',
+  },
+  {
+    title: 'User 분리',
+    root: ['Product', 'Order', 'Payment'],
+    services: ['Notification', 'User'],
+    moved: 'User',
+    common: true,
+    note: '초기 계획과 순서를 바꿨습니다. Order가 ProductPort를 동기 호출하고 있었기 때문입니다.',
+  },
+  {
+    title: 'Product 분리',
+    root: ['Order', 'Payment'],
+    services: ['Notification', 'User', 'Product'],
+    moved: 'Product',
+    common: true,
+    note: '재고 변경·단가·상품 존재 확인의 동기 호출을 걷어내고 Product를 떼어냈습니다.',
+  },
+  {
+    title: 'Order 분리',
+    root: ['Payment'],
+    services: ['Notification', 'User', 'Product', 'Order'],
+    moved: 'Order',
+    common: true,
+    note: 'Payment의 OrderPort 호출도 로컬 상태와 이벤트로 바꾼 뒤 Order를 떼어냈습니다.',
+  },
+  {
+    title: 'Payment 분리',
+    root: [],
+    services: ['Notification', 'User', 'Product', 'Order', 'Payment'],
+    moved: 'Payment',
+    common: true,
+    note: '마지막 도메인을 옮겨 루트에는 실행 소스가 남지 않았습니다. 루트는 빌드 설정과 검사만 맡습니다.',
+  },
+];
+---
+
+<InteractiveDemoFrame demoId="peel-sequence" ariaLabel="PeekCart 모놀리스에서 서비스 모듈을 떼어낸 순서" title="루트 모놀리스에는 무엇이 남았을까요?" description="화면에 보이면 실제 분리 순서가 자동으로 진행됩니다. 이전·다음 버튼으로 원하는 단계를 살펴볼 수 있습니다.">
+  <DemoControls ariaLabel="서비스 분리 단계 이동">
+    <button type="button" data-peel-direction="previous" disabled>← 이전</button>
+    <span class="peel-sequence-count" data-peel-count aria-live="polite">1 / {steps.length}</span>
+    <button type="button" data-peel-direction="next">다음 →</button>
+    <button type="button" data-peel-play-toggle aria-label="애니메이션 일시정지">일시정지</button>
+  </DemoControls>
+
+  {steps.map((step, index) => (
+    <div class="peel-sequence-panel" data-peel-sequence-panel={index} hidden={index !== 0}>
+      <p class="peel-sequence-heading"><span>단계 {index + 1}</span><strong>{step.title}</strong></p>
+      <div class="peel-sequence-map">
+        <div class="peel-sequence-zone peel-sequence-root">
+          <p class="peel-sequence-zone-title">루트 애플리케이션 <span>{step.root.length}개 도메인</span></p>
+          {step.root.length ? (
+            <ul>{step.root.map((domain) => <li>{domain}</li>)}</ul>
+          ) : (
+            <p class="peel-sequence-empty">실행 소스 없음<br /><small>빌드 설정·검사만 남음</small></p>
+          )}
+        </div>
+        <span class="peel-sequence-arrow" aria-hidden="true">→</span>
+        <div class="peel-sequence-zone peel-sequence-services">
+          <p class="peel-sequence-zone-title">분리된 서비스 모듈 <span>{step.services.length}개 서비스</span></p>
+          {step.services.length ? (
+            <ul>{step.services.map((service) => <li class={service === step.moved ? 'is-new' : ''}>{service}</li>)}</ul>
+          ) : (
+            <p class="peel-sequence-empty">아직 분리한 서비스 없음</p>
+          )}
+        </div>
+      </div>
+      <p class="peel-sequence-common">공통 코드: {step.common ? '별도 모듈로 추출' : '루트에 포함'}</p>
+      <p class="peel-sequence-note" role="status">{step.note}</p>
+    </div>
+  ))}
+  <p class="db-demo-disclaimer">코드와 실행 모듈이 옮겨지는 과정만 표시했습니다. 이 단계에서도 데이터베이스는 공유했고, 물리적 DB 분리는 뒤의 작업이었습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { watchDemoPlayback } from '../../scripts/blog/watch-demo-playback';
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="peel-sequence"]').forEach((demo) => {
+    const panels = [...demo.querySelectorAll<HTMLElement>('[data-peel-sequence-panel]')];
+    const previous = demo.querySelector<HTMLButtonElement>('[data-peel-direction="previous"]');
+    const next = demo.querySelector<HTMLButtonElement>('[data-peel-direction="next"]');
+    const count = demo.querySelector<HTMLElement>('[data-peel-count]');
+    const playToggle = demo.querySelector<HTMLButtonElement>('[data-peel-play-toggle]');
+    if (!previous || !next || !count || !playToggle || panels.length === 0) return;
+
+    let current = 0;
+    let canPlay = false;
+    let reducedMotion = false;
+    let pausedByUser = false;
+    let timer: number | undefined;
+
+    const stop = () => {
+      window.clearTimeout(timer);
+      timer = undefined;
+    };
+    const show = (index: number) => {
+      current = Math.max(0, Math.min(index, panels.length - 1));
+      panels.forEach((panel, panelIndex) => { panel.hidden = panelIndex !== current; });
+      previous.disabled = current === 0;
+      next.disabled = current === panels.length - 1;
+      count.textContent = `${current + 1} / ${panels.length}`;
+    };
+    const updateToggle = () => {
+      playToggle.hidden = reducedMotion;
+      playToggle.textContent = pausedByUser ? '재생' : '일시정지';
+      playToggle.setAttribute('aria-label', pausedByUser ? '애니메이션 재생' : '애니메이션 일시정지');
+    };
+    const schedule = () => {
+      stop();
+      if (!canPlay || pausedByUser || reducedMotion) return;
+      timer = window.setTimeout(() => {
+        show(current === panels.length - 1 ? 0 : current + 1);
+        schedule();
+      }, current === panels.length - 1 ? 3400 : 2300);
+    };
+    const choose = (index: number) => {
+      pausedByUser = true;
+      show(index);
+      updateToggle();
+      schedule();
+    };
+
+    previous.addEventListener('click', () => choose(current - 1));
+    next.addEventListener('click', () => choose(current + 1));
+    playToggle.addEventListener('click', () => {
+      pausedByUser = !pausedByUser;
+      updateToggle();
+      schedule();
+    });
+    watchDemoPlayback(demo, ({ shouldPlay, reducedMotion: prefersReducedMotion }) => {
+      canPlay = shouldPlay;
+      if (reducedMotion !== prefersReducedMotion) {
+        reducedMotion = prefersReducedMotion;
+        show(reducedMotion ? panels.length - 1 : 0);
+      }
+      updateToggle();
+      schedule();
+    }, { threshold: 0.15 });
+  });
+</script>
+
+<style>
+  .peel-sequence-count { display: inline-flex; align-items: center; padding-inline: 8px; color: var(--slate); font-size: .86rem; font-variant-numeric: tabular-nums; }
+  .peel-sequence-panel { padding: 16px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--canvas); }
+  .peel-sequence-heading { display: flex; align-items: baseline; gap: 9px; margin: 0 0 14px; color: var(--ink); }
+  .peel-sequence-heading span { color: var(--slate); font-size: .78rem; font-weight: 700; }
+  .peel-sequence-heading strong { font-size: 1rem; }
+  .peel-sequence-map { display: grid; grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1fr); align-items: center; gap: 8px; }
+  .peel-sequence-zone { min-width: 0; min-height: 166px; padding: 13px; border: 1px solid var(--hairline); border-radius: 9px; background: var(--surface); }
+  .peel-sequence-zone-title { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 3px 8px; margin: 0 0 12px; color: var(--ink); font-size: .85rem; font-weight: 750; }
+  .peel-sequence-zone-title span { color: var(--slate); font-size: .75rem; font-weight: 500; }
+  .peel-sequence-zone ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+  .peel-sequence-zone li { padding: 5px 8px; border: 1px solid var(--hairline); border-radius: 6px; color: var(--charcoal); background: var(--canvas); font-size: .76rem; font-weight: 650; }
+  .peel-sequence-zone li.is-new { border-color: var(--brand-green); color: var(--brand-green-deep); background: var(--brand-green-soft); }
+  .peel-sequence-arrow { color: var(--brand-green-deep); font-size: 1.4rem; font-weight: 700; text-align: center; }
+  .peel-sequence-empty { margin: 22px 0 0; color: var(--slate); font-size: .83rem; }
+  .peel-sequence-empty small { font-size: .75rem; }
+  .peel-sequence-common { margin: 13px 0 0; color: var(--slate); font-size: .8rem; }
+  .peel-sequence-note { margin: 10px 0 0; padding: 10px 12px; border-left: 3px solid var(--brand-green); border-radius: 0 6px 6px 0; color: var(--charcoal); background: var(--brand-green-soft); font-size: .85rem; }
+  @media (max-width: 560px) {
+    .peel-sequence-map { grid-template-columns: 1fr; }
+    .peel-sequence-zone { min-height: 112px; }
+    .peel-sequence-arrow { transform: rotate(90deg); line-height: 1; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .peel-sequence-panel:not([hidden]) { animation: peel-sequence-appear .3s ease-out; }
+    .peel-sequence-panel:not([hidden]) li.is-new { animation: peel-sequence-new .55s ease-out both; }
+  }
+  @keyframes peel-sequence-appear { from { opacity: .55; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes peel-sequence-new { from { opacity: 0; transform: translateX(-10px) scale(.93); } to { opacity: 1; transform: translateX(0) scale(1); } }
+</style>
