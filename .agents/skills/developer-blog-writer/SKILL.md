@@ -23,6 +23,7 @@ Choose the type by the main question the reader should have answered. A topic or
 
 Read [voice.md](references/voice.md) for every article. Read [repository.md](references/repository.md) when creating or changing a post file in this repository.
 Read [visuals.md](references/visuals.md) when the user requests an animation or interaction, or a process, comparison, or state change would materially benefit from one. Visuals are optional; do not add them to an article merely because components are available.
+Before delivering any new post or substantial prose revision, apply the standalone [korean-blog-review](../korean-blog-review/SKILL.md) skill after the article-type coverage check. It reviews sources, authorial contribution, Korean prose, translationese, and factual regression without assigning an AI-authorship score.
 
 ## Work from the source
 

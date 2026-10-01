@@ -4,7 +4,7 @@ Use one recognizable voice across all seven article types. This voice is a synth
 
 ## Register and point of view
 
-- Write explanatory and narrative prose consistently in Korean `-습니다` style. Use `-습니다`, `-ㅂ니다`, and `-입니다` according to the verb; avoid `-해요`, `-죠`, casual speech, and switching whole sections to plain `-다` prose. Questions in headings may use natural question forms.
+- Choose sentence endings to fit the author's intent, subject, and reader. `-습니다`, `-다`, `-해요`, questions, and shorter conversational endings are all available; no ending style is mandatory or prohibited. Keep an intentional change in register, and revise only a shift that distracts from the point or obscures who is speaking.
 - Sound like a developer explaining a real piece of work to another developer: approachable, specific, and willing to state limits. Let technical evidence carry confidence.
 - Use `저` for the author's own experience only when the source supports it. Use `우리` or `팀` only when the source identifies a group. Do not manufacture personal scenes to make a concept article lively.
 - An opening question is useful when the article genuinely resolves it. Otherwise begin with the situation, observation, or result. Avoid routine greetings and announcements of what the article will cover.
