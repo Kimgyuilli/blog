@@ -5,6 +5,7 @@
 - 부품을 직접 보고 고르기: 개발 서버의 **`/dev/scene-kit/`**
 - draft 글 미리 보기: 개발 서버의 **`/preview/<slug>/`**
 - 첫 적용 사례: `PeelDependencyGraph`, `PeelMigrationSteps`, `PeelSequenceDiagram`
+- 실어 나르기·예산 게이지 사례: `ThreadSchedulerLens`, `CpuQuotaExperiment`, `RunqueuePolicyMotion`, `ExecutionLayersDiagram`
 
 ## 1. 먼저 정할 것: 이 장면이 보여줄 "한 가지 변화"
 
@@ -30,7 +31,9 @@
 | 끊어졌다 / 실패했다 | 선 가운데가 벌어지고 ✕, 대상 노드가 빨개지며 흔들림 | `brk` + `is-error` `is-shaking`, `ease.overshoot` | `snap` |
 | 끊어 냈다 (의도한 제거) | 라벨에 취소선을 먼저 긋고, 그다음 선이 출발점으로 거둬짐 | `createCallLine` `strike` → `show` | `cut` → `draw` |
 | 새 흐름이 생겼다 | 점선 곡선이 출발점에서 그려지고, 절반이 넘으면 라벨이 나타남. 점이 흐르는 방향 = 데이터 방향 | `createCurve` | `draw` |
-| 옮겨졌다 | 떠올라 호를 그리며 날아가 착지 링. 남은 것은 짧게 자리를 메움 | `createFlipMover` | `fly` / `reflow` |
+| 옮겨졌다 | 떠올라 호를 그리며 날아가 착지 링. 남은 것은 짧게 자리를 메움. 두 대상이 자리를 맞바꾸면 서로 반대쪽으로 휘어 비켜 감 | HTML: `createFlipMover` · SVG: `bowAt` + `hopLift` + `nextHop`, `landRing` | `fly` / `reflow` |
+| 실려 함께 움직인다 | 실린 것은 싣고 있는 카드의 자리(seat)에 앉아, 카드가 옮겨지면 같이 옮겨짐 (OS 스레드 위의 VT) | `createTray` `seat()` | `fly` |
+| 예산이 줄고 다시 찬다 | 게이지가 줄고, 0이 되면 테두리가 임시 색 점선. 기간이 바뀌면 다시 차며 숫자가 튀어 오름 | `createGauge` + `bumpText` | `draw` / 선형 |
 | 경계가 바뀌었다 | 점선 경계 상자가 줄어들거나 흐려짐, 캡션이 따라 바뀜 | `createBoundary` | `draw` |
 | 완료 / 성공 | 초록 테두리 + 살짝 커졌다 돌아옴 | `is-done`, `is-ok` | — |
 | 임시 상태 | 보조 문구가 주황 | `is-temp` | — |
@@ -88,8 +91,8 @@
 
 | 파일 | 역할 |
 | --- | --- |
-| `src/scripts/blog/scene/core.ts` | `createScene`, 보간, 트윈, 모션 토큰(`duration`, `ease`), 기하, `watchNarrow`, `bumpText` |
-| `src/scripts/blog/scene/parts.ts` | `createNode`, `createFlipLink`, `createCallLine`, `createCurve`, `createBoundary`, `createPill`, `createArrow` |
+| `src/scripts/blog/scene/core.ts` | `createScene`, 보간, 트윈, 모션 토큰(`duration`, `ease`), 기하, 호 이동(`bowAt`, `hopLift`, `nextHop`), `watchNarrow`, `bumpText` |
+| `src/scripts/blog/scene/parts.ts` | `createNode`, `createTray`, `createGauge`, `landRing`, `createFlipLink`, `createCallLine`, `createCurve`, `createBoundary`, `createPill`, `createArrow` |
 | `src/scripts/blog/scene/flip.ts` | `createFlipMover` (HTML 요소 이동) |
 | `src/scripts/blog/scene/console.ts` | `createConsole` (실행 로그) |
 | `src/scripts/blog/scene/step-player.ts` | `createStepPlayer` (타임라인 재생) |

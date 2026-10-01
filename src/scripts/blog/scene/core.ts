@@ -161,6 +161,32 @@ export function quadAt(a: Point, c: Point, b: Point, t: number) {
   return { ...point, angle: (Math.atan2(tangent.y, tangent.x) * 180) / Math.PI };
 }
 
+// ── 호를 그리는 이동 ─────────────────────────────────────
+
+/**
+ * "옮겨졌다"의 SVG 판. 자리를 옮기는 대상의 상태에 hop 카운터를 두고, 옮길 때마다 `nextHop`으로 1 올립니다.
+ * 보간되는 동안 hop의 소수부가 0→1로 지나가므로, 그리는 쪽에서 `hopLift`로 호의 높이를 구해 `bowAt`에 넘깁니다.
+ */
+export const nextHop = (hop: number) => Math.floor(hop + 1e-6) + 1;
+
+/** hop의 소수부에 따라 0 → height → 0으로 오르내리는 높이. */
+export const hopLift = (hop: number, height = 32) => height * Math.sin(Math.PI * (hop - Math.floor(hop)));
+
+/**
+ * a→b 직선 위 t 지점에서 옆으로 `lift`만큼 휜 점. 양수는 화면 위쪽(세로 경로라면 오른쪽)으로 휩니다.
+ * 두 대상이 자리를 맞바꿀 때는 한쪽에 음수를 줘서 서로 비켜 가게 합니다.
+ */
+export function bowAt(a: Point, b: Point, t: number, lift: number): Point {
+  const p = pointAt(a, b, t);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length = Math.hypot(dx, dy) || 1;
+  let nx = dy / length;
+  let ny = -dx / length;
+  if (ny > 1e-6 || (Math.abs(ny) <= 1e-6 && nx < 0)) { nx = -nx; ny = -ny; }
+  return { x: p.x + nx * lift, y: p.y + ny * lift };
+}
+
 // ── 화면 ─────────────────────────────────────────────────
 
 /** 본문 폭에 맞춘 넓은 배치 기준. 블로그 본문 안의 데모 폭은 약 530~580px입니다. */
@@ -185,12 +211,12 @@ export function watchNarrow(element: HTMLElement, onChange: (narrow: boolean) =>
 /** 클래스를 다시 붙여 CSS 애니메이션을 처음부터 재생합니다. */
 export function replayClass(element: Element, className: string) {
   element.classList.remove(className);
-  void (element as HTMLElement).getBoundingClientRect();
+  void element.getBoundingClientRect();
   element.classList.add(className);
 }
 
 /** 숫자·짧은 값이 바뀔 때 튀어 오르게 합니다. 같은 값이면 아무것도 하지 않습니다. */
-export function bumpText(element: HTMLElement, text: string) {
+export function bumpText(element: Element, text: string) {
   if (element.textContent === text) return;
   element.textContent = text;
   if (!prefersReducedMotion()) replayClass(element, 'is-bump');

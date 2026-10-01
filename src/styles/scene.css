@@ -120,6 +120,43 @@ html.dark .db-demo {
 .scene-node.is-shaking .scene-node-body { animation: scene-shake 420ms ease-in-out; }
 .scene-node.is-ok .scene-node-body { animation: scene-pop 520ms ease-out; }
 
+/* 착지 링 */
+.scene-land-ring {
+  fill: none;
+  stroke: var(--scene-flow);
+  stroke-width: 2;
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: scene-ring 640ms ease-out forwards;
+}
+
+/* 다른 노드를 싣는 카드 */
+.scene-tray-name { font-size: 13px; text-anchor: start; }
+.scene-tray-sub { text-anchor: end; }
+.scene-tray-seat {
+  fill: color-mix(in srgb, var(--node-hue) 6%, transparent);
+  stroke: color-mix(in srgb, var(--node-hue) 40%, var(--hairline));
+  stroke-width: 1.2;
+  stroke-dasharray: 4 4;
+}
+
+/* 줄어들고 다시 차는 예산 */
+.scene-gauge-track { fill: var(--surface); stroke: var(--hairline); stroke-width: 1.5; transition: stroke 240ms ease; }
+.scene-gauge-fill { fill: color-mix(in srgb, var(--scene-flow) 72%, transparent); }
+.scene-gauge.is-empty .scene-gauge-track { stroke: var(--scene-temp); stroke-dasharray: 4 3; }
+.scene-gauge-value {
+  fill: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.scene-gauge.is-empty .scene-gauge-value { fill: var(--scene-temp); }
+.scene-gauge-value.is-bump { animation: scene-pop 420ms ease-out; }
+
 /* ── 선과 라벨 ───────────────────────────────────────── */
 .scene-line {
   fill: none;
@@ -407,6 +444,28 @@ html.dark .db-demo {
 .scene-timeline-step.is-timing .scene-timeline-fill { animation: scene-fill var(--dwell) linear both; }
 .db-demo .scene-timeline-step[aria-current="step"] { color: var(--ink); }
 
+/* 앞 단계에서 이어지지 않는 별개의 상황: 점선 구분선 + 작은 표시 */
+.db-demo .scene-timeline-step.is-new-case { margin-left: 12px; }
+
+.scene-timeline-step.is-new-case::after {
+  position: absolute;
+  top: -2px;
+  bottom: 2px;
+  left: -10px;
+  border-left: 2px dashed color-mix(in srgb, var(--scene-temp) 60%, var(--hairline));
+  content: "";
+}
+
+.scene-timeline-case {
+  display: block;
+  margin: 2px 0 3px;
+  font-style: normal;
+  color: var(--scene-temp);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
 .scene-timeline-step small {
   display: block;
   margin-top: 6px;
@@ -458,6 +517,11 @@ html.dark .db-demo {
   50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--scene-flow) 0%, transparent); }
 }
 
+@keyframes scene-ring {
+  from { opacity: 0.9; transform: scale(1); }
+  to { opacity: 0; transform: scale(1.12); }
+}
+
 @keyframes scene-land {
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--scene-flow) 55%, transparent); }
   100% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--scene-flow) 0%, transparent); }
@@ -473,6 +537,7 @@ html.dark .db-demo {
   .scene-block.is-landed,
   .scene-console li,
   .scene-note.is-entering,
-  .scene-metric b.is-bump { animation: none; }
+  .scene-metric b.is-bump,
+  .scene-gauge-value.is-bump { animation: none; }
   .scene-timeline-step.is-timing .scene-timeline-fill { animation: none; width: 100%; }
 }

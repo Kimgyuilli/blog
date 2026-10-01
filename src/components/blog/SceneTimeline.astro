@@ -2,12 +2,13 @@
 /**
  * 단계 타임라인. scripts/blog/scene/step-player.ts의 createStepPlayer()가 재생을 맡습니다.
  * detail은 단계 아래 작은 글씨로, 좁은 화면에서는 이것만 남습니다. 단계마다 바뀌는 수치를 넣으면 좋습니다.
+ * newCase를 주면 그 단계 앞에 점선 구분선과 작은 표시가 붙습니다. 앞 단계에서 이어지지 않는 별개의 상황일 때 씁니다.
  */
 import '../../styles/scene.css';
 
 type Props = {
   ariaLabel: string;
-  steps: { name: string; detail: string }[];
+  steps: { name: string; detail: string; newCase?: string }[];
 };
 
 const { ariaLabel, steps } = Astro.props;
@@ -15,8 +16,9 @@ const { ariaLabel, steps } = Astro.props;
 
 <div class="scene-timeline" style={`--steps: ${steps.length}`} role="group" aria-label={ariaLabel}>
   {steps.map((step, index) => (
-    <button type="button" class="scene-timeline-step" data-step={index} aria-current={index === 0 ? 'step' : 'false'}>
+    <button type="button" class:list={['scene-timeline-step', { 'is-new-case': step.newCase }]} data-step={index} data-case={step.newCase} aria-current={index === 0 ? 'step' : 'false'}>
       <span class="scene-timeline-fill" aria-hidden="true"></span>
+      {step.newCase && <em class="scene-timeline-case">{step.newCase}</em>}
       <span>{step.name}</span>
       <small>{step.detail}</small>
     </button>

@@ -2,7 +2,7 @@
  * SVG 장면 부품. 각 부품은 한 번 만들고, 매 프레임 `draw`/`place`에 현재 상태를 넘겨 다시 그립니다.
  * 스타일은 styles/scene.css의 scene-* 클래스가 맡습니다.
  */
-import { angleOf, clamp01, exitPoint, pointAt, quadAt, replayClass, setAttrs, svg, type Box, type Point } from './core';
+import { angleOf, clamp01, exitPoint, pointAt, prefersReducedMotion, quadAt, replayClass, setAttrs, svg, type Box, type Point } from './core';
 
 // ── 노드 ─────────────────────────────────────────────────
 
@@ -50,6 +50,89 @@ export function createNode(parent: Element, { label, hue, sub = '' }: { label: s
     flash: (className, on = true) => {
       if (on) replayClass(group, className);
       else group.classList.remove(className);
+    },
+  };
+}
+
+/** 착지 링: 옮겨진 상자 둘레에서 한 번 퍼지며 사라지는 테두리. 이동이 끝난 뒤 부릅니다. */
+export function landRing(parent: Element, { x, y, w, h }: Box) {
+  if (prefersReducedMotion()) return;
+  const ring = svg('rect', { class: 'scene-land-ring', x: x - w / 2, y: y - h / 2, width: w, height: h, rx: 12 }, parent);
+  ring.addEventListener('animationend', () => ring.remove());
+}
+
+export type TrayView = NodeView & {
+  /** 실린 노드의 중심. 트레이가 움직이면 매 프레임 이 값으로 실린 노드를 다시 놓습니다. */
+  seat: (at: Point) => Point;
+};
+
+/**
+ * 다른 노드를 싣고 다니는 카드. OS 스레드 위의 VT처럼 "실려서 함께 움직인다"를 보여줍니다.
+ * 이름은 왼쪽 위, 보조 문구는 오른쪽 위, 아래쪽에 점선 자리(seat)가 있습니다.
+ */
+export function createTray(parent: Element, { label, hue, sub = '', seatDy = 14, seatSize }: { label: string; hue: string; sub?: string; seatDy?: number; seatSize: { w: number; h: number } }): TrayView {
+  const group = svg('g', { class: 'scene-node scene-tray' }, parent);
+  group.style.setProperty('--node-hue', hue);
+  const body = svg('g', { class: 'scene-node-body' }, group);
+  const card = svg('rect', { class: 'scene-node-card', rx: 12 }, body);
+  const accent = svg('rect', { class: 'scene-node-accent', rx: 2, width: 4 }, body);
+  const name = svg('text', { class: 'scene-node-name scene-tray-name' }, body);
+  const subText = svg('text', { class: 'scene-node-sub scene-tray-sub' }, body);
+  const seat = svg('rect', { class: 'scene-tray-seat', rx: 10 }, body);
+  name.textContent = label;
+  subText.textContent = sub;
+  let size = { w: 0, h: 0 };
+  return {
+    group,
+    setBox: ({ x, y, w, h }) => {
+      setAttrs(group, { transform: `translate(${x.toFixed(2)} ${y.toFixed(2)})` });
+      if (w === size.w && h === size.h) return;
+      size = { w, h };
+      setAttrs(card, { x: -w / 2, y: -h / 2, width: w, height: h });
+      setAttrs(accent, { x: -w / 2 + 8, y: -h / 2 + 11, height: 16 });
+      setAttrs(name, { x: -w / 2 + 19, y: -h / 2 + 24 });
+      setAttrs(subText, { x: w / 2 - 12, y: -h / 2 + 23 });
+      setAttrs(seat, { x: -seatSize.w / 2 - 4, y: seatDy - seatSize.h / 2 - 4, width: seatSize.w + 8, height: seatSize.h + 8 });
+    },
+    setSub: (text) => { subText.textContent = text; },
+    flash: (className, on = true) => {
+      if (on) replayClass(group, className);
+      else group.classList.remove(className);
+    },
+    seat: (at) => ({ x: at.x, y: at.y + seatDy }),
+  };
+}
+
+// ── 줄어들고 다시 차는 예산 ──────────────────────────────
+
+/**
+ * 채워진 비율이 줄어드는 게이지. quota처럼 "쓰면 줄고 기간이 바뀌면 다시 차는 예산"에 씁니다.
+ * 세로(v)는 아래부터, 가로(h)는 왼쪽부터 채웁니다. 0이 되면 테두리가 임시 색 점선으로 바뀝니다.
+ */
+export function createGauge(parent: Element, caption: string, orient: 'v' | 'h' = 'v') {
+  const group = svg('g', { class: 'scene-gauge' }, parent);
+  const track = svg('rect', { class: 'scene-gauge-track', rx: 7 }, group);
+  const fill = svg('rect', { class: 'scene-gauge-fill', rx: 7 }, group);
+  const title = svg('text', { class: 'scene-caption' }, group);
+  const value = svg('text', { class: 'scene-gauge-value' }, group);
+  title.textContent = caption;
+  return {
+    group,
+    value,
+    /** `direction`을 주면 만들 때 정한 방향 대신 씁니다(넓은·좁은 배치에서 방향이 다를 때). */
+    place({ x, y, w, h }: { x: number; y: number; w: number; h: number }, amount: number, direction: 'v' | 'h' = orient) {
+      const a = clamp01(amount);
+      setAttrs(track, { x, y, width: w, height: h });
+      if (direction === 'v') {
+        setAttrs(fill, { x, y: y + h * (1 - a), width: w, height: h * a });
+        setAttrs(title, { x: x + w / 2, y: y - 26, 'text-anchor': 'middle' });
+        setAttrs(value, { x: x + w / 2, y: y - 9, 'text-anchor': 'middle' });
+      } else {
+        setAttrs(fill, { x, y, width: w * a, height: h });
+        setAttrs(title, { x, y: y - 8, 'text-anchor': 'start' });
+        setAttrs(value, { x: x + w, y: y - 8, 'text-anchor': 'end' });
+      }
+      group.classList.toggle('is-empty', a <= 0.001);
     },
   };
 }
