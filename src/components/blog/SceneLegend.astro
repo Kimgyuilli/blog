@@ -1,0 +1,12 @@
+---
+/** 장면 아래 선 범례. kind는 scene.css의 의미 색(danger·flow·dep)과 같습니다. */
+import '../../styles/scene.css';
+
+type Props = { items: { kind: 'danger' | 'flow' | 'dep'; label: string }[] };
+
+const { items } = Astro.props;
+---
+
+<ul class="scene-legend" aria-hidden="true">
+  {items.map((item) => <li><i class={`is-${item.kind}`}></i>{item.label}</li>)}
+</ul>

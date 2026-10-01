@@ -1,0 +1,478 @@
+/*
+ * 글 속 애니메이션 장면 키트의 스타일. 기준: docs/animation-standards.md
+ * JS로 만든 SVG·HTML 요소에도 적용되도록 전역 파일로 둡니다.
+ *
+ * 색은 "의미"로만 고릅니다.
+ *   --scene-dep     의존·참조(중립)        --scene-danger  끊어야 할 연결·실패
+ *   --scene-flow    새로 생긴 흐름·성공    --scene-temp    임시 상태·계획과 다름
+ * 노드를 구분하는 색은 --scene-hue-* 중에서 고르고, 의미를 싣지 않습니다.
+ */
+.db-demo {
+  --scene-dep: var(--slate);
+  --scene-danger: #dc2626;
+  --scene-danger-soft: #fef2f2;
+  --scene-flow: var(--brand-green);
+  --scene-flow-ink: var(--brand-green-deep);
+  --scene-flow-soft: var(--brand-green-soft);
+  --scene-temp: #b45309;
+  --scene-temp-soft: #fff7e6;
+  --scene-hue-blue: #3b82f6;
+  --scene-hue-amber: #f59e0b;
+  --scene-hue-violet: #8b5cf6;
+  --scene-hue-cyan: #0ea5b7;
+  --scene-hue-gray: #64748b;
+  --scene-hue-pink: #ec4899;
+}
+
+html.dark .db-demo {
+  --scene-danger: #f87171;
+  --scene-danger-soft: #371a1a;
+  --scene-temp: #fbbf24;
+  --scene-temp-soft: #33280f;
+  --scene-hue-blue: #7aa7ff;
+  --scene-hue-amber: #fbbf24;
+  --scene-hue-violet: #b49cff;
+  --scene-hue-cyan: #4fd1e0;
+  --scene-hue-gray: #9aaba5;
+  --scene-hue-pink: #f9a8d4;
+}
+
+/* ── 무대 ─────────────────────────────────────────────── */
+.scene-stage {
+  position: relative;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--slate) 22%, transparent) 1px, transparent 0) 0 0 / 18px 18px,
+    var(--canvas);
+  overflow: hidden;
+}
+
+.scene-stage > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: var(--font-sans);
+}
+
+.scene-boundary {
+  fill: color-mix(in srgb, var(--surface) 70%, transparent);
+  stroke: var(--hairline);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 5;
+}
+
+.scene-zone {
+  fill: none;
+  stroke: color-mix(in srgb, var(--scene-flow) 45%, var(--hairline));
+  stroke-width: 1.5;
+  stroke-dasharray: 3 5;
+}
+
+.scene-caption {
+  fill: var(--slate);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* ── 노드 ─────────────────────────────────────────────── */
+.scene-node-body {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.scene-node-card {
+  fill: var(--surface);
+  stroke: var(--hairline);
+  stroke-width: 1.5;
+  transition: fill 240ms ease, stroke 240ms ease;
+}
+
+.scene-node-accent { fill: var(--node-hue, var(--slate)); }
+
+.scene-node-name {
+  fill: var(--ink);
+  font-size: 14px;
+  font-weight: 750;
+  text-anchor: middle;
+}
+
+.scene-node-sub {
+  fill: var(--slate);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-anchor: middle;
+  transition: fill 240ms ease;
+}
+
+/* 떼어냄·완료 */
+.scene-node.is-done .scene-node-card { stroke: var(--scene-flow); stroke-width: 2; }
+.scene-node.is-done .scene-node-sub { fill: var(--scene-flow-ink); }
+
+/* 실패 */
+.scene-node.is-error .scene-node-card { fill: var(--scene-danger-soft); stroke: var(--scene-danger); stroke-width: 2.5; }
+.scene-node.is-error .scene-node-sub { fill: var(--scene-danger); font-weight: 700; }
+
+/* 임시 의미 */
+.scene-node.is-temp .scene-node-sub { fill: var(--scene-temp); font-weight: 700; }
+
+.scene-node.is-shaking .scene-node-body { animation: scene-shake 420ms ease-in-out; }
+.scene-node.is-ok .scene-node-body { animation: scene-pop 520ms ease-out; }
+
+/* ── 선과 라벨 ───────────────────────────────────────── */
+.scene-line {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.scene-line.is-flowing { stroke-dasharray: 7 6; animation: scene-flow 900ms linear infinite; }
+.scene-line.is-flowing-reverse { stroke-dasharray: 7 6; animation: scene-flow-reverse 900ms linear infinite; }
+
+.scene-flow {
+  stroke: var(--scene-flow);
+  stroke-width: 2;
+  stroke-dasharray: 2 7;
+  animation: scene-flow 1100ms linear infinite;
+}
+
+.scene-arrow { stroke: none; }
+
+.scene-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--canvas);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+}
+
+.scene-label-dep { fill: var(--scene-dep); }
+.scene-label-danger { fill: var(--scene-danger); }
+.scene-label-flow { fill: var(--scene-flow-ink); }
+
+.scene-pill {
+  fill: var(--canvas);
+  stroke: color-mix(in srgb, var(--scene-danger) 45%, transparent);
+  stroke-width: 1;
+}
+
+.scene-pill-text {
+  fill: var(--scene-danger);
+  font-size: 11px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+.scene-strike {
+  stroke: var(--scene-danger);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.scene-break {
+  fill: var(--scene-danger);
+  font-size: 18px;
+  font-weight: 800;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+/* ── HTML 블록 (FLIP으로 옮기는 요소) ──────────────────── */
+.scene-block {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--canvas);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.82rem;
+  font-weight: 750;
+  white-space: nowrap;
+  will-change: transform;
+}
+
+.scene-block::before {
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--node-hue, var(--slate));
+  content: "";
+}
+
+.scene-block.is-muted {
+  border-style: dashed;
+  color: var(--slate);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.scene-block.is-flying { z-index: 5; box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18); }
+.scene-block.is-landed { animation: scene-land 700ms ease-out; }
+
+/* ── 칩 (선택지·계획) ────────────────────────────────── */
+.scene-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 4px;
+  margin: 18px 0 14px;
+}
+
+.scene-chips-label {
+  margin-right: 6px;
+  color: var(--slate);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.scene-chips-sep { color: var(--muted); font-size: 0.8rem; }
+
+.db-demo .scene-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 11px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  color: var(--charcoal);
+  background: var(--canvas);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.scene-chip::before {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--node-hue, var(--slate));
+  content: "";
+}
+
+.scene-chip.is-plain::before { content: none; }
+.db-demo .scene-chip:hover:not(:disabled) { transform: translateY(-2px); border-color: var(--scene-flow); }
+.scene-chip:focus-visible { outline: 3px solid var(--scene-flow); outline-offset: 2px; }
+.scene-chip:disabled { cursor: default; }
+
+/* 다음에 누를 것: 은은하게 부르는 맥박 */
+.db-demo .scene-chip[data-state="next"] { border-color: var(--scene-flow); animation: scene-beckon 1.8s ease-in-out infinite; }
+.db-demo .scene-chip[data-state="ok"] { border-color: var(--scene-flow); color: var(--scene-flow-ink); background: var(--scene-flow-soft); }
+.db-demo .scene-chip[data-state="fail"] { border-color: var(--scene-danger); color: var(--scene-danger); background: var(--scene-danger-soft); }
+.db-demo .scene-chip[data-state="locked"] { border-style: dashed; color: var(--slate); opacity: 0.8; }
+.scene-chip-mark { font-size: 0.8rem; line-height: 1; }
+
+/* ── 실행 로그 ───────────────────────────────────────── */
+.db-demo .scene-console {
+  min-height: 132px;
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  color: #c9d4d1;
+  background: #0d1312;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.65;
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+
+.scene-console li { display: flex; gap: 8px; margin: 0; animation: scene-rise 220ms ease-out both; }
+.scene-console li::before { flex: none; width: 1.1em; content: "›"; color: #6b7c77; }
+.scene-console li[data-tone="pending"]::before { content: "…"; color: #9fb0ab; }
+.scene-console li[data-tone="ok"]::before { content: "✓"; color: #35d6aa; }
+.scene-console li[data-tone="fail"]::before { content: "✕"; color: #f87171; }
+.scene-console li[data-tone="warn"]::before { content: "!"; color: #fbbf24; }
+.scene-console li[data-tone="fail"] { color: #fca5a5; }
+.scene-console li[data-tone="warn"] { color: #fde68a; }
+.scene-console li[data-tone="trace"] { padding-left: 1.6em; color: #fca5a5; opacity: 0.9; }
+.scene-console li[data-tone="trace"]::before { content: none; }
+.scene-console .scene-console-idle { color: #6b7c77; }
+
+/* ── 설명 상자 ───────────────────────────────────────── */
+.db-demo .scene-note {
+  min-height: 3.2em;
+  margin: 12px 0 0;
+  padding: 11px 13px;
+  border-left: 3px solid var(--scene-flow);
+  border-radius: 0 8px 8px 0;
+  color: var(--charcoal);
+  background: var(--scene-flow-soft);
+  font-size: 0.87rem;
+}
+
+.scene-note strong { color: var(--ink); }
+.db-demo .scene-note.is-alert { border-left-color: var(--scene-danger); background: var(--scene-danger-soft); }
+.scene-note.is-entering { animation: scene-rise 320ms ease-out both; }
+
+/* ── 범례 ────────────────────────────────────────────── */
+.db-demo .scene-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 10px 2px 0;
+  padding: 0;
+  color: var(--slate);
+  font-size: 0.76rem;
+  list-style: none;
+}
+
+.scene-legend li { display: inline-flex; align-items: center; gap: 7px; margin: 0; }
+.scene-legend i { display: inline-block; width: 22px; height: 0; border-top: 2.5px solid; }
+.scene-legend .is-danger { color: var(--scene-danger); }
+.scene-legend .is-flow { color: var(--scene-flow); border-top-style: dotted; }
+.scene-legend .is-dep { color: var(--scene-dep); }
+
+/* ── 지표 ────────────────────────────────────────────── */
+.scene-metrics {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  display: flex;
+  gap: 14px;
+  pointer-events: none;
+}
+
+.scene-metric { display: grid; justify-items: end; line-height: 1.1; }
+.scene-metric b { display: inline-block; font-size: 1.9rem; font-variant-numeric: tabular-nums; font-weight: 800; }
+.scene-metric span { color: var(--slate); font-size: 0.7rem; font-weight: 700; }
+.scene-metric.is-danger b { color: var(--scene-danger); }
+.scene-metric.is-flow b { color: var(--scene-flow-ink); }
+.scene-metric b.is-zero { color: var(--scene-flow-ink); }
+.scene-metric b.is-bump { animation: scene-pop 420ms ease-out; }
+
+@media (max-width: 560px) {
+  .scene-metrics { position: static; justify-content: flex-end; padding: 10px 12px 0; }
+}
+
+/* ── 타임라인 ────────────────────────────────────────── */
+.scene-timeline {
+  display: grid;
+  grid-template-columns: repeat(var(--steps), minmax(0, 1fr)) auto;
+  align-items: stretch;
+  gap: 6px;
+  margin: 18px 0 14px;
+}
+
+.db-demo .scene-timeline-step {
+  position: relative;
+  min-width: 0;
+  padding: 10px 6px 12px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--slate);
+  background: transparent;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: left;
+  word-break: keep-all;
+  cursor: pointer;
+  transition: color 160ms ease, background-color 160ms ease;
+}
+
+.db-demo .scene-timeline-step:hover { background: var(--canvas); }
+.scene-timeline-step:focus-visible { outline: 3px solid var(--scene-flow); outline-offset: 1px; }
+
+.scene-timeline-step::before,
+.scene-timeline-fill {
+  position: absolute;
+  inset: 0 6px auto;
+  height: 4px;
+  border-radius: 999px;
+  content: "";
+}
+
+.scene-timeline-step::before { background: var(--hairline); }
+
+.scene-timeline-fill {
+  width: 0;
+  max-width: calc(100% - 12px);
+  background: var(--scene-flow);
+}
+
+.scene-timeline-step.is-past .scene-timeline-fill,
+.scene-timeline-step[aria-current="step"] .scene-timeline-fill { width: 100%; }
+.scene-timeline-step.is-timing .scene-timeline-fill { animation: scene-fill var(--dwell) linear both; }
+.db-demo .scene-timeline-step[aria-current="step"] { color: var(--ink); }
+
+.scene-timeline-step small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.scene-timeline-step[aria-current="step"] small { color: var(--scene-flow-ink); }
+
+.db-demo .scene-timeline-toggle {
+  align-self: center;
+  padding: 7px 11px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  color: var(--charcoal);
+  background: var(--canvas);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.scene-timeline-toggle:focus-visible { outline: 3px solid var(--scene-flow); outline-offset: 2px; }
+
+@media (max-width: 600px) {
+  .scene-timeline { grid-template-columns: repeat(var(--steps), minmax(0, 1fr)); }
+  .scene-timeline-step > span:not(.scene-timeline-fill) { display: none; }
+  .scene-timeline-toggle { grid-column: 1 / -1; justify-self: end; }
+}
+
+/* ── 움직임 ──────────────────────────────────────────── */
+@keyframes scene-flow { to { stroke-dashoffset: -26; } }
+@keyframes scene-flow-reverse { to { stroke-dashoffset: 26; } }
+@keyframes scene-fill { from { width: 0; } to { width: 100%; } }
+@keyframes scene-rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes scene-pop { 40% { transform: scale(1.07); } }
+
+@keyframes scene-shake {
+  20% { transform: translateX(-6px) rotate(-1.5deg); }
+  40% { transform: translateX(5px) rotate(1deg); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(2px); }
+}
+
+@keyframes scene-beckon {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--scene-flow) 40%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--scene-flow) 0%, transparent); }
+}
+
+@keyframes scene-land {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--scene-flow) 55%, transparent); }
+  100% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--scene-flow) 0%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-line.is-flowing,
+  .scene-line.is-flowing-reverse,
+  .scene-flow,
+  .db-demo .scene-chip[data-state="next"],
+  .scene-node.is-shaking .scene-node-body,
+  .scene-node.is-ok .scene-node-body,
+  .scene-block.is-landed,
+  .scene-console li,
+  .scene-note.is-entering,
+  .scene-metric b.is-bump { animation: none; }
+  .scene-timeline-step.is-timing .scene-timeline-fill { animation: none; width: 100%; }
+}
