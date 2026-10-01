@@ -13,7 +13,9 @@
     "deploy": "npm run build && wrangler deploy",
     "migrate:tistory": "node scripts/migrate-tistory.mjs",
     "sync:post-images": "node scripts/sync-post-images.mjs",
-    "sync:portfolio": "node scripts/sync-portfolio.mjs"
+    "sync:portfolio": "node scripts/sync-portfolio.mjs",
+    "sync:skills": "node scripts/sync-skills.mjs",
+    "check:skills": "node scripts/sync-skills.mjs --check"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^13.5.3",

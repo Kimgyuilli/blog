@@ -3,6 +3,8 @@ name: developer-blog-writer
 description: Write or revise Korean developer-blog posts from source notes, drafts, code, or links for this repository, including explanatory visual planning when useful. Use for article drafting and editing, not ordinary code changes.
 ---
 
+<!-- 생성된 파일: .agents/skills/developer-blog-writer/ 에서 복사됩니다. 직접 고치지 말고 원본을 고친 뒤 `npm run sync:skills`를 실행하세요. -->
+
 # Developer blog writer
 
 Turn the user's source material into a reviewable article for this blog. The blog covers backend development, technical decisions, operations, and side projects. Preserve the author's actual experience and the evidence behind each claim.

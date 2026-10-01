@@ -3,6 +3,8 @@ name: publish-from-obsidian
 description: Import an Obsidian-authored markdown post (with image attachments) into this Astro blog. Use when the user provides a path to an .md file written in Obsidian (typically inside their vault) and wants it published as a blog post — handles Obsidian wikilink images (`![[file.png]]`), copies attachments into `public/images/blog/<slug>/`, rewrites image references, fills/validates frontmatter (title, description, pubDate, category, tags, slug, draft), and places the final file at `src/content/blog/<slug>.md`.
 ---
 
+<!-- 생성된 파일: .agents/skills/publish-from-obsidian/ 에서 복사됩니다. 직접 고치지 말고 원본을 고친 뒤 `npm run sync:skills`를 실행하세요. -->
+
 # Publish from Obsidian
 
 This skill imports a post written in Obsidian into this Astro blog. The user writes freely in their vault — embedding images via drag-and-drop, using Obsidian Properties for frontmatter — and this skill normalizes it into the shape the blog expects.
