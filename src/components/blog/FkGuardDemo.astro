@@ -1,0 +1,256 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import '../../styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="fk-guard" ariaLabel="교차 FK를 지우기 전과 후에 같은 요청 세 개를 보내 보는 실험" title="FK를 걷어 내면 무엇이 달라질까요?" description="요청을 보내 보고, 교차 FK를 걷어 낸 뒤 같은 요청을 다시 보내 보세요. 어느 관문에서 무엇이 걸리는지 보면 됩니다.">
+  <DemoControls ariaLabel="교차 FK 상태">
+    <button type="button" data-fk-mode="on" aria-pressed="true">교차 FK 있음</button>
+    <button type="button" data-fk-mode="off" aria-pressed="false">교차 FK 걷어 냄 (PR1)</button>
+  </DemoControls>
+  <div class="scene-chips" role="group" aria-label="보낼 요청">
+    <span class="scene-chips-label">보내기</span>
+    <button type="button" class="scene-chip is-plain" data-fk-send="0">① 없는 상품 담기</button>
+    <button type="button" class="scene-chip is-plain" data-fk-send="1">② 상품 삭제</button>
+    <button type="button" class="scene-chip is-plain" data-fk-send="2">③ 코드 밖 INSERT</button>
+    <button type="button" class="scene-chip is-plain" data-fk-send="all">모두</button>
+  </div>
+  <div class="scene-stage">
+    <svg data-fk-svg role="img" aria-label="세 요청이 서비스 코드 관문과 교차 FK 관문을 지나 MySQL 테이블에 닿는 그림"></svg>
+  </div>
+  <p class="scene-note" data-fk-note role="status"></p>
+  <p class="db-demo-disclaimer">③은 서비스 코드를 거치지 않는 쓰기(예: 수동 SQL)가 있을 때 DB 수준 보장이 무엇을 하는지 보여주려고 넣은 가상의 요청입니다. 글의 작업에서 이런 쓰기가 있었다는 뜻은 아닙니다. 사용자 ID 경로(토큰)와 결제·알림의 이벤트 경로, 이벤트 지연은 그리지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { createScene, duration, ease, setAttrs, svg, watchNarrow, type Point } from '../../scripts/blog/scene/core';
+  import { createBoundary, createChip } from '../../scripts/blog/scene/parts';
+  import { createPacketLayer, type Packet } from '../../scripts/blog/scene/packets';
+  import { watchDemoPlayback } from '../../scripts/blog/watch-demo-playback';
+
+  type Mode = 'on' | 'off';
+  type State = { fk: number; strike: number };
+  type Layout = {
+    view: [number, number]; start: number; app: number; fk: number; db: { x: number; w: number }; chipX: number; chipW: number;
+    lanes: number[]; top: number; bottom: number; appBottom: number;
+  };
+  const LAYOUT: Record<'wide' | 'narrow', Layout> = {
+    wide: { view: [560, 352], start: 30, app: 196, fk: 334, db: { x: 398, w: 150 }, chipX: 474, chipW: 112, lanes: [96, 176, 266], top: 52, bottom: 306, appBottom: 214 },
+    narrow: { view: [360, 352], start: 22, app: 120, fk: 212, db: { x: 246, w: 106 }, chipX: 300, chipW: 90, lanes: [96, 176, 266], top: 52, bottom: 306, appBottom: 214 },
+  };
+  const LANES = [
+    { title: '① 없는 상품을 장바구니에', short: '① 없는 상품 담기', table: 'cart_items', hue: 'var(--scene-hue-violet)', packet: 'INSERT' },
+    { title: '② 상품 삭제', short: '② 상품 삭제', table: 'products', hue: 'var(--scene-hue-amber)', packet: 'DELETE' },
+    { title: '③ 서비스 코드를 거치지 않은 INSERT', short: '③ 코드 밖 INSERT', table: 'orders', hue: 'var(--scene-hue-violet)', packet: 'INSERT' },
+  ];
+  const NOTES: Record<Mode, string> = {
+    on: '교차 FK가 걸려 있습니다. ①은 서비스 코드의 단가 캐시에서, ②는 삭제가 상태 변경으로 바뀌어 FK까지 가지 않습니다. FK가 직접 막는 것은 ③뿐입니다.',
+    off: '교차 FK를 걷어 냈습니다. ①과 ②의 결과는 그대로입니다. ③만 달라져서, 부모 없는 행이 그대로 저장됩니다. 이 보장은 이제 서비스 코드와 이벤트 처리에 달려 있습니다.',
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="fk-guard"]').forEach((demo) => {
+    const root = demo.querySelector<SVGSVGElement>('[data-fk-svg]')!;
+    const note = demo.querySelector<HTMLElement>('[data-fk-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-fk-mode]')];
+    const sendButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-fk-send]')];
+    let narrow = false;
+    let mode: Mode = 'on';
+    let blocked = 0;
+    let sent = 0;
+    const L = () => (narrow ? LAYOUT.narrow : LAYOUT.wide);
+
+    // 바탕: 열 제목, 차선, DB 상자
+    const headers = ['요청', '서비스 코드', '교차 FK', 'MySQL'].map((text) => {
+      const t = svg('text', { class: 'scene-caption', 'text-anchor': 'middle' }, root);
+      t.textContent = text;
+      return t;
+    });
+    const db = createBoundary(root, '');
+    const tracks = LANES.map(() => svg('path', { class: 'scene-line', 'stroke-dasharray': '2 6' }, root));
+    tracks.forEach((t) => { t.style.stroke = 'color-mix(in srgb, var(--scene-dep) 45%, transparent)'; t.style.strokeWidth = '1.5'; });
+    const titles = LANES.map(() => svg('text', { class: 'scene-label scene-label-dep is-sans', 'text-anchor': 'start' }, root));
+
+    // 관문: 서비스 코드(초록 막대), 교차 FK(위험 점선 벽)
+    const appGate = svg('rect', { rx: 8, width: 22 }, root);
+    appGate.style.fill = 'var(--scene-flow-soft)';
+    appGate.style.stroke = 'var(--scene-flow)';
+    appGate.style.strokeWidth = '1.5';
+    const fkGhost = svg('line', { class: 'scene-line', 'stroke-dasharray': '2 5' }, root);
+    fkGhost.style.stroke = 'var(--hairline)';
+    const fkWall = svg('line', { class: 'scene-line', 'stroke-dasharray': '7 5' }, root);
+    fkWall.style.stroke = 'var(--scene-danger)';
+    fkWall.style.strokeWidth = '3.5';
+    const fkStrike = svg('line', { class: 'scene-strike' }, root);
+
+    const chips = LANES.map((lane) => createChip(root, { label: lane.table, hue: lane.hue, width: LAYOUT.wide.chipW }));
+    const narrowChips = LANES.map((lane) => createChip(root, { label: lane.table, hue: lane.hue, width: LAYOUT.narrow.chipW }));
+    const verdicts = LANES.map(() => svg('text', { class: 'scene-label is-sans' }, root));
+    const tally = svg('text', { class: 'scene-label is-sans', 'text-anchor': 'middle' }, root);
+    tally.style.fill = 'var(--slate)';
+    const lanesLayer = LANES.map(() => createPacketLayer(root));
+
+    const setVerdict = (i: number, text: string, tone: 'flow' | 'danger' | 'temp' | 'clear', at?: Point, anchor: 'start' | 'middle' | 'end' = 'middle') => {
+      const v = verdicts[i];
+      v.textContent = text;
+      v.style.fill = tone === 'clear' ? 'transparent' : tone === 'flow' ? 'var(--scene-flow-ink)' : `var(--scene-${tone})`;
+      if (at) setAttrs(v, { x: at.x, y: at.y, 'text-anchor': anchor });
+    };
+    const updateTally = () => {
+      tally.textContent = `보낸 요청 ${sent} · 교차 FK가 직접 막은 요청 ${blocked}`;
+    };
+
+    const scene = createScene<State>({ fk: 1, strike: 0 }, (state) => {
+      const l = L();
+      const [width] = l.view;
+      [l.start + 12, l.app, l.fk, l.db.x + l.db.w / 2].forEach((x, i) => setAttrs(headers[i], { x, y: 30 }));
+      setAttrs(headers[0], { 'text-anchor': 'start', x: l.start });
+      db.place({ x: l.db.x, y: l.top - 6, w: l.db.w, h: l.bottom - l.top + 12 });
+      LANES.forEach((lane, i) => {
+        const y = l.lanes[i];
+        setAttrs(tracks[i], { d: `M ${l.start} ${y} L ${l.db.x} ${y}` });
+        titles[i].textContent = narrow ? lane.short : lane.title;
+        setAttrs(titles[i], { x: l.start, y: y - 20 });
+        const wideOn = !narrow;
+        chips[i].place({ x: l.chipX, y }, wideOn ? 1 : 0);
+        narrowChips[i].place({ x: l.chipX, y }, wideOn ? 0 : 1);
+      });
+      setAttrs(appGate, { x: l.app - 11, y: l.top, height: l.appBottom - l.top });
+      const wallTop = l.top + (l.bottom - l.top) * (1 - state.fk);
+      setAttrs(fkWall, { x1: l.fk, y1: wallTop, x2: l.fk, y2: l.bottom, opacity: state.fk > 0.01 ? 1 : 0 });
+      setAttrs(fkGhost, { x1: l.fk, y1: l.top, x2: l.fk, y2: l.bottom, opacity: 1 - state.fk });
+      const hw = 30;
+      setAttrs(fkStrike, { x1: l.fk - hw, y1: 26, x2: l.fk - hw + hw * 2 * state.strike, y2: 26, opacity: state.strike > 0.01 ? 1 : 0 });
+      headers[2].style.fill = state.fk > 0.5 ? 'var(--scene-danger)' : 'var(--slate)';
+      setAttrs(tally, { x: width / 2, y: l.view[1] - 8 });
+    });
+
+    const laneRun = [0, 0, 0];
+    const send = async (i: number) => {
+      const id = ++laneRun[i];
+      const alive = () => id === laneRun[i];
+      const layer = lanesLayer[i];
+      layer.clear();
+      setVerdict(i, '', 'clear');
+      chips[i].flash('is-orphan', false);
+      narrowChips[i].flash('is-orphan', false);
+      const l = L();
+      const y = l.lanes[i];
+      sent += 1;
+      updateTally();
+      const p: Packet = layer.spawn({ label: LANES[i].packet, at: { x: l.start + 22, y } });
+      const below = (x: number) => ({ x, y: y + 24 });
+
+      if (i === 0) {
+        // 서비스 코드의 단가 캐시에 없음 → ORD-009로 거절
+        if (!(await p.bounce({ x: l.app - 40, y }))) return;
+        if (!alive()) return;
+        if (narrow) setVerdict(0, 'ORD-009 거절', 'danger', below(l.start), 'start');
+        else setVerdict(0, '단가 캐시에 없음 · ORD-009', 'danger', below(l.app - 18), 'end');
+        await scene.pause(duration.read);
+        if (alive()) await p.fade();
+        return;
+      }
+      if (i === 1) {
+        // 관문에서 DELETE가 상태 변경으로 바뀌어 FK를 그냥 지나감
+        if (!(await p.travel([{ x: l.app, y }], 620, ease.out)) || !alive()) return;
+        p.relabel('UPDATE', 'flow');
+        setVerdict(1, narrow ? '상태만 변경' : '삭제 대신 DISCONTINUED', 'flow', below(l.app + 18), 'start');
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        if (!(await p.travel([{ x: l.chipX - (narrow ? 72 : 82), y }], 760)) || !alive()) return;
+        await p.land();
+        (narrow ? narrowChips : chips)[1].flash('is-ok');
+        await scene.pause(duration.read);
+        if (alive()) await p.fade();
+        return;
+      }
+      // ③ 서비스 코드 관문이 없는 길로 곧장 FK 관문까지
+      if (scene.state.fk > 0.5) {
+        if (!(await p.travel([{ x: l.fk - 70, y }], 900, ease.linear)) || !alive()) return;
+        if (!(await p.bounce({ x: l.fk - 30, y })) || !alive()) return;
+        blocked += 1;
+        updateTally();
+        setVerdict(2, 'FK 위반 · 거절', 'danger', below(l.fk - 14), 'end');
+        await scene.pause(duration.read);
+        if (alive()) await p.fade();
+        return;
+      }
+      if (!(await p.travel([{ x: l.chipX, y: y + 26 }], 900)) || !alive()) return;
+      p.relabel('user 999?', 'danger');
+      await p.land();
+      (narrow ? narrowChips : chips)[2].flash('is-orphan');
+      (narrow ? narrowChips : chips)[2].flash('is-shaking');
+      setVerdict(2, '부모 없는 행이 저장됨', 'danger', below(l.fk - 14), 'end');
+    };
+
+    const markNext = () => {
+      sendButtons.forEach((b) => b.removeAttribute('data-state'));
+      modeButtons.forEach((b) => b.removeAttribute('data-state'));
+    };
+    const setMode = async (next: Mode) => {
+      if (next === mode) return;
+      mode = next;
+      allRun += 1;
+      modeButtons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.fkMode === mode)));
+      lanesLayer.forEach((layer, i) => { laneRun[i] += 1; layer.clear(); setVerdict(i, '', 'clear'); chips[i].flash('is-orphan', false); narrowChips[i].flash('is-orphan', false); });
+      sent = 0;
+      blocked = 0;
+      updateTally();
+      note.textContent = NOTES[mode];
+      markNext();
+      const alive = scene.begin();
+      if (mode === 'off') {
+        // 끊어 냈다: 이름에 취소선 → 벽이 걷힘
+        await scene.go({ fk: 1, strike: 1 }, duration.cut);
+        if (!alive()) return;
+        await scene.go({ fk: 0, strike: 1 }, duration.draw);
+      } else {
+        await scene.go({ fk: 1, strike: 0 }, duration.draw);
+      }
+      if (!alive()) return;
+      sendButtons.find((b) => b.dataset.fkSend === 'all')?.setAttribute('data-state', 'next');
+    };
+    let allRun = 0;
+    const sendAll = async () => {
+      const id = ++allRun;
+      for (const i of [0, 1, 2]) {
+        if (id !== allRun) return;
+        void send(i);
+        await scene.pause(260);
+      }
+    };
+
+    sendButtons.forEach((button) => button.addEventListener('click', () => {
+      markNext();
+      const which = button.dataset.fkSend!;
+      if (which === 'all') void sendAll();
+      else void send(Number(which));
+      if (mode === 'on') window.setTimeout(() => modeButtons[1].setAttribute('data-state', 'next'), duration.read);
+    }));
+    modeButtons.forEach((button) => button.addEventListener('click', () => { void setMode(button.dataset.fkMode as Mode); }));
+
+    watchNarrow(demo, (isNarrow) => {
+      narrow = isNarrow;
+      allRun += 1;
+      lanesLayer.forEach((layer, i) => { laneRun[i] += 1; layer.clear(); setVerdict(i, '', 'clear'); });
+      setAttrs(root, { viewBox: `0 0 ${L().view[0]} ${L().view[1]}` });
+      scene.redraw();
+    });
+    note.textContent = NOTES.on;
+    updateTally();
+
+    // 처음 화면에 들어오면 한 번 보내 봅니다.
+    let played = false;
+    watchDemoPlayback(demo, ({ shouldPlay }) => {
+      if (!shouldPlay || played) return;
+      played = true;
+      window.setTimeout(() => { if (sent === 0) void sendAll(); }, 500);
+    }, { threshold: 0.5 });
+  });
+</script>
+
+<style>
+  [data-blog-demo="fk-guard"] .db-demo-controls { margin-bottom: 0; }
+  [data-blog-demo="fk-guard"] .scene-chips { margin-top: 12px; }
+</style>

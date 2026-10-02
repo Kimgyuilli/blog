@@ -2,13 +2,20 @@
 // 개발 서버에서만 보이는 도구 페이지. 운영 빌드에서는 경로를 만들지 않습니다.
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import SceneKitShowcase from '@/components/dev/SceneKitShowcase.astro';
+import DemoGallery from '@/components/dev/DemoGallery.astro';
 
 export function getStaticPaths() {
   if (!import.meta.env.DEV) return [];
-  return [{ params: { page: 'scene-kit' } }];
+  return [{ params: { page: 'scene-kit' } }, { params: { page: 'demos' } }];
 }
 ---
 
-<BaseLayout title="장면 키트">
-  <SceneKitShowcase />
-</BaseLayout>
+{Astro.params.page === 'demos' ? (
+  <BaseLayout title="데모 모음">
+    <DemoGallery />
+  </BaseLayout>
+) : (
+  <BaseLayout title="장면 키트">
+    <SceneKitShowcase />
+  </BaseLayout>
+)}

@@ -1,0 +1,260 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import '../../styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="retention-boundary" ariaLabel="멱등성 기록 보존 기간과 DLQ 재처리 창의 끝 경계를 확대해 보는 실험" title="7일과 7일 사이, 5분을 확대해 보면" description="9일 축에서는 보이지 않는 차이를 렌즈로 키웠습니다. 정리 잡의 시계를 조금 앞당긴 뒤 창 끝에서 재처리를 보내 보세요.">
+  <DemoControls ariaLabel="보존 기간 규칙 선택">
+    <button type="button" data-rule="old" aria-pressed="true">PR3: 보존 7일 ≥ 창 7일</button>
+    <button type="button" data-rule="new" aria-pressed="false">현재: 9일 ≥ 7일 + 5분 + 1일</button>
+  </DemoControls>
+  <label class="scene-range">
+    <span>정리 잡 시계가 앞선 정도</span>
+    <input type="range" min="0" max="5" step="0.5" value="0" data-skew aria-describedby="retention-skew-out" />
+    <output id="retention-skew-out" data-skew-out>0분</output>
+  </label>
+  <div class="scene-stage">
+    <svg data-retention-svg role="img" aria-label="0일부터 9일까지의 축 위에 DLQ 재처리 창과 processed_events 보존 기간을 그리고, 7일 경계 앞뒤 10분을 확대한 그림"></svg>
+  </div>
+  <div class="scene-chips" role="group" aria-label="재처리">
+    <button type="button" class="scene-chip is-plain" data-replay>↻ 창 끝에서 재처리 보내기</button>
+  </div>
+  <p class="scene-note" data-retention-note role="status"></p>
+  <p class="db-demo-disclaimer">시계 오차는 정리 잡의 시계가 앞선 경우 하나만 모형으로 그렸습니다. 정리 안전 예산 1일은 ADR-0020 규칙의 항으로만 표시했고, 그 근거가 되는 정리 주기의 동작은 그리지 않았습니다. 실제 중복 처리 빈도는 측정하지 않았고, Kafka 토픽 설정과 하한 입력값의 일치 여부도 이 장면에서는 다루지 않습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, ease, setAttrs, svg, watchNarrow } from '../../scripts/blog/scene/core';
+  import { createLens } from '../../scripts/blog/scene/parts';
+  import { createPacketLayer } from '../../scripts/blog/scene/packets';
+  import { watchDemoPlayback } from '../../scripts/blog/watch-demo-playback';
+
+  type Rule = 'old' | 'new';
+  /** rule 0 = PR3(7일), 1 = 현재(9일). skew는 정리 잡 시계가 앞선 분. */
+  type State = { rule: number; skew: number; lens: number };
+  const DAY_MIN = 1440;
+  const LENS_SPAN = 10; // 확대 구간: 7일 앞뒤 10분
+  const LAYOUT = {
+    wide: { view: [560, 370], left: 40, right: 520, rowA: 72, rowB: 122, panel: { y: 178, h: 150 }, status: 354 },
+    narrow: { view: [360, 380], left: 22, right: 338, rowA: 72, rowB: 122, panel: { y: 180, h: 156 }, status: 364 },
+  } as const;
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="retention-boundary"]').forEach((demo) => {
+    const root = demo.querySelector<SVGSVGElement>('[data-retention-svg]')!;
+    const note = demo.querySelector<HTMLElement>('[data-retention-note]')!;
+    const buttons = [...demo.querySelectorAll<HTMLButtonElement>('[data-rule]')];
+    const slider = demo.querySelector<HTMLInputElement>('[data-skew]')!;
+    const skewOut = demo.querySelector<HTMLOutputElement>('[data-skew-out]')!;
+    const replayButton = demo.querySelector<HTMLButtonElement>('[data-replay]')!;
+    let narrow = false;
+    let rule: Rule = 'old';
+    const L = () => (narrow ? LAYOUT.narrow : LAYOUT.wide);
+
+    // ── 큰 축 (0~9일) ───────────────────────
+    const axis = svg('line', { class: 'scene-line' }, root);
+    axis.style.stroke = 'var(--hairline)';
+    axis.style.strokeWidth = '1.5';
+    const ticks = Array.from({ length: 10 }, (_, day) => {
+      const t = svg('text', { class: 'scene-label scene-label-dep', 'text-anchor': 'middle' }, root);
+      t.textContent = day === 0 || day === 7 || day === 9 ? `${day}일` : `${day}`;
+      return t;
+    });
+    const tickMarks = Array.from({ length: 10 }, () => svg('line', { class: 'scene-line' }, root));
+    tickMarks.forEach((m) => { m.style.stroke = 'var(--hairline)'; m.style.strokeWidth = '1'; });
+    const labelA = svg('text', { class: 'scene-label scene-label-dep is-sans' }, root);
+    labelA.textContent = 'DLQ 재처리 창 7일';
+    const labelB = svg('text', { class: 'scene-label scene-label-dep is-sans' }, root);
+    const barA = svg('rect', { rx: 6, height: 14 }, root);
+    barA.style.fill = 'color-mix(in srgb, var(--scene-temp) 70%, transparent)';
+    const barB = svg('rect', { rx: 6, height: 14 }, root);
+    barB.style.fill = 'color-mix(in srgb, var(--scene-flow) 72%, transparent)';
+    const floorMark = svg('line', { class: 'scene-line', 'stroke-dasharray': '3 3' }, root);
+    floorMark.style.stroke = 'var(--scene-flow-ink)';
+    floorMark.style.strokeWidth = '1.5';
+    const floorText = svg('text', { class: 'scene-label scene-label-flow is-sans', 'text-anchor': 'middle' }, root);
+    floorText.textContent = '하한 8일 5분';
+
+    // ── 렌즈 (7일 ± 10분) ──────────────────
+    const lens = createLens(root, '7일 경계 앞뒤 10분 확대');
+    const lensLayer = svg('g', {}, root);
+    const lensTicks = ['−10분', '−5분', '7일', '+5분', '+10분'].map((text) => {
+      const t = svg('text', { class: 'scene-label scene-label-dep', 'text-anchor': 'middle' }, lensLayer);
+      t.textContent = text;
+      return t;
+    });
+    const lensA = svg('rect', { rx: 5, height: 14 }, lensLayer);
+    lensA.style.fill = 'color-mix(in srgb, var(--scene-temp) 70%, transparent)';
+    const lensB = svg('rect', { rx: 5, height: 14 }, lensLayer);
+    lensB.style.fill = 'color-mix(in srgb, var(--scene-flow) 72%, transparent)';
+    const budget = svg('rect', { height: 14 }, lensLayer);
+    budget.style.fill = 'color-mix(in srgb, var(--scene-flow-ink) 85%, transparent)';
+    const budgetText = svg('text', { class: 'scene-label scene-label-flow is-sans', 'text-anchor': 'middle' }, lensLayer);
+    budgetText.textContent = '시계 오차 예산 5분';
+    const windowEnd = svg('line', { class: 'scene-line', 'stroke-dasharray': '4 4' }, lensLayer);
+    windowEnd.style.stroke = 'var(--scene-temp)';
+    windowEnd.style.strokeWidth = '1.6';
+    const windowText = svg('text', { class: 'scene-label is-sans', 'text-anchor': 'end' }, lensLayer);
+    windowText.style.fill = 'var(--scene-temp)';
+    windowText.textContent = '재처리 창 끝';
+    const cut = svg('line', { class: 'scene-line' }, lensLayer);
+    cut.style.stroke = 'var(--scene-danger)';
+    cut.style.strokeWidth = '2.5';
+    const cutText = svg('text', { class: 'scene-label scene-label-danger is-sans' }, lensLayer);
+    const status = svg('text', { class: 'scene-label is-sans', 'text-anchor': 'middle' }, root);
+    status.style.fontSize = '12.5px';
+    const packets = createPacketLayer(root);
+
+    const geometry = (state: State) => {
+      const l = L();
+      const dayX = (d: number) => l.left + ((l.right - l.left) * d) / 9;
+      const panel = { x: l.left, y: l.panel.y, w: l.right - l.left, h: l.panel.h };
+      const mid = panel.x + panel.w / 2;
+      const perMin = (panel.w - 40) / (LENS_SPAN * 2);
+      const lensX = (offsetMin: number) => mid + Math.max(-LENS_SPAN - 0.8, Math.min(LENS_SPAN + 0.8, offsetMin)) * perMin;
+      const recordEndDays = 7 + 2 * state.rule - state.skew / DAY_MIN;
+      const recordEndOffset = (recordEndDays - 7) * DAY_MIN; // 7일 기준 분
+      return { l, dayX, panel, mid, perMin, lensX, recordEndDays, recordEndOffset, laneA: panel.y + 78, laneB: panel.y + 118 };
+    };
+
+    const scene = createScene<State>({ rule: 0, skew: 0, lens: 1 }, (state) => {
+      const g = geometry(state);
+      const { l, dayX, panel, lensX } = g;
+      setAttrs(axis, { x1: l.left, y1: 40, x2: l.right, y2: 40 });
+      ticks.forEach((t, day) => {
+        setAttrs(t, { x: dayX(day), y: 28 });
+        t.style.opacity = narrow && day !== 0 && day !== 7 && day !== 9 && day % 2 === 1 ? '0' : '1';
+      });
+      tickMarks.forEach((m, day) => setAttrs(m, { x1: dayX(day), y1: 36, x2: dayX(day), y2: 44 }));
+      setAttrs(labelA, { x: l.left, y: l.rowA - 8 });
+      setAttrs(barA, { x: l.left, y: l.rowA, width: dayX(7) - l.left });
+      labelB.textContent = `processed_events 보존 ${state.rule > 0.5 ? '9일' : '7일'}`;
+      setAttrs(labelB, { x: l.left, y: l.rowB - 8 });
+      setAttrs(barB, { x: l.left, y: l.rowB, width: Math.max(0, dayX(g.recordEndDays) - l.left) });
+      const floorX = dayX(8 + 5 / DAY_MIN);
+      setAttrs(floorMark, { x1: floorX, y1: l.rowB - 6, x2: floorX, y2: l.rowB + 22, opacity: state.rule });
+      setAttrs(floorText, { x: floorX, y: l.rowB + 34, opacity: state.rule });
+
+      // 렌즈: 큰 축의 7일 지점 → 아래 패널
+      const src = { x: dayX(7) - 6, y: l.rowA - 6, w: 12, h: l.rowB - l.rowA + 26 };
+      const p = lens.place(src, panel, state.lens);
+      lensLayer.style.opacity = String(Math.max(0, (state.lens - 0.7) / 0.3));
+      const top = p.y + 48;
+      [-10, -5, 0, 5, 10].forEach((m, i) => setAttrs(lensTicks[i], { x: lensX(m), y: top }));
+      setAttrs(lensA, { x: panel.x + 14, y: g.laneA - 7, width: lensX(0) - panel.x - 14 });
+      const bEnd = Math.min(lensX(g.recordEndOffset), panel.x + panel.w - 10);
+      setAttrs(lensB, { x: panel.x + 14, y: g.laneB - 7, width: Math.max(0, bEnd - panel.x - 14) });
+      setAttrs(budget, { x: lensX(0), y: g.laneB - 7, width: lensX(5) - lensX(0), opacity: state.rule });
+      setAttrs(budgetText, { x: (lensX(0) + lensX(5)) / 2, y: g.laneB + 22, opacity: state.rule });
+      setAttrs(windowEnd, { x1: lensX(0), y1: top + 8, x2: lensX(0), y2: g.laneB + 12 });
+      setAttrs(windowText, { x: lensX(0) - 6, y: g.laneA - 13 });
+      const cutX = lensX(g.recordEndOffset);
+      const cutVisible = state.rule < 0.5 ? 1 : 0;
+      setAttrs(cut, { x1: cutX, y1: g.laneB - 14, x2: cutX, y2: g.laneB + 12, opacity: cutVisible });
+      cutText.textContent = state.skew > 0.01 ? `정리 잡이 지우는 지점 (−${fmt(state.skew)})` : '정리 잡이 지우는 지점';
+      setAttrs(cutText, { x: cutX - 4, y: g.laneB + 26, 'text-anchor': narrow ? 'middle' : 'end', opacity: cutVisible });
+      if (narrow) setAttrs(cutText, { x: Math.max(panel.x + 70, cutX) });
+      setAttrs(status, { x: l.view[0] / 2, y: l.status });
+    });
+
+    function fmt(min: number) {
+      return Number.isInteger(min) ? `${min}분` : `${Math.floor(min)}분 30초`;
+    }
+    const verdict = () => {
+      const skew = Number(slider.value);
+      if (rule === 'new') return { tone: 'flow', text: '✓ 창이 끝나도 기록이 남아 있어 같은 eventId를 건너뜁니다', short: '✓ 기록이 남아 있어 건너뜁니다', note: `현재 규칙은 7일 + 5분 + 1일 = 8일 5분 이상을 요구하고, 보존 기간 9일이 이를 넘깁니다. 정리 잡 시계가 ${skew > 0 ? `${fmt(skew)}` : '최대 5분'} 앞서도 창 끝의 재처리는 기록을 찾습니다.` } as const;
+      if (skew <= 0) return { tone: 'temp', text: '여유 0: 기록이 지워지는 순간과 창 끝이 같습니다', short: '여유 0: 삭제 순간 = 창 끝', note: 'PR3의 규칙(보존 ≥ 창)은 7일 == 7일을 통과시켰습니다. 시계가 정확할 때만 창 끝과 삭제 기준이 겹칩니다. 슬라이더로 정리 잡 시계를 조금만 앞당겨 보세요.' } as const;
+      return { tone: 'danger', text: `✕ ${fmt(skew)} 먼저 지워져, 창 끝의 재처리가 같은 이벤트를 다시 처리합니다`, short: `✕ ${fmt(skew)} 먼저 지워져 다시 처리합니다`, note: `정리 잡의 시계가 ${fmt(skew)} 앞서면 cutoff도 ${fmt(skew)} 앞당겨집니다. 창 안에서 온 재처리인데 processed_events에는 이미 기록이 없습니다.` } as const;
+    };
+    const refresh = () => {
+      const v = verdict();
+      status.textContent = narrow ? v.short : v.text;
+      status.style.fill = v.tone === 'flow' ? 'var(--scene-flow-ink)' : `var(--scene-${v.tone})`;
+      note.textContent = v.note;
+      note.classList.toggle('is-alert', v.tone === 'danger');
+    };
+
+    let replayRun = 0;
+    const replay = async () => {
+      const id = ++replayRun;
+      const alive = () => id === replayRun;
+      packets.clear();
+      const g = geometry(scene.state);
+      // 큰 축: 재처리가 창을 따라 7일 끝까지
+      const p = packets.spawn({ label: 'e-42', tone: 'temp', at: { x: g.l.left + 18, y: g.l.rowA + 7 } });
+      if (!(await p.travel([{ x: g.dayX(7) - 18, y: g.l.rowA + 7 }], 1500, ease.standard)) || !alive()) return;
+      await p.fade(220);
+      if (!alive()) return;
+      // 렌즈 안: 창 끝에서 기록 줄로 떨어져 조회
+      const now = geometry(scene.state);
+      const q = packets.spawn({ label: 'e-42', tone: 'temp', at: { x: now.lensX(0), y: now.laneA } });
+      const found = now.recordEndOffset > 0.001;
+      if (found) {
+        if (!(await q.travel([{ x: now.lensX(0), y: now.laneB - 18 }], 520, ease.out)) || !alive()) return;
+        q.relabel('건너뜀 ✓', 'flow');
+        await q.land(false);
+        return;
+      }
+      if (now.recordEndOffset > -0.001) {
+        // 경계가 정확히 겹칠 때: 아슬아슬하게 닿음
+        if (!(await q.travel([{ x: now.lensX(0), y: now.laneB - 18 }], 520, ease.out)) || !alive()) return;
+        q.relabel('간신히 ✓', 'temp');
+        await q.land(false);
+        return;
+      }
+      // 기록이 있어야 할 자리를 그대로 지나 내려감
+      if (!(await q.travel([{ x: now.lensX(0), y: now.laneB }], 700, ease.standard)) || !alive()) return;
+      q.relabel('다시 처리 ✕', 'danger');
+      q.group.classList.add('is-hit');
+      await scene.pause(duration.read);
+      if (alive()) await q.fade();
+    };
+
+    const select = (next: Rule) => {
+      rule = next;
+      buttons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.rule === rule)));
+      replayRun += 1;
+      packets.clear();
+      refresh();
+      void scene.go({ ...scene.state, rule: rule === 'new' ? 1 : 0 }, duration.draw);
+    };
+    buttons.forEach((button) => button.addEventListener('click', () => select(button.dataset.rule as Rule)));
+    // 슬라이더는 직접 조작이라 보간 없이 바로 따라갑니다.
+    slider.addEventListener('input', () => {
+      const skew = Number(slider.value);
+      bumpText(skewOut, fmt(skew));
+      replayRun += 1;
+      packets.clear();
+      scene.set({ ...scene.state, skew });
+      refresh();
+      replayButton.setAttribute('data-state', 'next');
+    });
+    replayButton.addEventListener('click', () => { replayButton.removeAttribute('data-state'); void replay(); });
+
+    watchNarrow(demo, (isNarrow) => {
+      narrow = isNarrow;
+      const [w, h] = L().view;
+      setAttrs(root, { viewBox: `0 0 ${w} ${h}` });
+      packets.clear();
+      scene.redraw();
+      refresh();
+    });
+    refresh();
+
+    // 렌즈는 처음부터 펼쳐 둡니다. 처음 화면에 들어오면 한 번 접었다 펼치며 재처리를 보냅니다.
+    let played = false;
+    let touched = false;
+    [slider, replayButton, ...buttons].forEach((el) => el.addEventListener('pointerdown', () => { touched = true; }));
+    watchDemoPlayback(demo, ({ shouldPlay }) => {
+      if (played || !shouldPlay || touched) return;
+      played = true;
+      void (async () => {
+        scene.set({ ...scene.state, lens: 0 });
+        await scene.pause(300);
+        if (touched) { scene.set({ ...scene.state, lens: 1 }); return; }
+        await scene.go({ ...scene.state, lens: 1 }, duration.draw);
+        if (!touched) await replay();
+      })();
+    }, { threshold: 0.5 });
+  });
+</script>

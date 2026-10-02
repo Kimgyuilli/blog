@@ -1,0 +1,188 @@
+---
+/**
+ * 글 속 데모 모음. 개발 서버의 /dev/demos/ 에서만 보입니다.
+ * 새 장면을 만들기 전에 기존 장면과 외부 레퍼런스를 한자리에서 비교해 보는 용도입니다.
+ * 데모를 새로 만들면 아래 groups에 한 줄을 추가합니다.
+ */
+import SharedBootOrder from '../blog/SharedBootOrder.astro';
+import FkGuardDemo from '../blog/FkGuardDemo.astro';
+import DbSeparationSteps from '../blog/DbSeparationSteps.astro';
+import RetentionBoundary from '../blog/RetentionBoundary.astro';
+import PeelDependencyGraph from '../blog/PeelDependencyGraph.astro';
+import PeelMigrationSteps from '../blog/PeelMigrationSteps.astro';
+import PeelSequenceDiagram from '../blog/PeelSequenceDiagram.astro';
+import ThreadSchedulerLens from '../blog/ThreadSchedulerLens.astro';
+import CpuQuotaExperiment from '../blog/CpuQuotaExperiment.astro';
+import RunqueuePolicyMotion from '../blog/RunqueuePolicyMotion.astro';
+import ExecutionLayersDiagram from '../blog/ExecutionLayersDiagram.astro';
+import SliceDistributionMotion from '../blog/SliceDistributionMotion.astro';
+import NormalizationDemo from '../blog/NormalizationDemo.astro';
+import JoinDemo from '../blog/JoinDemo.astro';
+import MotionJoinDemo from '../blog/MotionJoinDemo.astro';
+import IndexLookupDemo from '../blog/IndexLookupDemo.astro';
+import RelationMapMotion from '../blog/RelationMapMotion.astro';
+import TransactionMotion from '../blog/TransactionMotion.astro';
+
+type Demo = { name: string; Component: any; form: string; motions: string[] };
+type Group = { id: string; title: string; slug: string; draft?: boolean; note?: string; demos: Demo[] };
+
+const groups: Group[] = [
+  {
+    id: 'db-split', title: '공유 DB는 어떻게 나눌 수 있을까요?', slug: 'peekcart-db-per-service-schema', draft: true,
+    demos: [
+      { name: 'SharedBootOrder', Component: SharedBootOrder, form: '조건 바꾸고 다시 실행', motions: ['요청이 지나간다 (패킷 흐름)', '기다린다', '하나가 여럿으로 갈라졌다', '수치가 바뀌었다'] },
+      { name: 'FkGuardDemo', Component: FkGuardDemo, form: '직접 해 보기', motions: ['요청이 지나간다', '막혔다 (튕김)', '관문에서 바뀌었다', '끊어 냈다', '실패 (흔들림)'] },
+      { name: 'DbSeparationSteps', Component: DbSeparationSteps, form: '타임라인', motions: ['끊어 냈다', '옮겨졌다 (물결 비행)', '하나가 여럿으로 갈라졌다', '경계가 바뀌었다'] },
+      { name: 'RetentionBoundary', Component: RetentionBoundary, form: '값 직접 움직이기', motions: ['작은 차이를 확대해 본다 (렌즈)', '값을 직접 움직인다', '요청이 지나간다'] },
+    ],
+  },
+  {
+    id: 'cpu', title: 'CPU는 무엇을 실행할까? 프로세스에서 가상 스레드와 cgroup까지', slug: 'process-os-threads-virtual-threads-cgroup-cpu',
+    demos: [
+      { name: 'ThreadSchedulerLens', Component: ThreadSchedulerLens, form: '시선 바꾸기', motions: ['실려 함께 움직인다', '옮겨졌다 (호)', '실패 (흔들림)'] },
+      { name: 'CpuQuotaExperiment', Component: CpuQuotaExperiment, form: '직접 해 보기', motions: ['예산이 줄고 다시 찬다', '새 흐름', '수치가 바뀌었다'] },
+      { name: 'RunqueuePolicyMotion', Component: RunqueuePolicyMotion, form: '조건 바꾸기', motions: ['옮겨졌다 (호)', '새 흐름', '경계'] },
+      { name: 'ExecutionLayersDiagram', Component: ExecutionLayersDiagram, form: '타임라인', motions: ['실려 함께 움직인다', '예산 게이지', '옮겨졌다 (호)'] },
+      { name: 'SliceDistributionMotion', Component: SliceDistributionMotion, form: '타임라인', motions: ['예산이 줄고 다시 찬다', '옮겨졌다 (호)', '실패 (흔들림)'] },
+    ],
+  },
+  {
+    id: 'peel', title: '모놀리스를 어떻게 나눌 수 있을까', slug: 'peekcart-monolith-peel-order', note: '품질 기준이 된 글입니다.',
+    demos: [
+      { name: 'PeelDependencyGraph', Component: PeelDependencyGraph, form: '직접 해 보기 + 시선 바꾸기', motions: ['방향이 반대다', '끊어졌다', '결과를 확인한다 (로그)'] },
+      { name: 'PeelMigrationSteps', Component: PeelMigrationSteps, form: '타임라인', motions: ['끊어 냈다', '새 흐름이 생겼다', '경계가 바뀌었다'] },
+      { name: 'PeelSequenceDiagram', Component: PeelSequenceDiagram, form: '타임라인', motions: ['옮겨졌다 (FLIP)'] },
+    ],
+  },
+  {
+    id: 'cs7', title: 'CS 스터디 7주차: 정규화, 조인, 인덱스', slug: 'cs-database-normalization-joins-indexes',
+    note: '장면 키트 이전에 만든 데모입니다. 키트를 쓰지 않아 비교용으로 둡니다.',
+    demos: [
+      { name: 'NormalizationDemo', Component: NormalizationDemo, form: '패널 전환', motions: [] },
+      { name: 'JoinDemo', Component: JoinDemo, form: '패널 전환', motions: [] },
+      { name: 'MotionJoinDemo', Component: MotionJoinDemo, form: '애니메이션', motions: [] },
+      { name: 'IndexLookupDemo', Component: IndexLookupDemo, form: '경로 비교', motions: [] },
+      { name: 'RelationMapMotion', Component: RelationMapMotion, form: '애니메이션', motions: [] },
+      { name: 'TransactionMotion', Component: TransactionMotion, form: '애니메이션', motions: [] },
+    ],
+  },
+];
+
+const external = [
+  {
+    title: '서버 모니터링 분석 가이드',
+    url: 'https://kciter.so/posts/server-monitoring-analysis-guide/',
+    look: [
+      '“대기가 쌓이는 곳”: 요청 점이 게이트웨이 → 앱 → DB로 흐르고, 단마다 용량 게이지가 함께 찹니다. 트래픽을 올리면 가장 좁은 단 앞에 점이 쌓입니다.',
+      '“캐시 히트율이 무너지는 순간”: 위 히트율 그래프, 가운데 요청 흐름(HIT/DB), 아래 DB QPS 그래프가 같은 시간 커서로 함께 움직입니다.',
+      '“두 대시보드가 서로 다른 말을 할 때”: 게이트웨이가 보는 세상(504)과 백엔드가 보는 세상(아직 처리 중)을 나란히 둡니다.',
+      '트래픽 이상 패턴: 평소·급락·급증·새벽 스파이크 네 그래프가 동시에 그려집니다.',
+    ],
+  },
+  {
+    title: '바보야, 문제는 경계야!',
+    url: 'https://kciter.so/posts/it-is-the-boundary-stupid/',
+    look: ['“인프라 경계”: processOrder 하나가 서비스 경계를 넘을 때, 결제 성공 · 재고 실패 · 알림 미실행이 한 그림에서 갈라집니다. 이 블로그의 DB 분리 글과 주제가 가깝습니다.'],
+  },
+  {
+    title: '애니메이션을 설계하는 방법',
+    url: 'https://kciter.so/posts/how-to-design-animation/',
+    look: ['원칙 글입니다. 속성마다 타이밍을 따로 두고, 복잡한 움직임은 구간으로 나누며, 되감을 때 이징을 뒤집는 방식을 설명합니다.'],
+  },
+];
+---
+
+<div class="gallery">
+  <header class="gallery-intro">
+    <p class="gallery-kicker">dev only · /dev/demos/</p>
+    <h1>데모 모음</h1>
+    <p>글 속 장면을 한자리에 모았습니다. 새 장면을 만들기 전에 같은 의미를 이미 어떤 움직임으로 보여줬는지 확인하는 용도입니다. 부품 단위 견본은 <a href="/dev/scene-kit/">/dev/scene-kit/</a>, 기준은 <code>docs/animation-standards.md</code>에 있습니다.</p>
+    <nav class="gallery-nav" aria-label="모음 목차">
+      <a href="#external">외부 레퍼런스</a>
+      {groups.map((g) => <a href={`#${g.id}`}>{g.title}</a>)}
+    </nav>
+  </header>
+
+  <section id="external" class="gallery-group">
+    <h2>외부 레퍼런스 <small>kciter.so</small></h2>
+    <p class="gallery-note">목표로 삼는 수준입니다. 링크를 열어 아래 장면을 직접 조작해 보세요.</p>
+    <ul class="gallery-refs">
+      {external.map((ref) => (
+        <li>
+          <a href={ref.url} target="_blank" rel="noopener noreferrer">{ref.title} ↗</a>
+          <ul>{ref.look.map((line) => <li>{line}</li>)}</ul>
+        </li>
+      ))}
+    </ul>
+  </section>
+
+  {groups.map((group) => (
+    <section id={group.id} class="gallery-group">
+      <h2>
+        {group.title}
+        {group.draft && <span class="gallery-badge">draft</span>}
+      </h2>
+      <p class="gallery-note">
+        <a href={group.draft ? `/preview/${group.slug}/` : `/blog/${group.slug}/`}>글에서 보기 →</a>
+        {group.note && <span> · {group.note}</span>}
+      </p>
+      <div class="article-body">
+        {group.demos.map(({ name, Component, form, motions }) => (
+          <figure class="gallery-item">
+            <figcaption>
+              <code>{name}</code>
+              <span class="gallery-form">{form}</span>
+              {motions.map((m) => <span class="gallery-motion">{m}</span>)}
+            </figcaption>
+            <Component />
+          </figure>
+        ))}
+      </div>
+    </section>
+  ))}
+</div>
+
+<style>
+  .gallery {
+    width: min(100% - 32px, var(--content-width));
+    margin: 40px auto 80px;
+  }
+  .gallery-kicker { margin: 0; color: var(--brand-green-deep); font-family: var(--font-mono); font-size: 0.78rem; }
+  .gallery-intro h1 { margin: 6px 0 8px; }
+  .gallery-intro p, .gallery-note { color: var(--slate); }
+  .gallery-nav { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 14px; font-size: 0.85rem; }
+  .gallery-group { margin-top: 56px; scroll-margin-top: 80px; }
+  .gallery-group h2 { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .gallery-group h2 small { color: var(--slate); font-size: 0.8rem; font-weight: 600; }
+  .gallery-badge {
+    padding: 2px 8px;
+    border-radius: 999px;
+    color: var(--scene-temp, #b45309);
+    background: color-mix(in srgb, #f59e0b 16%, transparent);
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+  .gallery-note { margin: 0 0 8px; font-size: 0.86rem; }
+  .gallery-refs { padding-left: 1.1em; color: var(--charcoal); font-size: 0.9rem; }
+  .gallery-refs > li { margin-bottom: 14px; }
+  .gallery-refs > li > a { font-weight: 700; }
+  .gallery-refs ul { margin-top: 4px; color: var(--slate); }
+  .gallery-item { margin: 34px 0 0; }
+  .gallery-item figcaption {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: -18px;
+    font-size: 0.76rem;
+  }
+  .gallery-item figcaption code { font-weight: 700; }
+  .gallery-form, .gallery-motion {
+    padding: 2px 8px;
+    border: 1px solid var(--hairline);
+    border-radius: 999px;
+    color: var(--slate);
+    font-weight: 600;
+  }
+  .gallery-form { border-color: var(--brand-green); color: var(--brand-green-deep); }
+</style>

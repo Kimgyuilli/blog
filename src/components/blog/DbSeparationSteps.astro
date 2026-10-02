@@ -1,0 +1,331 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import SceneTimeline from './SceneTimeline.astro';
+import SceneLegend from './SceneLegend.astro';
+import '../../styles/scene.css';
+
+const steps = [
+  { name: '공유 DB', detail: '교차 FK 6' },
+  { name: 'PR1', detail: '교차 FK 0' },
+  { name: 'PR2', detail: '스키마 5' },
+  { name: 'PR3', detail: '정리 잡 7' },
+];
+---
+
+<InteractiveDemoFrame demoId="db-separation" ariaLabel="공유 스키마의 테이블이 세 PR을 거쳐 서비스별 스키마로 옮겨 가는 과정" title="테이블이 주인을 찾아갑니다" description="단계를 눌러 같은 테이블을 따라가 보세요. 한 스키마에 알파벳순으로 섞여 있던 테이블이 FK를 걷어 낸 뒤 주인 스키마로 옮겨 갑니다.">
+  <SceneTimeline ariaLabel="데이터베이스 분리 단계" steps={steps} />
+  <div class="scene-stage">
+    <svg data-separation-svg role="img" aria-label="공유 스키마의 테이블 목록과 교차 FK, FK 제거, 서비스별 스키마로 이동, 정리 잡 추가"></svg>
+  </div>
+  <SceneLegend items={[{ kind: 'danger', label: '교차 FK' }, { kind: 'dep', label: '같은 도메인 FK' }, { kind: 'flow', label: 'ID 값으로만 참조' }]} />
+  <p class="scene-note" data-separation-note role="status"></p>
+  <p class="db-demo-disclaimer">FK에 걸린 테이블과 이벤트 기록 테이블만 그렸습니다. inventories, stock_reservations, product_price_cache, payment_cancellations와 Flyway 이력 테이블은 생략했습니다. PR3 당시 구성이라 이후 생긴 notification outbox는 없습니다. 다섯 스키마는 모두 같은 MySQL 인스턴스 안에 있습니다. 스키마 권한 격리를 실행으로 검증했다는 뜻은 아닙니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { createScene, duration, ease, setAttrs, svg, watchNarrow, bumpText, type Point } from '../../scripts/blog/scene/core';
+  import { createBoundary, createChip, createNode, createPill, createArrow, landRing } from '../../scripts/blog/scene/parts';
+  import { polylineAt } from '../../scripts/blog/scene/packets';
+  import { createStepPlayer } from '../../scripts/blog/scene/step-player';
+
+  type Id = 'user' | 'product' | 'order' | 'payment' | 'notification';
+  const IDS: Id[] = ['user', 'product', 'order', 'payment', 'notification'];
+  const LABELS: Record<Id, string> = { user: 'User', product: 'Product', order: 'Order', payment: 'Payment', notification: 'Notification' };
+  const HUES: Record<Id, string> = {
+    user: 'var(--scene-hue-blue)', product: 'var(--scene-hue-amber)', order: 'var(--scene-hue-violet)',
+    payment: 'var(--scene-hue-cyan)', notification: 'var(--scene-hue-gray)',
+  };
+
+  // 칩 하나가 테이블 하나. 공유하던 기록 테이블은 서비스별 사본을 같은 자리에 겹쳐 두었다가 PR2에서 갈라 보냅니다.
+  type ChipDef = { key: string; label: string; owner: Id; shared?: 'processed' | 'outbox' };
+  const CHIPS: ChipDef[] = [
+    { key: 'users', label: 'users', owner: 'user' },
+    { key: 'products', label: 'products', owner: 'product' },
+    { key: 'carts', label: 'carts', owner: 'order' },
+    { key: 'cart_items', label: 'cart_items', owner: 'order' },
+    { key: 'orders', label: 'orders', owner: 'order' },
+    { key: 'order_items', label: 'order_items', owner: 'order' },
+    { key: 'payments', label: 'payments', owner: 'payment' },
+    { key: 'notifications', label: 'notifications', owner: 'notification' },
+    ...(['product', 'order', 'payment', 'notification'] as Id[]).map((owner) => ({ key: `processed@${owner}`, label: 'processed_events', owner, shared: 'processed' as const })),
+    ...(['product', 'order', 'payment'] as Id[]).map((owner) => ({ key: `outbox@${owner}`, label: 'outbox_events', owner, shared: 'outbox' as const })),
+  ];
+  /** 공유 스키마에서 SHOW TABLES가 돌려주는 알파벳순. */
+  const SHARED_ORDER = ['cart_items', 'carts', 'notifications', 'order_items', 'orders', 'outbox', 'payments', 'processed', 'products', 'users'];
+  const sharedIndex = (chip: ChipDef) => SHARED_ORDER.indexOf(chip.shared ?? chip.key);
+  const SPLIT_ORDER: Record<Id, string[]> = {
+    user: ['users'],
+    product: ['products', 'processed@product', 'outbox@product'],
+    order: ['carts', 'cart_items', 'orders', 'order_items', 'processed@order', 'outbox@order'],
+    payment: ['payments', 'processed@payment', 'outbox@payment'],
+    notification: ['notifications', 'processed@notification'],
+  };
+  const CROSS: [string, string][] = [['carts', 'users'], ['cart_items', 'products'], ['orders', 'users'], ['order_items', 'products'], ['payments', 'orders'], ['notifications', 'users']];
+  const LOCAL: [string, string][] = [['cart_items', 'carts'], ['order_items', 'orders']];
+
+  type Rect = { x: number; y: number; w: number; h: number };
+  type Layout = {
+    view: [number, number]; chipW: number; node: { w: number; h: number }; rowH: number;
+    sharedNodes: Record<Id, Point>; sharedBox: Rect; sharedChipX: number; sharedTop: number; arcStep: number;
+    boxes: Record<Id, Rect>;
+    /** true면 노드가 날아가지 않고 제자리에서 흐려졌다 새 자리에서 나타납니다(좁은 화면에서 목록을 가로지르지 않도록). */
+    fadeNodes: boolean;
+  };
+  // 넓은 배치: 노드가 가는 길이 테이블 목록을 가로지르지 않도록 User·Notification은 곧장 아래 줄로 내려갑니다.
+  const LAYOUT: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 476], chipW: 128, node: { w: 104, h: 40 }, rowH: 24, fadeNodes: false,
+      sharedNodes: { user: { x: 64, y: 40 }, product: { x: 172, y: 40 }, order: { x: 280, y: 40 }, payment: { x: 388, y: 40 }, notification: { x: 496, y: 40 } },
+      sharedBox: { x: 136, y: 104, w: 290, h: 300 }, sharedChipX: 234, sharedTop: 160, arcStep: 9,
+      boxes: {
+        product: { x: 14, y: 96, w: 172, h: 196 }, order: { x: 196, y: 96, w: 172, h: 196 }, payment: { x: 378, y: 96, w: 172, h: 196 },
+        user: { x: 14, y: 320, w: 172, h: 126 }, notification: { x: 378, y: 320, w: 172, h: 126 },
+      },
+    },
+    narrow: {
+      view: [360, 452], chipW: 124, node: { w: 98, h: 36 }, rowH: 24, fadeNodes: true,
+      sharedNodes: { user: { x: 58, y: 96 }, product: { x: 58, y: 146 }, order: { x: 58, y: 196 }, payment: { x: 58, y: 246 }, notification: { x: 58, y: 296 } },
+      sharedBox: { x: 118, y: 40, w: 236, h: 330 }, sharedChipX: 198, sharedTop: 100, arcStep: 8,
+      boxes: {
+        product: { x: 8, y: 34, w: 168, h: 132 }, payment: { x: 184, y: 34, w: 168, h: 132 },
+        order: { x: 8, y: 204, w: 168, h: 202 }, user: { x: 184, y: 204, w: 168, h: 80 },
+        notification: { x: 184, y: 322, w: 168, h: 100 },
+      },
+    },
+  };
+  /** 칩이 날아가는 순서: 주인별로 조금씩 늦게 출발합니다. */
+  const FLIGHT_ORDER: Id[] = ['product', 'order', 'payment', 'user', 'notification'];
+
+  type State = {
+    fly: number; // 0: 공유 스키마, 1: 다섯 스키마. 노드 → 상자 → 칩 순서로 이 값의 구간을 나눠 씁니다.
+    fk: number; // 교차 FK 호가 그려진 정도
+    strike: number;
+    ghost: number; // ID 값 참조만 남은 점선
+    jobs: number;
+  };
+  const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+  const smooth = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+  const NOTES = [
+    '다섯 서비스가 같은 <strong>peekcart</strong> 스키마와 계정을 씁니다. Flyway는 Order만 돌리고 나머지는 꺼 두었습니다. 도메인을 가로지르는 FK 여섯 개(빨간 호)가 테이블을 묶고 있습니다.',
+    '<strong>PR1</strong>: 교차 FK 여섯 개만 걷어 냈습니다. ID 컬럼은 남아 값으로만 가리키고(점선), 같은 도메인 안의 FK(회색 호)도 그대로입니다. 스키마는 아직 하나입니다.',
+    '<strong>PR2</strong>: 테이블이 주인 스키마로 옮겨 갑니다. 함께 쓰던 processed_events·outbox_events는 필요한 서비스마다 따로 생겼습니다. 계정과 Flyway 이력도 서비스마다 하나씩입니다.',
+    '<strong>PR3</strong>: 기록 테이블마다 정리 잡(↻)이 붙었습니다. processed_events 네 곳, outbox_events 세 곳입니다. 기록 테이블이 없는 User에는 잡이 없습니다.',
+  ];
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="db-separation"]').forEach((demo) => {
+    const root = demo.querySelector<SVGSVGElement>('[data-separation-svg]')!;
+    const note = demo.querySelector<HTMLElement>('[data-separation-note]')!;
+    let narrow = false;
+    let index = 0;
+    const L = () => (narrow ? LAYOUT.narrow : LAYOUT.wide);
+
+    const sharedHome = (chip: ChipDef): Point => {
+      const l = L();
+      return { x: l.sharedChipX, y: l.sharedTop + sharedIndex(chip) * l.rowH };
+    };
+    const splitHome = (chip: ChipDef): Point => {
+      const box = L().boxes[chip.owner];
+      return { x: box.x + box.w / 2, y: box.y + 40 + SPLIT_ORDER[chip.owner].indexOf(chip.key) * L().rowH };
+    };
+    const target = (step: number): State => ({ fly: step >= 2 ? 1 : 0, fk: step === 0 ? 1 : 0, strike: step >= 1 ? 1 : 0, ghost: step === 1 ? 1 : 0, jobs: step >= 3 ? 1 : 0 });
+
+    // ── 그리기 ────────────────────────────────
+    const sharedBox = createBoundary(root, '');
+    const boxes = Object.fromEntries(IDS.map((id) => [id, createBoundary(root, `peekcart_${id}`, 'zone')])) as Record<Id, ReturnType<typeof createBoundary>>;
+    const accountLines = IDS.map(() => svg('path', { class: 'scene-line' }, root));
+    accountLines.forEach((line) => { line.style.stroke = 'color-mix(in srgb, var(--scene-dep) 55%, transparent)'; line.style.strokeWidth = '1.5'; });
+    const arcLayer = svg('g', {}, root);
+    const crossArcs = CROSS.map(() => {
+      const path = svg('path', { class: 'scene-line' }, arcLayer);
+      path.style.stroke = 'var(--scene-danger)';
+      path.style.strokeWidth = '2';
+      return { path, arrow: createArrow(arcLayer, 'var(--scene-danger)') };
+    });
+    const ghostArcs = CROSS.map(() => {
+      const path = svg('path', { class: 'scene-line', 'stroke-dasharray': '2 5' }, arcLayer);
+      path.style.stroke = 'var(--scene-flow)';
+      path.style.strokeWidth = '1.6';
+      return path;
+    });
+    const localArcs = LOCAL.map(() => {
+      const path = svg('path', { class: 'scene-line' }, arcLayer);
+      path.style.stroke = 'var(--scene-dep)';
+      path.style.strokeWidth = '1.6';
+      return { path, arrow: createArrow(arcLayer, 'var(--scene-dep)') };
+    });
+    const fkPill = createPill(root, '교차 FK 6');
+    const chipViews = Object.fromEntries(CHIPS.map((chip) => [chip.key, { def: chip, wide: createChip(root, { label: chip.label, hue: HUES[chip.owner], width: LAYOUT.wide.chipW }), narrow: createChip(root, { label: chip.label, hue: HUES[chip.owner], width: LAYOUT.narrow.chipW }) }]));
+    const badges = Object.fromEntries(CHIPS.filter((c) => c.shared).map((chip) => {
+      const badge = svg('text', { class: 'scene-label scene-label-flow', 'text-anchor': 'middle' }, root);
+      badge.textContent = '↻';
+      badge.style.fontSize = '14px';
+      return [chip.key, badge];
+    }));
+    const nodes = Object.fromEntries(IDS.map((id) => [id, createNode(root, { label: LABELS[id], hue: HUES[id] })])) as Record<Id, ReturnType<typeof createNode>>;
+    const footer = svg('text', { class: 'scene-caption', 'text-anchor': 'middle' }, root);
+    footer.textContent = 'MySQL 인스턴스 1개';
+
+    const CHIP_BY_KEY = Object.fromEntries(CHIPS.map((c) => [c.key, c])) as Record<string, ChipDef>;
+    /** 칩마다 fly 0.3~0.97 사이의 자기 구간에서 호를 그리며 날아갑니다. */
+    const chipProgress = (chip: ChipDef, fly: number) => {
+      const delay = FLIGHT_ORDER.indexOf(chip.owner) * 0.06 + SPLIT_ORDER[chip.owner].indexOf(chip.key) * 0.01;
+      return clamp01((fly - 0.3 - delay) / 0.38);
+    };
+    const chipAt = (state: State, key: string): Point => {
+      const chip = CHIP_BY_KEY[key];
+      const t = chipProgress(chip, state.fly);
+      const a = sharedHome(chip);
+      const b = splitHome(chip);
+      const e = smooth(t);
+      return { x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e - 46 * Math.sin(Math.PI * t) };
+    };
+    /** 오른쪽(side 1) 또는 왼쪽(side -1)으로 부푼 호를 꺾은선으로. */
+    const bulge = (a: Point, b: Point, side: 1 | -1, size: number): Point[] => Array.from({ length: 25 }, (_, i) => {
+      const t = i / 24;
+      const u = 1 - t;
+      const cx1 = a.x + side * size;
+      const cx2 = b.x + side * size;
+      return { x: u * u * u * a.x + 3 * u * u * t * cx1 + 3 * u * t * t * cx2 + t * t * t * b.x, y: u * u * u * a.y + 3 * u * u * t * a.y + 3 * u * t * t * b.y + t * t * t * b.y };
+    });
+    const partial = (points: Point[], amount: number) => {
+      const end = polylineAt(points, amount);
+      const n = Math.floor(amount * (points.length - 1));
+      return { d: `M ${[...points.slice(0, n + 1), end].map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L ')}`, end };
+    };
+
+    const scene = createScene<State>(target(0), (state) => {
+      const l = L();
+      const [width, height] = l.view;
+      const half = l.chipW / 2;
+
+      // 상자: 공유 상자는 흐려지고, 서비스 상자는 커지며 나타남
+      const sb = l.sharedBox;
+      const listGone = clamp01((state.fly - 0.55) / 0.4); // 공유 상자는 칩이 떠난 뒤 흐려짐
+      const boxIn = clamp01((state.fly - 0.18) / 0.3); // 서비스 상자는 노드가 자리 잡을 즈음 나타남
+      const nodeT = clamp01(state.fly / 0.3);
+      sharedBox.place({ ...sb, o: 1 - listGone }, { x: sb.x + 14, y: sb.y + 24 });
+      sharedBox.caption.textContent = 'peekcart · 공유 계정 1';
+      IDS.forEach((id) => {
+        const b = l.boxes[id];
+        const s = 0.9 + 0.1 * boxIn;
+        const w = b.w * s;
+        const h = b.h * s;
+        boxes[id].place({ x: b.x + (b.w - w) / 2, y: b.y + (b.h - h) / 2, w, h, o: boxIn }, { x: b.x + 12, y: b.y + b.h - 12 });
+      });
+
+      // 서비스 노드와 계정 연결
+      IDS.forEach((id, i) => {
+        const a = l.sharedNodes[id];
+        const b = { x: l.boxes[id].x + l.boxes[id].w / 2, y: l.boxes[id].y };
+        let p: Point;
+        if (l.fadeNodes) {
+          p = nodeT < 0.5 ? a : b;
+          nodes[id].group.style.opacity = String(Math.abs(1 - 2 * nodeT));
+        } else {
+          const e = smooth(nodeT);
+          p = { x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e };
+          nodes[id].group.style.opacity = '1';
+        }
+        nodes[id].setBox({ ...p, ...l.node });
+        const into = narrow ? { x: sb.x, y: sb.y + 60 + i * 14 } : { x: sb.x + 40 + i * 52, y: sb.y };
+        const from = narrow ? { x: p.x + l.node.w / 2, y: p.y } : { x: p.x, y: p.y + l.node.h / 2 };
+        setAttrs(accountLines[i], { d: `M ${from.x} ${from.y} L ${into.x} ${into.y}`, opacity: 1 - nodeT });
+      });
+
+      // 칩
+      CHIPS.forEach((chip) => {
+        const view = chipViews[chip.key];
+        const at = chipAt(state, chip.key);
+        view.wide.place(at, narrow ? 0 : 1);
+        view.narrow.place(at, narrow ? 1 : 0);
+        const stillShared = Boolean(chip.shared) && chipProgress(chip, state.fly) < 0.5;
+        view.wide.group.classList.toggle('is-shared', stillShared);
+        view.narrow.group.classList.toggle('is-shared', stillShared);
+        const badge = badges[chip.key];
+        if (badge) setAttrs(badge, { x: at.x - half - 10, y: at.y + 5, opacity: state.jobs });
+      });
+
+      // 교차 FK: 자식 → 부모, 오른쪽으로 부푼 호
+      CROSS.forEach(([child, parent], i) => {
+        const a = chipAt(state, child);
+        const b = chipAt(state, parent);
+        const span = Math.abs(sharedIndex(CHIPS.find((c) => c.key === child)!) - sharedIndex(CHIPS.find((c) => c.key === parent)!));
+        const points = bulge({ x: a.x + half + 3, y: a.y }, { x: b.x + half + 3, y: b.y }, 1, 12 + span * l.arcStep);
+        const { d, end } = partial(points, Math.max(state.fk, 0.001));
+        setAttrs(crossArcs[i].path, { d, opacity: state.fk > 0.01 ? 1 : 0 });
+        crossArcs[i].arrow(end, end.angle);
+        crossArcs[i].arrow.element.style.opacity = state.fk > 0.97 ? '1' : '0';
+        setAttrs(ghostArcs[i], { d: `M ${points.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L ')}`, opacity: state.ghost * 0.9 * (1 - clamp01(state.fly / 0.3)) });
+      });
+      LOCAL.forEach(([child, parent], i) => {
+        const a = chipAt(state, child);
+        const b = chipAt(state, parent);
+        const points = bulge({ x: a.x - half - 3, y: a.y }, { x: b.x - half - 3, y: b.y }, -1, 12);
+        setAttrs(localArcs[i].path, { d: `M ${points.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L ')}` });
+        const end = polylineAt(points, 1);
+        localArcs[i].arrow(end, end.angle);
+      });
+
+      fkPill.place({ x: sb.x + sb.w - 52, y: sb.y + 22 }, state.strike);
+      fkPill.group.style.opacity = String(1 - listGone);
+      setAttrs(footer, { x: width / 2, y: height - 8 });
+    });
+
+    const setClasses = (step: number) => {
+      CHIPS.forEach((chip) => {
+        const view = chipViews[chip.key];
+        [view.wide, view.narrow].forEach((c) => {
+          c.group.classList.toggle('is-swept', Boolean(chip.shared) && step >= 3);
+        });
+      });
+      IDS.forEach((id) => {
+        const sub = step >= 2 ? '자기 Flyway' : id === 'order' ? 'Flyway 실행' : 'Flyway 끔';
+        nodes[id].setSub(sub);
+        nodes[id].group.classList.toggle('is-temp', step < 2 && id !== 'order');
+      });
+      bumpText(fkPill.group.querySelector('text')!, step === 0 ? '교차 FK 6' : '교차 FK 0');
+    };
+
+    const show = async (next: number, instant: boolean) => {
+      const alive = scene.begin();
+      index = next;
+      note.innerHTML = NOTES[index];
+      setClasses(next);
+      const goal = target(next);
+      if (instant) { scene.set(goal); return; }
+
+      // 빼는 것 먼저: 교차 FK를 걷어 낼 때는 취소선 → 호가 자식 쪽으로 거둬짐
+      if (next >= 1 && scene.state.fk > 0.01) {
+        await scene.go({ ...scene.state, strike: 1 }, duration.cut);
+        if (!alive()) return;
+        await scene.go({ ...scene.state, fk: 0 }, duration.draw);
+        if (!alive()) return;
+      }
+      // 옮겨졌다: 노드 → 상자 → 칩 순서로, 칩은 주인별로 조금씩 늦게 호를 그리며 날아감
+      if (Math.abs(scene.state.fly - goal.fly) > 0.01) {
+        const forward = goal.fly > scene.state.fly;
+        await scene.go({ ...scene.state, fly: goal.fly, ghost: goal.ghost, jobs: 0 }, 2000, ease.linear);
+        if (!alive()) return;
+        if (forward) {
+          const l = L();
+          IDS.forEach((id) => landRing(root, { x: l.boxes[id].x + l.boxes[id].w / 2, y: l.boxes[id].y + l.boxes[id].h / 2, w: l.boxes[id].w, h: l.boxes[id].h }));
+        }
+        if (goal.jobs === 0 && goal.fk === 0 && goal.ghost === 0) return;
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+      }
+      await scene.go(goal, duration.draw);
+    };
+
+    watchNarrow(demo, (isNarrow) => {
+      narrow = isNarrow;
+      const [w, h] = L().view;
+      setAttrs(root, { viewBox: `0 0 ${w} ${h}` });
+      scene.set(target(index));
+    });
+    createStepPlayer(demo, {
+      dwell: (step) => (step === 3 ? duration.dwellLast : step === 2 ? duration.dwell + 1200 : duration.dwell + 400),
+      onStep: (step, instant) => { void show(step, instant); },
+    });
+  });
+</script>
