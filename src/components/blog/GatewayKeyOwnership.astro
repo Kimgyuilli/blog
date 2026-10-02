@@ -1,0 +1,309 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import '../../styles/scene.css';
+
+const services = [
+  { id: 'user', label: 'User', hue: 'var(--scene-hue-blue)' },
+  { id: 'product', label: 'Product', hue: 'var(--scene-hue-amber)' },
+  { id: 'order', label: 'Order', hue: 'var(--scene-hue-violet)' },
+  { id: 'payment', label: 'Payment', hue: 'var(--scene-hue-cyan)' },
+  { id: 'notification', label: 'Notification', hue: 'var(--scene-hue-gray)' },
+];
+---
+
+<InteractiveDemoFrame demoId="gateway-key-ownership" ariaLabel="서비스 하나의 키가 유출됐을 때 HS512와 RS256에서 위조 토큰을 받아 주는 서비스 수 비교" title="키 하나가 새면, 위조 토큰을 누가 받아 줄까요?" description="서비스 하나를 골라 키를 유출시켜 보세요. 공격자가 그 키로 만든 토큰을 다섯 서비스에 보냅니다. 그다음 RS256으로 바꾸고 같은 서비스를 다시 털어 보세요.">
+  <DemoControls ariaLabel="서명 방식">
+    <button type="button" data-key-mode="hs" aria-pressed="true">HS512 · 전환 전</button>
+    <button type="button" data-key-mode="rs" aria-pressed="false">RS256 · 전환 후</button>
+  </DemoControls>
+  <div class="scene-chips" role="group" aria-label="키를 유출시킬 서비스">
+    <span class="scene-chips-label">유출시키기</span>
+    {services.map((service, index) => (
+      <button type="button" class="scene-chip" data-key-leak={index} style={`--node-hue: ${service.hue}`}>{service.label}</button>
+    ))}
+  </div>
+  <div class="scene-stage">
+    <svg data-key-svg role="img" aria-label="다섯 서비스 위에 각자 가진 키가 놓여 있고, 아래의 공격자가 유출된 키로 만든 토큰을 다섯 서비스에 보내는 그림"></svg>
+  </div>
+  <p class="scene-note" data-key-note role="status"></p>
+  <p class="db-demo-disclaimer">키 유출은 비교를 위해 가정한 상황이며 실제로 일어난 사고가 아닙니다. 위조 토큰은 만료 시간이 유효하고 로그아웃 목록에도 없다고 가정했습니다. 전환 기간에 옛 HS512 토큰을 받아 주는 선택적 이중 검증, <code>kid</code>를 이용한 키 회전은 그리지 않았습니다. 이 단계에는 아직 게이트웨이가 없어 다섯 서비스가 각자 검증합니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, bumpText, clamp01, createScene, duration, ease, lerp, setAttrs, svg, watchNarrow, type Point } from '../../scripts/blog/scene/core';
+  import { createArrow, createChip, createNode } from '../../scripts/blog/scene/parts';
+  import { arcPoints, createPacketLayer } from '../../scripts/blog/scene/packets';
+  import { watchDemoPlayback } from '../../scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: HS512에서는 어느 서비스가 털려도 다섯 곳이 모두 위조 토큰을 받아 준다.
+  // RS256에서는 user-service가 아닌 곳이 털리면 공개키만 새어 아무도 받아 주지 않고, 지켜야 할 곳이 하나로 준다.
+  type Mode = 'hs' | 'rs';
+  type State = { hs: number; pub: number; steal: number };
+  type Layout = { view: [number, number]; nodes: Point[]; node: { w: number; h: number }; seats: Point[]; attacker: Point; attackerSize: { w: number; h: number }; hand: Point; railLabel: Point & { anchor: 'start' | 'middle' }; metrics: [Point, Point]; target: (i: number) => Point; lift: number };
+
+  const NAMES = ['User', 'Product', 'Order', 'Payment', 'Notification'];
+  const HUES = ['var(--scene-hue-blue)', 'var(--scene-hue-amber)', 'var(--scene-hue-violet)', 'var(--scene-hue-cyan)', 'var(--scene-hue-gray)'];
+  const WIDE_X = [62, 173, 284, 395, 506];
+  const NARROW_Y = [40, 102, 164, 226, 288];
+  const LAYOUT: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 312], node: { w: 104, h: 48 },
+      nodes: WIDE_X.map((x) => ({ x, y: 156 })), seats: WIDE_X.map((x) => ({ x, y: 96 })),
+      attacker: { x: 284, y: 276 }, attackerSize: { w: 120, h: 44 }, hand: { x: 284, y: 234 },
+      railLabel: { x: 62, y: 70, anchor: 'start' }, metrics: [{ x: 16, y: 264 }, { x: 544, y: 264 }],
+      target: (i) => ({ x: WIDE_X[i], y: 186 }), lift: 54,
+    },
+    narrow: {
+      view: [360, 420], node: { w: 112, h: 44 },
+      nodes: NARROW_Y.map((y) => ({ x: 192, y })), seats: NARROW_Y.map((y) => ({ x: 62, y })),
+      attacker: { x: 306, y: 380 }, attackerSize: { w: 92, h: 44 }, hand: { x: 306, y: 340 },
+      railLabel: { x: 62, y: 324, anchor: 'middle' }, metrics: [{ x: 16, y: 366 }, { x: 16, y: 404 }],
+      target: (i) => ({ x: 294, y: NARROW_Y[i] }), lift: 30,
+    },
+  };
+
+  /** 여러 대상이 한꺼번에 옮겨질 때 조금씩 늦게 출발시킵니다. */
+  const stagger = (t: number, i: number, n: number, spread = 0.36) => clamp01((t - (i / Math.max(1, n - 1)) * spread) / (1 - spread));
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="gateway-key-ownership"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const root = demo.querySelector<SVGSVGElement>('[data-key-svg]')!;
+    const stage = demo.querySelector<HTMLElement>('.scene-stage')!;
+    const note = demo.querySelector<HTMLElement>('[data-key-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-key-mode]')];
+    const leakButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-key-leak]')];
+    let narrow = false;
+    let touched = false;
+    let mode: Mode = 'hs';
+    let stealFrom = 0;
+    const L = () => (narrow ? LAYOUT.narrow : LAYOUT.wide);
+
+    // ── 바탕 ─────────────────────────────────────────────
+    const rail = svg('path', { class: 'scene-line scene-flow' }, root);
+    const railArrow = createArrow(root, 'var(--scene-flow)');
+    const railLabel = svg('text', { class: 'scene-label scene-label-flow is-sans' }, root);
+    railLabel.textContent = 'JWKS로 공개키만 공개';
+    const nodes = NAMES.map((label, i) => createNode(root, { label, hue: HUES[i], sub: '서명·검증' }));
+    const attacker = createNode(root, { label: '공격자', hue: 'var(--scene-hue-gray)', sub: '' });
+
+    const metricText = (anchor: 'start' | 'end') => {
+      const caption = svg('text', { class: 'scene-caption', 'text-anchor': anchor }, root);
+      const value = svg('text', { 'text-anchor': anchor, class: 'scene-gauge-value' }, root);
+      value.style.fontSize = '24px';
+      value.style.fontWeight = '800';
+      return { caption, value };
+    };
+    const signers = metricText('start');
+    const accepted = metricText('end');
+    signers.caption.textContent = '서명할 수 있는 곳';
+    accepted.caption.textContent = '위조 토큰을 받아 준 곳';
+
+    // 키 칩: user-service의 키(점 색 = User). 비밀키 사본은 임시·공유 표시로 점선 테두리.
+    const chip = (label: string, kind: 'secret' | 'public' | 'private') => {
+      const c = createChip(root, { label, hue: HUES[0], width: 84 });
+      if (kind === 'secret') c.group.classList.add('is-shared');
+      if (kind === 'public') c.group.classList.add('is-swept');
+      return c;
+    };
+    const userSecret = chip('비밀키 K', 'secret');
+    const userPrivate = chip('개인키', 'private');
+    const copies = [1, 2, 3, 4].map(() => chip('비밀키 K', 'secret'));
+    const publics = [1, 2, 3, 4].map(() => chip('공개키', 'public'));
+    const stolen = { secret: chip('비밀키 K', 'secret'), public: chip('공개키', 'public'), private: chip('개인키', 'private') };
+    const packets = createPacketLayer(root);
+
+    const stolenKind = (): keyof typeof stolen => (mode === 'hs' ? 'secret' : stealFrom === 0 ? 'private' : 'public');
+
+    const scene = createScene<State>({ hs: 1, pub: 0, steal: 0 }, (state) => {
+      const l = L();
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      nodes.forEach((node, i) => node.setBox({ ...l.nodes[i], ...l.node }));
+      attacker.setBox({ ...l.attacker, ...l.attackerSize });
+
+      // JWKS 레일: user 자리에서 끝 자리까지 그려지고, 공개키가 레일을 따라 미끄러져 각 자리에 앉습니다.
+      const first = l.seats[0];
+      const last = l.seats[4];
+      const railEnd = { x: lerp(first.x, last.x, state.pub), y: lerp(first.y, last.y, state.pub) };
+      const dir = narrow ? { x: 0, y: 1 } : { x: 1, y: 0 };
+      setAttrs(rail, { d: `M ${first.x + dir.x * 46} ${first.y + dir.y * 14} L ${railEnd.x + dir.x * 46} ${railEnd.y + dir.y * 14}`, opacity: state.pub > 0.02 ? 1 : 0 });
+      railArrow({ x: railEnd.x + dir.x * 48, y: railEnd.y + dir.y * 16 }, narrow ? 90 : 0);
+      railArrow.element.style.opacity = String(state.pub > 0.05 ? 1 : 0);
+      setAttrs(railLabel, { x: l.railLabel.x, y: l.railLabel.y, 'text-anchor': l.railLabel.anchor });
+      railLabel.style.opacity = String(clamp01((state.pub - 0.5) * 2));
+
+      userSecret.place(first, clamp01(1 - state.pub * 2));
+      userPrivate.place(first, clamp01(state.pub * 2 - 1));
+      copies.forEach((c, k) => {
+        const t = stagger(state.hs, k, 4);
+        c.place(bowAt(first, l.seats[k + 1], t, l.lift * Math.sin(Math.PI * t)), clamp01(t * 5));
+      });
+      publics.forEach((c, k) => {
+        const t = stagger(state.pub, k, 4);
+        c.place({ x: lerp(first.x, l.seats[k + 1].x, t), y: lerp(first.y, l.seats[k + 1].y, t) }, clamp01(t * 5));
+      });
+
+      const kind = stolenKind();
+      (Object.keys(stolen) as (keyof typeof stolen)[]).forEach((key) => {
+        const t = state.steal;
+        const at = bowAt(l.seats[stealFrom], l.hand, t, (narrow ? 40 : 34) * Math.sin(Math.PI * t));
+        stolen[key].place(at, key === kind && t > 0.01 ? 1 : 0);
+      });
+
+      const [left, right] = l.metrics;
+      const anchorRight = narrow ? 'start' : 'end';
+      setAttrs(signers.caption, { x: left.x, y: left.y - 2 });
+      setAttrs(signers.value, { x: left.x, y: left.y + 24 });
+      setAttrs(accepted.caption, { x: right.x, y: right.y - 2, 'text-anchor': anchorRight });
+      setAttrs(accepted.value, { x: right.x, y: right.y + 24, 'text-anchor': anchorRight });
+      if (narrow) {
+        // 좁은 화면에서는 두 지표를 한 줄씩, 숫자를 캡션 오른쪽에 둡니다.
+        setAttrs(signers.value, { x: left.x + 118, y: left.y });
+        setAttrs(accepted.value, { x: right.x + 138, y: right.y, 'text-anchor': 'start' });
+        signers.value.style.fontSize = accepted.value.style.fontSize = '18px';
+      } else {
+        signers.value.style.fontSize = accepted.value.style.fontSize = '24px';
+      }
+    });
+
+    // ── 표시 ─────────────────────────────────────────────
+    let acceptedCount: number | null = null;
+    const setSubs = () => nodes.forEach((node, i) => {
+      node.setSub(mode === 'hs' || i === 0 ? '서명·검증' : '검증만');
+      node.flash('is-error', false);
+      node.flash('is-done', false);
+    });
+    const setMetrics = () => {
+      bumpText(signers.value, mode === 'hs' ? '5곳' : '1곳');
+      signers.value.style.fill = mode === 'hs' ? 'var(--scene-danger)' : 'var(--scene-flow-ink)';
+      bumpText(accepted.value, acceptedCount === null ? '–' : `${acceptedCount} / 5`);
+      accepted.value.style.fill = acceptedCount ? 'var(--scene-danger)' : acceptedCount === 0 ? 'var(--scene-flow-ink)' : 'var(--slate)';
+    };
+    const setNote = (html: string, alert = false) => {
+      note.innerHTML = html;
+      note.classList.toggle('is-alert', alert);
+    };
+    const IDLE: Record<Mode, string> = {
+      hs: 'HS512에서는 User가 서명할 때 쓰는 <strong>비밀키 K가 다섯 서비스 모두에</strong> 있습니다. 검증할 수 있는 키가 곧 서명할 수 있는 키입니다. 서비스 하나를 골라 키를 유출시켜 보세요.',
+      rs: 'RS256에서는 <strong>개인키가 User에만</strong> 남고, 나머지 넷은 JWKS로 공개키만 받습니다. 공개키로는 검증만 할 수 있습니다. 같은 서비스를 다시 유출시켜 보세요.',
+    };
+    const clearAttack = () => {
+      packets.clear();
+      acceptedCount = null;
+      attacker.setSub('');
+      attacker.flash('is-error', false);
+      setSubs();
+      setMetrics();
+    };
+
+    // ── 유출 실험 ────────────────────────────────────────
+    async function leak(index: number) {
+      const alive = scene.begin();
+      clearAttack();
+      leakButtons.forEach((b) => b.removeAttribute('data-state'));
+      leakButtons[index].dataset.state = 'fail';
+      scene.set({ ...scene.state, steal: 0 });
+      stealFrom = index;
+      const l = L();
+      const name = NAMES[index];
+      nodes[index].setSub('키 유출');
+      nodes[index].flash('is-error');
+      nodes[index].flash('is-shaking');
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      // 옮겨졌다: 키 사본이 털린 서비스에서 공격자 손으로 날아갑니다.
+      await scene.go({ ...scene.state, steal: 1 }, duration.fly);
+      if (!alive()) return;
+      nodes[index].flash('is-error', false);
+      const kind = stolenKind();
+      const canSign = kind !== 'public';
+      attacker.setSub(canSign ? '토큰 서명 ✓' : '서명 불가');
+      if (canSign) attacker.flash('is-error');
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+
+      acceptedCount = 0;
+      setMetrics();
+      const from = { x: l.attacker.x, y: l.attacker.y - l.attackerSize.h / 2 };
+      await Promise.all(nodes.map(async (node, i) => {
+        await scene.pause(i * 110);
+        if (!alive()) return;
+        const p = packets.spawn({ label: 'JWT sub=1', tone: canSign ? 'danger' : 'temp', at: from });
+        const target = l.target(i);
+        const path = arcPoints(from, target, narrow ? 26 : 30 + Math.abs(i - 2) * 6);
+        if (canSign) {
+          if (!(await p.travel(path, 760, ease.standard)) || !alive()) return;
+          await p.land(false);
+          node.setSub('✕ 받아 줌');
+          node.flash('is-error');
+          acceptedCount = (acceptedCount ?? 0) + 1;
+          setMetrics();
+        } else {
+          if (!(await p.travel(path.slice(0, -2), 640, ease.standard)) || !alive()) return;
+          if (!(await p.bounce(target, 22)) || !alive()) return;
+          node.setSub('✓ 서명 불일치');
+          node.flash('is-done');
+          await p.fade(500);
+        }
+      }));
+      if (!alive()) return;
+      if (mode === 'hs') setNote(`${name}에서 샌 비밀키 K로 만든 토큰을 <strong>다섯 서비스가 모두 받아 줍니다.</strong> 어느 서비스가 털려도 결과는 같습니다. 이제 RS256으로 바꿔 보세요.`, true);
+      else if (index === 0) setNote('User의 개인키가 새면 RS256에서도 위조 토큰이 통과합니다. 달라진 것은 <strong>지켜야 할 곳이 다섯에서 하나로</strong> 줄었다는 점입니다.', true);
+      else setNote(`${name}에서 샌 것은 공개키뿐입니다. 공개키로는 서명할 수 없어서, 공격자가 만든 토큰을 <strong>다섯 곳 모두 거절</strong>합니다.`);
+      if (mode === 'hs') modeButtons[1].dataset.state = 'next';
+    }
+
+    // ── 서명 방식 바꾸기 ─────────────────────────────────
+    async function setMode(next: Mode) {
+      if (next === mode) return;
+      mode = next;
+      const alive = scene.begin();
+      modeButtons.forEach((b) => { b.setAttribute('aria-pressed', String(b.dataset.keyMode === mode)); b.removeAttribute('data-state'); });
+      leakButtons.forEach((b) => b.removeAttribute('data-state'));
+      clearAttack();
+      setNote(IDLE[mode]);
+      // 유출된 키는 먼저 치웁니다.
+      await scene.go({ ...scene.state, steal: 0 }, scene.state.steal > 0.01 ? duration.reflow : 0);
+      if (!alive()) return;
+      if (mode === 'rs') {
+        // 빼는 것 먼저: 비밀키 사본이 User로 돌아가 사라진 뒤, JWKS 레일을 따라 공개키가 퍼집니다.
+        await scene.go({ hs: 0, pub: 0, steal: 0 }, duration.fly);
+        if (!alive()) return;
+        await scene.go({ hs: 0, pub: 1, steal: 0 }, duration.draw);
+      } else {
+        await scene.go({ hs: 0, pub: 0, steal: 0 }, duration.draw);
+        if (!alive()) return;
+        await scene.go({ hs: 1, pub: 0, steal: 0 }, duration.fly);
+      }
+      if (!alive()) return;
+      setSubs();
+      nodes.forEach((node, i) => { if (mode === 'rs' && i > 0) node.flash('is-ok'); });
+    }
+
+    modeButtons.forEach((button) => button.addEventListener('click', () => { touched = true; void setMode(button.dataset.keyMode as Mode); }));
+    leakButtons.forEach((button) => button.addEventListener('click', () => { touched = true; void leak(Number(button.dataset.keyLeak)); }));
+
+    watchNarrow(stage, (value) => {
+      narrow = value;
+      packets.clear();
+      scene.redraw();
+    });
+    setSubs();
+    setMetrics();
+    setNote(IDLE.hs);
+
+    // 처음 화면에 들어오면 Notification의 키를 한 번 유출시켜 봅니다.
+    let played = false;
+    watchDemoPlayback(demo, ({ shouldPlay }) => {
+      if (!shouldPlay || played || touched) return;
+      played = true;
+      window.setTimeout(() => { if (!touched) void leak(4); }, 600);
+    }, { threshold: 0.5 });
+  });
+</script>
+
+<style>
+  [data-blog-demo="gateway-key-ownership"] .db-demo-controls { margin-bottom: 0; }
+  [data-blog-demo="gateway-key-ownership"] .scene-chips { margin-top: 12px; }
+</style>

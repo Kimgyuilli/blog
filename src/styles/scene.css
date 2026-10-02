@@ -533,6 +533,16 @@ html.dark .db-demo {
 .scene-packet.is-hit .scene-packet-body { animation: scene-squash 300ms ease-out; }
 .scene-packet.is-landed .scene-packet-pill { animation: scene-glow 700ms ease-out; }
 
+/* ── 막는 벽 (정책·제약 관문) ───────────────────────── */
+.scene-wall-solid { stroke: var(--scene-danger); stroke-width: 3.5; stroke-dasharray: 7 5; stroke-linecap: round; }
+.scene-wall-ghost { stroke: color-mix(in srgb, var(--scene-dep) 55%, transparent); stroke-width: 2.5; stroke-dasharray: 2 6; stroke-linecap: round; }
+.scene-wall.is-ghost .scene-wall-caption { fill: var(--scene-temp); }
+.scene-wall.is-pierced .scene-wall-ghost { animation: scene-pierce 520ms ease-out; }
+@keyframes scene-pierce {
+  30% { stroke: var(--scene-temp); stroke-width: 5; }
+  100% { stroke-width: 2.5; }
+}
+
 /* ── 표 이름 칩 ──────────────────────────────────────── */
 .scene-table-chip-card {
   fill: var(--surface);
@@ -639,6 +649,7 @@ html.dark .db-demo {
   .scene-packet .scene-packet-body,
   .scene-packet .scene-packet-pill,
   .scene-table-chip .scene-node-body,
-  .scene-range output.is-bump { animation: none; }
+  .scene-range output.is-bump,
+  .scene-wall.is-pierced .scene-wall-ghost { animation: none; }
   .scene-timeline-step.is-timing .scene-timeline-fill { animation: none; width: 100%; }
 }

@@ -361,3 +361,39 @@ export function createLens(parent: Element, caption: string) {
     },
   };
 }
+
+// ── 막는 벽 ──────────────────────────────────────────────
+
+export type WallState = {
+  /** 0이면 없음, 1이면 위에서 아래로 다 세워짐. */
+  show: number;
+  /** 0이면 강제되는 벽(위험 색 굵은 점선), 1이면 규칙은 있지만 강제되지 않는 유령 벽(흐린 점선). */
+  ghost: number;
+};
+
+/**
+ * 요청을 막는 관문 벽. 정책·제약처럼 "여기서 거절된다"를 세로 선으로 보여줍니다.
+ * 막힐 때는 패킷의 `bounce`를 벽 앞에서 부르고, 유령 벽을 그냥 통과할 때는 `pierce()`로 한 번 일렁이게 합니다.
+ */
+export function createWall(parent: Element, caption = '') {
+  const group = svg('g', { class: 'scene-wall' }, parent);
+  const ghostLine = svg('line', { class: 'scene-wall-ghost' }, group);
+  const solid = svg('line', { class: 'scene-wall-solid' }, group);
+  const text = svg('text', { class: 'scene-caption scene-wall-caption', 'text-anchor': 'middle' }, group);
+  text.textContent = caption;
+  return {
+    group,
+    caption: text,
+    place({ x, y1, y2 }: { x: number; y1: number; y2: number }, { show, ghost }: WallState, captionAt: Point = { x, y: y1 - 10 }) {
+      const s = clamp01(show);
+      const g = clamp01(ghost);
+      const end = y1 + (y2 - y1) * s;
+      setAttrs(solid, { x1: x, x2: x, y1, y2: end, opacity: s > 0.01 ? 1 - g : 0 });
+      setAttrs(ghostLine, { x1: x, x2: x, y1, y2: end, opacity: s > 0.01 ? g : 0 });
+      setAttrs(text, { x: captionAt.x, y: captionAt.y, opacity: clamp01(s * 2 - 1) });
+      group.classList.toggle('is-ghost', g > 0.5);
+    },
+    /** 강제되지 않는 벽을 패킷이 지나갈 때 한 번 일렁입니다. */
+    pierce: () => { if (!prefersReducedMotion()) replayClass(group, 'is-pierced'); },
+  };
+}

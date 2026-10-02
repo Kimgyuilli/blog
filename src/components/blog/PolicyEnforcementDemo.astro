@@ -1,0 +1,190 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import '../../styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="policy-enforcement" ariaLabel="같은 NetworkPolicy를 minikube 기본 설정과 Calico 클러스터에 적용하고 네 Pod에서 요청을 보낸 실험" title="정책을 만들었는데, 왜 다 통과할까요?" description="구현해 둔 NetworkPolicy를 그대로 적용한 두 클러스터입니다. 네 Pod에서 보호 대상의 8080으로 요청을 보내 보세요.">
+  <DemoControls ariaLabel="클러스터 네트워크 플러그인">
+    <button type="button" data-policy-mode="default" aria-pressed="true">minikube 기본 설정</button>
+    <button type="button" data-policy-mode="calico" aria-pressed="false">--cni calico</button>
+  </DemoControls>
+  <div class="scene-chips" role="group" aria-label="요청">
+    <button type="button" class="scene-chip is-plain" data-policy-send>▶ 네 Pod에서 요청 보내기</button>
+  </div>
+  <div class="scene-stage">
+    <svg data-policy-svg role="img" aria-label="왼쪽 네 Pod가 NetworkPolicy 벽을 지나 오른쪽 보호 대상 Pod의 8080으로 요청을 보내는 그림"></svg>
+  </div>
+  <p class="scene-note" data-policy-note role="status"></p>
+  <p class="db-demo-disclaimer">글의 로컬 실험(minikube v1.38.1, Kubernetes v1.35.1, docker 드라이버) 결과를 옮긴 그림입니다. 보호 대상은 서비스 코드 대신 <code>nginx-unprivileged</code>의 8080이며, 위조 헤더가 서비스 코드까지 닿는지와 GKE Dataplane V2의 동작은 이 실험으로 확인하지 않았습니다. <code>000</code>은 HTTP 응답 상태를 얻지 못한 curl 결과입니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, ease, setAttrs, svg, watchNarrow, type Point } from '../../scripts/blog/scene/core';
+  import { createNode, createWall } from '../../scripts/blog/scene/parts';
+  import { createPacketLayer } from '../../scripts/blog/scene/packets';
+  import { watchDemoPlayback } from '../../scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: 정책 리소스가 있어도 기본 설정에서는 벽이 유령이라 네 요청이 모두 지나가고,
+  // Calico를 붙이면 같은 벽이 실체가 되어 허용하지 않은 두 Pod의 요청만 튕겨 나온다.
+  type Mode = 'default' | 'calico';
+  type Layout = { view: [number, number]; senderX: number; sender: { w: number; h: number }; lanes: number[]; wallX: number; wallY: [number, number]; target: Point; targetSize: { w: number; h: number }; metric: Point; };
+  const SENDERS = [
+    { label: 'gateway', sub: 'app: gateway', allowed: true },
+    { label: '다른 Pod', sub: '같은 ns', allowed: false },
+    { label: 'prometheus', sub: 'monitoring', allowed: true },
+    { label: '다른 Pod', sub: 'monitoring', allowed: false },
+  ];
+  const LAYOUT: Record<'wide' | 'narrow', Layout> = {
+    wide: { view: [560, 300], senderX: 78, sender: { w: 124, h: 48 }, lanes: [44, 112, 188, 256], wallX: 300, wallY: [22, 280], target: { x: 466, y: 150 }, targetSize: { w: 128, h: 56 }, metric: { x: 466, y: 214 } },
+    narrow: { view: [360, 330], senderX: 66, sender: { w: 116, h: 46 }, lanes: [40, 110, 196, 266], wallX: 178, wallY: [18, 300], target: { x: 282, y: 152 }, targetSize: { w: 116, h: 56 }, metric: { x: 282, y: 214 } },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="policy-enforcement"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const root = demo.querySelector<SVGSVGElement>('[data-policy-svg]')!;
+    const stage = demo.querySelector<HTMLElement>('.scene-stage')!;
+    const note = demo.querySelector<HTMLElement>('[data-policy-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-policy-mode]')];
+    const sendButton = demo.querySelector<HTMLButtonElement>('[data-policy-send]')!;
+    let narrow = false;
+    let mode: Mode = 'default';
+    let touched = false;
+    const L = () => (narrow ? LAYOUT.narrow : LAYOUT.wide);
+
+    const tracks = SENDERS.map(() => {
+      const path = svg('path', { class: 'scene-line', 'stroke-dasharray': '2 6' }, root);
+      path.style.stroke = 'color-mix(in srgb, var(--scene-dep) 45%, transparent)';
+      path.style.strokeWidth = '1.5';
+      return path;
+    });
+    const gates = SENDERS.map((sender) => {
+      const g = svg('g', {}, root);
+      const r = svg('rect', { x: -9, y: -9, width: 18, height: 18, rx: 5 }, g);
+      r.style.fill = 'var(--canvas)';
+      r.style.stroke = sender.allowed ? 'var(--scene-flow)' : 'transparent';
+      r.style.strokeWidth = '1.5';
+      const t = svg('text', { y: 4, 'text-anchor': 'middle', class: 'scene-label scene-label-flow' }, g);
+      t.textContent = sender.allowed ? '✓' : '';
+      g.style.display = sender.allowed ? '' : 'none';
+      return g;
+    });
+    const wall = createWall(root, 'NetworkPolicy');
+    const senders = SENDERS.map((s) => createNode(root, { label: s.label, hue: s.label === 'gateway' ? 'var(--scene-hue-pink)' : 'var(--scene-hue-gray)', sub: s.sub }));
+    const target = createNode(root, { label: 'nginx', hue: 'var(--scene-hue-violet)', sub: ':8080 backend' });
+    const results = SENDERS.map(() => svg('text', { class: 'scene-label', 'text-anchor': 'end' }, root));
+    const metricCaption = svg('text', { class: 'scene-caption', 'text-anchor': 'middle' }, root);
+    metricCaption.textContent = '200 응답';
+    const metric = svg('text', { class: 'scene-gauge-value', 'text-anchor': 'middle' }, root);
+    metric.style.fontSize = '22px';
+    metric.style.fontWeight = '800';
+    const packets = createPacketLayer(root);
+
+    const scene = createScene({ ghost: 1 }, (state) => {
+      const l = L();
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      const entry = { x: l.target.x - l.targetSize.w / 2 - 6, y: l.target.y };
+      SENDERS.forEach((_, i) => {
+        const y = l.lanes[i];
+        senders[i].setBox({ x: l.senderX, y, ...l.sender });
+        setAttrs(tracks[i], { d: `M ${l.senderX + l.sender.w / 2 + 4} ${y} L ${l.wallX} ${y} L ${entry.x} ${entry.y}` });
+        setAttrs(gates[i], { transform: `translate(${l.wallX} ${y})`, opacity: 1 - state.ghost });
+        setAttrs(results[i], { x: l.wallX - 14, y: y - 9 });
+      });
+      wall.place({ x: l.wallX, y1: l.wallY[0], y2: l.wallY[1] }, { show: 1, ghost: state.ghost }, { x: l.wallX, y: l.wallY[1] + 14 });
+      wall.caption.textContent = state.ghost > 0.5 ? 'NetworkPolicy · 강제 안 됨' : 'NetworkPolicy · Calico가 강제';
+      target.setBox({ ...l.target, ...l.targetSize });
+      setAttrs(metricCaption, { x: l.metric.x, y: l.metric.y });
+      setAttrs(metric, { x: l.metric.x, y: l.metric.y + 26 });
+    });
+
+    const NOTES: Record<Mode, { idle: string; done: string }> = {
+      default: {
+        idle: 'minikube 기본 설정 클러스터입니다. 정책 리소스는 만들어졌지만, 그것을 강제할 네트워크 플러그인이 없습니다.',
+        done: '<strong>네 요청이 모두 200</strong>입니다. 정책이 만들어져도 막는 주체가 없으면 벽은 그림일 뿐입니다. 이제 Calico 클러스터로 바꿔 보세요.',
+      },
+      calico: {
+        idle: 'Calico를 붙여 띄운 클러스터입니다. 같은 정책을 그대로 적용했습니다.',
+        done: '허용한 gateway와 prometheus만 200이고, 나머지 둘은 <strong>응답을 받지 못했습니다(000)</strong>. 이제야 결과가 정책 의도와 맞습니다.',
+      },
+    };
+    const setNote = (html: string) => { note.innerHTML = html; };
+    let passed = 0;
+    const clear = () => {
+      packets.clear();
+      results.forEach((r) => { r.textContent = ''; });
+      target.flash('is-done', false);
+      passed = 0;
+      bumpText(metric, '– / 4');
+      metric.style.fill = 'var(--slate)';
+    };
+
+    async function sendAll() {
+      const alive = scene.begin();
+      clear();
+      sendButton.removeAttribute('data-state');
+      const l = L();
+      const enforced = mode === 'calico';
+      const entry = { x: l.target.x - l.targetSize.w / 2 - 6, y: l.target.y };
+      bumpText(metric, '0 / 4');
+      await Promise.all(SENDERS.map(async (sender, i) => {
+        await scene.pause(i * 180);
+        if (!alive()) return;
+        const y = l.lanes[i];
+        const p = packets.spawn({ label: 'GET :8080', at: { x: l.senderX + l.sender.w / 2 - 8, y } });
+        const blocked = enforced && !sender.allowed;
+        if (blocked) {
+          if (!(await p.bounce({ x: l.wallX - 8, y }, 30)) || !alive()) return;
+          results[i].textContent = '000';
+          results[i].style.fill = 'var(--scene-danger)';
+          await p.fade(700);
+          return;
+        }
+        if (!(await p.travel([{ x: l.wallX, y }], 620, ease.linear)) || !alive()) return;
+        if (!enforced) wall.pierce();
+        if (!(await p.travel([entry], 520, ease.out)) || !alive()) return;
+        await p.land(false);
+        target.flash('is-done');
+        results[i].textContent = '200';
+        results[i].style.fill = 'var(--scene-flow-ink)';
+        passed += 1;
+        bumpText(metric, `${passed} / 4`);
+        metric.style.fill = enforced ? 'var(--scene-flow-ink)' : 'var(--scene-temp)';
+      }));
+      if (!alive()) return;
+      setNote(NOTES[mode].done);
+      if (mode === 'default') modeButtons[1].dataset.state = 'next';
+    }
+
+    async function setMode(next: Mode) {
+      if (next === mode) return;
+      mode = next;
+      const alive = scene.begin();
+      modeButtons.forEach((b) => { b.setAttribute('aria-pressed', String(b.dataset.policyMode === mode)); b.removeAttribute('data-state'); });
+      clear();
+      setNote(NOTES[mode].idle);
+      await scene.go({ ghost: mode === 'default' ? 1 : 0 }, duration.draw);
+      if (!alive()) return;
+      sendButton.dataset.state = 'next';
+    }
+
+    modeButtons.forEach((b) => b.addEventListener('click', () => { touched = true; void setMode(b.dataset.policyMode as Mode); }));
+    sendButton.addEventListener('click', () => { touched = true; void sendAll(); });
+    watchNarrow(stage, (value) => { narrow = value; clear(); scene.redraw(); });
+    clear();
+    setNote(NOTES.default.idle);
+
+    let played = false;
+    watchDemoPlayback(demo, ({ shouldPlay }) => {
+      if (!shouldPlay || played || touched) return;
+      played = true;
+      window.setTimeout(() => { if (!touched) void sendAll(); }, 500);
+    }, { threshold: 0.5 });
+  });
+</script>
+
+<style>
+  [data-blog-demo="policy-enforcement"] .db-demo-controls { margin-bottom: 0; }
+  [data-blog-demo="policy-enforcement"] .scene-chips { margin-top: 12px; }
+</style>

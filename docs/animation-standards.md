@@ -7,6 +7,7 @@
 - 첫 적용 사례: `PeelDependencyGraph`, `PeelMigrationSteps`, `PeelSequenceDiagram`
 - 실어 나르기·예산 게이지 사례: `ThreadSchedulerLens`, `CpuQuotaExperiment`, `RunqueuePolicyMotion`, `ExecutionLayersDiagram`
 - 패킷·렌즈·칩 이동 사례: `SharedBootOrder`, `FkGuardDemo`, `DbSeparationSteps`, `RetentionBoundary`
+- 순서 퍼즐·벽·유령 벽 사례: `GatewayRolloutDemo`, `GatewayKeyOwnership`, `RefreshFamilyDemo`, `PolicyEnforcementDemo`
 
 ## 1. 먼저 정할 것: 독자가 장면에서 알아낼 변화
 
@@ -55,6 +56,8 @@
 | 결과를 확인한다 | 로그 한 줄을 대기(…)로 찍고 잠시 뒤 ✓/✕로 바꿈 | `createConsole` | `beat` |
 | 요청·이벤트가 지나간다 | 알약 패킷이 길을 따라 이동하고, 도착하면 한 번 빛남. 많으면 간격을 두고 연달아 흘림 | `createPacketLayer` `spawn` `travel` `land` | `draw` 안팎 |
 | 막혔다 (거절) | 패킷이 관문까지 가서 찌그러지며 튕겨 나오고 위험 색으로 바뀜. 관문 쪽 판정 문구가 뜸 | `bounce` | 420 + 300 |
+| 여기서 막는다 (정책·제약 관문) | 위험 색 굵은 점선 벽이 위에서 아래로 세워짐. 막히는 패킷은 벽 앞에서 튕겨 나옴 | `createWall` + `bounce` | `draw` |
+| 규칙은 있지만 강제되지 않는다 | 같은 벽이 흐린 점선(유령)으로 바뀌고 캡션이 주황. 패킷이 그대로 지나가며 벽이 한 번 일렁임 | `createWall` `ghost` + `pierce()` | `draw` / 520 |
 | 관문에서 다른 것으로 바뀌었다 | 패킷이 관문에서 멈칫하며 이름과 색이 바뀐 뒤 계속 감 (DELETE → UPDATE) | `relabel` | `beat` |
 | 기다린다 (선행 조건) | 노드 테두리가 임시 색 점선으로 행진, 보조 문구 주황 | `is-waiting` | 반복 |
 | 하나가 여럿으로 갈라졌다 | 겹쳐 있던 상자·칩 사본이 각자 자리로 갈라져 나감 | 같은 자리에 겹친 사본 + 상태 보간 | `draw` / `fly` |
@@ -117,7 +120,7 @@
 | 파일 | 역할 |
 | --- | --- |
 | `src/scripts/blog/scene/core.ts` | `createScene`, 보간, 트윈, 모션 토큰(`duration`, `ease`), 기하, 호 이동(`bowAt`, `hopLift`, `nextHop`), `watchNarrow`, `bumpText` |
-| `src/scripts/blog/scene/parts.ts` | `createNode`, `createTray`, `createGauge`, `landRing`, `createFlipLink`, `createCallLine`, `createCurve`, `createBoundary`, `createPill`, `createArrow`, `createChip`, `createLens` |
+| `src/scripts/blog/scene/parts.ts` | `createNode`, `createTray`, `createGauge`, `landRing`, `createFlipLink`, `createCallLine`, `createCurve`, `createBoundary`, `createPill`, `createArrow`, `createChip`, `createLens`, `createWall` |
 | `src/scripts/blog/scene/packets.ts` | `createPacketLayer` (지나가는 요청·이벤트), `polylineAt`, `arcPoints` |
 | `src/scripts/blog/scene/flip.ts` | `createFlipMover` (HTML 요소 이동) |
 | `src/scripts/blog/scene/console.ts` | `createConsole` (실행 로그) |

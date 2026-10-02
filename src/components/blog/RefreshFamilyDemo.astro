@@ -1,0 +1,366 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import SceneTimeline from './SceneTimeline.astro';
+import '../../styles/scene.css';
+
+const steps = [
+  { name: '로그인', detail: 'R1 발급' },
+  { name: '탈취', detail: 'R1 사본' },
+  { name: '공격자가 먼저 갱신', detail: 'R1 → R2' },
+  { name: '사용자가 갱신', detail: '10초 뒤 R1' },
+  { name: '공격자가 다시 갱신', detail: 'R2 제시' },
+];
+---
+
+<InteractiveDemoFrame demoId="refresh-family" ariaLabel="훔친 refresh token을 공격자가 먼저 쓴 뒤, 사용한 토큰을 지우는 방식과 상태로 남기는 방식에서 결과가 어떻게 다른지 보여주는 타임라인" title="공격자가 먼저 갱신했다면, 누가 알아챌 수 있을까요?" description="같은 탈취 시나리오를 두 저장 방식으로 재생합니다. 단계를 누르거나 방식을 바꿔 보세요. 차이는 넷째 단계, 사용자가 옛 토큰을 다시 내미는 순간에 갈립니다.">
+  <DemoControls ariaLabel="사용한 refresh token 처리 방식">
+    <button type="button" data-family-mode="delete" aria-pressed="false">사용한 행 삭제 (기존)</button>
+    <button type="button" data-family-mode="keep" aria-pressed="true">상태로 남김 (family)</button>
+  </DemoControls>
+  <SceneTimeline ariaLabel="탈취 시나리오 단계" steps={steps} />
+  <div class="scene-stage">
+    <svg data-family-svg role="img" aria-label="왼쪽에 사용자와 공격자가 쥔 토큰, 오른쪽에 user-service의 refresh token 행과 Redis 차단 표시가 있는 그림"></svg>
+  </div>
+  <p class="scene-note" data-family-note role="status"></p>
+  <p class="db-demo-disclaimer">탈취 시나리오는 재사용 감지가 무엇을 바꾸는지 보이려고 꾸민 예시입니다. 유예 시간 안에 같은 토큰이 다시 오는 경로(한 번 허용하고 먼저 발급한 토큰을 강제 회전), 사용자 쪽 access token, Redis 기록이 실패하는 경우는 그리지 않았습니다. 기존 방식의 401은 행을 찾지 못했을 때의 설명용 판정입니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, clamp01, createScene, duration, ease, setAttrs, svg, watchNarrow, type Point } from '../../scripts/blog/scene/core';
+  import { createBoundary, createChip, createCurve, createGauge, createNode } from '../../scripts/blog/scene/parts';
+  import { createPacketLayer } from '../../scripts/blog/scene/packets';
+  import { createStepPlayer } from '../../scripts/blog/scene/step-player';
+
+  // 독자가 볼 변화: 행을 지우면 사용자가 옛 토큰을 내밀어도 그냥 401일 뿐 공격자는 계속 갱신한다.
+  // 상태를 남기면 그 같은 요청이 재사용 신호가 되어, family 전체와 공격자가 쥔 토큰까지 한꺼번에 끊긴다.
+  type Mode = 'delete' | 'keep';
+  type Status = '' | 'ACTIVE' | 'ROTATED' | 'REVOKED' | 'DELETED';
+  type Hold = { fly: number; o: number; x: number };
+  type State = {
+    rows: [number, number, number]; status: [Status, Status, Status];
+    grace: number; graceShow: number; deny: number;
+    uR1: Hold; aR1: Hold; aR2: Hold; aAT: Hold; aR3: Hold;
+  };
+  type Layout = {
+    view: [number, number]; user: Point; attacker: Point; actor: { w: number; h: number };
+    uSlots: [Point, Point]; aSlots: [Point, Point];
+    boundary: { x: number; y: number; w: number; h: number };
+    rows: [Point, Point, Point]; statusDx: number; family: Point; bracketX: number;
+    gauge: { x: number; y: number; w: number; h: number }; redis: Point; redisSize: { w: number; h: number }; denyCtrl: Point;
+  };
+
+  const LAYOUT: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 300], user: { x: 64, y: 70 }, attacker: { x: 64, y: 222 }, actor: { w: 104, h: 52 },
+      uSlots: [{ x: 168, y: 58 }, { x: 168, y: 84 }], aSlots: [{ x: 168, y: 210 }, { x: 168, y: 236 }],
+      boundary: { x: 232, y: 14, w: 316, h: 272 },
+      rows: [{ x: 300, y: 92 }, { x: 300, y: 128 }, { x: 300, y: 164 }], statusDx: 40, family: { x: 266, y: 68 }, bracketX: 264,
+      gauge: { x: 428, y: 104, w: 104, h: 8 }, redis: { x: 476, y: 238 }, redisSize: { w: 128, h: 50 }, denyCtrl: { x: 300, y: 238 },
+    },
+    narrow: {
+      view: [360, 450], user: { x: 60, y: 44 }, attacker: { x: 60, y: 128 }, actor: { w: 100, h: 50 },
+      uSlots: [{ x: 160, y: 32 }, { x: 160, y: 58 }], aSlots: [{ x: 160, y: 116 }, { x: 160, y: 142 }],
+      boundary: { x: 12, y: 182, w: 336, h: 258 },
+      rows: [{ x: 96, y: 252 }, { x: 96, y: 288 }, { x: 96, y: 324 }], statusDx: 40, family: { x: 34, y: 228 }, bracketX: 40,
+      gauge: { x: 232, y: 264, w: 100, h: 8 }, redis: { x: 268, y: 400 }, redisSize: { w: 128, h: 50 }, denyCtrl: { x: 96, y: 400 },
+    },
+  };
+
+  const hold = (fly = 0, o = 0, x = 0): Hold => ({ fly, o, x });
+  const EMPTY: State = {
+    rows: [0, 0, 0], status: ['', '', ''], grace: 0, graceShow: 0, deny: 0,
+    uR1: hold(), aR1: hold(), aR2: hold(), aAT: hold(), aR3: hold(),
+  };
+  const clone = (s: State): State => JSON.parse(JSON.stringify(s));
+
+  /** 단계 k가 끝났을 때의 장면. 건너뛰거나 방식을 바꿀 때 바로 이 상태로 갑니다. */
+  function stateAt(mode: Mode, k: number): State {
+    const s = clone(EMPTY);
+    if (k < 0) return s;
+    s.rows[0] = 1; s.status[0] = 'ACTIVE'; s.uR1 = hold(1, 1);
+    if (k >= 1) s.aR1 = hold(1, 1);
+    if (k >= 2) {
+      s.aR1.o = 0;
+      s.rows[1] = 1; s.status[1] = 'ACTIVE';
+      s.aR2 = hold(1, 1); s.aAT = hold(1, 1);
+      if (mode === 'delete') { s.rows[0] = 0.3; s.status[0] = 'DELETED'; } else { s.status[0] = 'ROTATED'; s.grace = 1; s.graceShow = 1; }
+    }
+    if (k >= 3) {
+      s.grace = 0;
+      s.uR1.x = 1;
+      if (mode === 'keep') {
+        s.status = ['REVOKED', 'REVOKED', ''];
+        s.deny = 1; s.aR2.x = 1; s.aAT.x = 1;
+      }
+    }
+    if (k >= 4 && mode === 'delete') {
+      s.rows[1] = 0.3; s.status[1] = 'DELETED';
+      s.rows[2] = 1; s.status[2] = 'ACTIVE';
+      s.aR2.o = 0; s.aR3 = hold(1, 1);
+    }
+    return s;
+  }
+
+  const NOTES: Record<Mode, string[]> = {
+    delete: [
+      '사용자가 로그인해 refresh token <strong>R1</strong>을 받습니다. 서버의 refresh_token 테이블에 R1 행이 생깁니다.',
+      '공격자가 사용자의 R1을 훔쳤습니다. 서버는 아직 아무것도 모릅니다.',
+      '공격자가 먼저 R1으로 갱신합니다. 서버는 R2와 access token을 내주고 <strong>R1 행을 지웁니다.</strong>',
+      '10초 뒤 사용자가 R1을 내밉니다. R1 행이 없으니 서버는 <strong>그냥 401</strong>을 돌려줄 뿐, 이것이 재사용인지 알 수 없습니다. 공격자의 R2는 그대로입니다.',
+      '공격자는 R2로 다시 갱신해 R3를 받습니다. <strong>탈취를 끝까지 알아채지 못했습니다.</strong> 방식을 ‘상태로 남김’으로 바꿔 같은 단계를 보세요.',
+    ],
+    keep: [
+      '사용자가 로그인해 refresh token <strong>R1</strong>을 받습니다. 이 로그인에서 이어질 토큰은 모두 <strong>family F1</strong>로 묶입니다.',
+      '공격자가 사용자의 R1을 훔쳤습니다. 서버는 아직 아무것도 모릅니다.',
+      '공격자가 먼저 R1으로 갱신합니다. 서버는 R2를 내주고, R1을 지우는 대신 <strong>ROTATED로 남깁니다.</strong> 정상 동시 요청을 위해 10초의 유예를 둡니다.',
+      '유예가 끝난 뒤 사용자가 R1을 내밉니다. 이미 ROTATED인 토큰이니 <strong>재사용</strong>입니다. family 전체를 REVOKED로 바꾸고 Redis에 차단 표시를 남겨, 공격자가 쥔 <strong>R2와 access token까지</strong> 막습니다. 누가 공격자인지 모르므로 사용자도 다시 로그인해야 합니다.',
+      '공격자가 R2를 내밀지만 이미 REVOKED입니다. 훔친 토큰 묶음이 <strong>사용자의 갱신 한 번으로</strong> 끊겼습니다.',
+    ],
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="refresh-family"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const root = demo.querySelector<SVGSVGElement>('[data-family-svg]')!;
+    const stage = demo.querySelector<HTMLElement>('.scene-stage')!;
+    const note = demo.querySelector<HTMLElement>('[data-family-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-family-mode]')];
+    let narrow = false;
+    let mode: Mode = 'keep';
+    let current = -1;
+    const L = () => (narrow ? LAYOUT.narrow : LAYOUT.wide);
+
+    // ── 바탕 ─────────────────────────────────────────────
+    const boundary = createBoundary(root, 'user-service · refresh_token');
+    const bracket = svg('path', { class: 'scene-line' }, root);
+    bracket.style.stroke = 'var(--hairline)';
+    bracket.style.strokeWidth = '2';
+    const family = svg('text', { class: 'scene-label scene-label-dep is-sans' }, root);
+    family.textContent = 'family F1';
+    const denyCurve = createCurve(root, '');
+    const redis = createNode(root, { label: 'Redis', hue: 'var(--scene-hue-cyan)', sub: '' });
+    const gauge = createGauge(root, '유예', 'h');
+    const user = createNode(root, { label: '사용자', hue: 'var(--scene-hue-gray)' });
+    const attacker = createNode(root, { label: '공격자', hue: 'var(--scene-hue-gray)' });
+
+    const rowChips = ['R1', 'R2', 'R3'].map((label) => createChip(root, { label, hue: 'var(--scene-hue-blue)', width: 52 }));
+    const statusText = rowChips.map(() => svg('text', { class: 'scene-label' }, root));
+    const token = (label: string, width = 52) => createChip(root, { label, hue: 'var(--scene-hue-blue)', width });
+    const holds = { uR1: token('R1'), aR1: token('R1'), aR2: token('R2'), aAT: token('access', 64), aR3: token('R3') };
+    const packets = createPacketLayer(root);
+
+    const STATUS_FILL: Record<Status, string> = { '': 'transparent', ACTIVE: 'var(--scene-flow-ink)', ROTATED: 'var(--scene-dep)', REVOKED: 'var(--scene-danger)', DELETED: 'var(--muted)' };
+
+    const scene = createScene<State>(clone(EMPTY), (state) => {
+      const l = L();
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      boundary.place(l.boundary);
+      user.setBox({ ...l.user, ...l.actor });
+      attacker.setBox({ ...l.attacker, ...l.actor });
+      redis.setBox({ ...l.redis, ...l.redisSize });
+      redis.setSub(state.deny > 0.5 ? 'deny:family:F1' : '');
+      redis.group.style.opacity = String(0.45 + 0.55 * state.deny);
+
+      const [r1, , r3] = l.rows;
+      setAttrs(bracket, { d: `M ${l.bracketX + 6} ${r1.y - 12} H ${l.bracketX} V ${r3.y + 12} H ${l.bracketX + 6}` });
+      setAttrs(family, { x: l.family.x, y: l.family.y });
+      family.style.opacity = mode === 'keep' ? '1' : '0';
+      bracket.style.opacity = mode === 'keep' ? '1' : '0';
+
+      rowChips.forEach((chip, i) => {
+        chip.place(l.rows[i], state.rows[i]);
+        const status = state.status[i];
+        statusText[i].textContent = status === 'DELETED' ? '지워짐 · 기록 없음' : status;
+        statusText[i].classList.toggle('is-sans', status === 'DELETED');
+        statusText[i].style.fill = STATUS_FILL[status];
+        setAttrs(statusText[i], { x: l.rows[i].x + l.statusDx, y: l.rows[i].y + 4, opacity: status === 'DELETED' ? 1 : state.rows[i] });
+        chip.group.classList.toggle('is-shared', status === 'DELETED');
+        chip.group.classList.toggle('is-orphan', status === 'REVOKED');
+      });
+
+      gauge.place(l.gauge, state.grace);
+      gauge.group.style.opacity = String(state.graceShow);
+      gauge.value.textContent = `${Math.ceil(state.grace * 10)}초`;
+
+      denyCurve.draw({ x: r3.x, y: r3.y + 14 }, l.denyCtrl, { x: l.redis.x - l.redisSize.w / 2 - 6, y: l.redis.y }, state.deny, { x: 0, y: 0, anchor: 'start' });
+
+      // 손에 쥔 토큰: 발급된 행(또는 사용자의 자리)에서 호를 그리며 날아와 앉습니다.
+      const place = (chip: ReturnType<typeof token>, h: Hold, from: Point, to: Point) => {
+        const t = clamp01(h.fly);
+        chip.place(bowAt(from, to, t, 30 * Math.sin(Math.PI * t)), t > 0.01 ? h.o : 0);
+        chip.group.classList.toggle('is-orphan', h.x > 0.5);
+      };
+      place(holds.uR1, state.uR1, l.rows[0], l.uSlots[0]);
+      place(holds.aR1, state.aR1, l.uSlots[0], l.aSlots[0]);
+      place(holds.aR2, state.aR2, l.rows[1], l.aSlots[0]);
+      place(holds.aAT, state.aAT, l.rows[1], l.aSlots[1]);
+      place(holds.aR3, state.aR3, l.rows[2], l.aSlots[0]);
+    });
+
+    const setNote = (k: number) => {
+      note.innerHTML = NOTES[mode][k];
+      const alert = (mode === 'delete' && k >= 3) || (mode === 'keep' && k === 3);
+      note.classList.toggle('is-alert', mode === 'delete' && alert);
+    };
+    const settle = (k: number) => {
+      [user, attacker].forEach((n) => { n.flash('is-error', false); n.flash('is-done', false); n.setSub(''); });
+      if (k >= 3) user.setSub(mode === 'keep' ? '재로그인 필요' : '401');
+      if (k >= 3 && mode === 'keep') attacker.setSub('토큰 무효');
+      if (k >= 4 && mode === 'delete') { attacker.setSub('R3 획득'); attacker.flash('is-error'); }
+    };
+
+    // ── 단계 연출 ────────────────────────────────────────
+    const at = (k: number, patch: (s: State) => void) => { const s = clone(scene.state); patch(s); return s; };
+    const rowEdge = (i: number) => ({ x: L().rows[i].x - 34, y: L().rows[i].y });
+
+    async function animate(k: number, alive: () => boolean) {
+      const l = L();
+      if (k === 0) {
+        const p = packets.spawn({ label: '로그인', at: { x: l.user.x + 40, y: l.user.y } });
+        if (!(await p.travel([rowEdge(0)], 700)) || !alive()) return;
+        await p.fade(200);
+        await scene.go(at(k, (s) => { s.rows[0] = 1; s.status[0] = 'ACTIVE'; }), duration.snap);
+        if (!alive()) return;
+        await scene.go(at(k, (s) => { s.uR1 = hold(1, 1); }), duration.fly);
+        return;
+      }
+      if (k === 1) {
+        attacker.flash('is-error');
+        await scene.go(at(k, (s) => { s.aR1 = hold(1, 1); }), duration.fly);
+        return;
+      }
+      if (k === 2) {
+        const p = packets.spawn({ label: 'refresh R1', tone: 'danger', at: l.aSlots[0] });
+        await scene.go(at(k, (s) => { s.aR1.o = 0; }), 160);
+        if (!(await p.travel([rowEdge(0)], 760)) || !alive()) return;
+        await p.land(false);
+        if (mode === 'delete') {
+          await scene.go(at(k, (s) => { s.rows[0] = 0.3; s.status[0] = 'DELETED'; }), duration.cut);
+        } else {
+          await scene.go(at(k, (s) => { s.status[0] = 'ROTATED'; s.graceShow = 1; s.grace = 1; }), duration.snap);
+        }
+        if (!alive()) return;
+        await scene.go(at(k, (s) => { s.rows[1] = 1; s.status[1] = 'ACTIVE'; }), duration.snap);
+        if (!alive()) return;
+        await scene.go(at(k, (s) => { s.aR2 = hold(1, 1); s.aAT = hold(1, 1); }), duration.fly);
+        return;
+      }
+      if (k === 3) {
+        if (mode === 'keep') {
+          // 유예 10초가 흐릅니다.
+          await scene.go(at(k, (s) => { s.grace = 0; }), 1400, ease.linear);
+          if (!alive()) return;
+        }
+        const p = packets.spawn({ label: 'refresh R1', at: l.uSlots[0] });
+        if (mode === 'delete') {
+          if (!(await p.bounce(rowEdge(0), 30)) || !alive()) return;
+          p.relabel('R1? 없음', 'danger');
+          user.flash('is-error');
+          user.setSub('401');
+          await scene.go(at(k, (s) => { s.uR1.x = 1; }), 0);
+          await p.fade(500);
+          return;
+        }
+        if (!(await p.travel([rowEdge(0)], 760)) || !alive()) return;
+        p.relabel('재사용!', 'danger');
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        await p.fade(240);
+        // family 전체가 REVOKED로 바뀌고, 차단 표시가 Redis로 그려집니다.
+        await scene.go(at(k, (s) => { s.status[0] = 'REVOKED'; }), 0);
+        rowChips[0].flash('is-shaking');
+        await scene.pause(160);
+        if (!alive()) return;
+        await scene.go(at(k, (s) => { s.status[1] = 'REVOKED'; }), 0);
+        rowChips[1].flash('is-shaking');
+        await scene.go(at(k, (s) => { s.deny = 1; }), duration.draw);
+        if (!alive()) return;
+        redis.flash('is-ok');
+        await scene.go(at(k, (s) => { s.uR1.x = 1; s.aR2.x = 1; s.aAT.x = 1; }), 0);
+        holds.aR2.flash('is-shaking');
+        holds.aAT.flash('is-shaking');
+        user.setSub('재로그인 필요');
+        attacker.setSub('토큰 무효');
+        return;
+      }
+      if (k === 4) {
+        const p = packets.spawn({ label: 'refresh R2', tone: 'danger', at: l.aSlots[0] });
+        if (mode === 'keep') {
+          if (!(await p.bounce(rowEdge(1), 30)) || !alive()) return;
+          await p.fade(500);
+          return;
+        }
+        await scene.go(at(k, (s) => { s.aR2.o = 0; }), 160);
+        if (!(await p.travel([rowEdge(1)], 760)) || !alive()) return;
+        await p.land(false);
+        await scene.go(at(k, (s) => { s.rows[1] = 0.3; s.status[1] = 'DELETED'; }), duration.cut);
+        if (!alive()) return;
+        await scene.go(at(k, (s) => { s.rows[2] = 1; s.status[2] = 'ACTIVE'; }), duration.snap);
+        if (!alive()) return;
+        await scene.go(at(k, (s) => { s.aR3 = hold(1, 1); }), duration.fly);
+        attacker.flash('is-error');
+        attacker.setSub('R3 획득');
+      }
+    }
+
+    async function show(k: number, instant: boolean) {
+      const alive = scene.begin();
+      packets.clear();
+      const continuing = !instant && k === current + 1;
+      current = k;
+      setNote(k);
+      if (!continuing) {
+        scene.set(stateAt(mode, k));
+        settle(k);
+        return;
+      }
+      scene.set(stateAt(mode, k - 1));
+      settle(k - 1);
+      await animate(k, alive);
+      if (!alive()) return;
+      scene.set(stateAt(mode, k));
+      settle(k);
+    }
+
+    async function replay() {
+      // 방식을 바꾸면 지금 단계를 새 방식으로 다시 재생합니다.
+      const k = Math.max(0, current);
+      const alive = scene.begin();
+      packets.clear();
+      scene.set(stateAt(mode, k - 1));
+      settle(k - 1);
+      current = k - 1;
+      setNote(k);
+      current = k;
+      await animate(k, alive);
+      if (!alive()) return;
+      scene.set(stateAt(mode, k));
+      settle(k);
+    }
+
+    modeButtons.forEach((button) => button.addEventListener('click', () => {
+      const next = button.dataset.familyMode as Mode;
+      if (next === mode) return;
+      mode = next;
+      modeButtons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.familyMode === mode)));
+      void replay();
+    }));
+
+    watchNarrow(stage, (value) => {
+      narrow = value;
+      packets.clear();
+      scene.set(stateAt(mode, current));
+      settle(current);
+    });
+
+    createStepPlayer(demo, {
+      dwell: (k) => (k === 4 ? duration.dwellLast + 1200 : k === 3 ? duration.dwell + 3600 : k === 2 ? duration.dwell + 2400 : duration.dwell + 600),
+      onStep: (k, instant) => { void show(k, instant); },
+    });
+  });
+</script>
+
+<style>
+  [data-blog-demo="refresh-family"] .db-demo-controls { margin-bottom: 0; }
+</style>
