@@ -6,6 +6,7 @@
 - draft 글 미리 보기: 개발 서버의 **`/preview/<slug>/`**
 - 첫 적용 사례: `PeelDependencyGraph`, `PeelMigrationSteps`, `PeelSequenceDiagram`
 - 실어 나르기·예산 게이지 사례: `ThreadSchedulerLens`, `CpuQuotaExperiment`, `RunqueuePolicyMotion`, `ExecutionLayersDiagram`
+- 패킷·렌즈·칩 이동 사례: `SharedBootOrder`, `FkGuardDemo`, `DbSeparationSteps`, `RetentionBoundary`
 
 ## 1. 먼저 정할 것: 독자가 장면에서 알아낼 변화
 
@@ -20,8 +21,19 @@
 | 형태 | 언제 | 예 |
 | --- | --- | --- |
 | 직접 해 보기 (칩·버튼) | 독자가 예측하고 틀려 볼 수 있을 때. 가장 강합니다 | 계획대로 떼어내 보기 → 부팅 실패 |
+| 조건을 바꾸고 다시 보내기 | 같은 요청이 조건(설정·규칙)에 따라 다른 결과를 낼 때 | FK를 걷어 낸 뒤 같은 세 요청 다시 보내기 |
+| 값 직접 움직이기 (슬라이더) | 경계가 연속값에 달려 있을 때. 끌자마자 결과가 따라와야 합니다 | 시계 오차를 0→5분으로 끌기 |
 | 시선 바꾸기 (렌즈 토글) | 같은 대상을 두 기준으로 볼 때 | import 화살표 ↔ 실행 시점 호출 |
 | 타임라인 | 순서 자체가 내용일 때 | 호출을 하나씩 끊는 다섯 단계 |
+
+### 살아 있는 장면
+
+정지한 도식보다 **실제로 무언가가 지나가는 장면**이 더 많이 설명합니다. 요청·이벤트·마이그레이션이 많다면 패킷으로 흘려 보내고, 지표(카운터·Ready 수·게이지)가 패킷의 도착과 함께 바뀌게 합니다. 독자는 "몇 개가 어디서 막혔는지"를 숫자 대신 움직임으로 셉니다.
+
+- 같은 사건을 두 곳에서 보여줄 때(흐름 + 카운터, 큰 축 + 확대 렌즈)는 둘이 **같은 순간에** 바뀌어야 합니다.
+- 작은 차이(9일 축 위의 5분)가 핵심이면 축을 늘리지 말고 렌즈로 확대합니다. 렌즈 테두리가 큰 축의 어느 구간인지 이어 줍니다.
+- 여러 대상이 한꺼번에 옮겨질 때는 주인별로 조금씩 늦게 출발시켜(stagger) 물결처럼 보이게 하고, 노드가 다른 대상 위를 가로지르지 않는 배치를 고릅니다. 가로지를 수밖에 없으면 그 자리에서 흐려졌다 나타나게 합니다.
+- 처음 화면에 들어올 때 한 번 저절로 보여주되, 자동 재생이 일어나지 않아도(탭이 숨겨진 상태 등) 완성된 정지 화면이 의미를 가져야 합니다.
 
 ## 2. 모션 어휘: 의미 하나에 움직임 하나
 
@@ -41,6 +53,13 @@
 | 임시 상태 | 보조 문구가 주황 | `is-temp` | — |
 | 수치가 바뀌었다 | 숫자가 튀어 오름 | `bumpText` | — |
 | 결과를 확인한다 | 로그 한 줄을 대기(…)로 찍고 잠시 뒤 ✓/✕로 바꿈 | `createConsole` | `beat` |
+| 요청·이벤트가 지나간다 | 알약 패킷이 길을 따라 이동하고, 도착하면 한 번 빛남. 많으면 간격을 두고 연달아 흘림 | `createPacketLayer` `spawn` `travel` `land` | `draw` 안팎 |
+| 막혔다 (거절) | 패킷이 관문까지 가서 찌그러지며 튕겨 나오고 위험 색으로 바뀜. 관문 쪽 판정 문구가 뜸 | `bounce` | 420 + 300 |
+| 관문에서 다른 것으로 바뀌었다 | 패킷이 관문에서 멈칫하며 이름과 색이 바뀐 뒤 계속 감 (DELETE → UPDATE) | `relabel` | `beat` |
+| 기다린다 (선행 조건) | 노드 테두리가 임시 색 점선으로 행진, 보조 문구 주황 | `is-waiting` | 반복 |
+| 하나가 여럿으로 갈라졌다 | 겹쳐 있던 상자·칩 사본이 각자 자리로 갈라져 나감 | 같은 자리에 겹친 사본 + 상태 보간 | `draw` / `fly` |
+| 작은 차이를 확대해 본다 | 큰 축의 좁은 구간을 테두리로 집고, 점선 날개로 이어진 아래 패널이 펼쳐짐 | `createLens` | `draw` |
+| 값을 직접 움직인다 | 슬라이더를 끄는 동안 장면이 보간 없이 바로 따라오고, 값 숫자가 튀어 오름 | `.scene-range` + `scene.set` | 즉시 |
 | 다음에 누를 것 | 칩에 은은한 맥박 | `data-state="next"` | — |
 
 새 의미가 필요하면 먼저 이 표에 한 줄을 추가하고, 그다음 키트에 부품을 만듭니다.
@@ -68,6 +87,7 @@
 - **좁은 배치(데모 폭 < 560px)는 좌표를 따로** 둡니다(보통 세로로 쌓은 360 폭). `watchNarrow`가 바꿔 줍니다. 넓은 그림을 그냥 줄이지 않습니다.
 - 선은 다른 노드를 지나가지 않게 둡니다. 노드가 움직이는 장면은 **움직인 뒤의 위치**에서도 선과 라벨이 겹치지 않는지 확인합니다.
 - 노드 보조 문구는 짧게 씁니다(대략 10자). 상태가 바뀔 때만 보조 문구를 넣고, 평소에는 비워 둡니다.
+- 한글 문장이 들어가는 SVG 라벨은 `scene-label is-sans`를 씁니다. 고정폭 글꼴은 한글 자간을 벌립니다. 테이블 이름·코드·버전 같은 값만 고정폭으로 둡니다.
 
 ## 6. 접근성과 정직함
 
@@ -97,7 +117,8 @@
 | 파일 | 역할 |
 | --- | --- |
 | `src/scripts/blog/scene/core.ts` | `createScene`, 보간, 트윈, 모션 토큰(`duration`, `ease`), 기하, 호 이동(`bowAt`, `hopLift`, `nextHop`), `watchNarrow`, `bumpText` |
-| `src/scripts/blog/scene/parts.ts` | `createNode`, `createTray`, `createGauge`, `landRing`, `createFlipLink`, `createCallLine`, `createCurve`, `createBoundary`, `createPill`, `createArrow` |
+| `src/scripts/blog/scene/parts.ts` | `createNode`, `createTray`, `createGauge`, `landRing`, `createFlipLink`, `createCallLine`, `createCurve`, `createBoundary`, `createPill`, `createArrow`, `createChip`, `createLens` |
+| `src/scripts/blog/scene/packets.ts` | `createPacketLayer` (지나가는 요청·이벤트), `polylineAt`, `arcPoints` |
 | `src/scripts/blog/scene/flip.ts` | `createFlipMover` (HTML 요소 이동) |
 | `src/scripts/blog/scene/console.ts` | `createConsole` (실행 로그) |
 | `src/scripts/blog/scene/step-player.ts` | `createStepPlayer` (타임라인 재생) |

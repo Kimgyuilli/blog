@@ -100,11 +100,27 @@ const hues = ['blue', 'amber', 'violet', 'cyan', 'gray', 'pink'];
     <div class="scene-stage"><svg data-svg viewBox="0 0 560 120"></svg></div>
     <p class="scene-note" data-note role="status"></p>
   </InteractiveDemoFrame>
+
+  <InteractiveDemoFrame demoId="kit-packets" ariaLabel="createPacketLayer" title="createPacketLayer — 지나간다 · 막힌다 · 바뀐다" description="패킷 하나가 요청·이벤트 하나입니다. 관문까지 가서 튕겨 나오거나(bounce), 관문에서 다른 것으로 바뀌거나(relabel), 도착해 자리를 잡습니다(land). 기다리는 쪽 노드는 is-waiting.">
+    <DemoControls ariaLabel="패킷 보내기">
+      <button type="button" data-act="pass">통과</button>
+      <button type="button" data-act="bounce">거절</button>
+      <button type="button" data-act="morph">바뀌어 통과</button>
+      <button type="button" data-act="stream">연속 13개</button>
+    </DemoControls>
+    <div class="scene-stage"><svg data-svg viewBox="0 0 560 200"></svg></div>
+  </InteractiveDemoFrame>
+
+  <InteractiveDemoFrame demoId="kit-lens" ariaLabel="createLens, createChip, scene-range" title="createLens · createChip · scene-range — 작은 차이를 키우고 직접 움직인다" description="렌즈는 큰 축의 좁은 구간을 아래 패널로 확대합니다. 슬라이더(scene-range)는 직접 조작이라 보간 없이 scene.set으로 바로 따라갑니다.">
+    <label class="scene-range"><span>오프셋</span><input type="range" min="-10" max="10" step="1" value="3" data-range /><output data-out>3</output></label>
+    <div class="scene-stage"><svg data-svg viewBox="0 0 560 230"></svg></div>
+  </InteractiveDemoFrame>
 </div>
 
 <script>
-  import { createScene, duration, ease, svg, type Box } from '../../scripts/blog/scene/core';
-  import { createBoundary, createCallLine, createCurve, createFlipLink, createNode } from '../../scripts/blog/scene/parts';
+  import { createScene, duration, ease, setAttrs, svg, type Box } from '../../scripts/blog/scene/core';
+  import { createBoundary, createCallLine, createChip, createCurve, createFlipLink, createLens, createNode } from '../../scripts/blog/scene/parts';
+  import { createPacketLayer } from '../../scripts/blog/scene/packets';
   import { createFlipMover } from '../../scripts/blog/scene/flip';
   import { createConsole } from '../../scripts/blog/scene/console';
   import { createStepPlayer } from '../../scripts/blog/scene/step-player';
@@ -252,6 +268,77 @@ const hues = ['blue', 'amber', 'violet', 'cyan', 'gray', 'pink'];
         if (instant) scene.set({ x: xs[index] });
         else scene.go({ x: xs[index] }, duration.move);
       },
+    });
+  }
+
+  // ── createPacketLayer + is-waiting ───────────────────
+  {
+    const root = demo('kit-packets');
+    const stage = root.querySelector<SVGSVGElement>('[data-svg]')!;
+    const gate = svg('line', { x1: 300, x2: 300, y1: 30, y2: 170, class: 'scene-line', 'stroke-dasharray': '7 5' }, stage);
+    gate.style.stroke = 'var(--scene-danger)';
+    const source = createNode(stage, { label: 'Client', hue: 'var(--scene-hue-blue)', sub: '' });
+    const target = createNode(stage, { label: 'DB', hue: 'var(--scene-hue-gray)', sub: '' });
+    source.setBox({ x: 70, y: 100, ...size });
+    target.setBox({ x: 490, y: 100, ...size });
+    const layer = createPacketLayer(stage);
+    const start = { x: 140, y: 100 };
+    const end = { x: 420, y: 100 };
+    const reset = () => { layer.clear(); target.flash('is-waiting', false); target.setSub(''); };
+    root.querySelector('[data-act="pass"]')!.addEventListener('click', async () => {
+      reset();
+      const p = layer.spawn({ label: 'INSERT', at: start });
+      if (await p.travel([end], 900)) { await p.land(false); target.flash('is-ok'); }
+    });
+    root.querySelector('[data-act="bounce"]')!.addEventListener('click', async () => {
+      reset();
+      const p = layer.spawn({ label: 'INSERT', at: start });
+      if (await p.bounce({ x: 266, y: 100 })) { await new Promise((r) => setTimeout(r, duration.read)); await p.fade(); }
+    });
+    root.querySelector('[data-act="morph"]')!.addEventListener('click', async () => {
+      reset();
+      const p = layer.spawn({ label: 'DELETE', at: start });
+      if (!(await p.travel([{ x: 250, y: 100 }], 600, ease.out))) return;
+      p.relabel('UPDATE', 'flow');
+      if (await p.travel([end], 700)) await p.land(false);
+    });
+    root.querySelector('[data-act="stream"]')!.addEventListener('click', async () => {
+      reset();
+      target.flash('is-waiting');
+      target.setSub('대기');
+      const flights: Promise<boolean>[] = [];
+      for (let v = 1; v <= 13; v += 1) {
+        const p = layer.spawn({ label: `V${v}`, tone: 'flow', at: { x: start.x, y: 60 } });
+        flights.push(p.travel([{ x: end.x, y: 60 }], 600).then((ok) => { if (ok) void p.fade(160); return ok; }));
+        await new Promise((r) => setTimeout(r, 160));
+      }
+      if ((await Promise.all(flights)).every(Boolean)) { target.flash('is-waiting', false); target.setSub('준비됨'); target.flash('is-ok'); }
+    });
+  }
+
+  // ── createLens + createChip + scene-range ────────────
+  {
+    const root = demo('kit-lens');
+    const stage = root.querySelector<SVGSVGElement>('[data-svg]')!;
+    const input = root.querySelector<HTMLInputElement>('[data-range]')!;
+    const out = root.querySelector<HTMLOutputElement>('[data-out]')!;
+    const bar = svg('rect', { x: 40, y: 30, width: 480, height: 12, rx: 6 }, stage);
+    bar.style.fill = 'color-mix(in srgb, var(--scene-flow) 70%, transparent)';
+    const lens = createLens(stage, '가운데 ±10 확대');
+    const marker = svg('line', { class: 'scene-line' }, stage);
+    marker.style.stroke = 'var(--scene-danger)';
+    const chip = createChip(stage, { label: 'processed_events', hue: 'var(--scene-hue-violet)', width: 128 });
+    const scene = createScene({ open: 0, offset: 3 }, (state) => {
+      const panel = lens.place({ x: 274, y: 24, w: 12, h: 24 }, { x: 40, y: 80, w: 480, h: 140 }, state.open);
+      const x = panel.x + panel.w / 2 + state.offset * 22;
+      setAttrs(marker, { x1: x, y1: 120, x2: x, y2: 190, opacity: state.open });
+      chip.place({ x, y: 160 }, state.open);
+    });
+    scene.redraw();
+    void scene.go({ open: 1, offset: 3 }, duration.draw);
+    input.addEventListener('input', () => {
+      bumpText(out, input.value);
+      scene.set({ ...scene.state, offset: Number(input.value) });
     });
   }
 </script>

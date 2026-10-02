@@ -187,6 +187,8 @@ html.dark .db-demo {
 }
 
 .scene-label-dep { fill: var(--scene-dep); }
+/* 한글 문장이 들어가는 라벨. 고정폭 글꼴은 한글 자간이 벌어지므로 본문 글꼴을 씁니다. */
+.scene-label.is-sans { font-family: var(--font-sans); font-size: 11.5px; font-weight: 700; }
 .scene-label-danger { fill: var(--scene-danger); }
 .scene-label-flow { fill: var(--scene-flow-ink); }
 
@@ -498,7 +500,101 @@ html.dark .db-demo {
   .scene-timeline-toggle { grid-column: 1 / -1; justify-self: end; }
 }
 
+/* ── 기다리는 노드 (선행 조건 대기) ──────────────────── */
+.scene-node.is-waiting .scene-node-card {
+  stroke: var(--scene-temp);
+  stroke-dasharray: 5 4;
+  animation: scene-march 900ms linear infinite;
+}
+.scene-node.is-waiting .scene-node-sub { fill: var(--scene-temp); font-weight: 700; }
+
+/* ── 패킷 (지나가는 요청·이벤트) ─────────────────────── */
+.scene-packet { --packet: var(--scene-dep); pointer-events: none; }
+.scene-packet[data-tone="flow"] { --packet: var(--scene-flow); }
+.scene-packet[data-tone="danger"] { --packet: var(--scene-danger); }
+.scene-packet[data-tone="temp"] { --packet: var(--scene-temp); }
+.scene-packet-body { transform-box: fill-box; transform-origin: center; }
+.scene-packet-pill {
+  fill: color-mix(in srgb, var(--packet) 14%, var(--canvas));
+  stroke: var(--packet);
+  stroke-width: 1.4;
+  filter: drop-shadow(0 2px 3px rgba(15, 23, 42, 0.12));
+  transition: fill 200ms ease, stroke 200ms ease;
+}
+.scene-packet-text {
+  fill: var(--packet);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 750;
+  text-anchor: middle;
+  transition: fill 200ms ease;
+}
+.scene-packet.is-bump .scene-packet-body { animation: scene-pop 420ms ease-out; }
+.scene-packet.is-hit .scene-packet-body { animation: scene-squash 300ms ease-out; }
+.scene-packet.is-landed .scene-packet-pill { animation: scene-glow 700ms ease-out; }
+
+/* ── 표 이름 칩 ──────────────────────────────────────── */
+.scene-table-chip-card {
+  fill: var(--surface);
+  stroke: color-mix(in srgb, var(--node-hue) 38%, var(--hairline));
+  stroke-width: 1.2;
+  transition: fill 240ms ease, stroke 240ms ease;
+}
+.scene-table-chip-dot { fill: var(--node-hue); }
+.scene-table-chip-text {
+  fill: var(--charcoal);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 650;
+}
+.scene-table-chip.is-shared .scene-table-chip-card { stroke: var(--scene-temp); stroke-dasharray: 4 3; }
+.scene-table-chip.is-swept .scene-table-chip-card { fill: var(--scene-flow-soft); stroke: var(--scene-flow); }
+.scene-table-chip.is-orphan .scene-table-chip-card { fill: var(--scene-danger-soft); stroke: var(--scene-danger); stroke-dasharray: 4 3; }
+.scene-table-chip.is-orphan .scene-table-chip-text { fill: var(--scene-danger); }
+.scene-table-chip.is-ok .scene-node-body { animation: scene-pop 520ms ease-out; }
+.scene-table-chip.is-shaking .scene-node-body { animation: scene-shake 420ms ease-in-out; }
+
+/* ── 확대 렌즈 ──────────────────────────────────────── */
+.scene-lens-source { fill: color-mix(in srgb, var(--ink) 6%, transparent); stroke: var(--ink); stroke-width: 1.2; }
+.scene-lens-wing { stroke: color-mix(in srgb, var(--ink) 35%, transparent); stroke-width: 1; stroke-dasharray: 3 3; fill: none; }
+.scene-lens-panel {
+  fill: var(--surface);
+  stroke: color-mix(in srgb, var(--ink) 45%, var(--hairline));
+  stroke-width: 1.2;
+  filter: drop-shadow(0 6px 14px rgba(15, 23, 42, 0.1));
+}
+
+/* ── 직접 값을 바꾸는 슬라이더 ──────────────────────── */
+.scene-range {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  color: var(--slate);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.scene-range input { width: 100%; accent-color: var(--scene-temp); cursor: grab; }
+.scene-range input:active { cursor: grabbing; }
+.scene-range output {
+  min-width: 4.6em;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.scene-range output.is-bump { display: inline-block; animation: scene-pop 420ms ease-out; }
+
 /* ── 움직임 ──────────────────────────────────────────── */
+@keyframes scene-march { to { stroke-dashoffset: -18; } }
+@keyframes scene-squash { 30% { transform: scale(0.82, 1.12); } 70% { transform: scale(1.06, 0.96); } }
+@keyframes scene-glow {
+  0% { filter: drop-shadow(0 0 0 color-mix(in srgb, var(--packet) 70%, transparent)); }
+  40% { filter: drop-shadow(0 0 7px color-mix(in srgb, var(--packet) 70%, transparent)); }
+  100% { filter: drop-shadow(0 2px 3px rgba(15, 23, 42, 0.12)); }
+}
+
 @keyframes scene-flow { to { stroke-dashoffset: -26; } }
 @keyframes scene-flow-reverse { to { stroke-dashoffset: 26; } }
 @keyframes scene-fill { from { width: 0; } to { width: 100%; } }
@@ -538,6 +634,11 @@ html.dark .db-demo {
   .scene-console li,
   .scene-note.is-entering,
   .scene-metric b.is-bump,
-  .scene-gauge-value.is-bump { animation: none; }
+  .scene-gauge-value.is-bump,
+  .scene-node.is-waiting .scene-node-card,
+  .scene-packet .scene-packet-body,
+  .scene-packet .scene-packet-pill,
+  .scene-table-chip .scene-node-body,
+  .scene-range output.is-bump { animation: none; }
   .scene-timeline-step.is-timing .scene-timeline-fill { animation: none; width: 100%; }
 }

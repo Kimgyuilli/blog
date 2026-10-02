@@ -298,3 +298,66 @@ export function createBoundary(parent: Element, caption: string, variant: 'bound
     },
   };
 }
+
+// ── 표 이름 칩 ───────────────────────────────────────────
+
+/**
+ * 테이블·파일처럼 이름 하나로 된 작은 칩. 왼쪽 점의 색이 주인(노드 hue)입니다.
+ * 중심 좌표에 놓이며, 옮길 때는 장면 상태의 좌표를 `bowAt`/`hopLift`로 휘게 보간합니다.
+ */
+export function createChip(parent: Element, { label, hue, width }: { label: string; hue: string; width: number }) {
+  const group = svg('g', { class: 'scene-table-chip' }, parent);
+  group.style.setProperty('--node-hue', hue);
+  const body = svg('g', { class: 'scene-node-body' }, group);
+  svg('rect', { class: 'scene-table-chip-card', rx: 6, x: -width / 2, y: -10, width, height: 20 }, body);
+  svg('circle', { class: 'scene-table-chip-dot', r: 3, cx: -width / 2 + 9, cy: 0 }, body);
+  const text = svg('text', { class: 'scene-table-chip-text', x: -width / 2 + 17, y: 3.6 }, body);
+  text.textContent = label;
+  return {
+    group,
+    width,
+    place: ({ x, y }: Point, opacity = 1) => {
+      setAttrs(group, { transform: `translate(${x.toFixed(2)} ${y.toFixed(2)})` });
+      group.style.opacity = String(opacity);
+    },
+    flash: (className: string, on = true) => {
+      if (on) replayClass(group, className);
+      else group.classList.remove(className);
+    },
+  };
+}
+
+// ── 확대 렌즈 ────────────────────────────────────────────
+
+/**
+ * "작은 차이를 확대해 본다". 큰 축 위의 좁은 구간(src)을 테두리로 집고, 두 연결선으로 아래 확대 패널(panel)에 이어 줍니다.
+ * open(0~1)이 커지며 패널이 src 자리에서 펼쳐집니다. 패널 안의 내용은 장면이 직접 그립니다.
+ */
+export function createLens(parent: Element, caption: string) {
+  const group = svg('g', { class: 'scene-lens' }, parent);
+  const wings = svg('path', { class: 'scene-lens-wing' }, group);
+  const source = svg('rect', { class: 'scene-lens-source', rx: 3 }, group);
+  const panel = svg('rect', { class: 'scene-lens-panel', rx: 12 }, group);
+  const text = svg('text', { class: 'scene-caption' }, group);
+  text.textContent = caption;
+  return {
+    group,
+    place(src: Rect, target: Rect, open: number) {
+      const o = clamp01(open);
+      const p = {
+        x: src.x + (target.x - src.x) * o,
+        y: src.y + (target.y - src.y) * o,
+        w: src.w + (target.w - src.w) * o,
+        h: src.h + (target.h - src.h) * o,
+      };
+      setAttrs(source, { x: src.x, y: src.y, width: src.w, height: src.h, opacity: o > 0.01 ? 1 : 0 });
+      setAttrs(panel, { x: p.x, y: p.y, width: Math.max(0, p.w), height: Math.max(0, p.h), opacity: clamp01(o * 2) });
+      setAttrs(wings, {
+        d: `M ${src.x} ${src.y + src.h} L ${p.x} ${p.y} M ${src.x + src.w} ${src.y + src.h} L ${p.x + p.w} ${p.y}`,
+        opacity: clamp01(o * 2),
+      });
+      setAttrs(text, { x: p.x + 12, y: p.y + 20, opacity: clamp01((o - 0.6) * 2.5) });
+      return p;
+    },
+  };
+}
