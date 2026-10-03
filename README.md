@@ -15,6 +15,22 @@ npm run dev
 npm run build
 ```
 
+## Google Analytics 4
+
+기본 측정 ID는 `G-9NKWCXKYVV`이며, 저장소를 빌드하면 자동으로 포함됩니다.
+다른 ID를 사용하려면 `.env.example`을 `.env`로 복사하거나 배포 서비스의 빌드 환경변수를 설정합니다.
+
+```dotenv
+PUBLIC_GA_MEASUREMENT_ID=G-XXXXXXXXXX
+```
+
+- 공통 레이아웃을 사용하는 블로그 페이지에서 페이지 조회를 수집합니다. 별도 앱인 `/portfolio/`는 포함하지 않습니다.
+- `npm run dev`에서는 수집하지 않습니다. ID가 비어 있거나 형식이 잘못되면 GA 스크립트를 삽입하지 않습니다.
+- ID를 변경할 때는 **빌드 환경변수** `PUBLIC_GA_MEASUREMENT_ID`를 설정하고 다시 빌드·배포합니다. 런타임 변수만 바꿔서는 정적 페이지에 반영되지 않습니다.
+- 배포 후 사이트를 방문하고 GA4 실시간 보고서에서 수집 여부를 확인합니다.
+
+연결 방식은 [Google의 Google tag 설정 문서](https://developers.google.com/tag-platform/gtagjs/configure)를 따릅니다.
+
 ## 포트폴리오 통합
 
 별도 Vite/React 포트폴리오 프로젝트를 `/portfolio/` 경로로 함께 배포할 수 있습니다.

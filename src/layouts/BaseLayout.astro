@@ -13,6 +13,8 @@ const { title, description = defaultDescription, image = '/images/blog/og-defaul
 const pageTitle = title ? `${title} | ${siteTitle}` : siteTitle;
 const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://blog.rlarbdlf222.workers.dev');
 const imageUrl = new URL(image, canonical);
+const gaMeasurementId = (import.meta.env.PUBLIC_GA_MEASUREMENT_ID ?? 'G-9NKWCXKYVV').trim();
+const analyticsEnabled = import.meta.env.PROD && gaMeasurementId && /^G-[A-Z0-9]+$/.test(gaMeasurementId);
 ---
 
 <!doctype html>
@@ -21,6 +23,17 @@ const imageUrl = new URL(image, canonical);
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="generator" content={Astro.generator} />
+    {analyticsEnabled && (
+      <>
+        <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}`}></script>
+        <script is:inline define:vars={{ gaMeasurementId }}>
+          window.dataLayer = window.dataLayer || [];
+          function gtag() { window.dataLayer.push(arguments); }
+          gtag('js', new Date());
+          gtag('config', gaMeasurementId);
+        </script>
+      </>
+    )}
     <title>{pageTitle}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
