@@ -1,0 +1,414 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import '../../styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="tx-stock-race" ariaLabel="재고가 1개인 상품에 두 트랜잭션이 동시에 주문하는 실험" title="재고 1개, 주문 두 건" description="트랜잭션 A와 B가 같은 상품을 동시에 주문합니다. 방식을 바꿔 다시 보내 보고, B가 어디에서 멈추는지 보세요.">
+  <DemoControls ariaLabel="재고 차감 방식">
+    <button type="button" data-race-mode="none" aria-pressed="true">보호 없음</button>
+    <button type="button" data-race-mode="lock" aria-pressed="false">FOR UPDATE</button>
+    <button type="button" data-race-mode="version" aria-pressed="false">version 검사</button>
+    <button type="button" data-race-mode="cond" aria-pressed="false">조건부 UPDATE</button>
+  </DemoControls>
+  <div class="scene-chips" role="group" aria-label="실행">
+    <button type="button" class="scene-chip is-plain" data-race-run>▶ 다시 보내기</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic viewBox="0 0 560 290" role="img" aria-label="왼쪽에 트랜잭션 A와 B, 가운데에 상품 1의 재고 행, 오른쪽에 orders 테이블이 있습니다. 보호 없이 읽고 덮어쓰면 두 트랜잭션이 모두 재고 1을 읽고 0을 저장해 주문이 두 건 생깁니다. FOR UPDATE에서는 B가 행 락을 기다렸다가 0을 읽고, version 검사에서는 B의 저장이 거부되며, 조건부 UPDATE에서는 B가 락을 기다린 뒤 조건이 맞지 않아 0행이 변경됩니다. 세 방식 모두 주문은 한 건입니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">설명을 위해 A가 항상 먼저 진행하도록 순서를 고정했습니다. 실제로는 어느 쪽이 먼저 락을 얻을지 정해져 있지 않습니다. version 검사에서 충돌한 B가 다시 시도하는 과정과 주문 INSERT의 세부, 오류 처리 코드는 그리지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { createScene, duration, ease, setAttrs, svg, watchNarrow, bumpText, replayClass, type Point } from '../../scripts/blog/scene/core';
+  import { createBadge, createBoundary, createChip, createNode, landRing, type Rect } from '../../scripts/blog/scene/parts';
+  import { createPacketLayer, polylineAt, type Packet } from '../../scripts/blog/scene/packets';
+  import { watchDemoPlayback } from '../../scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: 보호 없이 읽고 덮어쓰면 A와 B가 모두 재고 1을 읽어 주문이 두 건 생긴다.
+  // 방식을 바꾸면 B가 멈추는 자리가 달라진다(락 앞에서 기다림 / 저장 때 거부 / 락을 기다린 뒤 조건에서 거부). 주문은 한 건만 남는다.
+  type Mode = 'none' | 'lock' | 'version' | 'cond';
+  type Tx = 'a' | 'b';
+  type Layout = {
+    view: [number, number];
+    node: Record<Tx, Point>; nodeSize: { w: number; h: number };
+    out: Record<Tx, Point>; port: Record<Tx, Point>;
+    row: Rect; rowText: { caption: Point; stockLabel: Point; stock: Point; subLabel: Point; sub: Point; badge: Point };
+    orders: Rect; ordersCaption: Point & { anchor: 'start' | 'middle' }; slot: Record<Tx, Point>; chipW: number; verdict: Point;
+    orderRoute: Record<Tx, Point[]>;
+  };
+
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 290],
+      node: { a: { x: 74, y: 78 }, b: { x: 74, y: 222 } }, nodeSize: { w: 124, h: 56 },
+      out: { a: { x: 142, y: 84 }, b: { x: 142, y: 216 } },
+      port: { a: { x: 208, y: 116 }, b: { x: 208, y: 184 } },
+      row: { x: 214, y: 70, w: 160, h: 160 },
+      rowText: { caption: { x: 230, y: 94 }, stockLabel: { x: 230, y: 136 }, stock: { x: 358, y: 142 }, subLabel: { x: 230, y: 172 }, sub: { x: 358, y: 173 }, badge: { x: 230, y: 206 } },
+      orders: { x: 404, y: 70, w: 144, h: 160 }, ordersCaption: { x: 408, y: 62, anchor: 'start' }, slot: { a: { x: 476, y: 126 }, b: { x: 476, y: 162 } }, chipW: 108, verdict: { x: 476, y: 208 },
+      orderRoute: {
+        a: [{ x: 104, y: 50 }, { x: 104, y: 36 }, { x: 476, y: 36 }, { x: 476, y: 114 }],
+        b: [{ x: 104, y: 250 }, { x: 104, y: 264 }, { x: 476, y: 264 }, { x: 476, y: 174 }],
+      },
+    },
+    narrow: {
+      view: [360, 420],
+      node: { a: { x: 92, y: 42 }, b: { x: 268, y: 42 } }, nodeSize: { w: 140, h: 52 },
+      out: { a: { x: 104, y: 74 }, b: { x: 256, y: 74 } },
+      port: { a: { x: 136, y: 112 }, b: { x: 224, y: 112 } },
+      row: { x: 90, y: 118, w: 180, h: 152 },
+      rowText: { caption: { x: 106, y: 142 }, stockLabel: { x: 106, y: 178 }, stock: { x: 254, y: 184 }, subLabel: { x: 106, y: 210 }, sub: { x: 254, y: 211 }, badge: { x: 106, y: 244 } },
+      orders: { x: 16, y: 300, w: 328, h: 108 }, ordersCaption: { x: 180, y: 322, anchor: 'middle' }, slot: { a: { x: 106, y: 352 }, b: { x: 254, y: 352 } }, chipW: 120, verdict: { x: 180, y: 392 },
+      orderRoute: {
+        a: [{ x: 40, y: 72 }, { x: 40, y: 290 }, { x: 106, y: 340 }],
+        b: [{ x: 320, y: 72 }, { x: 320, y: 290 }, { x: 254, y: 340 }],
+      },
+    },
+  };
+  const HUE: Record<Tx, string> = { a: 'var(--scene-hue-blue)', b: 'var(--scene-hue-violet)' };
+  const NOTES: Record<Mode, { intro: string; done: string }> = {
+    none: {
+      intro: 'A와 B가 재고를 읽고, 1 이상이면 애플리케이션에서 계산한 값을 저장합니다.',
+      done: 'A와 B가 모두 재고 <strong>1</strong>을 읽고, 각자 계산한 <strong>0</strong>을 저장했습니다. 두 트랜잭션 모두 커밋에 성공했지만 재고 1개로 <strong>주문이 2건</strong> 생겼습니다.',
+    },
+    lock: {
+      intro: 'A와 B가 <code>SELECT … FOR UPDATE</code>로 재고를 읽습니다.',
+      done: 'A가 먼저 행 락을 잡았습니다. B의 locking read는 A가 커밋할 때까지 <strong>기다렸다가</strong> 재고 <strong>0</strong>을 읽고, 재고 부족으로 끝납니다.',
+    },
+    version: {
+      intro: 'A와 B가 일반 SELECT로 재고와 version을 읽고, 읽은 version을 조건으로 저장합니다.',
+      done: 'B는 기다리지 않고 A와 같은 재고 1, version 7을 읽었습니다. 저장하려 할 때 version은 이미 8이라 <strong>변경 행이 0</strong>이고, B는 충돌로 롤백합니다.',
+    },
+    cond: {
+      intro: 'A와 B가 미리 읽지 않고 <code>stock &gt;= 1</code> 조건을 붙인 UPDATE를 바로 실행합니다.',
+      done: 'B는 같은 행을 바꾸려다 A의 락을 <strong>기다렸습니다</strong>. A가 커밋한 뒤 재고는 0이라 <code>stock &gt;= 1</code> 조건이 맞지 않고, <strong>변경 행 0</strong>으로 끝납니다.',
+    },
+  };
+  /** 단계마다 보내는 SQL 패킷 이름. */
+  const LABEL: Record<Mode, { read?: string; write: string }> = {
+    none: { read: 'SELECT', write: 'SET stock = 0' },
+    lock: { read: 'FOR UPDATE', write: 'stock - 1' },
+    version: { read: 'SELECT', write: 'version = 7' },
+    cond: { write: 'stock >= 1' },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="tx-stock-race"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-race-mode]')];
+    const runButton = demo.querySelector<HTMLButtonElement>('[data-race-run]')!;
+    let layout = LAYOUTS.wide;
+    let mode: Mode = 'none';
+    let narrow = false;
+
+    // 재고 행: 노드 카드와 같은 바탕에 큰 숫자를 둡니다.
+    const tracks = (['a', 'b'] as Tx[]).map(() => svg('path', { class: 'tx-track' }, root));
+    const orderTracks = (['a', 'b'] as Tx[]).map(() => svg('path', { class: 'tx-track' }, root));
+    const row = svg('g', { class: 'scene-node' }, root);
+    row.style.setProperty('--node-hue', 'var(--scene-hue-amber)');
+    const rowBody = svg('g', { class: 'scene-node-body' }, row);
+    const rowCard = svg('rect', { class: 'scene-node-card', rx: 12 }, rowBody);
+    const rowAccent = svg('rect', { class: 'scene-node-accent', rx: 2, width: 4, height: 14 }, rowBody);
+    const rowCaption = svg('text', { class: 'scene-caption' }, rowBody);
+    rowCaption.textContent = 'inventories · 상품 1';
+    const stockLabel = svg('text', { class: 'tx-field' }, rowBody);
+    stockLabel.textContent = 'stock';
+    const stockValue = svg('text', { class: 'tx-big' }, rowBody);
+    const subLabel = svg('text', { class: 'tx-field' }, rowBody);
+    const subValue = svg('text', { class: 'tx-value' }, rowBody);
+    const badge = createBadge(rowBody, '행 락', 128);
+
+    const orders = createBoundary(root, 'orders', 'zone');
+    const chips = {
+      a: createChip(root, { label: '주문 A', hue: HUE.a, width: LAYOUTS.wide.chipW }),
+      b: createChip(root, { label: '주문 B', hue: HUE.b, width: LAYOUTS.wide.chipW }),
+    };
+    const narrowChips = {
+      a: createChip(root, { label: '주문 A', hue: HUE.a, width: LAYOUTS.narrow.chipW }),
+      b: createChip(root, { label: '주문 B', hue: HUE.b, width: LAYOUTS.narrow.chipW }),
+    };
+    [...Object.values(chips), ...Object.values(narrowChips)].forEach((chip) => chip.group.classList.add('is-sans'));
+    const verdict = svg('text', { class: 'scene-label is-sans', 'text-anchor': 'middle' }, root);
+    // 패킷은 노드 아래 층에 두어, 노드 뒤에서 빠져나오고 돌아와 숨는 것처럼 보이게 합니다.
+    const layer = createPacketLayer(root);
+    const nodes = {
+      a: createNode(root, { label: '트랜잭션 A', hue: HUE.a }),
+      b: createNode(root, { label: '트랜잭션 B', hue: HUE.b }),
+    };
+    Object.values(nodes).forEach((node) => node.group.classList.add('is-sans-sub'));
+    const rings = svg('g', {}, root);
+
+    // 바뀌는 값
+    let stock = 1;
+    let version = 7;
+    let placed: Record<Tx, boolean> = { a: false, b: false };
+    const chipOf = (tx: Tx) => (narrow ? narrowChips : chips)[tx];
+
+    const setStock = (value: number) => { stock = value; bumpText(stockValue, String(value)); };
+    const setSub = (label: string, value: string, tone: 'plain' | 'danger' = 'plain') => {
+      subLabel.textContent = label;
+      bumpText(subValue, value);
+      subValue.style.fill = tone === 'danger' ? 'var(--scene-danger)' : '';
+    };
+    const setLock = (owner: Tx | undefined) => {
+      badge.set(owner ? owner.toUpperCase() : '없음', owner ? HUE[owner] : 'var(--scene-hue-gray)');
+      rowCard.style.stroke = owner ? HUE[owner] : '';
+    };
+    const setVerdict = (text: string, tone: 'flow' | 'danger' | 'clear') => {
+      verdict.textContent = text;
+      verdict.style.fill = tone === 'flow' ? 'var(--scene-flow-ink)' : tone === 'danger' ? 'var(--scene-danger)' : 'transparent';
+      orders.rect.style.stroke = tone === 'danger' ? 'var(--scene-danger)' : '';
+    };
+    const nodeState = (tx: Tx, sub: string, cls?: 'is-waiting' | 'is-done' | 'is-error' | 'is-temp') => {
+      const node = nodes[tx];
+      ['is-waiting', 'is-done', 'is-error', 'is-temp'].forEach((name) => node.flash(name, false));
+      node.setSub(sub);
+      if (cls) node.flash(cls);
+    };
+    const placeChip = (tx: Tx, show: boolean) => {
+      placed[tx] = show;
+      (['a', 'b'] as Tx[]).forEach((key) => {
+        chips[key].place(layout.slot[key], !narrow && placed[key] ? 1 : 0);
+        narrowChips[key].place(layout.slot[key], narrow && placed[key] ? 1 : 0);
+      });
+    };
+
+    const reset = () => {
+      layer.clear();
+      stock = 1;
+      version = 7;
+      stockValue.textContent = '1';
+      subLabel.textContent = mode === 'version' ? 'version' : '';
+      subValue.textContent = mode === 'version' ? '7' : '';
+      subValue.style.fill = '';
+      setLock(undefined);
+      setVerdict('', 'clear');
+      (['a', 'b'] as Tx[]).forEach((tx) => { nodeState(tx, ''); placeChip(tx, false); });
+      badge.group.style.opacity = mode === 'none' || mode === 'version' ? '0.45' : '1';
+    };
+
+    const scene = createScene({ t: 0 }, () => {});
+
+    const draw = () => {
+      const l = layout;
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      (['a', 'b'] as Tx[]).forEach((tx, i) => {
+        nodes[tx].setBox({ ...l.node[tx], ...l.nodeSize });
+        setAttrs(tracks[i], { d: `M ${l.out[tx].x} ${l.out[tx].y} L ${l.port[tx].x} ${l.port[tx].y}` });
+        setAttrs(orderTracks[i], { d: `M ${l.orderRoute[tx].map((p) => `${p.x} ${p.y}`).join(' L ')}` });
+      });
+      setAttrs(rowCard, { x: l.row.x, y: l.row.y, width: l.row.w, height: l.row.h });
+      setAttrs(rowAccent, { x: l.row.x + 10, y: l.row.y + 13 });
+      const t = l.rowText;
+      setAttrs(rowCaption, { x: t.caption.x + 8, y: t.caption.y });
+      setAttrs(stockLabel, { x: t.stockLabel.x, y: t.stockLabel.y });
+      setAttrs(stockValue, { x: t.stock.x, y: t.stock.y });
+      setAttrs(subLabel, { x: t.subLabel.x, y: t.subLabel.y });
+      setAttrs(subValue, { x: t.sub.x, y: t.sub.y });
+      badge.place(t.badge);
+      orders.place(l.orders, l.ordersCaption);
+      setAttrs(verdict, { x: l.verdict.x, y: l.verdict.y });
+      placeChip('a', placed.a);
+    };
+
+    // ── 패킷 동작 ─────────────────────────────────────────
+    const spawn = (tx: Tx, label: string) => layer.spawn({ label, at: layout.out[tx] });
+    const along = (tx: Tx, t: number) => polylineAt([layout.out[tx], layout.port[tx]], t);
+    const back = (p: Packet, tx: Tx) => p.travel([layout.out[tx]], 560).then((ok) => { void p.fade(240); return ok; });
+
+    /** 행까지 가서 값을 들고 돌아옵니다. */
+    const read = async (alive: () => boolean, tx: Tx, label: string, value: () => string, onArrive?: () => void, p = spawn(tx, label)) => {
+      if (!(await p.travel([layout.port[tx]], 620)) || !alive()) return false;
+      onArrive?.();
+      void p.land();
+      await scene.pause(160);
+      if (!alive()) return false;
+      p.relabel(value(), 'flow');
+      if (!(await back(p, tx)) || !alive()) return false;
+      return true;
+    };
+    /** 행까지 가서 값을 바꾸고 사라집니다. */
+    const write = async (alive: () => boolean, tx: Tx, label: string, apply: () => void, p = spawn(tx, label)) => {
+      if (!(await p.travel([layout.port[tx]], 620)) || !alive()) return false;
+      apply();
+      await p.land();
+      void p.fade(320);
+      await scene.pause(duration.beat);
+      return alive();
+    };
+    /** 행 락 앞에서 멈춰 기다립니다. 패킷은 그 자리에 남습니다. */
+    const waitAtLock = async (alive: () => boolean, tx: Tx, label: string) => {
+      const p = spawn(tx, label);
+      if (!(await p.travel([along(tx, 0.45)], 520, ease.out)) || !alive()) return undefined;
+      p.relabel(label, 'temp');
+      nodeState(tx, '락 대기', 'is-waiting');
+      return p;
+    };
+    /** 주문을 저장하고 커밋합니다. */
+    const insertAndCommit = async (alive: () => boolean, tx: Tx, releaseLock: boolean, sub = 'COMMIT ✓') => {
+      const p = spawn(tx, 'INSERT');
+      if (!(await p.travel(layout.orderRoute[tx], 820)) || !alive()) return false;
+      p.remove();
+      placeChip(tx, true);
+      chipOf(tx).flash('is-ok');
+      landRing(rings, { ...layout.slot[tx], w: layout.chipW, h: 20 });
+      await scene.pause(duration.beat);
+      if (!alive()) return false;
+      nodeState(tx, sub, 'is-done');
+      if (releaseLock) setLock(undefined);
+      await scene.pause(duration.beat);
+      return alive();
+    };
+
+    const sequences: Record<Mode, (alive: () => boolean) => Promise<void>> = {
+      none: async (alive) => {
+        const reads = await Promise.all([
+          read(alive, 'a', 'SELECT', () => String(stock), undefined),
+          scene.pause(300).then(() => alive() && read(alive, 'b', 'SELECT', () => String(stock))),
+        ]);
+        if (!reads.every(Boolean)) return;
+        nodeState('a', '읽은 재고 1');
+        nodeState('b', '읽은 재고 1');
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        if (!(await write(alive, 'a', LABEL.none.write, () => { setStock(0); setSub('마지막 쓰기', 'A'); }))) return;
+        if (!(await insertAndCommit(alive, 'a', false, '1 읽음 · COMMIT'))) return;
+        if (!(await write(alive, 'b', LABEL.none.write, () => {
+          setStock(0);
+          setSub('마지막 쓰기', 'B · 덮어씀', 'danger');
+          replayClass(row, 'is-shaking');
+        }))) return;
+        if (!(await insertAndCommit(alive, 'b', false, '1 읽음 · COMMIT'))) return;
+        setVerdict('재고 1개에 주문 2건', 'danger');
+        chipOf('b').flash('is-shaking');
+      },
+      lock: async (alive) => {
+        const a = spawn('a', 'FOR UPDATE');
+        if (!(await a.travel([layout.port.a], 620)) || !alive()) return;
+        setLock('a');
+        void a.land();
+        const waiting = waitAtLock(alive, 'b', 'FOR UPDATE');
+        await scene.pause(160);
+        a.relabel(String(stock), 'flow');
+        if (!(await back(a, 'a')) || !alive()) return;
+        nodeState('a', '읽은 재고 1');
+        const pb = await waiting;
+        if (!pb || !alive()) return;
+        await scene.pause(duration.beat);
+        if (!(await write(alive, 'a', LABEL.lock.write, () => setStock(0)))) return;
+        if (!(await insertAndCommit(alive, 'a', true))) return;
+        // A가 락을 놓자 기다리던 B가 이어서 읽습니다.
+        pb.relabel('FOR UPDATE', 'dep');
+        nodeState('b', '');
+        if (!(await read(alive, 'b', '', () => String(stock), () => setLock('b'), pb))) return;
+        nodeState('b', '재고 0 · 종료', 'is-temp');
+        setLock(undefined);
+        setVerdict('재고 0 · 주문 1건 ✓', 'flow');
+      },
+      version: async (alive) => {
+        const reads = await Promise.all([
+          read(alive, 'a', 'SELECT', () => `${stock} · v${version}`),
+          scene.pause(300).then(() => alive() && read(alive, 'b', 'SELECT', () => `${stock} · v${version}`)),
+        ]);
+        if (!reads.every(Boolean)) return;
+        nodeState('a', '읽음 1 · v7');
+        nodeState('b', '읽음 1 · v7');
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        if (!(await write(alive, 'a', LABEL.version.write, () => { setStock(0); version = 8; setSub('version', '8'); }))) return;
+        if (!(await insertAndCommit(alive, 'a', false))) return;
+        const pb = spawn('b', LABEL.version.write);
+        if (!(await pb.bounce(layout.port.b)) || !alive()) return;
+        replayClass(subValue, 'is-bump');
+        nodeState('b', '0행 · 충돌', 'is-error');
+        nodes.b.flash('is-shaking');
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        nodeState('b', 'ROLLBACK', 'is-error');
+        setVerdict('재고 0 · 주문 1건 ✓', 'flow');
+      },
+      cond: async (alive) => {
+        if (!(await write(alive, 'a', LABEL.cond.write, () => { setLock('a'); setStock(0); }))) return;
+        nodeState('a', '1행 변경');
+        const pb = await waitAtLock(alive, 'b', LABEL.cond.write);
+        if (!pb || !alive()) return;
+        await scene.pause(duration.beat);
+        if (!(await insertAndCommit(alive, 'a', true))) return;
+        pb.relabel(LABEL.cond.write, 'dep');
+        nodeState('b', '');
+        if (!(await pb.bounce(layout.port.b)) || !alive()) return;
+        nodeState('b', '0행 · 재고 부족', 'is-temp');
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        setVerdict('재고 0 · 주문 1건 ✓', 'flow');
+      },
+    };
+
+    const say = (html: string) => {
+      note.innerHTML = html;
+      replayClass(note, 'is-entering');
+    };
+
+    const run = async () => {
+      const alive = scene.begin();
+      reset();
+      say(NOTES[mode].intro);
+      runButton.removeAttribute('data-state');
+      await scene.pause(380);
+      if (!alive()) return;
+      await sequences[mode](alive);
+      if (!alive()) return;
+      say(NOTES[mode].done);
+      // 다음에 눌러 볼 방식을 은은하게 표시합니다.
+      const order: Mode[] = ['none', 'lock', 'version', 'cond'];
+      const next = order[order.indexOf(mode) + 1];
+      modeButtons.forEach((b) => b.toggleAttribute('data-state', false));
+      if (next) modeButtons.find((b) => b.dataset.raceMode === next)?.setAttribute('data-state', 'next');
+    };
+
+    modeButtons.forEach((button) => button.addEventListener('click', () => {
+      mode = button.dataset.raceMode as Mode;
+      modeButtons.forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
+      void run();
+    }));
+    runButton.addEventListener('click', () => { void run(); });
+
+    watchNarrow(stage, (isNarrow) => {
+      narrow = isNarrow;
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      scene.begin();
+      reset();
+      draw();
+      say(NOTES[mode].intro);
+      runButton.setAttribute('data-state', 'next');
+    });
+
+    let played = false;
+    watchDemoPlayback(demo, ({ shouldPlay }) => {
+      if (!shouldPlay || played) return;
+      played = true;
+      window.setTimeout(() => { void run(); }, 400);
+    }, { threshold: 0.5 });
+  });
+</script>
+
+<style is:global>
+  /* 결과 설명이 길어져도 장면 아래 본문이 밀리지 않게 세 줄 높이를 미리 잡아 둡니다. */
+  .db-demo[data-blog-demo="tx-stock-race"] .scene-note { min-height: 5.4em; }
+  [data-blog-demo="tx-stock-race"] .tx-track { fill: none; stroke: color-mix(in srgb, var(--scene-dep) 40%, transparent); stroke-width: 1.5; stroke-dasharray: 2 6; }
+  [data-blog-demo="tx-stock-race"] .tx-field { fill: var(--slate); font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
+  [data-blog-demo="tx-stock-race"] .tx-big,
+  [data-blog-demo="tx-stock-race"] .tx-value { fill: var(--ink); font-family: var(--font-mono); font-weight: 800; text-anchor: end; transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="tx-stock-race"] .tx-big { font-size: 30px; }
+  [data-blog-demo="tx-stock-race"] .tx-value { font-family: var(--font-sans); font-size: 13px; }
+  [data-blog-demo="tx-stock-race"] .tx-big.is-bump,
+  [data-blog-demo="tx-stock-race"] .tx-value.is-bump { animation: scene-pop 420ms ease-out; }
+  [data-blog-demo="tx-stock-race"] .db-demo-controls { margin-bottom: 0; flex-wrap: wrap; }
+  [data-blog-demo="tx-stock-race"] .scene-chips { margin-top: 10px; }
+</style>

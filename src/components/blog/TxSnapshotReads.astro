@@ -1,0 +1,358 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import SceneTimeline from './SceneTimeline.astro';
+import '../../styles/scene.css';
+
+const steps = [
+  { name: '① A 첫 SELECT', detail: 'snapshot 정함' },
+  { name: '② B UPDATE', detail: '9 · 미커밋' },
+  { name: '③ B COMMIT', detail: '9 확정' },
+  { name: '④ A 두 번째 SELECT', detail: 'RC 9 · RR 10' },
+  { name: '⑤ A FOR UPDATE', detail: '최신 값 9' },
+];
+---
+
+<InteractiveDemoFrame demoId="tx-snapshot-reads" ariaLabel="A가 같은 행을 두 번 읽는 사이 B가 값을 바꾸고 커밋할 때, 격리 수준과 읽기 방식에 따라 A가 읽는 버전이 달라지는 과정" title="A는 어느 버전을 읽을까요?" description="B가 재고를 10에서 9로 바꾸고 커밋하는 동안 A가 같은 행을 읽습니다. 격리 수준을 바꿔 보고, 각 버전 옆의 “보임 / 안 보임”이 언제 바뀌는지 보세요.">
+  <DemoControls ariaLabel="A의 격리 수준">
+    <button type="button" data-snap-mode="rc" aria-pressed="false">A: READ COMMITTED</button>
+    <button type="button" data-snap-mode="rr" aria-pressed="true">A: REPEATABLE READ</button>
+  </DemoControls>
+  <SceneTimeline ariaLabel="두 트랜잭션의 실행 단계" steps={steps} />
+  <div class="scene-stage" data-stage>
+    <svg data-graphic viewBox="0 0 560 276" role="img" aria-label="왼쪽에 트랜잭션 A와 B, 오른쪽에 상품 1 재고 행의 버전들이 있습니다. 위가 최신 버전이고, B가 9로 바꾸면 이전 값 10은 undo 정보로 아래에 남습니다. 각 버전 옆에 A의 일반 SELECT에 보이는지가 표시되고, 보이지 않는 버전은 흐리게 그려집니다. snapshot보다 먼저 커밋된 버전만 보입니다. READ COMMITTED에서는 두 번째 SELECT 때 snapshot이 ④ 시점으로 옮겨져 9가 보이고, REPEATABLE READ에서는 snapshot이 ① 시점에 남아 9가 보이지 않으므로 10을 읽습니다. FOR UPDATE는 선과 관계없이 최신 버전 9를 잠그며 읽습니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">InnoDB의 MVCC를 단순화한 개념 모형입니다. snapshot 선과 “보임 / 안 보임” 표시는 “snapshot보다 먼저 커밋된 변경만 보인다”는 규칙을 그린 것으로, 실제 read view의 자료 구조와는 다릅니다. undo 로그의 정리, 트랜잭션 ID 비교, B가 잡은 락은 그리지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { createScene, duration, lerp, replayClass, setAttrs, svg, watchNarrow, type Point } from '../../scripts/blog/scene/core';
+  import { createBadge, createBoundary, createChip, createNode, landRing, type Rect } from '../../scripts/blog/scene/parts';
+  import { createPacketLayer } from '../../scripts/blog/scene/packets';
+  import { createStepPlayer } from '../../scripts/blog/scene/step-player';
+
+  // 독자가 볼 변화: B가 커밋한 뒤의 두 번째 SELECT에서, RC는 snapshot 선이 최신 커밋 위로 올라가 9를 읽고
+  // RR은 선이 첫 읽기 자리에 남아 undo의 10을 읽는다. FOR UPDATE는 선을 무시하고 최신 버전 9를 읽는다.
+  type Mode = 'rc' | 'rr';
+  type State = { old: number; fresh: number; commit: number; snap: number; vis: number; lock: number };
+  type Layout = {
+    view: [number, number];
+    a: Point; b: Point; nodeSize: { w: number; h: number };
+    outA: Point; outB: Point;
+    chain: Rect; chainCaption: Point; badge: Point;
+    cardX: number; cardW: number; top: number; bottom: number; lift: number;
+    lane: number; inB: Point;
+    snapX: [number, number]; tagX: number;
+    resultsCaption: Point; results: Point[]; resultW: number;
+  };
+
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 276],
+      a: { x: 80, y: 46 }, b: { x: 80, y: 238 }, nodeSize: { w: 132, h: 48 },
+      outA: { x: 150, y: 52 }, outB: { x: 150, y: 232 },
+      chain: { x: 252, y: 14, w: 296, h: 248 }, chainCaption: { x: 268, y: 40 }, badge: { x: 412, y: 36 },
+      cardX: 390, cardW: 140, top: 104, bottom: 206, lift: 40,
+      lane: 300, inB: { x: 318, y: 114 },
+      snapX: [262, 466], tagX: 472,
+      resultsCaption: { x: 16, y: 98 }, results: [{ x: 80, y: 122 }, { x: 80, y: 150 }, { x: 80, y: 178 }], resultW: 138,
+    },
+    narrow: {
+      view: [360, 452],
+      a: { x: 70, y: 32 }, b: { x: 290, y: 32 }, nodeSize: { w: 120, h: 44 },
+      outA: { x: 70, y: 56 }, outB: { x: 290, y: 56 },
+      chain: { x: 12, y: 74, w: 336, h: 266 }, chainCaption: { x: 28, y: 100 }, badge: { x: 210, y: 96 },
+      cardX: 180, cardW: 140, top: 168, bottom: 274, lift: 40,
+      lane: 84, inB: { x: 256, y: 160 },
+      snapX: [22, 254], tagX: 260,
+      resultsCaption: { x: 16, y: 366 }, results: [{ x: 180, y: 386 }, { x: 180, y: 412 }, { x: 180, y: 438 }], resultW: 220,
+    },
+  };
+  const READS = ['1차 SELECT', '2차 SELECT', 'FOR UPDATE'];
+  const NOTES: Record<number, (m: Mode) => string> = {
+    0: (m) => `A가 ①에서 첫 SELECT로 재고 <strong>10</strong>을 읽으며 snapshot을 정합니다. A의 일반 SELECT에는 <strong>snapshot보다 먼저 커밋된 버전만</strong> 보입니다. ${m === 'rr' ? 'RR은 이 snapshot을 트랜잭션 끝까지 씁니다.' : 'RC는 다음 읽기에서 snapshot을 새로 정합니다.'}`,
+    1: () => 'B가 ②에서 재고를 9로 바꿨지만 아직 커밋하지 않았습니다. 이전 값 10은 undo 정보로 남습니다. 미커밋 버전은 RC와 RR 모두 A에게 <strong>안 보입니다</strong>.',
+    2: () => 'B가 ③에서 커밋했습니다. 최신 버전은 이제 9입니다. 하지만 A의 snapshot은 ① 시점이라, ③에 커밋된 9는 아직 A에게 <strong>안 보입니다</strong>.',
+    3: (m) => m === 'rc'
+      ? 'RC는 읽을 때마다 snapshot을 새로 정합니다. snapshot이 <strong>④ 시점</strong>으로 옮겨지자 ③에 커밋된 9가 보이게 되고, 같은 SELECT가 이번에는 <strong>9</strong>를 읽습니다.'
+      : 'RR은 ①의 snapshot을 그대로 씁니다. ③에 커밋된 9는 계속 안 보이므로, undo를 따라 이전 버전 <strong>10</strong>을 읽습니다.',
+    4: (m) => `<code>FOR UPDATE</code>는 snapshot과 상관없이 <strong>최신 버전</strong>을 잠그며 읽습니다. ${m === 'rr' ? 'RR에서는 9가 “안 보임”인데도 locking read는 9를 읽습니다. 같은 트랜잭션에서 일반 SELECT는 10, locking read는 9를 본 셈입니다.' : 'RC에서는 두 번째 SELECT와 같은 9입니다.'}`,
+  };
+
+  const target = (step: number, mode: Mode): State => ({
+    old: step >= 1 ? 1 : 0,
+    fresh: step >= 1 ? 1 : 0,
+    commit: step >= 2 ? 1 : 0,
+    snap: step >= 3 && mode === 'rc' ? 1 : 0,
+    // 9가 A의 일반 SELECT에 보이는가: 커밋됐고, snapshot이 그 커밋(③)보다 뒤(④)일 때만.
+    vis: step >= 3 && mode === 'rc' ? 1 : 0,
+    lock: step >= 4 ? 1 : 0,
+  });
+  const results = (step: number, mode: Mode) => [
+    '10',
+    step >= 3 ? (mode === 'rc' ? '9' : '10') : '',
+    step >= 4 ? '9' : '',
+  ];
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="tx-snapshot-reads"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-snap-mode]')];
+    let layout = LAYOUTS.wide;
+    let narrow = false;
+    let mode: Mode = 'rr';
+    let shown = 0;
+
+    const chain = createBoundary(root, '상품 1 재고 행의 버전');
+    const undo = svg('path', { class: 'tx-undo' }, root);
+    const undoLabel = svg('text', { class: 'scene-label scene-label-dep' }, root);
+    undoLabel.textContent = 'undo';
+    const oldCard = createNode(root, { label: 'stock 10', hue: 'var(--scene-hue-amber)', sub: '' });
+    const newCard = createNode(root, { label: 'stock 9', hue: 'var(--scene-hue-violet)', sub: '' });
+    [oldCard, newCard].forEach((card) => card.group.classList.add('is-sans-sub'));
+    const newCardRect = newCard.group.querySelector<SVGRectElement>('.scene-node-card')!;
+    const badge = createBadge(root, 'X 락', 124);
+
+    // snapshot 선: 이 선 아래(먼저 커밋된) 버전만 A의 일반 SELECT에 보입니다.
+    const snapLine = svg('line', { class: 'tx-snap-line' }, root);
+    const pillGroup = svg('g', { class: 'scene-pointer' }, root);
+    svg('rect', { class: 'scene-pointer-pill', rx: 9, width: 140, height: 20, x: -70, y: -10 }, pillGroup);
+    const pillText = svg('text', { class: 'scene-pointer-text', y: 4 }, pillGroup);
+    pillText.textContent = 'A의 snapshot';
+    pillText.style.fontFamily = 'var(--font-sans)';
+
+    // 버전마다 A의 일반 SELECT에 보이는지 표시합니다.
+    const tagHead = svg('text', { class: 'scene-caption' }, root);
+    tagHead.textContent = 'A에게';
+    const oldTag = svg('text', { class: 'scene-label is-sans tx-tag' }, root);
+    const newTag = svg('text', { class: 'scene-label is-sans tx-tag' }, root);
+    const setTag = (tag: SVGTextElement, visible: boolean) => {
+      const text = visible ? '✓ 보임' : '✕ 안 보임';
+      if (tag.textContent !== text) {
+        tag.textContent = text;
+        replayClass(tag, 'is-bump');
+      }
+      tag.style.fill = visible ? 'var(--scene-flow-ink)' : 'var(--slate)';
+    };
+
+    const resultsCaption = svg('text', { class: 'scene-caption' }, root);
+    resultsCaption.textContent = 'A가 읽은 값';
+    const makeResults = (width: number) => READS.map((read) => {
+      const chip = createChip(root, { label: read, hue: 'var(--scene-hue-blue)', width });
+      chip.group.classList.add('is-sans');
+      return chip;
+    });
+    const resultChips = { wide: makeResults(LAYOUTS.wide.resultW), narrow: makeResults(LAYOUTS.narrow.resultW) };
+    const layer = createPacketLayer(root);
+    const nodeA = createNode(root, { label: '트랜잭션 A', hue: 'var(--scene-hue-blue)' });
+    const nodeB = createNode(root, { label: '트랜잭션 B', hue: 'var(--scene-hue-violet)' });
+    const rings = svg('g', {}, root);
+
+    let values = ['', '', ''];
+    const fillResults = (next: string[], bump = true) => {
+      values = next;
+      (['wide', 'narrow'] as const).forEach((key) => resultChips[key].forEach((chip, i) => {
+        const value = next[i];
+        chip.group.classList.toggle('is-empty', !value);
+        const text = value ? `${READS[i]} → ${value}` : READS[i];
+        if (bump) chip.setLabel(text);
+        else chip.group.querySelector('text')!.textContent = text;
+      }));
+    };
+    const fillOne = (i: number, value: string) => {
+      const next = [...values];
+      next[i] = value;
+      fillResults(next);
+      const at = layout.results[i];
+      landRing(rings, { ...at, w: layout.resultW, h: 20 });
+    };
+
+    const cardY = (s: State) => ({ old: lerp(layout.top, layout.bottom, s.old), fresh: layout.top });
+    const snapY = (s: State) => lerp(cardY(s).old, layout.top, s.snap) - layout.lift;
+
+    const scene = createScene<State>(target(0, mode), (s) => {
+      const l = layout;
+      const y = cardY(s);
+      const size = { w: l.cardW, h: 48 };
+      oldCard.setBox({ x: l.cardX, ...size, y: y.old });
+      newCard.setBox({ x: l.cardX, ...size, y: y.fresh });
+      // A에게 안 보이는 버전은 흐리게 그립니다.
+      newCard.group.style.opacity = String(s.fresh * (0.5 + 0.5 * s.vis));
+      newCardRect.style.strokeDasharray = s.commit < 0.5 ? '5 4' : '';
+      setAttrs(undo, { d: `M ${l.cardX} ${y.fresh + 24} L ${l.cardX} ${y.old - 24}`, opacity: s.fresh * s.old });
+      setAttrs(undoLabel, { x: l.cardX - 8, y: (y.fresh + y.old) / 2 - 10, 'text-anchor': 'end', opacity: s.fresh * s.old });
+      const sy = snapY(s);
+      setAttrs(snapLine, { x1: l.snapX[0], x2: l.snapX[1], y1: sy, y2: sy });
+      setAttrs(pillGroup, { transform: `translate(${l.cardX} ${sy.toFixed(2)})` });
+      pillText.textContent = `A의 snapshot · ${s.snap > 0.5 ? '④' : '①'} 시점`;
+      setAttrs(tagHead, { x: l.tagX, y: l.top - 34 });
+      setAttrs(oldTag, { x: l.tagX, y: y.old + 4 });
+      setAttrs(newTag, { x: l.tagX, y: y.fresh + 4, opacity: s.fresh });
+      setTag(oldTag, true);
+      setTag(newTag, s.vis > 0.5);
+      badge.group.style.opacity = String(s.lock);
+    });
+
+    const subs = (step: number) => {
+      oldCard.setSub('① 전에 커밋');
+      newCard.setSub(step >= 2 ? '③ B가 커밋' : '② B 변경 · 미커밋');
+      newCard.flash('is-temp', step === 1);
+      nodeB.setSub(step === 1 ? 'UPDATE 중' : step >= 2 ? 'COMMIT ✓' : '');
+      nodeB.flash('is-done', step >= 2);
+      nodeA.setSub(step >= 4 ? 'X 락 보유' : '');
+    };
+
+    const say = (step: number) => {
+      note.innerHTML = NOTES[step](mode);
+      note.classList.remove('is-entering');
+      void note.offsetWidth;
+      note.classList.add('is-entering');
+    };
+
+    /** A의 읽기 패킷: 최신 버전까지 갔다가, snapshot에 보이지 않으면 undo를 따라 아래로 내려갑니다. */
+    const readTrip = async (alive: () => boolean, label: string, down: boolean, value: string) => {
+      const l = layout;
+      const p = layer.spawn({ label, at: l.outA });
+      if (!(await p.travel([{ x: l.lane, y: l.top }], 640)) || !alive()) return false;
+      void p.land();
+      await scene.pause(180);
+      if (!alive()) return false;
+      if (down) {
+        p.relabel('9 · 안 보임', 'temp');
+        await scene.pause(duration.beat);
+        if (!alive()) return false;
+        if (!(await p.travel([{ x: l.lane, y: l.bottom }], 620)) || !alive()) return false;
+        void p.land();
+        await scene.pause(160);
+        if (!alive()) return false;
+      }
+      p.relabel(value, 'flow');
+      await scene.pause(duration.beat);
+      if (!alive()) return false;
+      if (!(await p.travel([{ x: l.lane, y: down ? l.bottom : l.top }, l.outA], 640)) || !alive()) return false;
+      p.remove();
+      return true;
+    };
+
+    const sequences: Record<number, (alive: () => boolean) => Promise<void>> = {
+      1: async (alive) => {
+        const p = layer.spawn({ label: 'SET stock = 9', at: layout.outB });
+        nodeB.setSub('UPDATE 중');
+        if (!(await p.travel([layout.inB], 620)) || !alive()) return;
+        p.remove();
+        subs(1);
+        await scene.go(target(1, mode), duration.draw);
+      },
+      2: async (alive) => {
+        const p = layer.spawn({ label: 'COMMIT', at: layout.outB });
+        if (!(await p.travel([layout.inB], 560)) || !alive()) return;
+        void p.land();
+        subs(2);
+        newCard.flash('is-ok');
+        await scene.go(target(2, mode), duration.move);
+        if (alive()) void p.fade();
+      },
+      3: async (alive) => {
+        if (mode === 'rc') {
+          // 새 snapshot: 선이 최신 커밋 위로 옮겨집니다.
+          if (!(await scene.go(target(3, mode), duration.move)) || !alive()) return;
+          await scene.pause(duration.beat);
+          if (!alive()) return;
+        }
+        if (!(await readTrip(alive, 'SELECT', mode === 'rr', mode === 'rr' ? '10' : '9'))) return;
+        fillOne(1, mode === 'rr' ? '10' : '9');
+      },
+      4: async (alive) => {
+        const l = layout;
+        const p = layer.spawn({ label: 'FOR UPDATE', at: l.outA });
+        if (!(await p.travel([{ x: l.lane, y: l.top }], 640)) || !alive()) return;
+        void p.land();
+        nodeA.setSub('X 락 보유');
+        newCard.flash('is-ok');
+        if (!(await scene.go(target(4, mode), duration.move)) || !alive()) return;
+        p.relabel('9', 'flow');
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        if (!(await p.travel([l.outA], 640)) || !alive()) return;
+        p.remove();
+        fillOne(2, '9');
+      },
+    };
+
+    const settle = (step: number, instant: boolean) => {
+      layer.clear();
+      subs(step);
+      fillResults(results(step, mode), !instant);
+      if (instant) scene.set(target(step, mode));
+      else void scene.go(target(step, mode), duration.move);
+    };
+
+    const show = (index: number, instant: boolean) => {
+      const alive = scene.begin();
+      const previous = shown;
+      shown = index;
+      say(index);
+      const sequence = sequences[index];
+      if (!instant && sequence && index === previous + 1) {
+        // 앞 단계의 끝 장면에서 출발합니다.
+        layer.clear();
+        subs(previous);
+        fillResults(results(previous, mode), false);
+        scene.set(target(previous, mode));
+        void sequence(alive);
+        return;
+      }
+      settle(index, instant);
+    };
+
+    modeButtons.forEach((button) => button.addEventListener('click', () => {
+      const next = button.dataset.snapMode as Mode;
+      if (next === mode) return;
+      mode = next;
+      modeButtons.forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
+      scene.begin();
+      say(shown);
+      settle(shown, false);
+    }));
+
+    const applyLayout = () => {
+      const l = layout;
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      nodeA.setBox({ ...l.a, ...l.nodeSize });
+      nodeB.setBox({ ...l.b, ...l.nodeSize });
+      chain.place(l.chain, l.chainCaption);
+      badge.place(l.badge);
+      badge.set('A', 'var(--scene-hue-blue)');
+      setAttrs(resultsCaption, { x: l.resultsCaption.x, y: l.resultsCaption.y });
+      (['wide', 'narrow'] as const).forEach((key) => resultChips[key].forEach((chip, i) => {
+        chip.place(l.results[i], (key === 'narrow') === narrow ? 1 : 0);
+      }));
+      scene.begin();
+      settle(shown, true);
+    };
+    watchNarrow(stage, (isNarrow) => {
+      narrow = isNarrow;
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      applyLayout();
+    });
+
+    createStepPlayer(demo, {
+      dwell: (index) => [3600, 3600, 3000, 5600, 5200][index] ?? duration.dwell,
+      onStep: show,
+    });
+  });
+</script>
+
+<style is:global>
+  /* 결과 설명이 길어져도 장면 아래 본문이 밀리지 않게 세 줄 높이를 미리 잡아 둡니다. */
+  .db-demo[data-blog-demo="tx-snapshot-reads"] .scene-note { min-height: 5.4em; }
+  [data-blog-demo="tx-snapshot-reads"] .tx-tag { font-size: 12px; font-weight: 800; transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="tx-snapshot-reads"] .tx-tag.is-bump { animation: scene-pop 420ms ease-out; }
+  [data-blog-demo="tx-snapshot-reads"] .tx-snap-line { stroke: var(--scene-hue-cyan); stroke-width: 2; stroke-dasharray: 7 5; }
+  [data-blog-demo="tx-snapshot-reads"] .tx-undo { fill: none; stroke: color-mix(in srgb, var(--scene-dep) 55%, transparent); stroke-width: 1.5; stroke-dasharray: 3 4; }
+  [data-blog-demo="tx-snapshot-reads"] .db-demo-controls { flex-wrap: wrap; }
+</style>

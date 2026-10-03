@@ -9,6 +9,7 @@
 - 패킷·렌즈·칩 이동 사례: `SharedBootOrder`, `FkGuardDemo`, `DbSeparationSteps`, `RetentionBoundary`
 - 순서 퍼즐·벽·유령 벽 사례: `GatewayRolloutDemo`, `GatewayKeyOwnership`, `RefreshFamilyDemo`, `PolicyEnforcementDemo`
 - 실행 위치·값 복사·모드 배지 사례: `LdeSyscallTrap`, `LdeFirstRun`, `LdeTimerInterrupt`, `LdeTwoSaves`, `LdeEspOffset`, `LdeSwtchReturn`
+- 락 대기·snapshot 선·대기 고리 사례: `TxStockRace`, `TxSnapshotReads`, `TxDeadlockOrder`, `TxUnlockBeforeCommit`, `TxDuplicateRelease`
 
 ## 1. 먼저 정할 것: 독자가 장면에서 알아낼 변화
 
@@ -69,6 +70,8 @@
 | 기준점이 옮겨졌다 (포인터) | 가리키는 표시(esp)만 움직이고 칸의 주소·내용은 그대로. 오프셋 괄호(+4)가 기준점을 따라감 | `scene-pointer-*`, `scene-brace`, `scene-mem-*` | `move` |
 | 시간에 따라 무엇을 실행했나 | 코드 영역별 줄(lane)에 실행 구간 막대가 자라고, 실행 띠가 줄 사이를 옮겨 다님 | `scene-lane-track`, `scene-lane-bar` | 선형 |
 | 값을 직접 움직인다 | 슬라이더를 끄는 동안 장면이 보간 없이 바로 따라오고, 값 숫자가 튀어 오름 | `.scene-range` + `scene.set` | 즉시 |
+| 무엇이 보이는가 (snapshot) | 청록 점선 가로선과 시점(①·④) 라벨이 snapshot. 보이지 않는 버전은 흐려지고 옆에 “✕ 안 보임”, 보이면 “✓ 보임”. 새 snapshot이면 선이 위로 옮겨지고, 읽기 패킷은 안 보이는 버전을 지나 아래로 내려감 | `scene-pointer-*` + 장면의 선 (`TxSnapshotReads`) | `move` |
+| 서로 기다린다 (deadlock) | 락을 쥔 쪽은 행 카드의 테두리 색과 보조 문구로 표시하고, 대기는 트랜잭션 → 행의 주황 행진 점선. 대기가 한 바퀴를 이루면 네 노드를 지나는 빨간 고리가 둘레를 따라 그려지고, 롤백된 쪽의 대기선과 고리가 거둬짐 | 장면 안의 고리·선 (`TxDeadlockOrder`) | `draw` / `cut` |
 | 다음에 누를 것 | 칩에 은은한 맥박 | `data-state="next"` | — |
 
 새 의미가 필요하면 먼저 이 표에 한 줄을 추가하고, 그다음 키트에 부품을 만듭니다.

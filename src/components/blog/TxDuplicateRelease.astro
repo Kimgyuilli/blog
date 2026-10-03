@@ -1,0 +1,268 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import '../../styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="tx-duplicate-release" ariaLabel="같은 주문의 재고 복구 요청이 두 번 들어올 때, version 검사만 있는 경우와 예약 상태 조건을 추가한 경우를 비교하는 실험" title="같은 복구 요청이 두 번 오면" description="주문 101의 취소로 재고를 1개 돌려놓는 요청이 시간차를 두고 두 번 들어옵니다. 조건을 바꿔 다시 보내 보세요.">
+  <DemoControls ariaLabel="중복을 거르는 조건">
+    <button type="button" data-dup-mode="version" aria-pressed="true">version 검사만</button>
+    <button type="button" data-dup-mode="status" aria-pressed="false">+ 예약 상태 조건</button>
+  </DemoControls>
+  <div class="scene-chips" role="group" aria-label="실행">
+    <button type="button" class="scene-chip is-plain" data-dup-run>▶ 복구 요청 두 번 보내기</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic viewBox="0 0 560 250" role="img" aria-label="왼쪽에서 주문 101의 복구 요청이 차례로 들어와 오른쪽 재고 행에 닿습니다. version 검사만 있으면 두 번째 요청도 최신 version을 읽어 통과하고 재고가 9에서 11이 됩니다. 예약 상태 조건을 추가하면 첫 요청이 RESERVED를 RELEASED로 바꾼 뒤에만 재고를 복구하고, 두 번째 요청은 조건에서 0행이 되어 복구를 건너뜁니다. 재고는 10에서 멈춥니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">두 요청이 순차로 도착하는 경우를 그렸습니다. 글처럼 상태 변경과 재고 복구는 같은 트랜잭션에서 실행된다고 가정합니다. 동시에 도착하는 경우의 행 락 대기와 다른 주문의 차감은 그리지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, ease, replayClass, setAttrs, svg, watchNarrow, type Point } from '../../scripts/blog/scene/core';
+  import { createBadge, type Rect } from '../../scripts/blog/scene/parts';
+  import { createPacketLayer } from '../../scripts/blog/scene/packets';
+  import { watchDemoPlayback } from '../../scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: version 검사만 있으면 두 번째 복구도 최신 version으로 통과해 재고가 11이 된다.
+  // 예약 상태 조건을 세우면 첫 요청이 RESERVED를 RELEASED로 바꾸고, 두 번째 요청은 그 관문에서 튕겨 재고가 10에 머문다.
+  type Mode = 'version' | 'status';
+  type State = { gate: number };
+  type Layout = {
+    view: [number, number];
+    lane: number; start: number; gateX: number; gateH: number;
+    resCaption: Point; badge: Point; resSub: Point; link: [Point, Point];
+    inventory: Rect; invText: { caption: Point; stockLabel: Point; stock: Point; verLabel: Point; ver: Point };
+    verdict: Point; tally: Point;
+  };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 250], lane: 170, start: 30, gateX: 232, gateH: 64,
+      resCaption: { x: 232, y: 38 }, badge: { x: 156, y: 64 }, resSub: { x: 232, y: 98 }, link: [{ x: 232, y: 106 }, { x: 232, y: 134 }],
+      inventory: { x: 392, y: 122, w: 156, h: 96 },
+      invText: { caption: { x: 406, y: 144 }, stockLabel: { x: 406, y: 178 }, stock: { x: 534, y: 184 }, verLabel: { x: 406, y: 204 }, ver: { x: 534, y: 205 } },
+      verdict: { x: 470, y: 238 }, tally: { x: 30, y: 238 },
+    },
+    narrow: {
+      view: [360, 300], lane: 196, start: 18, gateX: 132, gateH: 64,
+      resCaption: { x: 132, y: 40 }, badge: { x: 56, y: 66 }, resSub: { x: 132, y: 100 }, link: [{ x: 132, y: 108 }, { x: 132, y: 160 }],
+      inventory: { x: 214, y: 150, w: 134, h: 96 },
+      invText: { caption: { x: 226, y: 172 }, stockLabel: { x: 226, y: 206 }, stock: { x: 336, y: 212 }, verLabel: { x: 226, y: 232 }, ver: { x: 336, y: 233 } },
+      verdict: { x: 281, y: 270 }, tally: { x: 18, y: 290 },
+    },
+  };
+  const NOTES: Record<Mode, { intro: string; done: string }> = {
+    version: {
+      intro: '두 요청 모두 재고를 읽고 version을 조건으로 1개를 복구합니다.',
+      done: '두 번째 요청은 첫 요청이 커밋한 뒤의 <strong>최신 version 8</strong>을 읽었으므로 version 검사를 통과합니다. 각 UPDATE는 정상이지만, 같은 주문의 재고를 <strong>두 번</strong> 복구했습니다.',
+    },
+    status: {
+      intro: '복구 전에 <code>status = \'RESERVED\'</code>일 때만 RELEASED로 바꾸고, 변경 행이 1일 때만 재고를 복구합니다.',
+      done: '첫 요청이 예약을 <strong>RELEASED</strong>로 바꾸고 재고를 복구했습니다. 두 번째 요청은 상태 조건에 맞지 않아 <strong>변경 행 0</strong>이 되고, 재고 복구를 건너뜁니다.',
+    },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="tx-duplicate-release"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-dup-mode]')];
+    const runButton = demo.querySelector<HTMLButtonElement>('[data-dup-run]')!;
+    let layout = LAYOUTS.wide;
+    let mode: Mode = 'version';
+
+    const track = svg('path', { class: 'tx-track' }, root);
+    const startLabel = svg('text', { class: 'scene-caption' }, root);
+    startLabel.textContent = '주문 101 취소';
+    const link = svg('path', { class: 'tx-link' }, root);
+    const resCaption = svg('text', { class: 'scene-caption', 'text-anchor': 'middle' }, root);
+    resCaption.textContent = 'stock_reservations · 주문 101';
+    const status = createBadge(root, 'status', 152);
+    const resSub = svg('text', { class: 'scene-label is-sans', 'text-anchor': 'middle' }, root);
+    resSub.style.fill = 'var(--slate)';
+
+    // 상태 조건 관문: 조건을 켜면 위에서 아래로 세워집니다.
+    const gate = svg('rect', { class: 'tx-gate', rx: 8, width: 18 }, root);
+    const gateLabel = svg('text', { class: 'scene-label is-sans tx-gate-label', 'text-anchor': 'middle' }, root);
+    gateLabel.textContent = "status = 'RESERVED'";
+
+    const inv = svg('g', { class: 'scene-node' }, root);
+    inv.style.setProperty('--node-hue', 'var(--scene-hue-amber)');
+    const invBody = svg('g', { class: 'scene-node-body' }, inv);
+    const invCard = svg('rect', { class: 'scene-node-card', rx: 12 }, invBody);
+    const invCaption = svg('text', { class: 'scene-caption' }, invBody);
+    invCaption.textContent = '재고 · 상품 1';
+    const stockLabel = svg('text', { class: 'tx-field' }, invBody);
+    stockLabel.textContent = 'stock';
+    const stockValue = svg('text', { class: 'tx-big' }, invBody);
+    const verLabel = svg('text', { class: 'tx-field' }, invBody);
+    verLabel.textContent = 'version';
+    const verValue = svg('text', { class: 'tx-value' }, invBody);
+
+    const verdict = svg('text', { class: 'scene-label is-sans', 'text-anchor': 'middle' }, root);
+    const tally = svg('text', { class: 'scene-label is-sans', 'text-anchor': 'start' }, root);
+    tally.style.fill = 'var(--slate)';
+    const layer = createPacketLayer(root);
+
+    let stock = 9;
+    let version = 7;
+    let released = false;
+    let sent = 0;
+    let restored = 0;
+
+    const scene = createScene<State>({ gate: 0 }, (s) => {
+      const l = layout;
+      setAttrs(track, { d: `M ${l.start} ${l.lane} L ${l.inventory.x} ${l.lane}` });
+      setAttrs(startLabel, { x: l.start, y: l.lane - 22 });
+      const top = l.lane - l.gateH / 2;
+      setAttrs(gate, { x: l.gateX - 9, y: top, height: l.gateH * s.gate, opacity: s.gate > 0.01 ? 1 : 0 });
+      setAttrs(gateLabel, { x: l.gateX, y: top + l.gateH + 16, opacity: Math.max(0, s.gate * 2 - 1) });
+      setAttrs(link, { d: `M ${l.link[0].x} ${l.link[0].y} L ${l.link[1].x} ${l.link[1].y}`, opacity: s.gate });
+      resCaption.style.opacity = String(0.45 + 0.55 * s.gate);
+      status.group.style.opacity = String(0.45 + 0.55 * s.gate);
+    });
+
+    const draw = () => {
+      const l = layout;
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      setAttrs(resCaption, { x: l.resCaption.x, y: l.resCaption.y });
+      setAttrs(resSub, { x: l.resSub.x, y: l.resSub.y });
+      status.place(l.badge);
+      setAttrs(invCard, { x: l.inventory.x, y: l.inventory.y, width: l.inventory.w, height: l.inventory.h });
+      const t = l.invText;
+      setAttrs(invCaption, { x: t.caption.x, y: t.caption.y });
+      setAttrs(stockLabel, { x: t.stockLabel.x, y: t.stockLabel.y });
+      setAttrs(stockValue, { x: t.stock.x, y: t.stock.y });
+      setAttrs(verLabel, { x: t.verLabel.x, y: t.verLabel.y });
+      setAttrs(verValue, { x: t.ver.x, y: t.ver.y });
+      setAttrs(verdict, { x: l.verdict.x, y: l.verdict.y });
+      setAttrs(tally, { x: l.tally.x, y: l.tally.y });
+      scene.redraw();
+    };
+
+    const setVerdict = (text: string, tone: 'flow' | 'danger' | 'clear') => {
+      verdict.textContent = text;
+      verdict.style.fill = tone === 'flow' ? 'var(--scene-flow-ink)' : tone === 'danger' ? 'var(--scene-danger)' : 'transparent';
+      invCard.style.stroke = tone === 'danger' ? 'var(--scene-danger)' : '';
+    };
+    const updateTally = () => { tally.textContent = `보낸 복구 요청 ${sent} · 실제 재고 복구 ${restored}`; };
+    const reset = () => {
+      layer.clear();
+      stock = 9;
+      version = 7;
+      released = false;
+      sent = 0;
+      restored = 0;
+      stockValue.textContent = '9';
+      verValue.textContent = '7';
+      status.set('RESERVED', 'var(--scene-hue-cyan)');
+      resSub.textContent = mode === 'status' ? '' : '복구 경로가 상태를 확인하지 않음';
+      setVerdict('', 'clear');
+      updateTally();
+    };
+
+    const say = (html: string) => { note.innerHTML = html; replayClass(note, 'is-entering'); };
+
+    /** 복구 요청 하나: (조건이 있으면) 관문에서 상태를 바꾸고, 재고 행에서 version을 검사하며 1개를 돌려놓습니다. */
+    const send = async (alive: () => boolean, n: number) => {
+      const l = layout;
+      sent += 1;
+      updateTally();
+      const p = layer.spawn({ label: `복구 #${n}`, at: { x: l.start + 24, y: l.lane } });
+      if (mode === 'status') {
+        if (released) {
+          if (!(await p.bounce({ x: l.gateX - 14, y: l.lane })) || !alive()) return false;
+          p.relabel('0행', 'danger');
+          replayClass(gate, 'is-hit');
+          return alive();
+        }
+        if (!(await p.travel([{ x: l.gateX, y: l.lane }], 700, ease.out)) || !alive()) return false;
+        released = true;
+        status.set('RELEASED', 'var(--scene-hue-gray)');
+        p.relabel('1행 변경', 'flow');
+        await scene.pause(duration.beat);
+        if (!alive()) return false;
+      }
+      if (!(await p.travel([{ x: l.inventory.x - 30, y: l.lane }], mode === 'status' ? 620 : 1100)) || !alive()) return false;
+      p.relabel(`v${version} ✓`, 'flow');
+      void p.land();
+      stock += 1;
+      version += 1;
+      restored += 1;
+      bumpText(stockValue, String(stock));
+      bumpText(verValue, String(version));
+      updateTally();
+      await scene.pause(duration.beat);
+      if (alive()) void p.fade();
+      return alive();
+    };
+
+    const run = async () => {
+      const alive = scene.begin();
+      reset();
+      say(NOTES[mode].intro);
+      runButton.removeAttribute('data-state');
+      await scene.pause(400);
+      if (!alive() || !(await send(alive, 1))) return;
+      await scene.pause(duration.read / 2);
+      if (!alive() || !(await send(alive, 2))) return;
+      if (mode === 'version') {
+        setVerdict('주문 101을 두 번 복구', 'danger');
+        replayClass(inv, 'is-shaking');
+        modeButtons[1].setAttribute('data-state', 'next');
+      } else {
+        setVerdict('한 번만 복구 ✓', 'flow');
+        modeButtons.forEach((b) => b.removeAttribute('data-state'));
+      }
+      say(NOTES[mode].done);
+    };
+
+    modeButtons.forEach((button) => button.addEventListener('click', () => {
+      const next = button.dataset.dupMode as Mode;
+      modeButtons.forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
+      mode = next;
+      const alive = scene.begin();
+      reset();
+      say(NOTES[mode].intro);
+      void scene.go({ gate: mode === 'status' ? 1 : 0 }, duration.draw).then((ok) => { if (ok && alive()) void run(); });
+    }));
+    runButton.addEventListener('click', () => { void run(); });
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      scene.begin();
+      reset();
+      draw();
+      say(NOTES[mode].intro);
+      runButton.setAttribute('data-state', 'next');
+    });
+
+    let played = false;
+    watchDemoPlayback(demo, ({ shouldPlay }) => {
+      if (!shouldPlay || played) return;
+      played = true;
+      window.setTimeout(() => { void run(); }, 400);
+    }, { threshold: 0.5 });
+  });
+</script>
+
+<style is:global>
+  .db-demo[data-blog-demo="tx-duplicate-release"] .scene-note { min-height: 5.4em; }
+  [data-blog-demo="tx-duplicate-release"] .tx-track { fill: none; stroke: color-mix(in srgb, var(--scene-dep) 40%, transparent); stroke-width: 1.5; stroke-dasharray: 2 6; }
+  [data-blog-demo="tx-duplicate-release"] .tx-link { fill: none; stroke: var(--scene-hue-cyan); stroke-width: 1.4; stroke-dasharray: 3 4; }
+  [data-blog-demo="tx-duplicate-release"] .tx-gate { fill: color-mix(in srgb, var(--scene-hue-cyan) 18%, var(--surface)); stroke: var(--scene-hue-cyan); stroke-width: 1.6; transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="tx-duplicate-release"] .tx-gate.is-hit { animation: scene-shake 420ms ease-in-out; }
+  [data-blog-demo="tx-duplicate-release"] .tx-gate-label { fill: var(--scene-hue-cyan) !important; font-weight: 800; }
+  [data-blog-demo="tx-duplicate-release"] .tx-field { fill: var(--slate); font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
+  [data-blog-demo="tx-duplicate-release"] .tx-big,
+  [data-blog-demo="tx-duplicate-release"] .tx-value { fill: var(--ink); font-family: var(--font-mono); font-weight: 800; text-anchor: end; transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="tx-duplicate-release"] .tx-big { font-size: 30px; }
+  [data-blog-demo="tx-duplicate-release"] .tx-value { font-size: 13px; }
+  [data-blog-demo="tx-duplicate-release"] .tx-big.is-bump,
+  [data-blog-demo="tx-duplicate-release"] .tx-value.is-bump { animation: scene-pop 420ms ease-out; }
+  [data-blog-demo="tx-duplicate-release"] .db-demo-controls { margin-bottom: 0; flex-wrap: wrap; }
+  [data-blog-demo="tx-duplicate-release"] .scene-chips { margin-top: 10px; }
+</style>

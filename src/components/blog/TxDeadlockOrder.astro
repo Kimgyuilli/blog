@@ -1,0 +1,323 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import '../../styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="tx-deadlock-order" ariaLabel="두 트랜잭션이 상품 1과 2의 락을 서로 다른 순서와 같은 순서로 잡을 때를 비교하는 실험" title="서로 기다리는 고리는 언제 생길까요?" description="A와 B가 상품 1과 2의 재고를 함께 차감합니다. 잠그는 순서를 바꿔 보고, 기다림이 한 바퀴 고리로 닫히는지 보세요.">
+  <DemoControls ariaLabel="잠그는 순서">
+    <button type="button" data-dl-mode="reverse" aria-pressed="true">역순 (A: 1→2, B: 2→1)</button>
+    <button type="button" data-dl-mode="same" aria-pressed="false">같은 순서 (모두 1→2)</button>
+  </DemoControls>
+  <div class="scene-chips" role="group" aria-label="실행">
+    <button type="button" class="scene-chip is-plain" data-dl-run>▶ 다시 실행</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic viewBox="0 0 560 230" role="img" aria-label="왼쪽에 트랜잭션 A, 오른쪽에 B, 가운데 위아래에 상품 1과 상품 2의 행이 있습니다. 행 카드의 테두리 색과 “A가 잠금” 같은 문구는 그 행의 락을 쥔 트랜잭션이고, 주황 점선 화살표는 락 대기입니다. 각 트랜잭션 아래 칩은 잠글 순서와 진행 상태입니다. 역순으로 잠그면 A는 B가 쥔 상품 2를, B는 A가 쥔 상품 1을 기다려 네 노드를 잇는 빨간 고리가 닫힙니다. InnoDB가 이를 감지해 B를 롤백하면 A가 진행합니다. 같은 순서로 잠그면 B는 아무 락도 쥐지 않은 채 상품 1만 기다리므로 고리가 생기지 않습니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">어느 트랜잭션을 롤백할지는 InnoDB가 정합니다. 여기서는 B가 롤백된다고 가정했습니다. 롤백된 B의 재시도와 lock wait timeout은 그리지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { clamp01, createScene, duration, exitPoint, pointAt, replayClass, setAttrs, svg, watchNarrow, type Box } from '../../scripts/blog/scene/core';
+  import { createArrow, createChip, createNode } from '../../scripts/blog/scene/parts';
+  import { watchDemoPlayback } from '../../scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: 역순으로 잠그면 "A가 기다리는 행은 B가 쥐고, B가 기다리는 행은 A가 쥔" 상태가 되어
+  // A → 상품 2 → B → 상품 1 → A를 잇는 빨간 고리가 닫힌다. 같은 순서로 잠그면 B는 빈손으로 기다리기만 해서 고리가 없다.
+  type Mode = 'reverse' | 'same';
+  type Tx = 'a' | 'b';
+  type Row = 'r1' | 'r2';
+  type WaitKey = `wait-${Tx}-${Row}`;
+  type Task = 'todo' | 'held' | 'wait' | 'done' | 'undone';
+  type State = Record<WaitKey, number> & { ring: number };
+  type Layout = {
+    view: [number, number]; a: Box; b: Box; r1: Box; r2: Box;
+    ring: { cx: number; cy: number; rx: number; ry: number };
+    chipW: number; chipDy: [number, number];
+  };
+
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 230],
+      a: { x: 78, y: 112, w: 124, h: 48 }, b: { x: 482, y: 112, w: 124, h: 48 },
+      r1: { x: 280, y: 44, w: 132, h: 52 }, r2: { x: 280, y: 180, w: 132, h: 52 },
+      ring: { cx: 280, cy: 112, rx: 202, ry: 68 },
+      chipW: 112, chipDy: [44, 70],
+    },
+    narrow: {
+      view: [360, 272],
+      a: { x: 58, y: 126, w: 100, h: 48 }, b: { x: 302, y: 126, w: 100, h: 48 },
+      r1: { x: 180, y: 40, w: 104, h: 52 }, r2: { x: 180, y: 212, w: 104, h: 52 },
+      ring: { cx: 180, cy: 126, rx: 122, ry: 86 },
+      // 좁은 배치는 대기선이 칩을 가로지르지 않게 칩을 맨 아래 줄로 내립니다.
+      chipW: 100, chipDy: [104, 130],
+    },
+  };
+  const TXS: Tx[] = ['a', 'b'];
+  const ROWS: Row[] = ['r1', 'r2'];
+  const HUE: Record<Tx, string> = { a: 'var(--scene-hue-blue)', b: 'var(--scene-hue-violet)' };
+  const ROW_NAME: Record<Row, string> = { r1: '상품 1', r2: '상품 2' };
+  const ORDER: Record<Mode, Record<Tx, [Row, Row]>> = {
+    reverse: { a: ['r1', 'r2'], b: ['r2', 'r1'] },
+    same: { a: ['r1', 'r2'], b: ['r1', 'r2'] },
+  };
+  const NOTES: Record<Mode, { intro: string; done: string }> = {
+    reverse: {
+      intro: 'A는 상품 1부터, B는 상품 2부터 잠급니다.',
+      done: 'A가 기다리는 상품 2는 B가, B가 기다리는 상품 1은 A가 쥐고 있었습니다. 기다림이 <strong>한 바퀴 고리</strong>로 닫혀 어느 쪽도 진행할 수 없습니다. InnoDB가 이를 감지해 <strong>B를 롤백</strong>하자 A가 상품 2를 얻고 커밋했습니다. B는 트랜잭션 전체를 다시 실행해야 합니다.',
+    },
+    same: {
+      intro: 'A와 B가 모두 상품 ID 오름차순으로 잠급니다.',
+      done: 'B는 첫 단계인 상품 1에서 <strong>빈손으로 기다리기만</strong> 했습니다. B가 아무 락도 쥐지 않았으니 A를 막을 수 없고, 고리가 생기지 않습니다. A가 커밋해 락을 놓자 B가 이어서 1과 2를 잠그고 커밋했습니다.',
+    },
+  };
+  const EMPTY: State = { 'wait-a-r1': 0, 'wait-a-r2': 0, 'wait-b-r1': 0, 'wait-b-r2': 0, ring: 0 };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="tx-deadlock-order"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-dl-mode]')];
+    const runButton = demo.querySelector<HTMLButtonElement>('[data-dl-run]')!;
+    let layout = LAYOUTS.wide;
+    let narrow = false;
+    let mode: Mode = 'reverse';
+
+    // 고리: 네 노드를 지나는 타원. A → 상품 2 → B → 상품 1 → A 방향으로 그려집니다.
+    const ring = svg('path', { class: 'tx-ring' }, root);
+    const ringArrow = createArrow(root, 'var(--scene-danger)');
+    const ringLabel = svg('text', { class: 'scene-label is-sans tx-ring-label', 'text-anchor': 'middle' }, root);
+    ringLabel.textContent = '기다림이 한 바퀴 · deadlock';
+
+    // 대기선: 트랜잭션 → 기다리는 행
+    const waits = {} as Record<WaitKey, { path: SVGPathElement; arrow: ReturnType<typeof createArrow>; label: SVGTextElement }>;
+    TXS.forEach((tx) => ROWS.forEach((row) => {
+      const path = svg('path', { class: 'tx-wait' }, root);
+      const arrow = createArrow(root, 'var(--scene-temp)');
+      const label = svg('text', { class: 'scene-label is-sans tx-wait-label' }, root);
+      label.textContent = '대기';
+      waits[`wait-${tx}-${row}`] = { path, arrow, label };
+    }));
+
+    const rows = { r1: createNode(root, { label: ROW_NAME.r1, hue: 'var(--scene-hue-amber)' }), r2: createNode(root, { label: ROW_NAME.r2, hue: 'var(--scene-hue-pink)' }) };
+    const rowCards = { r1: rows.r1.group.querySelector<SVGRectElement>('.scene-node-card')!, r2: rows.r2.group.querySelector<SVGRectElement>('.scene-node-card')! };
+    const nodes = { a: createNode(root, { label: '트랜잭션 A', hue: HUE.a }), b: createNode(root, { label: '트랜잭션 B', hue: HUE.b }) };
+    [...Object.values(rows), ...Object.values(nodes)].forEach((node) => node.group.classList.add('is-sans-sub'));
+    // 트랜잭션마다 잠글 순서와 진행 상태를 칩 두 개로 보여 줍니다.
+    const makeChips = (width: number) => ({
+      a: [0, 1].map(() => createChip(root, { label: '', hue: HUE.a, width })),
+      b: [0, 1].map(() => createChip(root, { label: '', hue: HUE.b, width })),
+    });
+    const chipSets = { wide: makeChips(LAYOUTS.wide.chipW), narrow: makeChips(LAYOUTS.narrow.chipW) };
+    Object.values(chipSets).forEach((set) => [...set.a, ...set.b].forEach((chip) => chip.group.classList.add('is-sans')));
+
+    const owner: Record<Row, Tx | undefined> = { r1: undefined, r2: undefined };
+    const tasks: Record<Tx, Task[]> = { a: ['todo', 'todo'], b: ['todo', 'todo'] };
+
+    /** 왼쪽(A)에서 시작해 아래(상품 2) → 오른쪽(B) → 위(상품 1) → 왼쪽으로 도는 타원. */
+    const ringPath = () => {
+      const { cx, cy, rx, ry } = layout.ring;
+      const arc = (x: number, y: number) => `A ${rx} ${ry} 0 0 0 ${x} ${y}`;
+      return `M ${cx - rx} ${cy} ${arc(cx, cy + ry)} ${arc(cx + rx, cy)} ${arc(cx, cy - ry)} ${arc(cx - rx, cy)}`;
+    };
+
+    const scene = createScene<State>({ ...EMPTY }, (s) => {
+      const l = layout;
+      TXS.forEach((tx) => ROWS.forEach((row) => {
+        const key: WaitKey = `wait-${tx}-${row}`;
+        const view = waits[key];
+        const show = clamp01(s[key]);
+        const start = exitPoint(l[tx], l[row], 4);
+        const end = exitPoint(l[row], l[tx], 7);
+        const tip = pointAt(start, end, show);
+        const opacity = String(clamp01(show * 3));
+        setAttrs(view.path, { d: `M ${start.x} ${start.y} L ${tip.x} ${tip.y}` });
+        view.path.style.opacity = opacity;
+        view.arrow(tip, (Math.atan2(end.y - start.y, end.x - start.x) * 180) / Math.PI);
+        view.arrow.element.style.opacity = opacity;
+        const colour = s.ring > 0.01 ? `color-mix(in srgb, var(--scene-danger) ${Math.round(clamp01(s.ring) * 100)}%, var(--scene-temp))` : 'var(--scene-temp)';
+        view.path.style.stroke = colour;
+        view.arrow.element.style.fill = colour;
+        view.label.style.fill = colour;
+        const mid = pointAt(start, end, 0.5);
+        const side = tx === 'a' ? -1 : 1;
+        setAttrs(view.label, { x: mid.x - side * 8, y: mid.y + (row === 'r1' ? 14 : -6), 'text-anchor': side < 0 ? 'start' : 'end', opacity: clamp01((show - 0.5) * 2) });
+      }));
+      // 고리를 둘레를 따라 서서히 그립니다. 화살촉이 그리는 끝을 따라가며 도는 방향을 보여 줍니다.
+      setAttrs(ring, { d: ringPath() });
+      const length = ring.getTotalLength();
+      const drawn = clamp01(s.ring);
+      ring.style.strokeDasharray = `${length}`;
+      ring.style.strokeDashoffset = String(length * (1 - drawn));
+      ring.style.opacity = drawn > 0.001 ? '1' : '0';
+      const at = ring.getPointAtLength(length * Math.max(drawn, 0.001));
+      const ahead = ring.getPointAtLength(Math.min(length, length * Math.max(drawn, 0.001) + 1));
+      ringArrow(at, (Math.atan2(ahead.y - at.y, ahead.x - at.x) * 180) / Math.PI);
+      ringArrow.element.style.opacity = drawn > 0.02 && drawn < 0.98 ? '1' : '0';
+      setAttrs(ringLabel, { x: l.ring.cx, y: l.ring.cy + 4, opacity: clamp01((drawn - 0.85) * 6) });
+    });
+
+    const paintRow = (row: Row) => {
+      const who = owner[row];
+      // 행 카드의 테두리 색과 보조 문구가 락을 쥔 트랜잭션입니다.
+      rows[row].setSub(who ? `${who.toUpperCase()}가 잠금` : '락 없음');
+      rows[row].group.querySelector<SVGTextElement>('.scene-node-sub')!.style.fill = who ? HUE[who] : '';
+      rowCards[row].style.stroke = who ? HUE[who] : '';
+      rowCards[row].style.strokeWidth = who ? '2.5' : '';
+    };
+    const paintTasks = () => {
+      (['wide', 'narrow'] as const).forEach((key) => TXS.forEach((tx) => chipSets[key][tx].forEach((chip, i) => {
+        const task = tasks[tx][i];
+        const suffix = { todo: '', held: ' · 잠금', wait: ' · 대기', done: ' ✓', undone: ' · 취소' }[task];
+        chip.setLabel(`${i + 1}. ${ROW_NAME[ORDER[mode][tx][i]]}${suffix}`);
+        chip.group.classList.toggle('is-empty', task === 'todo' || task === 'undone');
+        chip.group.classList.toggle('tx-chip-wait', task === 'wait');
+        chip.group.classList.toggle('tx-chip-undone', task === 'undone');
+      })));
+    };
+    const setTask = (tx: Tx, i: number, task: Task) => { tasks[tx][i] = task; paintTasks(); };
+    const lock = (tx: Tx, row: Row) => { owner[row] = tx; paintRow(row); rows[row].flash('is-ok'); };
+    const unlock = (row: Row) => { owner[row] = undefined; paintRow(row); };
+    const nodeState = (tx: Tx, sub: string, cls?: 'is-waiting' | 'is-done' | 'is-error') => {
+      ['is-waiting', 'is-done', 'is-error'].forEach((name) => nodes[tx].flash(name, false));
+      nodes[tx].setSub(sub);
+      if (cls) nodes[tx].flash(cls);
+    };
+
+    const sequences: Record<Mode, (alive: () => boolean) => Promise<void>> = {
+      reverse: async (alive) => {
+        const go = async (patch: Partial<State>, ms: number = duration.draw) => (await scene.go({ ...scene.state, ...patch }, ms)) && alive();
+        const beat = async (ms: number = duration.beat) => { await scene.pause(ms); return alive(); };
+        lock('a', 'r1'); setTask('a', 0, 'held'); nodeState('a', '상품 1 잠금');
+        if (!(await beat(duration.move))) return;
+        lock('b', 'r2'); setTask('b', 0, 'held'); nodeState('b', '상품 2 잠금');
+        if (!(await beat(duration.move))) return;
+        setTask('a', 1, 'wait');
+        nodeState('a', 'B를 기다림', 'is-waiting');
+        if (!(await go({ 'wait-a-r2': 1 }))) return;
+        setTask('b', 1, 'wait');
+        nodeState('b', 'A를 기다림', 'is-waiting');
+        if (!(await go({ 'wait-b-r1': 1 }))) return;
+        if (!(await beat())) return;
+        // 고리가 닫힙니다: A → 상품 2(B 보유) → B → 상품 1(A 보유) → A
+        if (!(await go({ ring: 1 }, 1400))) return;
+        Object.values(rows).forEach((row) => row.flash('is-shaking'));
+        if (!(await beat(duration.read))) return;
+        // 감지: B를 롤백해 B가 쥔 락과 대기를 거둡니다.
+        nodeState('b', 'ROLLBACK', 'is-error');
+        nodes.b.flash('is-shaking');
+        unlock('r2');
+        setTask('b', 0, 'undone'); setTask('b', 1, 'undone');
+        if (!(await go({ 'wait-b-r1': 0, ring: 0 }, duration.cut))) return;
+        if (!(await go({ 'wait-a-r2': 0 }, duration.cut))) return;
+        lock('a', 'r2'); setTask('a', 1, 'held');
+        nodeState('a', '1·2 잠금');
+        if (!(await beat(duration.move))) return;
+        unlock('r1'); unlock('r2');
+        setTask('a', 0, 'done'); setTask('a', 1, 'done');
+        nodeState('a', 'COMMIT ✓', 'is-done');
+      },
+      same: async (alive) => {
+        const go = async (patch: Partial<State>, ms: number = duration.draw) => (await scene.go({ ...scene.state, ...patch }, ms)) && alive();
+        const beat = async (ms: number = duration.beat) => { await scene.pause(ms); return alive(); };
+        lock('a', 'r1'); setTask('a', 0, 'held'); nodeState('a', '상품 1 잠금');
+        if (!(await beat(duration.move))) return;
+        setTask('b', 0, 'wait');
+        nodeState('b', 'A를 기다림', 'is-waiting');
+        if (!(await go({ 'wait-b-r1': 1 }))) return;
+        if (!(await beat())) return;
+        lock('a', 'r2'); setTask('a', 1, 'held');
+        nodeState('a', '1·2 잠금');
+        if (!(await beat(duration.move))) return;
+        unlock('r1'); unlock('r2');
+        setTask('a', 0, 'done'); setTask('a', 1, 'done');
+        nodeState('a', 'COMMIT ✓', 'is-done');
+        if (!(await go({ 'wait-b-r1': 0 }, duration.cut))) return;
+        lock('b', 'r1'); setTask('b', 0, 'held');
+        nodeState('b', '상품 1 잠금');
+        if (!(await beat(duration.move))) return;
+        lock('b', 'r2'); setTask('b', 1, 'held');
+        nodeState('b', '1·2 잠금');
+        if (!(await beat(duration.move))) return;
+        unlock('r1'); unlock('r2');
+        setTask('b', 0, 'done'); setTask('b', 1, 'done');
+        nodeState('b', 'COMMIT ✓', 'is-done');
+      },
+    };
+
+    const say = (html: string) => { note.innerHTML = html; replayClass(note, 'is-entering'); };
+    const reset = () => {
+      scene.set({ ...EMPTY });
+      ROWS.forEach((row) => { owner[row] = undefined; paintRow(row); });
+      TXS.forEach((tx) => { tasks[tx] = ['todo', 'todo']; nodeState(tx, ''); });
+      paintTasks();
+    };
+    const run = async () => {
+      const alive = scene.begin();
+      reset();
+      say(NOTES[mode].intro);
+      runButton.removeAttribute('data-state');
+      await scene.pause(600);
+      if (!alive()) return;
+      await sequences[mode](alive);
+      if (!alive()) return;
+      say(NOTES[mode].done);
+      if (mode === 'reverse') modeButtons[1].setAttribute('data-state', 'next');
+      else modeButtons.forEach((b) => b.removeAttribute('data-state'));
+    };
+
+    modeButtons.forEach((button) => button.addEventListener('click', () => {
+      mode = button.dataset.dlMode as Mode;
+      modeButtons.forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
+      void run();
+    }));
+    runButton.addEventListener('click', () => { void run(); });
+
+    watchNarrow(stage, (isNarrow) => {
+      narrow = isNarrow;
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      const l = layout;
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      ROWS.forEach((row) => {
+        rows[row].setBox(l[row]);
+      });
+      TXS.forEach((tx) => {
+        nodes[tx].setBox(l[tx]);
+        (['wide', 'narrow'] as const).forEach((key) => chipSets[key][tx].forEach((chip, i) => {
+          chip.place({ x: l[tx].x, y: l[tx].y + l.chipDy[i] }, (key === 'narrow') === narrow ? 1 : 0);
+        }));
+      });
+      scene.begin();
+      reset();
+      say(NOTES[mode].intro);
+      runButton.setAttribute('data-state', 'next');
+    });
+
+    let played = false;
+    watchDemoPlayback(demo, ({ shouldPlay }) => {
+      if (!shouldPlay || played) return;
+      played = true;
+      window.setTimeout(() => { void run(); }, 400);
+    }, { threshold: 0.5 });
+  });
+</script>
+
+<style is:global>
+  .db-demo[data-blog-demo="tx-deadlock-order"] .scene-note { min-height: 5.4em; }
+  [data-blog-demo="tx-deadlock-order"] .tx-ring { fill: none; stroke: var(--scene-danger); stroke-width: 3; stroke-opacity: 0.55; stroke-linecap: round; }
+  [data-blog-demo="tx-deadlock-order"] .tx-ring-label { fill: var(--scene-danger) !important; font-size: 13px; font-weight: 800; }
+  [data-blog-demo="tx-deadlock-order"] .tx-wait { fill: none; stroke-width: 2.2; stroke-dasharray: 6 5; animation: scene-march 900ms linear infinite; }
+  [data-blog-demo="tx-deadlock-order"] .tx-wait-label { font-weight: 800; }
+  [data-blog-demo="tx-deadlock-order"] .tx-chip-wait .scene-table-chip-card { stroke: var(--scene-temp); stroke-dasharray: 4 3; }
+  [data-blog-demo="tx-deadlock-order"] .tx-chip-wait .scene-table-chip-text { fill: var(--scene-temp); }
+  [data-blog-demo="tx-deadlock-order"] .tx-chip-undone .scene-table-chip-text { fill: var(--scene-danger); }
+  [data-blog-demo="tx-deadlock-order"] .db-demo-controls { margin-bottom: 0; flex-wrap: wrap; }
+  [data-blog-demo="tx-deadlock-order"] .scene-chips { margin-top: 10px; }
+  @media (prefers-reduced-motion: reduce) {
+    [data-blog-demo="tx-deadlock-order"] .tx-wait { animation: none; }
+  }
+</style>

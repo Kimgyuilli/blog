@@ -1,0 +1,293 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import '../../styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="tx-unlock-commit" ariaLabel="Redis 락을 커밋 전에 해제할 때와 커밋 뒤에 해제할 때 다음 요청이 읽는 재고를 비교하는 시간축" title="락이 풀린 순간, 재고는 커밋됐을까요?" description="같은 상품의 재고 요청 두 개가 Redis 락으로 차례를 정합니다. 락을 푸는 시점을 바꿔 보고, 요청 1이 바꾼 값 9가 DB에 내려앉기 전과 후 중 언제 요청 2가 읽는지 보세요.">
+  <DemoControls ariaLabel="Redis 락을 푸는 시점">
+    <button type="button" data-unlock-mode="0" aria-pressed="true">메서드 반환 때 해제 (초기 구현)</button>
+    <button type="button" data-unlock-mode="1" aria-pressed="false">커밋 뒤 해제</button>
+  </DemoControls>
+  <div class="scene-chips" role="group" aria-label="실행">
+    <button type="button" class="scene-chip is-plain" data-unlock-run>▶ 처음부터 재생</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic viewBox="0 0 560 262" role="img" aria-label="세 줄의 시간축입니다. 요청 1과 요청 2 줄에는 Redis 락을 쥔 구간과 기다리는 구간이 있고, 맨 아래 줄은 DB에 커밋된 재고 값입니다. 요청 1이 바꾼 값 9는 커밋 전까지 요청 1 줄 위에 떠 있다가, 커밋하는 순간 DB 줄로 내려앉습니다. 메서드 반환 때 락을 풀면 요청 1이 커밋하기 전에 요청 2가 락을 얻어, 아직 바뀌지 않은 재고 10과 version 7을 읽고 나중에 version 충돌로 실패합니다. 커밋 뒤에 풀면 요청 2는 요청 1의 커밋 이후에 읽어 재고 9와 version 8을 봅니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">글의 실행 순서를 단순화한 모형입니다. 막대의 길이는 실제 시간이 아닙니다. 요청 1의 UPDATE는 커밋 과정에서 실행된다고 가정했고, 여러 품목의 auto-flush와 lease time 만료는 그리지 않았습니다. “커밋 뒤 해제”는 글에서 검토한 대안이며, Peekcart가 현재 적용한 방식은 아닙니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, clamp01, createScene, duration, ease, hopLift, bowAt, lerp, replayClass, setAttrs, svg, watchNarrow } from '../../scripts/blog/scene/core';
+  import { createChip } from '../../scripts/blog/scene/parts';
+  import { watchDemoPlayback } from '../../scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: 요청 1이 바꾼 값 9는 커밋 전까지 요청 1 줄 위에 떠 있다가 COMMIT 순간 DB 줄로 내려앉는다.
+  // 락을 메서드 반환 때 풀면 요청 2의 읽기가 그 전("커밋 전 공백" 안)에 놓여 10을 읽고, 커밋 뒤로 옮기면 읽기가 COMMIT 선을 넘어 9를 읽는다.
+  type State = { t: number; m: number };
+  type Layout = { view: [number, number]; x0: number; x1: number; labelX: number; lanes: [number, number, number]; short: boolean; chipW: number };
+
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: { view: [560, 262], x0: 118, x1: 544, labelX: 16, lanes: [86, 160, 228], short: false, chipW: 86 },
+    narrow: { view: [360, 276], x0: 62, x1: 350, labelX: 8, lanes: [92, 170, 240], short: true, chipW: 76 },
+  };
+  const END = 10;
+  const T = { lock1Start: 0.8, wait2Start: 1.2, change1: 2.2, commit1: 6.5, land: 7.3 };
+  const at = (m: number) => {
+    const unlock1 = lerp(3.6, 6.7, m);
+    return { unlock1, read2: unlock1 + 0.5, unlock2: lerp(6.0, 9.6, m), commit2: lerp(8.0, 9.4, m) };
+  };
+  /** 재생 중 시간에 맞춰 바뀌는 설명. */
+  const EVENTS: { at: number; text: string }[][] = [
+    [
+      { at: 0, text: '요청 1이 Redis 락을 얻습니다. 같은 상품의 요청 2는 이 락을 기다립니다.' },
+      { at: T.change1, text: '요청 1이 재고 필드를 <strong>9</strong>로 바꿨습니다. 아직 커밋 전이라 DB의 값은 그대로 10입니다.' },
+      { at: 3.6, text: '재고 메서드가 반환되자 요청 1이 <strong>락을 풉니다</strong>. 바깥 트랜잭션은 아직 커밋하지 않았습니다.' },
+      { at: 4.1, text: '락을 얻은 요청 2가 재고를 읽습니다. DB에 커밋된 값은 아직 <strong>10 · v7</strong>입니다.' },
+      { at: T.commit1, text: '요청 1이 이제야 커밋합니다. 9가 DB로 내려앉아 <strong>9 · v8</strong>이 됩니다.' },
+      { at: 8.0, text: '요청 2가 v7을 기준으로 반영하려다 <strong>version 충돌</strong>로 실패합니다.' },
+    ],
+    [
+      { at: 0, text: '요청 1이 Redis 락을 얻습니다. 같은 상품의 요청 2는 이 락을 기다립니다.' },
+      { at: T.change1, text: '요청 1이 재고 필드를 <strong>9</strong>로 바꿨습니다. 아직 커밋 전이라 DB의 값은 그대로 10입니다.' },
+      { at: T.commit1, text: '요청 1이 커밋해 9가 DB로 내려앉습니다. 락은 아직 요청 1이 쥐고 있습니다.' },
+      { at: 6.7, text: '커밋이 끝난 뒤에야 요청 1이 <strong>락을 풉니다</strong>.' },
+      { at: 7.2, text: '락을 얻은 요청 2가 재고를 읽습니다. 이번에는 <strong>9 · v8</strong>입니다.' },
+      { at: 9.4, text: '요청 2가 충돌 없이 <strong>커밋</strong>합니다.' },
+    ],
+  ];
+  const NOTES = [
+    '요청 1은 재고 메서드가 반환되자 락을 풀었지만, 바꾼 값 9는 아직 <strong>커밋 전</strong>이었습니다. 그 사이 락을 얻은 요청 2는 커밋된 값 <strong>10 · version 7</strong>을 읽었고, 두 요청이 같은 version을 읽었으므로 나중에 반영하는 요청 2가 <strong>version 충돌</strong>로 실패합니다.',
+    '락을 요청 1의 커밋 뒤에 풀면 요청 2의 구간 전체가 오른쪽으로 밀립니다. 요청 2는 9가 DB에 내려앉은 뒤에 읽어 <strong>9 · version 8</strong>을 보고, 충돌 없이 커밋합니다. 대신 요청 2가 기다리는 시간은 길어집니다.',
+  ];
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="tx-unlock-commit"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-unlock-mode]')];
+    const runButton = demo.querySelector<HTMLButtonElement>('[data-unlock-run]')!;
+    let layout = LAYOUTS.wide;
+    let narrow = false;
+
+    const text = (cls: string, content = '', anchor: 'start' | 'middle' | 'end' = 'middle') => {
+      const t = svg('text', { class: cls, 'text-anchor': anchor }, root);
+      t.textContent = content;
+      return t;
+    };
+    const rect = (cls: string, hue?: string) => {
+      const r = svg('rect', { class: cls, rx: 7 }, root);
+      if (hue) r.style.setProperty('--node-hue', hue);
+      return r;
+    };
+    const blue = 'var(--scene-hue-blue)';
+    const violet = 'var(--scene-hue-violet)';
+    const amber = 'var(--scene-hue-amber)';
+
+    const tracks = [0, 1, 2].map(() => rect('scene-lane-track'));
+    const laneNames = [text('tx-lane-name', '요청 1', 'start'), text('tx-lane-name', '요청 2', 'start'), text('tx-lane-name', '', 'start')];
+    laneNames[0].style.fill = blue;
+    laneNames[1].style.fill = violet;
+    laneNames[2].style.fill = 'var(--slate)';
+
+    // 커밋 전 공백: 요청 1의 unlock부터 COMMIT까지
+    const gap = svg('rect', { class: 'tx-gap' }, root);
+    const gapLabel = text('scene-label is-sans tx-gap-label', '커밋 전 공백');
+
+    // 막대 안에 무엇인지 적어 범례 없이 읽히게 합니다.
+    const lock1 = rect('scene-lane-bar', blue);
+    const wait2 = rect('tx-waitbar');
+    const lock2 = rect('scene-lane-bar', violet);
+    const lock1Text = text('tx-bar-label', 'Redis 락');
+    const wait2Text = text('tx-bar-label is-wait', '락 대기');
+    const lock2Text = text('tx-bar-label', 'Redis 락');
+    const dbOld = rect('scene-lane-bar', amber);
+    const dbNew = rect('scene-lane-bar', amber);
+    const dbOldText = text('tx-bar-text', '10 · v7');
+    const dbNewText = text('tx-bar-text', '9 · v8');
+
+    const commitLine = svg('line', { class: 'tx-commit-line' }, root);
+    const readLine = svg('line', { class: 'tx-read-line' }, root);
+    const cursor = svg('line', { class: 'tx-cursor' }, root);
+
+    const tick = (hue: string) => {
+      const line = svg('line', { class: 'tx-tick' }, root);
+      line.style.stroke = hue;
+      const label = text('scene-label is-sans');
+      label.style.fill = hue;
+      return { line, label };
+    };
+    const ticks = { unlock1: tick(blue), commit1: tick(blue), read2: tick(violet), unlock2: tick(violet), commit2: tick(violet) };
+    const changeTick = svg('line', { class: 'tx-tick' }, root);
+    changeTick.style.stroke = blue;
+    const changeLabel = text('scene-label is-sans');
+    changeLabel.style.fill = blue;
+
+    // 요청 1이 바꾼 값: 커밋 전까지 요청 1 줄 위에 떠 있다가 COMMIT 때 DB 줄로 내려앉습니다.
+    const pending = { wide: createChip(root, { label: '9 · 커밋 전', hue: blue, width: LAYOUTS.wide.chipW }), narrow: createChip(root, { label: '9 · 커밋 전', hue: blue, width: LAYOUTS.narrow.chipW }) };
+    Object.values(pending).forEach((chip) => chip.group.classList.add('is-sans', 'is-copy'));
+
+    let sweeping = false;
+    let eventIndex = -1;
+    let mode = 0;
+    let landed = false;
+
+    const scene = createScene<State>({ t: END, m: 0 }, (s) => {
+      const l = layout;
+      const x = (time: number) => l.x0 + ((l.x1 - l.x0) * time) / END;
+      const upTo = (time: number) => Math.min(time, s.t);
+      const bar = (r: SVGRectElement, y: number, h: number, from: number, to: number, label?: SVGTextElement) => {
+        const w = Math.max(0, x(upTo(to)) - x(from));
+        setAttrs(r, { x: x(from), y: y - h / 2, width: w, height: h, opacity: s.t > from ? 1 : 0 });
+        if (label) setAttrs(label, { x: x(from) + w / 2, y: y + 4, opacity: w > 58 ? 1 : 0 });
+      };
+      const e = at(s.m);
+      const [y1, y2, y3] = l.lanes;
+      tracks.forEach((track, i) => setAttrs(track, { x: l.x0, y: l.lanes[i] - 17, width: l.x1 - l.x0, height: 34 }));
+      laneNames.forEach((name, i) => setAttrs(name, { x: l.labelX, y: l.lanes[i] + 4 }));
+      laneNames[2].textContent = l.short ? 'DB 값' : 'DB에 커밋된 값';
+
+      bar(lock1, y1, 18, T.lock1Start, e.unlock1, lock1Text);
+      bar(wait2, y2, 18, T.wait2Start, e.unlock1, wait2Text);
+      bar(lock2, y2, 18, e.unlock1, e.unlock2, lock2Text);
+      bar(dbOld, y3, 20, 0, T.commit1);
+      bar(dbNew, y3, 20, T.commit1, END);
+      setAttrs(dbOldText, { x: (x(0) + x(Math.min(T.commit1, Math.max(s.t, 0.01)))) / 2, y: y3 + 4, opacity: s.t > 1.4 ? 1 : 0 });
+      setAttrs(dbNewText, { x: (x(T.commit1) + x(END)) / 2, y: y3 + 4, opacity: s.t >= T.land ? 1 : 0 });
+      if (s.t >= T.land && !landed) { landed = true; replayClass(dbNewText, 'is-bump'); }
+      if (s.t < T.land) landed = false;
+
+      // 바꾼 값 칩: 변경 시점부터 떠 있다가, COMMIT부터 착지까지 호를 그리며 DB 줄로 내려갑니다.
+      const from = { x: x(T.change1) + l.chipW / 2 - 6, y: y1 - 28 };
+      const to = { x: x(T.commit1) + l.chipW / 2 + 6, y: y3 };
+      const fly = clamp01((s.t - T.commit1) / (T.land - T.commit1));
+      const p = bowAt(from, to, ease.standard(fly), -hopLift(fly, 26));
+      (['wide', 'narrow'] as const).forEach((key) => {
+        const visible = (key === 'narrow') === narrow && s.t >= T.change1 && s.t < T.land;
+        pending[key].place(fly > 0 ? p : from, visible ? 1 : 0);
+      });
+      setAttrs(changeTick, { x1: x(T.change1), x2: x(T.change1), y1: y1 - 15, y2: y1 + 15, opacity: s.t >= T.change1 ? 1 : 0 });
+      changeLabel.textContent = l.short ? '변경' : '9로 변경';
+      setAttrs(changeLabel, { x: x(T.change1), y: y1 + 28, opacity: s.t >= T.change1 ? 1 : 0 });
+
+      // 커밋 전 공백
+      const gapW = Math.max(0, x(T.commit1) - x(e.unlock1));
+      const gapOn = s.t > e.unlock1 && gapW > 2 ? clamp01(gapW / 30) : 0;
+      setAttrs(gap, { x: x(e.unlock1), y: y1 - 22, width: Math.max(0, x(upTo(T.commit1)) - x(e.unlock1)), height: y2 + 22 - (y1 - 22), opacity: gapOn });
+      const gapDrawn = Math.max(0, x(upTo(T.commit1)) - x(e.unlock1));
+      setAttrs(gapLabel, { x: x(e.unlock1) + gapDrawn / 2, y: y1 - 28, opacity: gapDrawn > 70 ? gapOn : 0 });
+
+      setAttrs(commitLine, { x1: x(T.commit1), x2: x(T.commit1), y1: y1 - 18, y2: y3 + 14, opacity: s.t >= T.commit1 ? 1 : 0 });
+      // 요청 2의 읽기: DB 줄까지 내려가 그 시점의 커밋 값을 가리킵니다.
+      setAttrs(readLine, { x1: x(e.read2), x2: x(e.read2), y1: y2, y2: y3 - 11, opacity: s.t >= e.read2 ? 1 : 0 });
+      setAttrs(cursor, { x1: x(s.t), x2: x(s.t), y1: y1 - 34, y2: y3 + 18, opacity: s.t < END - 0.05 ? 1 : 0 });
+
+      const stale = e.read2 < T.commit1;
+      const place = (key: keyof typeof ticks, time: number, y: number, label: string, above = true) => {
+        const view = ticks[key];
+        const on = s.t >= time ? 1 : 0;
+        setAttrs(view.line, { x1: x(time), x2: x(time), y1: y - 15, y2: y + 15, opacity: on });
+        bumpText(view.label, label);
+        setAttrs(view.label, { x: x(time), y: above ? y - 21 : y + 28, opacity: on });
+      };
+      place('unlock1', e.unlock1, y1, 'unlock', false);
+      place('commit1', T.commit1, y1, 'COMMIT', false);
+      const readValue = stale ? '10 · v7' : '9 · v8';
+      place('read2', e.read2, y2, l.short ? readValue : `읽음 ${readValue}`);
+      place('unlock2', e.unlock2, y2, 'unlock', false);
+      place('commit2', e.commit2, y2, stale ? (l.short ? '✕ 충돌' : '✕ version 충돌') : (l.short ? '✓ 커밋' : '✓ COMMIT'));
+      // 두 해제 시점의 "unlock"과 "COMMIT" 글자가 겹치면 COMMIT을 위로 올립니다.
+      if (Math.abs(x(e.unlock1) - x(T.commit1)) < 50) setAttrs(ticks.commit1.label, { y: y1 - 21 });
+      ticks.commit2.label.style.fill = stale ? 'var(--scene-danger)' : 'var(--scene-flow-ink)';
+      ticks.read2.label.style.fill = stale ? 'var(--scene-danger)' : violet;
+
+      if (sweeping) {
+        const events = EVENTS[mode];
+        let index = 0;
+        events.forEach((event, i) => { if (s.t >= event.at) index = i; });
+        if (index !== eventIndex) { eventIndex = index; say(events[index].text); }
+      }
+    });
+
+    function say(html: string) {
+      note.innerHTML = html;
+      note.classList.remove('is-entering');
+      void note.offsetWidth;
+      note.classList.add('is-entering');
+    }
+
+    const sweep = async () => {
+      const alive = scene.begin();
+      sweeping = true;
+      eventIndex = -1;
+      scene.set({ t: 0, m: mode });
+      await scene.pause(300);
+      if (!alive()) return;
+      const ok = await scene.go({ t: END, m: mode }, 9000, ease.linear);
+      if (!alive()) return;
+      sweeping = false;
+      if (!ok) return;
+      await scene.pause(duration.read);
+      if (!alive()) return;
+      say(NOTES[mode]);
+      if (mode === 0) modeButtons[1].setAttribute('data-state', 'next');
+    };
+
+    modeButtons.forEach((button) => button.addEventListener('click', () => {
+      const next = Number(button.dataset.unlockMode);
+      modeButtons.forEach((b) => { b.setAttribute('aria-pressed', String(b === button)); b.removeAttribute('data-state'); });
+      if (next === mode) return;
+      mode = next;
+      // 해제 시점을 옮깁니다: 요청 2의 구간이 따라 밀리며 읽기 표시가 COMMIT 선을 넘나듭니다.
+      scene.begin();
+      sweeping = false;
+      if (scene.state.t < END) scene.set({ ...scene.state, t: END });
+      say(NOTES[mode]);
+      void scene.go({ t: END, m: mode }, duration.fly * 2);
+    }));
+    runButton.addEventListener('click', () => { void sweep(); });
+
+    watchNarrow(stage, (isNarrow) => {
+      narrow = isNarrow;
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      scene.begin();
+      sweeping = false;
+      scene.set({ t: END, m: mode });
+      say(NOTES[mode]);
+    });
+
+    let played = false;
+    watchDemoPlayback(demo, ({ shouldPlay }) => {
+      if (!shouldPlay || played) return;
+      played = true;
+      window.setTimeout(() => { void sweep(); }, 300);
+    }, { threshold: 0.5 });
+  });
+</script>
+
+<style is:global>
+  /* 결과 설명이 길어져도 장면 아래 본문이 밀리지 않게 세 줄 높이를 미리 잡아 둡니다. */
+  .db-demo[data-blog-demo="tx-unlock-commit"] .scene-note { min-height: 5.4em; }
+  [data-blog-demo="tx-unlock-commit"] .tx-lane-name { font-size: 12px; font-weight: 800; }
+  [data-blog-demo="tx-unlock-commit"] .tx-waitbar { fill: none; stroke: var(--scene-temp); stroke-width: 1.4; stroke-dasharray: 4 3; }
+  [data-blog-demo="tx-unlock-commit"] .tx-bar-label { fill: var(--ink); font-size: 11px; font-weight: 800; }
+  [data-blog-demo="tx-unlock-commit"] .tx-bar-label.is-wait { fill: var(--scene-temp); }
+  [data-blog-demo="tx-unlock-commit"] .tx-bar-text { transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="tx-unlock-commit"] .tx-bar-text.is-bump { animation: scene-pop 420ms ease-out; }
+  [data-blog-demo="tx-unlock-commit"] .tx-bar-text { fill: var(--ink); font-family: var(--font-mono); font-size: 11px; font-weight: 800; }
+  [data-blog-demo="tx-unlock-commit"] .tx-gap { fill: color-mix(in srgb, var(--scene-temp) 12%, transparent); stroke: var(--scene-temp); stroke-width: 1; stroke-dasharray: 3 4; }
+  [data-blog-demo="tx-unlock-commit"] .tx-gap-label { fill: var(--scene-temp) !important; font-weight: 800; }
+  [data-blog-demo="tx-unlock-commit"] .tx-commit-line { stroke: var(--scene-hue-blue); stroke-width: 1.6; stroke-dasharray: 5 4; }
+  [data-blog-demo="tx-unlock-commit"] .tx-read-line { stroke: var(--scene-hue-violet); stroke-width: 1.6; stroke-dasharray: 2 3; }
+  [data-blog-demo="tx-unlock-commit"] .tx-cursor { stroke: var(--ink); stroke-width: 1; stroke-opacity: 0.4; }
+  [data-blog-demo="tx-unlock-commit"] .tx-tick { stroke-width: 2; }
+  [data-blog-demo="tx-unlock-commit"] .scene-label { transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="tx-unlock-commit"] .scene-label.is-bump { animation: scene-pop 420ms ease-out; }
+  [data-blog-demo="tx-unlock-commit"] .db-demo-controls { margin-bottom: 0; flex-wrap: wrap; }
+  [data-blog-demo="tx-unlock-commit"] .scene-chips { margin-top: 10px; }
+</style>
