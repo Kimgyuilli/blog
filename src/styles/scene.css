@@ -114,6 +114,9 @@ html.dark .db-demo {
 .scene-node.is-error .scene-node-card { fill: var(--scene-danger-soft); stroke: var(--scene-danger); stroke-width: 2.5; }
 .scene-node.is-error .scene-node-sub { fill: var(--scene-danger); font-weight: 700; }
 
+/* 한글 보조 문구: 고정폭 글꼴은 한글 자간을 벌립니다. */
+.scene-node.is-sans-sub .scene-node-sub { font-family: var(--font-sans); font-size: 11px; font-weight: 700; }
+
 /* 임시 의미 */
 .scene-node.is-temp .scene-node-sub { fill: var(--scene-temp); font-weight: 700; }
 
@@ -564,6 +567,71 @@ html.dark .db-demo {
 .scene-table-chip.is-ok .scene-node-body { animation: scene-pop 520ms ease-out; }
 .scene-table-chip.is-shaking .scene-node-body { animation: scene-shake 420ms ease-in-out; }
 
+.scene-table-chip.is-copy .scene-table-chip-card { stroke-dasharray: 3 3; fill: color-mix(in srgb, var(--node-hue) 10%, var(--canvas)); }
+.scene-table-chip.is-sans .scene-table-chip-text { font-family: var(--font-sans); font-size: 11px; font-weight: 700; }
+.scene-table-chip.is-empty .scene-table-chip-card { fill: none; stroke-dasharray: 3 4; }
+.scene-table-chip.is-empty .scene-table-chip-dot { opacity: 0; }
+.scene-table-chip.is-empty .scene-table-chip-text { fill: var(--muted); }
+
+/* ── 실행 시간축 (어느 코드가 언제 실행됐나) ─────────── */
+.scene-lane-track { fill: color-mix(in srgb, var(--surface) 70%, transparent); stroke: var(--hairline); stroke-width: 1; stroke-dasharray: 3 4; }
+.scene-lane-bar { fill: color-mix(in srgb, var(--node-hue) 62%, transparent); stroke: var(--node-hue); stroke-width: 1.2; }
+.scene-tick-line { stroke: var(--scene-danger); stroke-width: 1.5; stroke-dasharray: 2 4; }
+.scene-label.is-waiting-label { fill: var(--scene-temp) !important; }
+
+/* ── 메모리 칸과 가리키는 화살표 (스택·레지스터) ───────── */
+.scene-instr { fill: var(--ink); font-family: var(--font-mono); font-size: 14px; font-weight: 750; }
+.scene-mem-card { fill: var(--surface); stroke: var(--hairline); stroke-width: 1.5; transition: fill 200ms ease, stroke 200ms ease; }
+.scene-mem-addr { fill: var(--muted); font-family: var(--font-mono); font-size: 10.5px; }
+.scene-mem-value { fill: var(--ink); font-family: var(--font-mono); font-size: 12px; font-weight: 700; text-anchor: end; transform-box: fill-box; transform-origin: center; }
+.scene-mem-value.is-sans { font-family: var(--font-sans); font-size: 12.5px; }
+.scene-mem-value.is-bump { animation: scene-pop 420ms ease-out; }
+.scene-mem-slot.is-read .scene-mem-card { fill: color-mix(in srgb, var(--scene-hue-cyan) 12%, var(--surface)); stroke: var(--scene-hue-cyan); }
+.scene-brace { fill: none; stroke: var(--scene-temp); stroke-width: 2; stroke-linecap: round; }
+.scene-brace-label { fill: var(--scene-temp); font-family: var(--font-mono); font-size: 12px; font-weight: 800; }
+.scene-pointer-pill { fill: color-mix(in srgb, var(--scene-hue-cyan) 14%, var(--canvas)); stroke: var(--scene-hue-cyan); stroke-width: 1.6; }
+.scene-pointer-text { fill: var(--ink); font-family: var(--font-mono); font-size: 12px; font-weight: 800; text-anchor: middle; }
+.scene-pointer-arrow { fill: none; stroke: var(--scene-hue-cyan); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ── 코드 목록과 실행 위치 ──────────────────────────── */
+.scene-code-frame {
+  fill: color-mix(in srgb, var(--surface) 80%, transparent);
+  stroke: var(--hairline);
+  stroke-width: 1.5;
+  transition: stroke 240ms ease, fill 240ms ease;
+}
+.scene-code.is-running .scene-code-frame { stroke: color-mix(in srgb, var(--node-hue) 55%, var(--hairline)); fill: color-mix(in srgb, var(--node-hue) 5%, var(--surface)); }
+.scene-code-line { fill: var(--slate); font-size: 12px; font-weight: 600; transition: fill 200ms ease; }
+.scene-code-line.is-mono { font-family: var(--font-mono); font-size: 11.5px; }
+.scene-code-line.is-active { fill: var(--ink); font-weight: 800; }
+.scene-exec-band {
+  fill: color-mix(in srgb, var(--scene-hue-cyan) 14%, transparent);
+  stroke: var(--scene-hue-cyan);
+  stroke-width: 2;
+}
+.scene-exec-tether {
+  fill: none;
+  stroke: var(--scene-hue-cyan);
+  stroke-width: 1.6;
+  stroke-dasharray: 3 4;
+  stroke-linejoin: round;
+  animation: scene-flow 1100ms linear infinite;
+}
+
+/* ── 값이 바뀌는 배지 ──────────────────────────────── */
+.scene-badge-card { fill: var(--canvas); stroke: color-mix(in srgb, var(--node-hue, var(--slate)) 55%, var(--hairline)); stroke-width: 1.5; transition: stroke 240ms ease; }
+.scene-badge-dot { fill: var(--node-hue, var(--slate)); transition: fill 240ms ease; }
+.scene-badge-caption { fill: var(--slate); font-size: 11px; font-weight: 700; }
+.scene-badge-value {
+  fill: var(--ink);
+  font-size: 12.5px;
+  font-weight: 800;
+  text-anchor: end;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.scene-badge-value.is-bump { animation: scene-pop 420ms ease-out; }
+
 /* ── 확대 렌즈 ──────────────────────────────────────── */
 .scene-lens-source { fill: color-mix(in srgb, var(--ink) 6%, transparent); stroke: var(--ink); stroke-width: 1.2; }
 .scene-lens-wing { stroke: color-mix(in srgb, var(--ink) 35%, transparent); stroke-width: 1; stroke-dasharray: 3 3; fill: none; }
@@ -650,6 +718,9 @@ html.dark .db-demo {
   .scene-packet .scene-packet-pill,
   .scene-table-chip .scene-node-body,
   .scene-range output.is-bump,
+  .scene-exec-tether,
+  .scene-badge-value.is-bump,
+  .scene-mem-value.is-bump,
   .scene-wall.is-pierced .scene-wall-ghost { animation: none; }
   .scene-timeline-step.is-timing .scene-timeline-fill { animation: none; width: 100%; }
 }

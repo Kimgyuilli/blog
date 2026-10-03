@@ -2,7 +2,7 @@
  * SVG 장면 부품. 각 부품은 한 번 만들고, 매 프레임 `draw`/`place`에 현재 상태를 넘겨 다시 그립니다.
  * 스타일은 styles/scene.css의 scene-* 클래스가 맡습니다.
  */
-import { angleOf, clamp01, exitPoint, pointAt, prefersReducedMotion, quadAt, replayClass, setAttrs, svg, type Box, type Point } from './core';
+import { angleOf, bumpText, clamp01, exitPoint, pointAt, prefersReducedMotion, quadAt, replayClass, setAttrs, svg, type Box, type Point } from './core';
 
 // ── 노드 ─────────────────────────────────────────────────
 
@@ -316,6 +316,14 @@ export function createChip(parent: Element, { label, hue, width }: { label: stri
   return {
     group,
     width,
+    /** 칩에 담긴 값이 바뀝니다(예: A 사용자 값 → A 커널 값). 글자가 바뀌면 튀어 오르고, `hue`를 주면 주인 색도 바꿉니다. */
+    setLabel: (next: string, nextHue?: string) => {
+      if (nextHue) group.style.setProperty('--node-hue', nextHue);
+      if (text.textContent !== next) {
+        text.textContent = next;
+        if (!prefersReducedMotion()) replayClass(group, 'is-ok');
+      }
+    },
     place: ({ x, y }: Point, opacity = 1) => {
       setAttrs(group, { transform: `translate(${x.toFixed(2)} ${y.toFixed(2)})` });
       group.style.opacity = String(opacity);
@@ -395,5 +403,99 @@ export function createWall(parent: Element, caption = '') {
     },
     /** 강제되지 않는 벽을 패킷이 지나갈 때 한 번 일렁입니다. */
     pierce: () => { if (!prefersReducedMotion()) replayClass(group, 'is-pierced'); },
+  };
+}
+
+// ── 코드 목록과 실행 위치 ────────────────────────────────
+
+export type CodeLine = { text: string; mono?: boolean };
+
+/**
+ * 줄 자리가 고정된 코드 목록. 사용자 코드·커널 코드처럼 "CPU가 실행하는 코드 영역"에 씁니다.
+ * 장면은 `row(i)`로 줄의 상자(중심 기준)를 받아 실행 띠(`createExecMarker`)를 놓습니다.
+ */
+export function createCodeList(parent: Element, { caption, hue, lines }: { caption: string; hue: string; lines: CodeLine[] }) {
+  const group = svg('g', { class: 'scene-code' }, parent);
+  group.style.setProperty('--node-hue', hue);
+  const frame = svg('rect', { class: 'scene-code-frame', rx: 12 }, group);
+  const accent = svg('rect', { class: 'scene-node-accent', rx: 2, width: 4, height: 14 }, group);
+  const title = svg('text', { class: 'scene-caption' }, group);
+  title.textContent = caption;
+  const texts = lines.map((line) => {
+    const text = svg('text', { class: `scene-code-line${line.mono ? ' is-mono' : ''}` }, group);
+    text.textContent = line.text;
+    return text;
+  });
+  let rect: Rect = { x: 0, y: 0, w: 0, h: 0 };
+  let top = 48;
+  let rowH = 28;
+  const row = (index: number): Box => ({ x: rect.x + rect.w / 2, y: rect.y + top + index * rowH, w: rect.w - 16, h: rowH - 4 });
+  return {
+    group,
+    title,
+    row,
+    place(next: Rect, options: { top?: number; rowH?: number } = {}) {
+      rect = next;
+      top = options.top ?? 48;
+      rowH = options.rowH ?? 28;
+      setAttrs(frame, { x: rect.x, y: rect.y, width: rect.w, height: rect.h });
+      setAttrs(accent, { x: rect.x + 12, y: rect.y + 12 });
+      setAttrs(title, { x: rect.x + 24, y: rect.y + 24 });
+      texts.forEach((text, index) => setAttrs(text, { x: rect.x + 20, y: row(index).y + 4 }));
+    },
+    /** 지금 실행 중인 줄을 굵게 표시합니다. -1이면 이 목록에서 실행 중인 줄이 없습니다. */
+    setActive(index: number) {
+      texts.forEach((text, i) => text.classList.toggle('is-active', i === index));
+      group.classList.toggle('is-running', index >= 0);
+    },
+  };
+}
+
+/**
+ * "CPU가 지금 이 줄을 실행한다". 줄 위의 실행 띠와, 실행 주체에서 띠까지 이어지는 점선 끈입니다.
+ * 띠를 다른 코드 목록으로 옮길 때는 장면 상태의 좌표를 `bowAt`/`hopLift`로 휘게 보간합니다.
+ */
+export function createExecMarker(parent: Element) {
+  const group = svg('g', { class: 'scene-exec' }, parent);
+  const tether = svg('path', { class: 'scene-exec-tether' }, group);
+  const band = svg('rect', { class: 'scene-exec-band', rx: 7 }, group);
+  return {
+    group,
+    /** `route`는 실행 주체에서 띠 가장자리 직전까지의 꺾은선입니다. 마지막 점에서 띠의 가까운 쪽 가장자리로 이어집니다. */
+    place({ x, y, w, h }: Box, route: Point[], opacity = 1) {
+      setAttrs(band, { x: x - w / 2, y: y - h / 2, width: w, height: h });
+      const last = route[route.length - 1];
+      const edge = { x: last.x < x ? x - w / 2 : x + w / 2, y };
+      const points = [...route.slice(0, -1), { x: last.x, y }, edge];
+      setAttrs(tether, { d: `M ${points.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L ')}` });
+      group.style.opacity = String(opacity);
+    },
+  };
+}
+
+// ── 값이 바뀌는 배지 ─────────────────────────────────────
+
+/** "모드 · 사용자"처럼 이름표와 바뀌는 값 하나. 값이 바뀌면 튀어 오르고, 색 점(`hue`)이 값의 주인을 표시합니다. */
+export function createBadge(parent: Element, caption: string, width = 132) {
+  const group = svg('g', { class: 'scene-badge' }, parent);
+  const card = svg('rect', { class: 'scene-badge-card', rx: 13, height: 26, width }, group);
+  const dot = svg('circle', { class: 'scene-badge-dot', r: 4 }, group);
+  const title = svg('text', { class: 'scene-badge-caption' }, group);
+  const value = svg('text', { class: 'scene-badge-value' }, group);
+  title.textContent = caption;
+  return {
+    group,
+    value,
+    /** 왼쪽 가운데 기준으로 놓습니다. */
+    place({ x, y }: Point) {
+      setAttrs(card, { x, y: y - 13 });
+      setAttrs(dot, { cx: x + 13, cy: y });
+      setAttrs(title, { x: x + 23, y: y + 4 });
+      setAttrs(value, { x: x + width - 11, y: y + 4.5 });
+    },
+    set(text: string, hue: string) {
+      group.style.setProperty('--node-hue', hue);
+      bumpText(value, text);
+    },
   };
 }

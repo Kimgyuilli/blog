@@ -1,0 +1,282 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import SceneTimeline from './SceneTimeline.astro';
+import '../../styles/scene.css';
+
+const steps = [
+  { name: 'swtch 안', detail: 'A 스택' },
+  { name: 'B 스택 선택', detail: 'movl → esp' },
+  { name: '복귀 주소 push', detail: 'pushl' },
+  { name: 'ret', detail: '커널 유지' },
+  { name: '커널 처리 계속', detail: '커널 유지' },
+  { name: '트랩 복귀', detail: '→ 사용자 모드' },
+];
+---
+
+<InteractiveDemoFrame demoId="lde-swtch-return" ariaLabel="swtch 마지막의 스택 전환과 ret, 그 뒤의 트랩 복귀를 구분해 따라가는 과정" title="swtch의 ret는 바로 B의 사용자 코드로 갈까요?" description="A의 커널 코드에서 호출한 swtch의 마지막 세 명령과 그 뒤를 따라갑니다. 청록색 띠가 CPU가 실행하는 위치입니다.">
+  <SceneTimeline ariaLabel="복귀 단계" steps={steps} />
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="왼쪽에 CPU와 B의 저장 문맥, A와 B의 커널 스택이 있고, 오른쪽에 swtch 코드, B의 커널 실행 흐름, B의 사용자 코드가 있습니다. movl로 esp가 A 스택에서 B 스택으로 옮겨지고, pushl로 B의 저장된 커널 복귀 주소가 B 스택 위에 놓입니다. ret가 그 주소를 꺼내 실행 위치를 B의 커널 코드로 옮기지만 모드는 커널 그대로입니다. 커널 처리를 이어 간 뒤 트랩 복귀에서야 실행 위치가 B의 사용자 코드로 옮겨지고 사용자 모드로 바뀝니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">OSTEP 그림 6.4의 마지막 명령과 그림 6.3의 전체 흐름을 이어 붙인 개념 모형입니다. 스택에는 설명에 필요한 칸만 그렸고, 다른 레지스터의 복원과 B가 이전에 멈춘 과정은 생략했습니다. <code>ret</code>와 트랩 복귀 사이의 커널 처리는 줄여 그렸습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, createScene, duration, hopLift, lerp, nextHop, setAttrs, svg, watchNarrow, type Box, type Point } from '../../scripts/blog/scene/core';
+  import { createBadge, createBoundary, createChip, createCodeList, createExecMarker, createNode, landRing, type Rect } from '../../scripts/blog/scene/parts';
+  import { createStepPlayer } from '../../scripts/blog/scene/step-player';
+
+  // 독자가 볼 변화: ret에서 실행 위치는 B의 커널 코드로 옮겨지지만 모드는 커널 그대로다.
+  // 사용자 모드로 바뀌는 것은 커널 처리를 이어 간 뒤의 트랩 복귀에서다.
+  type Area = 'swtch' | 'bKernel' | 'bUser';
+  type Spot = { area: Area; row: number };
+  type State = { move: number; hop: number; esp: number; espHop: number; push: number; copy: number; popped: number };
+  type Layout = {
+    view: [number, number];
+    cpu: Box; badge: Point;
+    ctx: Rect; ctxChips: Point[];
+    stacks: { A: Rect; B: Rect }; stackChipY: number[];
+    areas: Record<Area, Rect>; rowsTop: Record<Area, number>;
+    route: Point[];
+  };
+
+  const CHIP_W = 112;
+const CTX_W = 150;
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 334],
+      cpu: { x: 54, y: 32, w: 76, h: 40 }, badge: { x: 100, y: 32 },
+      ctx: { x: 16, y: 64, w: 268, h: 84 }, ctxChips: [{ x: 150, y: 102 }, { x: 150, y: 128 }],
+      stacks: { A: { x: 16, y: 160, w: 130, h: 164 }, B: { x: 154, y: 160, w: 130, h: 164 } }, stackChipY: [302, 276, 250],
+      areas: { swtch: { x: 296, y: 12, w: 248, h: 116 }, bKernel: { x: 296, y: 138, w: 248, h: 116 }, bUser: { x: 296, y: 264, w: 248, h: 62 } },
+      rowsTop: { swtch: 46, bKernel: 46, bUser: 42 },
+      route: [{ x: 54, y: 12 }, { x: 54, y: 6 }, { x: 290, y: 6 }, { x: 290, y: 6 }],
+    },
+    narrow: {
+      view: [360, 610],
+      cpu: { x: 52, y: 32, w: 76, h: 40 }, badge: { x: 100, y: 32 },
+      ctx: { x: 12, y: 64, w: 336, h: 60 }, ctxChips: [{ x: 96, y: 104 }, { x: 264, y: 104 }],
+      stacks: { A: { x: 12, y: 136, w: 164, h: 150 }, B: { x: 184, y: 136, w: 164, h: 150 } }, stackChipY: [266, 240, 214],
+      areas: { swtch: { x: 12, y: 300, w: 324, h: 112 }, bKernel: { x: 12, y: 422, w: 324, h: 112 }, bUser: { x: 12, y: 544, w: 324, h: 58 } },
+      rowsTop: { swtch: 44, bKernel: 44, bUser: 40 },
+      route: [{ x: 52, y: 12 }, { x: 52, y: 6 }, { x: 352, y: 6 }, { x: 352, y: 6 }],
+    },
+  };
+  const LINES: Record<Area, { caption: string; hue: string; lines: { text: string; mono?: boolean }[] }> = {
+    swtch: { caption: '커널 코드 · swtch 끝부분', hue: 'var(--scene-hue-amber)', lines: [{ text: 'movl 4(%eax), %esp', mono: true }, { text: 'pushl 0(%eax)', mono: true }, { text: 'ret', mono: true }] },
+    bKernel: { caption: 'B의 커널 실행 흐름', hue: 'var(--scene-hue-amber)', lines: [{ text: 'swtch 호출 다음 (B가 멈춘 곳)' }, { text: '트랩 처리 마무리' }, { text: '트랩 복귀' }] },
+    bUser: { caption: 'B 사용자 코드', hue: 'var(--scene-hue-violet)', lines: [{ text: '인터럽트로 멈춘 다음 명령' }] },
+  };
+  const SPOT: Spot[] = [
+    { area: 'swtch', row: 0 }, { area: 'swtch', row: 1 }, { area: 'swtch', row: 2 },
+    { area: 'bKernel', row: 0 }, { area: 'bKernel', row: 2 }, { area: 'bUser', row: 0 },
+  ];
+  // esp: 0 = A 스택 꼭대기, 1 = B 스택 꼭대기, 2 = push로 한 칸 올라간 B 스택
+  const ESP = [0, 1, 2, 1, 1, 1];
+  const NOTES = [
+    'A의 커널 코드가 호출한 <code>swtch</code>가 A의 상태를 저장했고, <code>%eax</code>가 B의 저장 문맥을 가리킵니다. CPU는 아직 <strong>A의 커널 스택</strong>을 씁니다.',
+    '<code>movl 4(%eax), %esp</code>가 B 문맥에 저장된 스택 위치를 esp에 넣습니다. 이제 CPU가 쓰는 스택이 <strong>B의 커널 스택</strong>입니다. A 스택의 내용은 그대로 남습니다.',
+    '<code>pushl 0(%eax)</code>가 B가 저장해 둔 <strong>커널 복귀 주소</strong>를 B 스택 위에 올립니다. 문맥의 원래 값은 그대로 남습니다.',
+    '<code>ret</code>가 그 주소를 꺼내 실행 위치를 <strong>B가 멈췄던 커널 코드</strong>로 옮깁니다. 모드는 여전히 <strong>커널</strong>입니다. A에서 호출한 함수가 B의 커널 흐름으로 이어졌습니다.',
+    'B의 커널 코드가 하던 처리를 이어 갑니다. <code>ret</code>와 트랩 복귀는 붙어 있는 명령이 아니고, 그 사이에도 CPU는 커널 모드로 커널 코드를 실행합니다.',
+    '<strong>트랩 복귀</strong>에서야 실행 위치가 B의 사용자 코드로 옮겨지고 모드도 사용자 모드로 바뀝니다. B는 인터럽트로 멈춘 다음 명령부터 이어 실행합니다.',
+  ];
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="lde-swtch-return"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    let layout = LAYOUTS.wide;
+    let narrow = false;
+    let shown = 0;
+    let from: Spot = SPOT[0];
+    let to: Spot = SPOT[0];
+    let espFrom = 0;
+    let espTo = 0;
+    let flight: { from: Point; to: Point } | undefined;
+
+    const ctxBox = createBoundary(root, 'B 저장 문맥 (%eax)');
+    const stackBoxes = { A: createBoundary(root, 'A 커널 스택'), B: createBoundary(root, 'B 커널 스택') };
+    const lists = Object.fromEntries((Object.keys(LINES) as Area[]).map((area) => [area, createCodeList(root, LINES[area])])) as Record<Area, ReturnType<typeof createCodeList>>;
+    const chip = (label: string, hue: string, width = CHIP_W) => {
+      const c = createChip(root, { label, hue, width });
+      c.group.classList.add('is-sans');
+      return c;
+    };
+    const ctxChips = [chip('eip · 커널 복귀 주소', 'var(--scene-hue-violet)', CTX_W), chip('esp · B 스택 위치', 'var(--scene-hue-violet)', CTX_W)];
+    const stackChips = {
+      A: [chip('A 사용자 상태', 'var(--scene-hue-blue)'), chip('A 커널 프레임', 'var(--scene-hue-blue)')],
+      B: [chip('B 사용자 상태', 'var(--scene-hue-violet)'), chip('B 커널 프레임', 'var(--scene-hue-violet)')],
+    };
+    const pushed = chip('커널 복귀 주소', 'var(--scene-hue-violet)');
+    const copy = chip('', 'var(--scene-hue-violet)');
+    copy.group.classList.add('is-copy');
+    const espGroup = svg('g', {}, root);
+    svg('rect', { class: 'scene-pointer-pill', rx: 9, width: 40, height: 20, x: -20, y: -10 }, espGroup);
+    const espText = svg('text', { class: 'scene-pointer-text', y: 4 }, espGroup);
+    espText.textContent = 'esp';
+    svg('path', { class: 'scene-pointer-arrow', d: 'M 0 10 L 0 20 M -4 15 L 0 20 L 4 15' }, espGroup);
+    const marker = createExecMarker(root);
+    const cpu = createNode(root, { label: 'CPU', hue: 'var(--scene-hue-cyan)' });
+    const badge = createBadge(root, '모드', 112);
+    const rings = svg('g', {}, root);
+
+    const stackTop = (key: 'A' | 'B', level: number): Point => {
+      const r = layout.stacks[key];
+      return { x: r.x + r.w / 2, y: layout.stackChipY[level] };
+    };
+    /** esp 단계(0: A 꼭대기, 1: B 꼭대기, 2: B에 하나 더)에서 esp 표시가 놓일 자리. 꼭대기 칩 바로 위에서 아래를 가리킵니다. */
+    const espAt = (level: number): Point => {
+      const top = stackTop(level === 0 ? 'A' : 'B', level === 2 ? 2 : 1);
+      return { x: top.x, y: top.y - 32 };
+    };
+    const boxOf = (spot: Spot) => lists[spot.area].row(spot.row);
+
+    const scene = createScene<State>({ move: 1, hop: 0, esp: 0, espHop: 0, push: 0, copy: 0, popped: 0 }, (s) => {
+      const a = boxOf(from);
+      const b = boxOf(to);
+      const crossing = from.area !== to.area;
+      const at = bowAt(a, b, s.move, crossing ? hopLift(s.hop, narrow ? 22 : -26) : 0);
+      marker.place({ ...at, w: lerp(a.w, b.w, s.move), h: lerp(a.h, b.h, s.move) }, layout.route);
+      const current = s.move < 0.5 ? from : to;
+      (Object.keys(lists) as Area[]).forEach((area) => lists[area].setActive(current.area === area ? current.row : -1));
+
+      const e0 = espAt(espFrom);
+      const e1 = espAt(espTo);
+      const ep = bowAt(e0, e1, s.esp, espFrom !== espTo && (espFrom === 0 || espTo === 0) ? hopLift(s.espHop, 30) : 0);
+      setAttrs(espGroup, { transform: `translate(${ep.x.toFixed(1)} ${ep.y.toFixed(1)})` });
+
+      pushed.place(stackTop('B', 2), s.push * (1 - s.popped));
+      if (flight && s.copy > 0.001 && s.copy < 0.999) copy.place(bowAt(flight.from, flight.to, s.copy, hopLift(s.copy, 26)), 1);
+      else copy.place(flight?.from ?? { x: 0, y: 0 }, 0);
+    });
+
+    const travel = (spot: Spot, ms: number) => {
+      from = scene.state.move < 0.5 ? from : to;
+      to = spot;
+      scene.set({ ...scene.state, move: 0, hop: Math.floor(scene.state.hop + 1e-6) });
+      return scene.go({ ...scene.state, move: 1, hop: nextHop(scene.state.hop) }, ms);
+    };
+    const moveEsp = (level: number, ms: number) => {
+      espFrom = scene.state.esp < 0.5 ? espFrom : espTo;
+      espTo = level;
+      scene.set({ ...scene.state, esp: 0, espHop: Math.floor(scene.state.espHop + 1e-6) });
+      return scene.go({ ...scene.state, esp: 1, espHop: nextHop(scene.state.espHop) }, ms);
+    };
+    const copyValue = async (alive: () => boolean, label: string, a: Point, b: Point) => {
+      flight = { from: a, to: b };
+      copy.setLabel(label);
+      scene.set({ ...scene.state, copy: 0 });
+      const ok = await scene.go({ ...scene.state, copy: 1 }, duration.fly);
+      flight = undefined;
+      return ok && alive();
+    };
+    const setMode = (step: number) => badge.set(step === 5 ? '사용자' : '커널', step === 5 ? 'var(--scene-hue-gray)' : 'var(--scene-hue-amber)');
+    const say = (index: number) => {
+      note.innerHTML = NOTES[index];
+      note.classList.remove('is-entering');
+      void note.offsetWidth;
+      note.classList.add('is-entering');
+    };
+
+    const sequences: Record<number, (alive: () => boolean) => Promise<void>> = {
+      1: async (alive) => {
+        if (!(await copyValue(alive, 'B 스택 위치', layout.ctxChips[1], espAt(1)))) return;
+        if (!(await moveEsp(1, duration.fly)) || !alive()) return;
+        if (!(await travel(SPOT[1], duration.move)) || !alive()) return;
+      },
+      2: async (alive) => {
+        // push는 esp를 먼저 한 칸 올린 뒤 그 자리에 값을 씁니다.
+        if (!(await moveEsp(2, duration.move)) || !alive()) return;
+        if (!(await copyValue(alive, '커널 복귀 주소', layout.ctxChips[0], stackTop('B', 2)))) return;
+        scene.set({ ...scene.state, push: 1, popped: 0 });
+        landRing(rings, { ...stackTop('B', 2), w: CHIP_W, h: 20 });
+        await scene.pause(duration.beat / 2);
+        if (!alive()) return;
+        await travel(SPOT[2], duration.move);
+      },
+      3: async (alive) => {
+        // ret: 꼭대기의 복귀 주소를 꺼내 실행 위치로 삼습니다.
+        if (!(await copyValue(alive, '커널 복귀 주소', stackTop('B', 2), { x: boxOf(SPOT[3]).x, y: boxOf(SPOT[3]).y }))) return;
+        if (!(await scene.go({ ...scene.state, popped: 1 }, duration.snap)) || !alive()) return;
+        void moveEsp(1, duration.move);
+        if (!(await travel(SPOT[3], duration.fly)) || !alive()) return;
+        landRing(rings, boxOf(SPOT[3]));
+        badge.set('커널', 'var(--scene-hue-amber)');
+        badge.value.classList.remove('is-bump');
+        void badge.value.getBoundingClientRect();
+        badge.value.classList.add('is-bump');
+      },
+      4: async (alive) => {
+        if (!(await travel({ area: 'bKernel', row: 1 }, duration.move)) || !alive()) return;
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        await travel(SPOT[4], duration.move);
+      },
+      5: async (alive) => {
+        setMode(5);
+        if (!(await travel(SPOT[5], duration.fly)) || !alive()) return;
+        landRing(rings, boxOf(SPOT[5]));
+      },
+    };
+
+    const settle = (step: number, instant: boolean) => {
+      flight = undefined;
+      setMode(step);
+      const target = { ...scene.state, push: step >= 2 ? 1 : 0, popped: step >= 3 ? 1 : 0, copy: 0 };
+      if (instant) {
+        from = to = SPOT[step];
+        espFrom = espTo = ESP[step];
+        scene.set({ ...target, move: 1, hop: 0, esp: 1, espHop: 0 });
+        return;
+      }
+      from = scene.state.move < 0.5 ? from : to;
+      to = SPOT[step];
+      espFrom = scene.state.esp < 0.5 ? espFrom : espTo;
+      espTo = ESP[step];
+      scene.set({ ...target, move: 0, hop: 0, esp: 0, espHop: 0 });
+      void scene.go({ ...scene.state, move: 1, esp: 1 }, duration.move);
+    };
+
+    const show = (index: number, instant: boolean) => {
+      const alive = scene.begin();
+      const previous = shown;
+      shown = index;
+      say(index);
+      const sequence = sequences[index];
+      if (!instant && sequence && index === previous + 1) {
+        settle(previous, true);
+        void sequence(alive);
+        return;
+      }
+      settle(index, instant);
+    };
+
+    const applyLayout = () => {
+      const l = layout;
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      ctxBox.place(l.ctx, { x: l.ctx.x + 12, y: l.ctx.y + 20 });
+      (['A', 'B'] as const).forEach((key) => {
+        stackBoxes[key].place(l.stacks[key], { x: l.stacks[key].x + 10, y: l.stacks[key].y + 20 });
+        stackChips[key].forEach((c, i) => c.place(stackTop(key, i)));
+      });
+      stackBoxes.A.caption.style.fill = 'var(--scene-hue-blue)';
+      stackBoxes.B.caption.style.fill = 'var(--scene-hue-violet)';
+      ctxChips.forEach((c, i) => c.place(l.ctxChips[i]));
+      (Object.keys(lists) as Area[]).forEach((area) => lists[area].place(l.areas[area], { top: l.rowsTop[area], rowH: 24 }));
+      cpu.setBox(l.cpu);
+      badge.place(l.badge);
+      scene.begin();
+      settle(shown, true);
+    };
+    watchNarrow(stage, (value) => { narrow = value; layout = LAYOUTS[value ? 'narrow' : 'wide']; applyLayout(); });
+
+    createStepPlayer(demo, {
+      dwell: (index) => [2800, 3800, 3800, 4600, 3400, 4400][index] ?? duration.dwell,
+      onStep: show,
+    });
+  });
+</script>

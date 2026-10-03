@@ -1,0 +1,246 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import '../../styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="lde-timer-interrupt" ariaLabel="시스템 콜을 하지 않는 A를 타이머가 없는 모형과 있는 모형에서 실행해 커널의 실행 기회를 비교하는 실험" title="A가 양보하지 않아도 B를 실행할 수 있을까요?" description="A는 시스템 콜 없이 반복만 합니다. 모형을 고르고 한 구간을 실행해 보세요. 아래 시간축에 CPU가 어느 코드를 실행했는지 쌓입니다.">
+  <DemoControls ariaLabel="비교 모형">
+    <button type="button" data-timer-mode="none" aria-pressed="true">타이머 없는 협력적 모형</button>
+    <button type="button" data-timer-mode="timer" aria-pressed="false">타이머 있는 모형</button>
+  </DemoControls>
+  <div class="scene-chips" role="group" aria-label="실행">
+    <button type="button" class="scene-chip is-plain" data-timer-run>▶ 한 구간 실행</button>
+    <span class="scene-chips-sep" data-timer-choice-label hidden>스케줄러의 선택:</span>
+    <button type="button" class="scene-chip" style="--node-hue: var(--scene-hue-blue)" data-timer-pick="A" hidden>A 계속</button>
+    <button type="button" class="scene-chip" style="--node-hue: var(--scene-hue-violet)" data-timer-pick="B" hidden>B 선택</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="위에 타이머와 CPU가 있고, 아래 시간축에 A 사용자 코드, 커널 코드, B 사용자 코드 세 줄이 있습니다. 타이머가 없으면 A의 실행 구간만 끝까지 이어집니다. 타이머가 있으면 타이머 사건이 CPU에 도착하는 순간 커널 실행 구간이 생기고, 그 뒤 스케줄러가 A를 계속 실행할지 B를 실행할지 고릅니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">코어 하나에 다른 인터럽트와 예외가 없는 비교 모형입니다. 시간축의 길이는 실제 밀리초나 전환 비용을 나타내지 않습니다. 타이머의 유무는 비교를 위한 설정이고, A가 조작할 수 있는 기능이 아닙니다. B로 바꾸는 문맥 교환의 세부 과정은 다음 장면에서 다룹니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { createScene, duration, ease, lerp, setAttrs, svg, watchNarrow, type Box } from '../../scripts/blog/scene/core';
+  import { createBadge, createNode } from '../../scripts/blog/scene/parts';
+  import { createPacketLayer } from '../../scripts/blog/scene/packets';
+  import { watchDemoPlayback } from '../../scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: 타이머가 없으면 A의 실행 구간만 끝까지 이어지고, 타이머가 있으면 사건이 CPU에 도착하는
+  // 순간 커널 실행 구간이 생긴다. 커널에 들어온 뒤 A를 계속할지 B로 바꿀지는 별개의 선택이다.
+  type Mode = 'none' | 'timer';
+  type Lane = 'A' | 'K' | 'B';
+  type Segment = { lane: Lane; start: number; end?: number };
+  type State = { now: number; lane: number; timer: number };
+  type Layout = {
+    view: [number, number];
+    timer: Box; cpu: Box; badge: { x: number; y: number }; badgeW: number;
+    labelX: number; x0: number; x1: number; lanes: number[]; axisY: number; busY: number;
+    laneLabels: string[];
+  };
+
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 278],
+      timer: { x: 82, y: 40, w: 116, h: 44 }, cpu: { x: 280, y: 40, w: 104, h: 44 }, badge: { x: 352, y: 40 }, badgeW: 132,
+      labelX: 18, x0: 136, x1: 540, lanes: [126, 170, 214], axisY: 246, busY: 92,
+      laneLabels: ['A 사용자 코드', '커널 코드', 'B 사용자 코드'],
+    },
+    narrow: {
+      view: [360, 278],
+      timer: { x: 56, y: 40, w: 96, h: 44 }, cpu: { x: 166, y: 40, w: 84, h: 44 }, badge: { x: 218, y: 40 }, badgeW: 132,
+      labelX: 12, x0: 92, x1: 348, lanes: [126, 170, 214], axisY: 246, busY: 92,
+      laneLabels: ['A 사용자', '커널', 'B 사용자'],
+    },
+  };
+  const LANES: Lane[] = ['A', 'K', 'B'];
+  const HUES: Record<Lane, string> = { A: 'var(--scene-hue-blue)', K: 'var(--scene-hue-amber)', B: 'var(--scene-hue-violet)' };
+  const TICK = 0.42;
+  const KERNEL_END = 0.56;
+  const NOTES = {
+    none: {
+      idle: '타이머가 없는 모형입니다. 커널은 A가 시스템 콜이나 <code>yield</code>를 호출해야 실행 기회를 얻습니다.',
+      done: 'A는 금지된 동작 없이 반복만 했고, CPU는 <strong>끝까지 A의 코드만</strong> 실행했습니다. 커널에 멈추는 코드가 있어도 실행될 기회가 없어 B는 계속 기다립니다. 이제 타이머 있는 모형을 골라 보세요.',
+    },
+    timer: {
+      idle: '같은 A를 타이머가 있는 모형에서 실행합니다. 부팅 때 커널이 처리 코드를 등록하고 타이머를 시작해 두었습니다.',
+      tick: '타이머 사건이 CPU에 도착하자 A의 협조 없이 <strong>커널 코드가 실행</strong>됩니다. 여기서 다음 실행 대상을 고르는 것은 스케줄러입니다. A를 계속할지, B를 선택할지 눌러 보세요.',
+      A: '스케줄러가 <strong>A를 계속</strong> 실행하기로 했습니다. 인터럽트가 왔다고 반드시 다른 프로세스로 바뀌는 것은 아닙니다.',
+      B: '스케줄러가 <strong>B를 선택</strong>했고, 문맥 교환을 거쳐 CPU가 B의 코드를 실행합니다. 커널의 실행 기회와 프로세스 전환은 별개의 결정입니다.',
+    },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="lde-timer-interrupt"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-timer-mode]')];
+    const runButton = demo.querySelector<HTMLButtonElement>('[data-timer-run]')!;
+    const pickButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-timer-pick]')];
+    const pickLabel = demo.querySelector<HTMLElement>('[data-timer-choice-label]')!;
+    let layout = LAYOUTS.wide;
+    let mode: Mode = 'none';
+    let touched = false;
+    let segments: Segment[] = [];
+
+    const laneGroups = LANES.map((lane) => {
+      const track = svg('rect', { class: 'scene-lane-track', rx: 6, height: 26 }, root);
+      const label = svg('text', { class: 'scene-label is-sans' }, root);
+      label.style.fill = 'var(--charcoal)';
+      return { lane, track, label };
+    });
+    const axis = svg('path', { class: 'scene-line' }, root);
+    axis.style.stroke = 'var(--hairline)';
+    axis.style.strokeWidth = '1.5';
+    const axisLabel = svg('text', { class: 'scene-caption', 'text-anchor': 'end' }, root);
+    axisLabel.textContent = '시간 →';
+    const tickMark = svg('g', {}, root);
+    const tickLine = svg('line', { class: 'scene-tick-line' }, tickMark);
+    const tickText = svg('text', { class: 'scene-label scene-label-danger', 'text-anchor': 'middle' }, tickMark);
+    tickText.textContent = '타이머';
+    const bars = svg('g', {}, root);
+    const tether = svg('path', { class: 'scene-exec-tether' }, root);
+    const head = svg('rect', { class: 'scene-exec-band', rx: 5, width: 12, height: 30 }, root);
+    const timer = createNode(root, { label: '타이머', hue: 'var(--scene-hue-pink)', sub: '' });
+    const cpu = createNode(root, { label: 'CPU', hue: 'var(--scene-hue-cyan)' });
+    const badge = createBadge(root, 'CPU 모드', 132);
+    timer.group.classList.add('is-sans-sub');
+    const packets = createPacketLayer(root);
+
+    const xAt = (t: number) => lerp(layout.x0, layout.x1, t);
+    const scene = createScene<State>({ now: 0, lane: 0, timer: 0 }, (s) => {
+      bars.replaceChildren();
+      segments.forEach((seg) => {
+        const end = Math.min(seg.end ?? s.now, s.now);
+        if (end <= seg.start) return;
+        const y = layout.lanes[LANES.indexOf(seg.lane)];
+        const bar = svg('rect', { class: 'scene-lane-bar', rx: 5, x: xAt(seg.start), y: y - 11, width: Math.max(0, xAt(end) - xAt(seg.start)), height: 22 }, bars);
+        bar.style.setProperty('--node-hue', HUES[seg.lane]);
+      });
+      const x = xAt(s.now);
+      const y = lerp(layout.lanes[0], layout.lanes[2], s.lane / 2);
+      setAttrs(head, { x: x - 6, y: y - 15 });
+      const c = layout.cpu;
+      setAttrs(tether, { d: `M ${c.x} ${c.y + c.h / 2 + 2} L ${c.x} ${layout.busY} L ${x} ${layout.busY} L ${x} ${y - 16}` });
+      timer.group.style.opacity = String(lerp(0.4, 1, s.timer));
+      setAttrs(tickMark, { opacity: s.timer, transform: `translate(${xAt(TICK)} 0)` });
+    });
+
+    const setNote = (html: string, alert = false) => {
+      note.innerHTML = html;
+      note.classList.toggle('is-alert', alert);
+      note.classList.remove('is-entering');
+      void note.offsetWidth;
+      note.classList.add('is-entering');
+    };
+    const showPicks = (on: boolean) => {
+      pickButtons.forEach((b) => { b.hidden = !on; b.dataset.state = on ? 'next' : ''; });
+      pickLabel.hidden = !on;
+    };
+    const setMode = (lane: Lane) => badge.set(lane === 'K' ? '커널' : '사용자', lane === 'K' ? 'var(--scene-hue-amber)' : 'var(--scene-hue-gray)');
+    const reset = () => {
+      scene.begin();
+      packets.clear();
+      segments = [];
+      showPicks(false);
+      laneGroups[2].label.classList.add('is-waiting-label');
+      timer.setSub(mode === 'timer' ? '켜짐' : '없음');
+      setMode('A');
+      scene.set({ now: 0, lane: 0, timer: mode === 'timer' ? 1 : 0 });
+      setNote(NOTES[mode].idle);
+    };
+
+    async function run() {
+      if (segments.length) reset();
+      const live = scene.begin();
+      runButton.removeAttribute('data-state');
+      segments = [{ lane: 'A', start: 0 }];
+      if (mode === 'none') {
+        if (!(await scene.go({ ...scene.state, now: 1 }, 3600, ease.linear)) || !live()) return;
+        segments[0].end = 1;
+        setNote(NOTES.none.done, true);
+        modeButtons[1].dataset.state = 'next';
+        return;
+      }
+      if (!(await scene.go({ ...scene.state, now: TICK - 0.03 }, 1500, ease.linear)) || !live()) return;
+      const c = layout.cpu;
+      const t = layout.timer;
+      const p = packets.spawn({ label: 'tick', tone: 'danger', at: { x: t.x + t.w / 2 - 6, y: t.y } });
+      const along = scene.go({ ...scene.state, now: TICK }, 420, ease.linear);
+      if (!(await p.travel([{ x: c.x - c.w / 2 - 6, y: c.y }], 420, ease.linear)) || !live()) return;
+      await along;
+      if (!live()) return;
+      void p.land(false);
+      cpu.flash('is-shaking');
+      segments[0].end = TICK;
+      segments.push({ lane: 'K', start: TICK });
+      setMode('K');
+      if (!(await scene.go({ ...scene.state, lane: 1 }, duration.snap)) || !live()) return;
+      if (!(await scene.go({ ...scene.state, now: KERNEL_END }, 900, ease.linear)) || !live()) return;
+      setNote(NOTES.timer.tick);
+      showPicks(true);
+    }
+
+    async function pick(next: 'A' | 'B') {
+      if (!segments.length || segments[segments.length - 1].lane !== 'K') return;
+      const live = scene.begin();
+      showPicks(false);
+      segments[segments.length - 1].end = KERNEL_END;
+      segments.push({ lane: next, start: KERNEL_END });
+      setMode(next);
+      if (next === 'B') laneGroups[2].label.classList.remove('is-waiting-label');
+      if (!(await scene.go({ ...scene.state, lane: next === 'A' ? 0 : 2 }, duration.move)) || !live()) return;
+      setNote(NOTES.timer[next]);
+      if (!(await scene.go({ ...scene.state, now: 1 }, 1700, ease.linear)) || !live()) return;
+      segments[segments.length - 1].end = 1;
+      runButton.dataset.state = 'next';
+    }
+
+    const applyLayout = () => {
+      const l = layout;
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      laneGroups.forEach(({ track, label }, i) => {
+        setAttrs(track, { x: l.x0 - 6, y: l.lanes[i] - 13, width: l.x1 - l.x0 + 12 });
+        setAttrs(label, { x: l.labelX, y: l.lanes[i] + 4 });
+        label.textContent = l.laneLabels[i];
+      });
+      setAttrs(axis, { d: `M ${l.x0} ${l.axisY} L ${l.x1} ${l.axisY}` });
+      setAttrs(axisLabel, { x: l.x1, y: l.axisY + 18 });
+      setAttrs(tickLine, { x1: 0, x2: 0, y1: l.lanes[0] - 20, y2: l.axisY + 4 });
+      setAttrs(tickText, { x: 0, y: l.axisY + 18 });
+      timer.setBox(l.timer);
+      cpu.setBox(l.cpu);
+      badge.place({ x: l.badge.x, y: l.badge.y });
+      reset();
+    };
+    watchNarrow(stage, (narrow) => { layout = LAYOUTS[narrow ? 'narrow' : 'wide']; applyLayout(); });
+
+    modeButtons.forEach((b) => b.addEventListener('click', () => {
+      touched = true;
+      const next = b.dataset.timerMode as Mode;
+      modeButtons.forEach((x) => { x.setAttribute('aria-pressed', String(x === b)); x.removeAttribute('data-state'); });
+      mode = next;
+      reset();
+      runButton.dataset.state = 'next';
+    }));
+    runButton.addEventListener('click', () => { touched = true; void run(); });
+    pickButtons.forEach((b) => b.addEventListener('click', () => { touched = true; void pick(b.dataset.timerPick as 'A' | 'B'); }));
+    runButton.dataset.state = 'next';
+
+    let played = false;
+    watchDemoPlayback(demo, ({ shouldPlay }) => {
+      if (!shouldPlay || played || touched) return;
+      played = true;
+      window.setTimeout(() => { if (!touched) void run(); }, 600);
+    }, { threshold: 0.5 });
+  });
+</script>
+
+<style>
+  [data-blog-demo="lde-timer-interrupt"] .db-demo-controls { margin-bottom: 0; }
+  [data-blog-demo="lde-timer-interrupt"] .scene-chips { margin-top: 12px; }
+</style>

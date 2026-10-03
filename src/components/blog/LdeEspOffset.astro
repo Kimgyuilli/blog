@@ -1,0 +1,283 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import SceneTimeline from './SceneTimeline.astro';
+import '../../styles/scene.css';
+
+const steps = [
+  { name: '함수 진입', detail: 'esp → 복귀 주소' },
+  { name: 'movl 4(%esp)', detail: 'eax = old' },
+  { name: 'popl 0(%eax)', detail: 'esp + 4' },
+  { name: 'movl 4(%esp)', detail: 'eax = new' },
+];
+---
+
+<InteractiveDemoFrame demoId="lde-esp-offset" ariaLabel="swtch 함수에서 같은 4(%esp)가 popl 전후로 old와 new를 각각 읽는 과정" title="같은 +4가 어떻게 old와 new를 따로 읽을까요?" description="swtch 진입 직후의 스택입니다. 명령을 한 단계씩 진행해 보세요. 전환 방향을 바꾸면 처음부터 다시 시작합니다.">
+  <DemoControls ariaLabel="전환 방향">
+    <button type="button" data-esp-dir="ab" aria-pressed="true">A → B 전환</button>
+    <button type="button" data-esp-dir="ba" aria-pressed="false">B → A 전환</button>
+  </DemoControls>
+  <SceneTimeline ariaLabel="명령 단계" steps={steps} />
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="왼쪽에 주소가 고정된 스택 칸 세 개가 있습니다. 위에서부터 복귀 주소, old, new가 들어 있습니다. 첫 movl은 esp에서 4바이트 아래 칸의 old를 eax로 읽습니다. popl로 esp 화살표가 한 칸 내려가면, 같은 4(%esp)가 이번에는 new 칸을 가리키고 두 번째 movl이 new를 eax로 읽습니다. 오른쪽의 A와 B 저장 공간 주소는 바뀌지 않습니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">OSTEP 그림 6.4의 32비트 x86 코드 일부를 옮긴 모형입니다. 스택 칸의 주소와 저장 공간 주소 <code>0x1000</code>·<code>0x9000</code>은 설명을 위한 예시입니다. <code>popl</code>로 꺼낸 칸의 값은 메모리에 남지만 흐리게 표시했습니다. 다른 레지스터의 저장·복원은 생략했습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { clamp01, createScene, duration, hopLift, lerp, setAttrs, svg, watchNarrow, type Box, type Point } from '../../scripts/blog/scene/core';
+  import { createChip, createCurve, createNode, landRing } from '../../scripts/blog/scene/parts';
+  import { createStepPlayer } from '../../scripts/blog/scene/step-player';
+
+  // 독자가 볼 변화: 스택 칸과 저장 공간은 그대로이고 esp 화살표만 한 칸 내려간다.
+  // +4 괄호가 esp를 따라 내려가며 old 칸에서 new 칸으로 옮겨 간다.
+  type Dir = 'ab' | 'ba';
+  type State = { esp: number; copy: number; link: number; dim: number };
+  type Layout = {
+    view: [number, number];
+    instr: Point;
+    slotX: number; slotW: number; slotH: number; slotY: number[];
+    espX: number;
+    eax: Box; areas: { A: Box; B: Box }; pivotX: number;
+  };
+
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 300],
+      instr: { x: 20, y: 30 },
+      slotX: 140, slotW: 190, slotH: 36, slotY: [120, 160, 200],
+      espX: 52,
+      eax: { x: 462, y: 82, w: 140, h: 44 }, areas: { A: { x: 462, y: 182, w: 140, h: 44 }, B: { x: 462, y: 252, w: 140, h: 44 } }, pivotX: 368,
+    },
+    narrow: {
+      view: [360, 340],
+      instr: { x: 14, y: 28 },
+      slotX: 116, slotW: 232, slotH: 34, slotY: [86, 124, 162],
+      espX: 34,
+      eax: { x: 84, y: 250, w: 140, h: 44 }, areas: { A: { x: 268, y: 226, w: 148, h: 42 }, B: { x: 268, y: 300, w: 148, h: 42 } }, pivotX: 180,
+    },
+  };
+  const INSTR = ['swtch(old, new) 진입', 'movl 4(%esp), %eax', 'popl 0(%eax)', 'movl 4(%esp), %eax'];
+  const ADDRS = ['0x7ff0', '0x7ff4', '0x7ff8'];
+  const PTR = { A: '0x1000', B: '0x9000' };
+  const ORDER: Record<Dir, { old: 'A' | 'B'; new: 'A' | 'B' }> = { ab: { old: 'A', new: 'B' }, ba: { old: 'B', new: 'A' } };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="lde-esp-offset"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const dirButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-esp-dir]')];
+    const firstStep = demo.querySelector<HTMLButtonElement>('[data-step="0"]')!;
+    let layout = LAYOUTS.wide;
+    let dir: Dir = 'ab';
+    let shown = 0;
+
+    const instrCaption = svg('text', { class: 'scene-caption' }, root);
+    instrCaption.textContent = '실행한 명령';
+    const instrText = svg('text', { class: 'scene-instr' }, root);
+    const slots = [0, 1, 2].map((i) => {
+      const g = svg('g', { class: 'scene-mem-slot' }, root);
+      const rect = svg('rect', { class: 'scene-mem-card', rx: 6 }, g);
+      const addr = svg('text', { class: 'scene-mem-addr' }, g);
+      const value = svg('text', { class: 'scene-mem-value' }, g);
+      addr.textContent = ADDRS[i];
+      return { g, rect, addr, value };
+    });
+    const brace = svg('path', { class: 'scene-brace' }, root);
+    const braceText = svg('text', { class: 'scene-brace-label', 'text-anchor': 'end' }, root);
+    braceText.textContent = '+4';
+    const espGroup = svg('g', { class: 'scene-pointer' }, root);
+    svg('rect', { class: 'scene-pointer-pill', rx: 9, width: 46, height: 22, x: -23, y: -11 }, espGroup);
+    const espText = svg('text', { class: 'scene-pointer-text', y: 4 }, espGroup);
+    const espArrow = svg('path', { class: 'scene-pointer-arrow' }, espGroup);
+    espText.textContent = 'esp';
+    const links = { A: createCurve(root, ''), B: createCurve(root, '') };
+    const eax = createNode(root, { label: 'eax', hue: 'var(--scene-hue-cyan)', sub: '—' });
+    const areas = {
+      A: createNode(root, { label: 'A 저장 공간', hue: 'var(--scene-hue-blue)', sub: `@${PTR.A}` }),
+      B: createNode(root, { label: 'B 저장 공간', hue: 'var(--scene-hue-violet)', sub: `@${PTR.B}` }),
+    };
+    Object.values(areas).forEach((node) => node.group.classList.add('is-sans-sub'));
+    const copy = createChip(root, { label: '', hue: 'var(--scene-hue-gray)', width: 104 });
+    copy.group.classList.add('is-copy');
+    const rings = svg('g', {}, root);
+    let flight: { from: Point; to: Point } | undefined;
+    let linked: 'A' | 'B' | undefined;
+
+    const slotBox = (i: number): Box => ({ x: layout.slotX + layout.slotW / 2, y: layout.slotY[i], w: layout.slotW, h: layout.slotH });
+    const slotValues = () => ['복귀 주소', `old = ${PTR[ORDER[dir].old]}`, `new = ${PTR[ORDER[dir].new]}`];
+
+    const scene = createScene<State>({ esp: 0, copy: 0, link: 0, dim: 0 }, (s) => {
+      const l = layout;
+      const espY = lerp(l.slotY[0], l.slotY[1], s.esp);
+      setAttrs(espGroup, { transform: `translate(${l.espX} ${espY})` });
+      const tip = l.slotX - 24 - l.espX;
+      setAttrs(espArrow, { d: `M 26 0 L ${tip} 0 M ${tip - 6} -5 L ${tip} 0 L ${tip - 6} 5` });
+      // +4 괄호: esp가 가리키는 칸 → 그다음 칸. esp를 따라 움직입니다.
+      const y1 = espY;
+      const y2 = espY + (l.slotY[1] - l.slotY[0]);
+      const bx = l.slotX - 6;
+      setAttrs(brace, { d: `M ${bx} ${y1 + 4} C ${bx - 16} ${y1 + 4}, ${bx - 16} ${y2 - 4}, ${bx - 2} ${y2 - 4}` });
+      setAttrs(braceText, { x: bx - 16, y: (y1 + y2) / 2 + 4 });
+      slots[0].g.style.opacity = String(1 - 0.55 * s.dim);
+      if (flight && s.copy > 0.001 && s.copy < 0.999) {
+        const p = { x: lerp(flight.from.x, flight.to.x, s.copy), y: lerp(flight.from.y, flight.to.y, s.copy) - hopLift(s.copy, 26) };
+        copy.place(p, 1);
+      } else copy.place({ x: 0, y: 0 }, 0);
+      (['A', 'B'] as const).forEach((key) => {
+        const area = l.areas[key];
+        const on = linked === key ? clamp01(s.link) : 0;
+        const from = narrow() ? { x: l.eax.x + l.eax.w / 2 + 4, y: l.eax.y } : { x: l.eax.x - l.eax.w / 2 - 4, y: l.eax.y };
+        const to = narrow() ? { x: area.x - area.w / 2 - 6, y: area.y } : { x: area.x - area.w / 2 - 6, y: area.y };
+        const ctrl = narrow() ? { x: (from.x + to.x) / 2, y: to.y } : { x: l.pivotX, y: (from.y + to.y) / 2 };
+        links[key].draw(from, ctrl, to, on, { x: 0, y: 0, anchor: 'start' });
+      });
+    });
+    const narrow = () => layout === LAYOUTS.narrow;
+
+    const setInstr = (index: number) => { instrText.textContent = INSTR[index]; };
+    const setEax = (key: 'A' | 'B' | undefined) => {
+      eax.setSub(key ? PTR[key] : '—');
+      if (key) eax.flash('is-ok');
+    };
+    const say = (html: string) => {
+      note.innerHTML = html;
+      note.classList.remove('is-entering');
+      void note.offsetWidth;
+      note.classList.add('is-entering');
+    };
+    const notes = () => {
+      const o = ORDER[dir];
+      return [
+        `<code>swtch</code>에 들어온 직후입니다. <code>esp</code>는 복귀 주소를 가리키고, 그 4바이트 아래에 old(${o.old}의 저장 공간 주소), 8바이트 아래에 new(${o.new}의 저장 공간 주소)가 있습니다.`,
+        `<code>4(%esp)</code>는 <strong>esp에서 4바이트 떨어진 칸</strong>입니다. 지금은 old 칸이라 <code>eax</code>에 ${PTR[o.old]}이 들어가고, eax가 ${o.old}의 저장 공간을 가리킵니다.`,
+        `<code>popl</code>이 복귀 주소를 꺼내 eax가 가리키는 ${o.old}의 저장 공간에 넣고, <strong>esp를 4바이트 옮깁니다</strong>. 스택 칸의 주소와 내용은 그대로입니다.`,
+        `같은 <code>4(%esp)</code>지만 기준점 esp가 옮겨졌으므로 이번에는 <strong>new 칸</strong>을 읽습니다. eax가 ${o.new}의 저장 공간을 가리킵니다. 오프셋 +4는 바뀌지 않았습니다.`,
+      ];
+    };
+
+    /** 단계 `step`의 끝 장면. */
+    const settle = (step: number, instant: boolean) => {
+      flight = undefined;
+      linked = step === 0 ? undefined : step < 3 ? ORDER[dir].old : ORDER[dir].new;
+      setEax(linked);
+      areas.A.setSub(`@${PTR.A}`);
+      areas.B.setSub(`@${PTR.B}`);
+      if (step >= 2) areas[ORDER[dir].old].setSub('eip ← 복귀 주소');
+      const target = { esp: step >= 2 ? 1 : 0, copy: 0, link: linked ? 1 : 0, dim: step >= 2 ? 1 : 0 };
+      if (instant) scene.set(target);
+      else void scene.go(target, duration.move);
+    };
+    const copyTo = async (alive: () => boolean, label: string, from: Point, to: Point) => {
+      flight = { from, to };
+      copy.setLabel(label);
+      scene.set({ ...scene.state, copy: 0 });
+      if (!(await scene.go({ ...scene.state, copy: 1 }, duration.fly)) || !alive()) return false;
+      flight = undefined;
+      return true;
+    };
+    const slotRight = (i: number) => ({ x: layout.slotX + layout.slotW - 54, y: layout.slotY[i] });
+    const sequences: Record<number, (alive: () => boolean) => Promise<void>> = {
+      1: async (alive) => {
+        slots[1].g.classList.add('is-read');
+        const key = ORDER[dir].old;
+        if (!(await copyTo(alive, PTR[key], slotRight(1), layout.eax))) return;
+        slots[1].g.classList.remove('is-read');
+        linked = key;
+        setEax(key);
+        await scene.go({ ...scene.state, link: 1 }, duration.draw);
+      },
+      2: async (alive) => {
+        const key = ORDER[dir].old;
+        if (!(await copyTo(alive, '복귀 주소', slotRight(0), layout.areas[key]))) return;
+        areas[key].setSub('eip ← 복귀 주소');
+        landRing(rings, layout.areas[key]);
+        await scene.pause(duration.beat / 2);
+        if (!alive()) return;
+        await scene.go({ ...scene.state, esp: 1, dim: 1 }, duration.move);
+      },
+      3: async (alive) => {
+        const key = ORDER[dir].new;
+        slots[2].g.classList.add('is-read');
+        if (!(await scene.go({ ...scene.state, link: 0 }, duration.cut)) || !alive()) return;
+        if (!(await copyTo(alive, PTR[key], slotRight(2), layout.eax))) return;
+        slots[2].g.classList.remove('is-read');
+        linked = key;
+        setEax(key);
+        await scene.go({ ...scene.state, link: 1 }, duration.draw);
+      },
+    };
+
+    const show = (index: number, instant: boolean) => {
+      const alive = scene.begin();
+      const previous = shown;
+      shown = index;
+      setInstr(index);
+      say(notes()[index]);
+      slots.forEach((slot) => slot.g.classList.remove('is-read'));
+      const sequence = sequences[index];
+      if (!instant && sequence && index === previous + 1) {
+        settle(previous, true);
+        void sequence(alive);
+        return;
+      }
+      settle(index, instant);
+    };
+
+    const applyLayout = () => {
+      const l = layout;
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      setAttrs(instrCaption, { x: l.instr.x, y: l.instr.y });
+      setAttrs(instrText, { x: l.instr.x, y: l.instr.y + 22 });
+      const values = slotValues();
+      slots.forEach((slot, i) => {
+        const y = l.slotY[i];
+        setAttrs(slot.rect, { x: l.slotX, y: y - l.slotH / 2, width: l.slotW, height: l.slotH });
+        setAttrs(slot.addr, { x: l.slotX + 10, y: y + 4 });
+        setAttrs(slot.value, { x: l.slotX + l.slotW - 10, y: y + 4.5 });
+        slot.value.textContent = values[i];
+        slot.value.classList.toggle('is-sans', /[가-힣]/.test(values[i]));
+      });
+      eax.setBox(l.eax);
+      areas.A.setBox(l.areas.A);
+      areas.B.setBox(l.areas.B);
+      scene.begin();
+      settle(shown, true);
+      setInstr(shown);
+      say(notes()[shown]);
+    };
+    watchNarrow(stage, (value) => { layout = LAYOUTS[value ? 'narrow' : 'wide']; applyLayout(); });
+
+    dirButtons.forEach((b) => b.addEventListener('click', () => {
+      dirButtons.forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      const next = b.dataset.espDir as Dir;
+      if (next === dir) return;
+      dir = next;
+      const values = slotValues();
+      slots.forEach((slot, i) => bumpValue(slot.value, values[i]));
+      // 방향을 바꾸면 인수 값만 바뀌고 오프셋은 그대로입니다. 처음부터 다시 봅니다.
+      firstStep.click();
+      settle(0, false);
+      setInstr(0);
+      say(notes()[0]);
+    }));
+    function bumpValue(element: SVGTextElement, text: string) {
+      element.textContent = text;
+      element.classList.remove('is-bump');
+      void element.getBoundingClientRect();
+      element.classList.add('is-bump');
+    }
+
+    createStepPlayer(demo, {
+      dwell: (index) => [2800, 3600, 4000, 4400][index] ?? duration.dwell,
+      onStep: show,
+    });
+  });
+</script>
+
+<style>
+  [data-blog-demo="lde-esp-offset"] .db-demo-controls { margin-bottom: 0; }
+</style>

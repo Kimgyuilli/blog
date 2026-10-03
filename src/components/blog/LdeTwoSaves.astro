@@ -1,0 +1,231 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import SceneTimeline from './SceneTimeline.astro';
+import '../../styles/scene.css';
+
+const steps = [
+  { name: 'A 사용자 실행', detail: '사용자 모드' },
+  { name: '인터럽트 진입', detail: '1차 저장' },
+  { name: 'A 커널 실행', detail: '값이 바뀜' },
+  { name: 'A 저장 · B 복원', detail: '2차 저장' },
+  { name: 'B 사용자 복귀', detail: '사용자 모드' },
+];
+---
+
+<InteractiveDemoFrame demoId="lde-two-saves" ariaLabel="레지스터 묶음 하나의 값이 서로 다른 두 시점에 서로 다른 곳에 저장되는 과정" title="같은 레지스터를 왜 두 번 저장할까요?" description="CPU의 레지스터 묶음은 하나뿐입니다. 칩은 그 묶음에 담긴 값이 어느 시점의 것인지를 나타냅니다. 단계를 누르면 그 시점에서 멈춥니다.">
+  <SceneTimeline ariaLabel="인터럽트와 문맥 교환 단계" steps={steps} />
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="위에 CPU 레지스터 묶음이 하나 있고, 아래에 A와 B의 커널 스택과 프로세스 구조체가 있습니다. 인터럽트 진입 때 A 사용자 시점의 값이 A 커널 스택으로 복사됩니다. 커널 코드를 실행하며 레지스터 값이 A 커널 시점의 값으로 바뀌고, 문맥 교환 때 그 값이 A 프로세스 구조체로 복사됩니다. 이어서 B 구조체의 커널 시점 값이 CPU로 읽히고 사용 중인 스택이 B로 바뀌며, 마지막에 B 커널 스택의 사용자 시점 값으로 사용자 모드에 복귀합니다. A의 두 저장 값은 그대로 남습니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">OSTEP 그림 6.3의 저장 위치를 따른 개념 모형입니다. B는 이전에 실행되다 멈춰서 사용자·커널 시점의 상태가 이미 저장돼 있다고 가정합니다. 실제로 하드웨어와 소프트웨어가 어떤 레지스터를 어디에 나누어 저장하는지는 CPU와 구현에 따라 다릅니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, clamp01, createScene, duration, hopLift, setAttrs, watchNarrow, type Point } from '../../scripts/blog/scene/core';
+  import { createBadge, createBoundary, createChip, createCurve, landRing, type Rect } from '../../scripts/blog/scene/parts';
+  import { createStepPlayer } from '../../scripts/blog/scene/step-player';
+
+  // 독자가 볼 변화: CPU 값 칩은 하나인데, 사용자 코드를 멈춘 시점의 값과 커널 코드를 멈춘 시점의 값이
+  // 서로 다른 칸에 복사된다. 칸은 서로 덮어쓰지 않고, B로 바뀐 뒤에도 A의 두 값은 남는다.
+  type Slot = 'cpu' | 'aStack' | 'aCtx' | 'bStack' | 'bCtx';
+  type Flight = { from: Slot; to: Slot; value: number };
+  type State = { fly: number; spA: number; spB: number };
+  type Layout = {
+    view: [number, number];
+    cpu: Rect; badge: Point;
+    a: Rect; b: Rect;
+    slots: Record<Slot, Point>;
+    zones: Record<Exclude<Slot, 'cpu'>, Rect>;
+    spFrom: { a: Point; b: Point }; spCtrl: { a: Point; b: Point };
+  };
+
+  const CHIP_W = 118;
+  const VALUES = [
+    { text: 'A · 사용자 시점', hue: 'var(--scene-hue-blue)' },
+    { text: 'A · 커널 시점', hue: 'var(--scene-hue-blue)' },
+    { text: 'B · 커널 시점', hue: 'var(--scene-hue-violet)' },
+    { text: 'B · 사용자 시점', hue: 'var(--scene-hue-violet)' },
+  ];
+  const EMPTY = -1;
+  // 단계마다 각 칸에 담긴 값(VALUES의 번호).
+  const CONTENT: Record<Slot, number>[] = [
+    { cpu: 0, aStack: EMPTY, aCtx: EMPTY, bStack: 3, bCtx: 2 },
+    { cpu: 0, aStack: 0, aCtx: EMPTY, bStack: 3, bCtx: 2 },
+    { cpu: 1, aStack: 0, aCtx: EMPTY, bStack: 3, bCtx: 2 },
+    { cpu: 2, aStack: 0, aCtx: 1, bStack: 3, bCtx: 2 },
+    { cpu: 3, aStack: 0, aCtx: 1, bStack: 3, bCtx: 2 },
+  ];
+  const KERNEL = [false, true, true, true, false];
+  const SP = [{ a: 0, b: 0 }, { a: 1, b: 0 }, { a: 1, b: 0 }, { a: 0, b: 1 }, { a: 0, b: 0 }];
+  const NOTES = [
+    'CPU가 A의 사용자 코드를 실행 중입니다. 레지스터 묶음에는 <strong>A 사용자 시점</strong>의 값이 들어 있습니다. B는 예전에 멈추며 두 시점의 값을 저장해 두었습니다.',
+    '인터럽트가 발생하자 하드웨어가 지금 값을 <strong>A의 커널 스택</strong>에 복사합니다. CPU는 커널 모드로 바뀌고 A의 커널 스택을 쓰기 시작합니다.',
+    '커널 코드도 레지스터를 씁니다. 같은 레지스터 묶음의 값이 이제 <strong>A 커널 시점</strong>의 값으로 바뀌었습니다. 커널 스택에 저장한 사용자 시점 값은 그대로입니다.',
+    'B로 바꾸기 위해 문맥 교환 코드가 지금 값을 <strong>A의 프로세스 구조체</strong>에 복사하고, B 구조체의 커널 시점 값을 CPU로 읽어 들입니다. 사용하는 스택도 B의 커널 스택으로 바뀝니다.',
+    '트랩 복귀가 B 커널 스택의 <strong>사용자 시점 값</strong>을 읽어 B의 사용자 코드로 돌아갑니다. A의 두 저장 값은 덮어쓰이지 않고 남아, 나중에 A를 재개할 때 쓰입니다.',
+  ];
+
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 332],
+      cpu: { x: 150, y: 12, w: 260, h: 74 }, badge: { x: 420, y: 49 },
+      a: { x: 16, y: 112, w: 256, h: 210 }, b: { x: 288, y: 112, w: 256, h: 210 },
+      slots: { cpu: { x: 280, y: 62 }, aStack: { x: 144, y: 196 }, aCtx: { x: 144, y: 282 }, bStack: { x: 416, y: 196 }, bCtx: { x: 416, y: 282 } },
+      zones: {
+        aStack: { x: 28, y: 146, w: 232, h: 72 }, aCtx: { x: 28, y: 232, w: 232, h: 72 },
+        bStack: { x: 300, y: 146, w: 232, h: 72 }, bCtx: { x: 300, y: 232, w: 232, h: 72 },
+      },
+      spFrom: { a: { x: 236, y: 88 }, b: { x: 324, y: 88 } }, spCtrl: { a: { x: 190, y: 104 }, b: { x: 370, y: 104 } },
+    },
+    narrow: {
+      view: [360, 372],
+      cpu: { x: 12, y: 12, w: 336, h: 92 }, badge: { x: 210, y: 36 },
+      a: { x: 12, y: 132, w: 164, h: 230 }, b: { x: 184, y: 132, w: 164, h: 230 },
+      slots: { cpu: { x: 106, y: 74 }, aStack: { x: 94, y: 222 }, aCtx: { x: 94, y: 318 }, bStack: { x: 266, y: 222 }, bCtx: { x: 266, y: 318 } },
+      zones: {
+        aStack: { x: 20, y: 166, w: 148, h: 78 }, aCtx: { x: 20, y: 262, w: 148, h: 78 },
+        bStack: { x: 192, y: 166, w: 148, h: 78 }, bCtx: { x: 192, y: 262, w: 148, h: 78 },
+      },
+      spFrom: { a: { x: 150, y: 106 }, b: { x: 210, y: 106 } }, spCtrl: { a: { x: 120, y: 130 }, b: { x: 240, y: 130 } },
+    },
+  };
+  const ZONE_CAPTIONS: Record<Exclude<Slot, 'cpu'>, string> = { aStack: '커널 스택', aCtx: '프로세스 구조체', bStack: '커널 스택', bCtx: '프로세스 구조체' };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="lde-two-saves"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    let layout = LAYOUTS.wide;
+    let shown = 0;
+    let flight: Flight | undefined;
+
+    const cpuBox = createBoundary(root, 'CPU 레지스터 묶음');
+    const aBox = createBoundary(root, '프로세스 A');
+    const bBox = createBoundary(root, '프로세스 B');
+    const zones = (Object.keys(ZONE_CAPTIONS) as Exclude<Slot, 'cpu'>[]).map((key) => ({ key, view: createBoundary(root, ZONE_CAPTIONS[key]) }));
+    const spA = createCurve(root, 'SP');
+    const spB = createCurve(root, 'SP');
+    const badge = createBadge(root, 'CPU 모드', 124);
+    const SLOTS: Slot[] = ['cpu', 'aStack', 'aCtx', 'bStack', 'bCtx'];
+    const chips = Object.fromEntries(SLOTS.map((slot) => [slot, createChip(root, { label: '', hue: 'var(--scene-hue-gray)', width: CHIP_W })])) as Record<Slot, ReturnType<typeof createChip>>;
+    const copy = createChip(root, { label: '', hue: 'var(--scene-hue-gray)', width: CHIP_W });
+    [...Object.values(chips), copy].forEach((chip) => chip.group.classList.add('is-sans'));
+    copy.group.classList.add('is-copy');
+    const rings = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    root.append(rings);
+
+    const fill = (slot: Slot, value: number) => {
+      const chip = chips[slot];
+      chip.group.classList.toggle('is-empty', value === EMPTY);
+      if (value === EMPTY) chip.setLabel('비어 있음');
+      else chip.setLabel(VALUES[value].text, VALUES[value].hue);
+    };
+    const fillAll = (step: number) => SLOTS.forEach((slot) => fill(slot, CONTENT[step][slot]));
+    const setMode = (step: number) => badge.set(KERNEL[step] ? '커널' : '사용자', KERNEL[step] ? 'var(--scene-hue-amber)' : 'var(--scene-hue-gray)');
+
+    const scene = createScene<State>({ fly: 0, spA: 0, spB: 0 }, (s) => {
+      if (flight && s.fly > 0.001 && s.fly < 0.999) {
+        const a = layout.slots[flight.from];
+        const b = layout.slots[flight.to];
+        copy.place(bowAt(a, b, s.fly, hopLift(s.fly, 34) * (b.x < a.x ? -1 : 1)), 1);
+      } else copy.place(layout.slots.cpu, 0);
+      const zone = (key: 'aStack' | 'bStack') => layout.zones[key];
+      const za = zone('aStack');
+      const zb = zone('bStack');
+      spA.draw(layout.spFrom.a, layout.spCtrl.a, { x: za.x + za.w / 2, y: za.y - 4 }, clamp01(s.spA), { x: layout.spCtrl.a.x - 8, y: layout.spCtrl.a.y - 2, anchor: 'end' });
+      spB.draw(layout.spFrom.b, layout.spCtrl.b, { x: zb.x + zb.w / 2, y: zb.y - 4 }, clamp01(s.spB), { x: layout.spCtrl.b.x + 8, y: layout.spCtrl.b.y - 2, anchor: 'start' });
+    });
+
+    /** 원본은 그대로 두고 사본을 날려 `to` 칸에 값을 넣습니다. */
+    const copyValue = async (alive: () => boolean, from: Slot, to: Slot, value: number) => {
+      flight = { from, to, value };
+      copy.setLabel(VALUES[value].text, VALUES[value].hue);
+      scene.set({ ...scene.state, fly: 0 });
+      if (!(await scene.go({ ...scene.state, fly: 1 }, duration.fly)) || !alive()) return false;
+      fill(to, value);
+      landRing(rings, { ...layout.slots[to], w: CHIP_W, h: 20 });
+      flight = undefined;
+      await scene.pause(duration.beat / 2);
+      return alive();
+    };
+
+    const say = (index: number) => {
+      note.innerHTML = NOTES[index];
+      note.classList.remove('is-entering');
+      void note.offsetWidth;
+      note.classList.add('is-entering');
+    };
+
+    const sequences: Record<number, (alive: () => boolean) => Promise<void>> = {
+      1: async (alive) => {
+        if (!(await copyValue(alive, 'cpu', 'aStack', 0))) return;
+        setMode(1);
+        await scene.go({ ...scene.state, spA: 1 }, duration.draw);
+      },
+      2: async () => {
+        fill('cpu', 1);
+      },
+      3: async (alive) => {
+        if (!(await copyValue(alive, 'cpu', 'aCtx', 1))) return;
+        if (!(await copyValue(alive, 'bCtx', 'cpu', 2))) return;
+        if (!(await scene.go({ ...scene.state, spA: 0 }, duration.cut)) || !alive()) return;
+        await scene.go({ ...scene.state, spB: 1 }, duration.draw);
+      },
+      4: async (alive) => {
+        if (!(await copyValue(alive, 'bStack', 'cpu', 3))) return;
+        setMode(4);
+        await scene.go({ ...scene.state, spB: 0 }, duration.cut);
+      },
+    };
+
+    const settle = (step: number, instant: boolean) => {
+      flight = undefined;
+      fillAll(step);
+      setMode(step);
+      const target = { fly: 0, spA: SP[step].a, spB: SP[step].b };
+      if (instant) scene.set(target);
+      else void scene.go(target, duration.move);
+    };
+
+    const show = (index: number, instant: boolean) => {
+      const alive = scene.begin();
+      const previous = shown;
+      shown = index;
+      say(index);
+      const sequence = sequences[index];
+      if (!instant && sequence && index === previous + 1) {
+        // 앞 단계의 끝 장면에서 출발합니다.
+        flight = undefined;
+        fillAll(previous);
+        setMode(previous);
+        scene.set({ fly: 0, spA: SP[previous].a, spB: SP[previous].b });
+        void sequence(alive);
+        return;
+      }
+      settle(index, instant);
+    };
+
+    const applyLayout = () => {
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      cpuBox.place(layout.cpu, { x: layout.cpu.x + 14, y: layout.cpu.y + 22 });
+      aBox.place(layout.a, { x: layout.a.x + 14, y: layout.a.y + 22 });
+      bBox.place(layout.b, { x: layout.b.x + 14, y: layout.b.y + 22 });
+      aBox.caption.style.fill = 'var(--scene-hue-blue)';
+      bBox.caption.style.fill = 'var(--scene-hue-violet)';
+      zones.forEach(({ key, view }) => view.place(layout.zones[key], { x: layout.zones[key].x + 10, y: layout.zones[key].y + 18 }));
+      badge.place(layout.badge);
+      SLOTS.forEach((slot) => chips[slot].place(layout.slots[slot]));
+      scene.begin();
+      settle(shown, true);
+    };
+    watchNarrow(stage, (narrow) => { layout = LAYOUTS[narrow ? 'narrow' : 'wide']; applyLayout(); });
+
+    createStepPlayer(demo, {
+      dwell: (index) => [3000, 4200, 3200, 6000, 4800][index] ?? duration.dwell,
+      onStep: show,
+    });
+  });
+</script>

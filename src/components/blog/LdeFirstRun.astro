@@ -1,0 +1,232 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import '../../styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="lde-first-run" ariaLabel="중단 후 복귀와 첫 실행에서 같은 트랩 복귀 절차가 서로 다른 출처의 상태를 읽는 모습" title="한 번도 실행되지 않았는데 어디로 복귀할까요?" description="두 경우 모두 같은 트랩 복귀 절차를 거칩니다. 경우를 고른 뒤 복귀 절차를 진행해 보세요.">
+  <DemoControls ariaLabel="복귀하는 경우">
+    <button type="button" data-run-mode="resume" aria-pressed="true">중단 후 복귀</button>
+    <button type="button" data-run-mode="first" aria-pressed="false">첫 실행</button>
+  </DemoControls>
+  <div class="scene-chips" role="group" aria-label="진행">
+    <button type="button" class="scene-chip is-plain" data-run-go>▶ 트랩 복귀 진행</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="왼쪽 저장 상태의 PC, SP, 레지스터 값이 트랩 복귀 절차를 거쳐 CPU로 복사되고, 실행 위치가 사용자 코드로 옮겨집니다. 중단 후 복귀에서는 이전 사용자 실행이 저장한 값을 읽어 트랩 다음 명령으로, 첫 실행에서는 커널이 준비한 초기 값을 읽어 프로그램 시작점으로 갑니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">OSTEP 그림 6.2의 모델을 줄여 그린 개념 모형입니다. 실제로 저장·복원하는 레지스터의 종류와 위치는 CPU와 운영체제에 따라 다르고, 값은 주소 대신 의미로 적었습니다. 초기 PC는 <code>main()</code>이 아닌 프로그램 시작점으로 표시했습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, clamp01, createScene, duration, hopLift, lerp, setAttrs, svg, watchNarrow, type Box, type Point } from '../../scripts/blog/scene/core';
+  import { createBadge, createBoundary, createChip, createCodeList, createCurve, createExecMarker, createNode, landRing, type Rect } from '../../scripts/blog/scene/parts';
+  import { polylineAt } from '../../scripts/blog/scene/packets';
+  import { watchDemoPlayback } from '../../scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: 복귀 절차·CPU·코드는 그대로이고, 상태의 출처만 '이전 실행'과 '커널이 준비한 값'으로 다르다.
+  // 그 차이가 실행 위치의 도착점(트랩 다음 명령 / 프로그램 시작점)을 바꾼다.
+  type Mode = 'resume' | 'first';
+  type State = { origin: number; copy: number; mark: number; markShow: number };
+  type Layout = {
+    view: [number, number];
+    origin: Box; source: Rect; gate: Box; cpu: Rect; badge: Point; code: Rect;
+    chip: number; srcX: number; slotX: number; rows: number[];
+    route: Point[];
+  };
+
+  const CHIP_W = 150;
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 366],
+      origin: { x: 104, y: 36, w: 176, h: 46 }, source: { x: 16, y: 104, w: 176, h: 128 },
+      gate: { x: 246, y: 178, w: 88, h: 40 }, cpu: { x: 300, y: 104, w: 244, h: 128 }, badge: { x: 410, y: 126 },
+      code: { x: 300, y: 246, w: 244, h: 110 },
+      chip: CHIP_W, srcX: 104, slotX: 404, rows: [152, 180, 208],
+      route: [{ x: 544, y: 178 }, { x: 552, y: 178 }, { x: 552, y: 178 }],
+    },
+    narrow: {
+      view: [360, 548],
+      origin: { x: 180, y: 34, w: 200, h: 46 }, source: { x: 12, y: 80, w: 336, h: 126 },
+      gate: { x: 180, y: 234, w: 100, h: 38 }, cpu: { x: 12, y: 262, w: 336, h: 132 }, badge: { x: 210, y: 284 },
+      code: { x: 12, y: 408, w: 336, h: 110 },
+      chip: CHIP_W, srcX: 180, slotX: 180, rows: [128, 156, 184],
+      route: [{ x: 348, y: 340 }, { x: 354, y: 340 }, { x: 354, y: 340 }],
+    },
+  };
+  const SLOT_ROWS = { wide: [158, 186, 214], narrow: [318, 346, 374] };
+  const VALUES: Record<Mode, string[]> = {
+    resume: ['PC · 트랩 다음', 'SP · A 사용자 스택', '레지스터 · 이전 값'],
+    first: ['PC · 시작점', 'SP · 새 스택 꼭대기', '레지스터 · 초기 값'],
+  };
+  const SLOT_NAMES = ['PC', 'SP', '레지스터'];
+  const TARGET_ROW: Record<Mode, number> = { resume: 2, first: 0 };
+  const NOTES: Record<Mode, { idle: string; done: string }> = {
+    resume: {
+      idle: 'A가 트랩으로 커널에 들어올 때 사용자 실행 상태가 저장됐습니다. 이제 커널이 트랩 복귀를 실행합니다.',
+      done: '트랩 복귀가 <strong>저장된 값</strong>을 CPU로 읽어 들입니다. 실행 위치는 트랩 다음 명령으로, 모드는 사용자 모드로 바뀝니다. 이제 <strong>첫 실행</strong>을 골라 보세요.',
+    },
+    first: {
+      idle: '아직 한 번도 실행되지 않은 A입니다. 저장된 과거 대신, 커널이 시작 위치와 스택 같은 <strong>초기 값</strong>을 복귀 절차가 읽는 자리에 써 두었습니다.',
+      done: '<strong>같은 트랩 복귀</strong>가 커널이 준비한 값을 읽어, 실행 위치가 프로그램 시작점에 놓입니다. 과거 실행이 없어도 복귀 절차는 그대로 쓰입니다.',
+    },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="lde-first-run"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-run-mode]')];
+    const goButton = demo.querySelector<HTMLButtonElement>('[data-run-go]')!;
+    let layout = LAYOUTS.wide;
+    let narrow = false;
+    let mode: Mode = 'resume';
+    let touched = false;
+
+    const source = createBoundary(root, '');
+    const cpuBox = createBoundary(root, 'CPU 레지스터');
+    const wires = [0, 1].map(() => {
+      const line = svg('path', { class: 'scene-line' }, root);
+      line.style.stroke = 'color-mix(in srgb, var(--scene-dep) 45%, transparent)';
+      line.style.strokeWidth = '1.5';
+      return line;
+    });
+    const feed = createCurve(root, '');
+    const origins: Record<Mode, ReturnType<typeof createNode>> = {
+      resume: createNode(root, { label: '이전 A 사용자 실행', hue: 'var(--scene-hue-blue)', sub: '트랩 때 저장' }),
+      first: createNode(root, { label: '커널', hue: 'var(--scene-hue-amber)', sub: '프로세스 생성 중' }),
+    };
+    Object.values(origins).forEach((node) => node.group.classList.add('is-sans-sub'));
+    const gate = createNode(root, { label: '트랩 복귀', hue: 'var(--scene-hue-amber)' });
+    const code = createCodeList(root, { caption: '프로세스 A · 사용자 코드', hue: 'var(--scene-hue-blue)', lines: [{ text: '프로그램 시작점' }, { text: 'read() → 트랩 명령' }, { text: '결과 사용 (트랩 다음)' }] });
+    const chipOpts = (label: string) => ({ label, hue: 'var(--scene-hue-blue)', width: CHIP_W });
+    const sources = VALUES.resume.map((v) => createChip(root, chipOpts(v)));
+    const slots = SLOT_NAMES.map((name) => createChip(root, chipOpts(name)));
+    const copies = VALUES.resume.map((v) => createChip(root, chipOpts(v)));
+    [...sources, ...slots, ...copies].forEach((chip) => chip.group.classList.add('is-sans'));
+    copies.forEach((chip) => chip.group.classList.add('is-copy'));
+    const badge = createBadge(root, 'CPU 모드', 126);
+    const marker = createExecMarker(root);
+    const rings = svg('g', {}, root);
+
+    const slotAt = (i: number): Point => ({ x: layout.slotX, y: SLOT_ROWS[narrow ? 'narrow' : 'wide'][i] });
+    const srcAt = (i: number): Point => ({ x: layout.srcX, y: layout.rows[i] });
+    const rowBox = () => code.row(TARGET_ROW[mode]);
+    const copyT = (copy: number, i: number) => clamp01((copy - i * 0.16) / 0.68);
+
+    const scene = createScene<State>({ origin: 0, copy: 0, mark: 0, markShow: 0 }, (s) => {
+      origins.resume.group.style.opacity = String(1 - s.origin);
+      origins.first.group.style.opacity = String(s.origin);
+      copies.forEach((chip, i) => {
+        const t = copyT(s.copy, i);
+        // 원본 칩들 위를 가로지르지 않도록, 저장 영역 밖으로 먼저 빠져나온 뒤 복귀 절차를 지나갑니다.
+        const a = srcAt(i);
+        const b = slotAt(i);
+        const g = { x: layout.gate.x, y: layout.gate.y };
+        const path = narrow
+          ? [a, { x: a.x + CHIP_W / 2 + 14, y: a.y }, { x: a.x + CHIP_W / 2 + 14, y: g.y - 30 }, g, { x: b.x + CHIP_W / 2 + 14, y: g.y + 30 }, { x: b.x + CHIP_W / 2 + 14, y: b.y }, b]
+          : [a, { x: layout.source.x + layout.source.w + 2, y: a.y }, g, { x: layout.cpu.x - 2, y: b.y }, b];
+        chip.place(polylineAt(path, t), t > 0.001 && t < 0.999 ? 1 : 0);
+      });
+      const pc = { ...slotAt(0), w: CHIP_W, h: 20 };
+      const row = rowBox();
+      const at = bowAt(pc, row, s.mark, hopLift(s.mark, 22));
+      marker.place({ ...at, w: lerp(pc.w, row.w, s.mark), h: lerp(pc.h, row.h, s.mark) }, layout.route, s.markShow);
+      code.setActive(s.markShow > 0.5 && s.mark > 0.5 ? TARGET_ROW[mode] : -1);
+    });
+
+    const setNote = (html: string) => {
+      note.innerHTML = html;
+      note.classList.remove('is-entering');
+      void note.offsetWidth;
+      note.classList.add('is-entering');
+    };
+    const reset = () => {
+      scene.begin();
+      VALUES[mode].forEach((v, i) => { sources[i].setLabel(v); copies[i].setLabel(v); });
+      slots.forEach((chip, i) => { chip.setLabel(SLOT_NAMES[i]); chip.group.classList.add('is-empty'); });
+      source.caption.textContent = mode === 'resume' ? '저장된 상태 · A 커널 스택' : '준비한 초기 상태';
+      badge.set('커널', 'var(--scene-hue-amber)');
+      gate.flash('is-done', false);
+      scene.set({ origin: mode === 'first' ? 1 : 0, copy: 0, mark: 0, markShow: 0 });
+      setNote(NOTES[mode].idle);
+    };
+
+    async function run() {
+      const alive = scene.begin();
+      if (scene.state.copy > 0) {
+        reset();
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+      }
+      goButton.removeAttribute('data-state');
+      gate.flash('is-done');
+      const done = await scene.go({ ...scene.state, copy: 1 }, duration.fly * 1.9);
+      if (!done || !alive()) return;
+      slots.forEach((chip, i) => {
+        chip.group.classList.remove('is-empty');
+        chip.setLabel(VALUES[mode][i]);
+        landRing(rings, { ...slotAt(i), w: CHIP_W, h: 20 });
+      });
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      badge.set('사용자', 'var(--scene-hue-gray)');
+      scene.set({ ...scene.state, markShow: 1 });
+      if (!(await scene.go({ ...scene.state, mark: 1 }, duration.fly)) || !alive()) return;
+      landRing(rings, rowBox());
+      setNote(NOTES[mode].done);
+      if (mode === 'resume') modeButtons[1].dataset.state = 'next';
+    }
+
+    const setMode = (next: Mode) => {
+      modeButtons.forEach((b) => { b.setAttribute('aria-pressed', String(b.dataset.runMode === next)); b.removeAttribute('data-state'); });
+      if (next === mode && scene.state.copy === 0) return;
+      mode = next;
+      reset();
+      goButton.dataset.state = 'next';
+    };
+
+    const applyLayout = () => {
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      source.place(layout.source, { x: layout.source.x + 14, y: layout.source.y + 22 });
+      cpuBox.place(layout.cpu, { x: layout.cpu.x + 14, y: layout.cpu.y + 22 });
+      (Object.keys(origins) as Mode[]).forEach((key) => origins[key].setBox(layout.origin));
+      gate.setBox(layout.gate);
+      code.place(layout.code, { top: 46, rowH: 26 });
+      badge.place(layout.badge);
+      sources.forEach((chip, i) => chip.place(srcAt(i)));
+      slots.forEach((chip, i) => chip.place(slotAt(i)));
+      const g = layout.gate;
+      if (narrow) {
+        setAttrs(wires[0], { d: `M ${g.x} ${layout.source.y + layout.source.h + 4} L ${g.x} ${g.y - g.h / 2 - 4}` });
+        setAttrs(wires[1], { d: `M ${g.x} ${g.y + g.h / 2 + 4} L ${g.x} ${layout.cpu.y - 4}` });
+      } else {
+        setAttrs(wires[0], { d: `M ${layout.source.x + layout.source.w + 4} ${g.y} L ${g.x - g.w / 2 - 4} ${g.y}` });
+        setAttrs(wires[1], { d: `M ${g.x + g.w / 2 + 4} ${g.y} L ${layout.cpu.x - 4} ${g.y}` });
+      }
+      const o = layout.origin;
+      feed.draw({ x: o.x, y: o.y + o.h / 2 + 4 }, { x: o.x, y: (o.y + layout.source.y) / 2 + 12 }, { x: o.x, y: layout.source.y - 6 }, 1, { x: o.x + 10, y: 0, anchor: 'start' });
+      reset();
+    };
+    watchNarrow(stage, (value) => { narrow = value; layout = LAYOUTS[value ? 'narrow' : 'wide']; applyLayout(); });
+
+    modeButtons.forEach((b) => b.addEventListener('click', () => { touched = true; setMode(b.dataset.runMode as Mode); }));
+    goButton.addEventListener('click', () => { touched = true; void run(); });
+    goButton.dataset.state = 'next';
+
+    let played = false;
+    watchDemoPlayback(demo, ({ shouldPlay }) => {
+      if (!shouldPlay || played || touched) return;
+      played = true;
+      window.setTimeout(() => { if (!touched) void run(); }, 600);
+    }, { threshold: 0.5 });
+  });
+</script>
+
+<style>
+  [data-blog-demo="lde-first-run"] .db-demo-controls { margin-bottom: 0; }
+  [data-blog-demo="lde-first-run"] .scene-chips { margin-top: 12px; }
+</style>

@@ -8,6 +8,7 @@
 - 실어 나르기·예산 게이지 사례: `ThreadSchedulerLens`, `CpuQuotaExperiment`, `RunqueuePolicyMotion`, `ExecutionLayersDiagram`
 - 패킷·렌즈·칩 이동 사례: `SharedBootOrder`, `FkGuardDemo`, `DbSeparationSteps`, `RetentionBoundary`
 - 순서 퍼즐·벽·유령 벽 사례: `GatewayRolloutDemo`, `GatewayKeyOwnership`, `RefreshFamilyDemo`, `PolicyEnforcementDemo`
+- 실행 위치·값 복사·모드 배지 사례: `LdeSyscallTrap`, `LdeFirstRun`, `LdeTimerInterrupt`, `LdeTwoSaves`, `LdeEspOffset`, `LdeSwtchReturn`
 
 ## 1. 먼저 정할 것: 독자가 장면에서 알아낼 변화
 
@@ -62,6 +63,11 @@
 | 기다린다 (선행 조건) | 노드 테두리가 임시 색 점선으로 행진, 보조 문구 주황 | `is-waiting` | 반복 |
 | 하나가 여럿으로 갈라졌다 | 겹쳐 있던 상자·칩 사본이 각자 자리로 갈라져 나감 | 같은 자리에 겹친 사본 + 상태 보간 | `draw` / `fly` |
 | 작은 차이를 확대해 본다 | 큰 축의 좁은 구간을 테두리로 집고, 점선 날개로 이어진 아래 패널이 펼쳐짐 | `createLens` | `draw` |
+| 지금 실행하는 위치 (PC) | 코드 목록의 줄 위에 청록 실행 띠가 놓이고, 실행 주체(CPU)에서 점선 끈이 이어짐. 다른 코드 영역으로 넘어가면 띠가 호를 그리며 옮겨짐 | `createCodeList` + `createExecMarker`, `bowAt` + `hopLift` | `move` / `fly` |
+| 값을 복사했다 (원본은 남는다) | 원본 칩은 제자리에 남고, 점선 테두리 사본이 날아가 도착 칸을 채움 + 착지 링. 빈 칸은 `is-empty` | `createChip` 사본 + `is-copy`, `setLabel` | `fly` |
+| 모드·상태 값이 바뀌었다 | 배지 값이 튀어 오르고 색 점이 값의 주인 색으로 바뀜 | `createBadge` | — |
+| 기준점이 옮겨졌다 (포인터) | 가리키는 표시(esp)만 움직이고 칸의 주소·내용은 그대로. 오프셋 괄호(+4)가 기준점을 따라감 | `scene-pointer-*`, `scene-brace`, `scene-mem-*` | `move` |
+| 시간에 따라 무엇을 실행했나 | 코드 영역별 줄(lane)에 실행 구간 막대가 자라고, 실행 띠가 줄 사이를 옮겨 다님 | `scene-lane-track`, `scene-lane-bar` | 선형 |
 | 값을 직접 움직인다 | 슬라이더를 끄는 동안 장면이 보간 없이 바로 따라오고, 값 숫자가 튀어 오름 | `.scene-range` + `scene.set` | 즉시 |
 | 다음에 누를 것 | 칩에 은은한 맥박 | `data-state="next"` | — |
 
@@ -120,7 +126,7 @@
 | 파일 | 역할 |
 | --- | --- |
 | `src/scripts/blog/scene/core.ts` | `createScene`, 보간, 트윈, 모션 토큰(`duration`, `ease`), 기하, 호 이동(`bowAt`, `hopLift`, `nextHop`), `watchNarrow`, `bumpText` |
-| `src/scripts/blog/scene/parts.ts` | `createNode`, `createTray`, `createGauge`, `landRing`, `createFlipLink`, `createCallLine`, `createCurve`, `createBoundary`, `createPill`, `createArrow`, `createChip`, `createLens`, `createWall` |
+| `src/scripts/blog/scene/parts.ts` | `createNode`, `createTray`, `createGauge`, `landRing`, `createFlipLink`, `createCallLine`, `createCurve`, `createBoundary`, `createPill`, `createArrow`, `createChip`, `createLens`, `createWall`, `createCodeList`, `createExecMarker`, `createBadge` |
 | `src/scripts/blog/scene/packets.ts` | `createPacketLayer` (지나가는 요청·이벤트), `polylineAt`, `arcPoints` |
 | `src/scripts/blog/scene/flip.ts` | `createFlipMover` (HTML 요소 이동) |
 | `src/scripts/blog/scene/console.ts` | `createConsole` (실행 로그) |

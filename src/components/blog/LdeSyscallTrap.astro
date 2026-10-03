@@ -1,0 +1,182 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import SceneTimeline from './SceneTimeline.astro';
+import '../../styles/scene.css';
+
+const steps = [
+  { name: '요청 준비', detail: '사용자 모드' },
+  { name: '트랩', detail: '→ 커널 모드' },
+  { name: '처리', detail: '커널 코드' },
+  { name: '복귀', detail: '→ 사용자 모드' },
+];
+---
+
+<InteractiveDemoFrame demoId="lde-syscall-trap" ariaLabel="시스템 콜 하나를 따라가며 같은 CPU가 사용자 코드와 커널 코드를 번갈아 실행하는 모습" title="요청을 받은 커널은 어디에서 실행될까요?" description="A가 파일 읽기를 요청하는 시스템 콜 하나를 따라갑니다. 청록색 띠가 CPU가 지금 실행하는 위치입니다. 단계를 누르면 그 시점에서 멈춥니다.">
+  <SceneTimeline ariaLabel="시스템 콜 단계" steps={steps} />
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="CPU 하나와 두 코드 영역이 있습니다. CPU의 실행 위치가 프로세스 A의 사용자 코드에서 트랩 명령을 만나 부팅 때 등록된 커널 진입점으로 옮겨지고, 모드가 커널 모드로 바뀝니다. 커널 코드가 요청을 검사하고 파일을 읽은 뒤 트랩 복귀로 실행 위치가 트랩 다음 명령으로 돌아오며 모드도 사용자 모드로 돌아옵니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">바로 끝나는 시스템 콜 하나를 그린 개념 모형입니다. 입출력을 기다리는 동안 다른 프로세스로 전환하는 경로와 상태 저장은 생략했습니다. 코드 줄은 흐름을 보여주는 요약입니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, createScene, duration, hopLift, lerp, nextHop, setAttrs, watchNarrow, type Box, type Point } from '../../scripts/blog/scene/core';
+  import { createBadge, createCodeList, createExecMarker, createNode, landRing, type Rect } from '../../scripts/blog/scene/parts';
+  import { createStepPlayer } from '../../scripts/blog/scene/step-player';
+
+  // 독자가 볼 변화: 커널로 요청이 "날아가는" 것이 아니라, 하나뿐인 CPU의 실행 위치가
+  // 사용자 코드에서 등록된 커널 진입점으로 옮겨지고 그 순간 모드도 함께 바뀐다.
+  type Area = 'user' | 'kernel';
+  type Spot = { area: Area; row: number };
+  type State = { move: number; hop: number };
+  type Layout = {
+    view: [number, number];
+    cpu: Box; badge: Point;
+    areas: Record<Area, Rect>;
+    rows: { top: number; rowH: number };
+    route: Point[];
+  };
+
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 286],
+      cpu: { x: 280, y: 40, w: 112, h: 44 }, badge: { x: 352, y: 40 },
+      areas: { user: { x: 16, y: 96, w: 248, h: 176 }, kernel: { x: 296, y: 96, w: 248, h: 176 } },
+      rows: { top: 52, rowH: 30 },
+      route: [{ x: 280, y: 62 }, { x: 280, y: 62 }],
+    },
+    narrow: {
+      view: [360, 424],
+      cpu: { x: 100, y: 212, w: 112, h: 44 }, badge: { x: 176, y: 212 },
+      areas: { user: { x: 40, y: 12, w: 308, h: 164 }, kernel: { x: 40, y: 248, w: 308, h: 164 } },
+      rows: { top: 50, rowH: 28 },
+      route: [{ x: 44, y: 212 }, { x: 22, y: 212 }, { x: 22, y: 212 }],
+    },
+  };
+  const LINES: Record<Area, { caption: string; lines: string[] }> = {
+    user: { caption: '프로세스 A · 사용자 코드', lines: ['인수 준비 (fd, buf)', 'read() → 트랩 명령', '결과 사용', '…'] },
+    kernel: { caption: '커널 코드', lines: ['트랩 처리 진입점 (등록됨)', '요청·인수 검사', '파일 읽기', '트랩 복귀'] },
+  };
+  const END: Spot[] = [{ area: 'user', row: 0 }, { area: 'kernel', row: 0 }, { area: 'kernel', row: 2 }, { area: 'user', row: 2 }];
+  const NOTES = [
+    'CPU가 프로세스 A의 사용자 코드를 실행하며 <code>read()</code>에 넘길 인수를 준비합니다. CPU의 모드는 <strong>사용자 모드</strong>입니다.',
+    'A의 코드가 트랩 명령을 실행하자 <strong>같은 CPU</strong>의 실행 위치가 부팅 때 등록된 커널 진입점으로 옮겨지고, 모드도 커널 모드로 바뀝니다. 요청이 CPU 밖의 다른 처리 장치로 날아간 것이 아닙니다.',
+    'CPU가 커널 코드를 실행하며 요청과 인수를 검사하고 파일을 읽습니다. 역할로 말하면 이 구간이 “A의 요청을 커널이 처리한다”입니다.',
+    '트랩 복귀로 실행 위치는 <strong>트랩 다음 명령</strong>으로, 모드는 사용자 모드로 함께 돌아옵니다. 높은 권한으로 실행된 것은 커널 코드뿐입니다.',
+  ];
+  const MODE = { user: { text: '사용자', hue: 'var(--scene-hue-gray)' }, kernel: { text: '커널', hue: 'var(--scene-hue-amber)' } };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="lde-syscall-trap"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    let layout = LAYOUTS.wide;
+    let shown = 0;
+    let from: Spot = END[0];
+    let to: Spot = END[0];
+
+    const lists = {
+      user: createCodeList(root, { caption: LINES.user.caption, hue: 'var(--scene-hue-blue)', lines: LINES.user.lines.map((text) => ({ text })) }),
+      kernel: createCodeList(root, { caption: LINES.kernel.caption, hue: 'var(--scene-hue-amber)', lines: LINES.kernel.lines.map((text) => ({ text })) }),
+    };
+    const marker = createExecMarker(root);
+    const cpu = createNode(root, { label: 'CPU', hue: 'var(--scene-hue-cyan)' });
+    const badge = createBadge(root, 'CPU 모드', 132);
+    const rings = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    root.append(rings);
+
+    const boxOf = (spot: Spot) => lists[spot.area].row(spot.row);
+    const scene = createScene<State>({ move: 1, hop: 0 }, (s) => {
+      const a = boxOf(from);
+      const b = boxOf(to);
+      const crossing = from.area !== to.area;
+      const at = bowAt(a, b, s.move, crossing ? hopLift(s.hop, 30) : 0);
+      const box = { ...at, w: lerp(a.w, b.w, s.move), h: lerp(a.h, b.h, s.move) };
+      marker.place(box, layout.route);
+      const current = s.move < 0.5 ? from : to;
+      (Object.keys(lists) as Area[]).forEach((area) => lists[area].setActive(current.area === area ? current.row : -1));
+    });
+
+    /** 지금 보이는 자리에서 `spot`으로 옮길 준비를 합니다. */
+    const aim = (spot: Spot) => {
+      from = scene.state.move < 0.5 ? from : to;
+      to = spot;
+      scene.set({ move: 0, hop: Math.floor(scene.state.hop + 1e-6) });
+    };
+    const travel = (spot: Spot, ms: number) => {
+      aim(spot);
+      return scene.go({ move: 1, hop: nextHop(scene.state.hop) }, ms);
+    };
+    const setMode = (area: Area) => badge.set(MODE[area].text, MODE[area].hue);
+    const say = (index: number) => {
+      note.innerHTML = NOTES[index];
+      note.classList.remove('is-entering');
+      void note.offsetWidth;
+      note.classList.add('is-entering');
+    };
+
+    const sequences: Record<number, (alive: () => boolean) => Promise<void>> = {
+      1: async (alive) => {
+        if (!(await travel({ area: 'user', row: 1 }, duration.move)) || !alive()) return;
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        setMode('kernel');
+        if (!(await travel(END[1], duration.fly)) || !alive()) return;
+        landRing(rings, boxOf(END[1]));
+      },
+      2: async (alive) => {
+        if (!(await travel({ area: 'kernel', row: 1 }, duration.move)) || !alive()) return;
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        await travel(END[2], duration.move);
+      },
+      3: async (alive) => {
+        if (!(await travel({ area: 'kernel', row: 3 }, duration.move)) || !alive()) return;
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        setMode('user');
+        if (!(await travel(END[3], duration.fly)) || !alive()) return;
+        landRing(rings, boxOf(END[3]));
+      },
+    };
+
+    const show = (index: number, instant: boolean) => {
+      const alive = scene.begin();
+      const previous = shown;
+      shown = index;
+      say(index);
+      const sequence = sequences[index];
+      if (!instant && sequence && index === previous + 1) {
+        // 앞 단계가 덜 끝났다면 그 끝 자리에서 출발합니다.
+        from = to = END[previous];
+        scene.set({ move: 1, hop: 0 });
+        setMode(END[previous].area);
+        void sequence(alive);
+        return;
+      }
+      setMode(END[index].area);
+      if (instant) { from = to = END[index]; scene.set({ move: 1, hop: 0 }); return; }
+      void travel(END[index], duration.move);
+    };
+
+    const applyLayout = () => {
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      (Object.keys(lists) as Area[]).forEach((area) => lists[area].place(layout.areas[area], layout.rows));
+      cpu.setBox(layout.cpu);
+      badge.place(layout.badge);
+      scene.begin();
+      from = to = END[shown];
+      scene.set({ move: 1, hop: 0 });
+      setMode(END[shown].area);
+    };
+    watchNarrow(stage, (narrow) => { layout = LAYOUTS[narrow ? 'narrow' : 'wide']; applyLayout(); });
+
+    createStepPlayer(demo, {
+      dwell: (index) => [2600, 3600, 3000, 4200][index] ?? duration.dwell,
+      onStep: show,
+    });
+  });
+</script>
