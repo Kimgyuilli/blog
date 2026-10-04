@@ -1,0 +1,324 @@
+---
+title: "OSTEP에서 JVM으로: 실행 주체와 상태를 구분하기"
+description: "Java 실행에서 OS와 HotSpot의 역할을 구분하고, OS의 preemption만으로 GC를 수행할 수 없는 이유를 Safepoint와 OopMap으로 연결합니다."
+image: "/images/blog/ostep-jvm-execution-safepoint/thumbnail.jpg"
+pubDate: 2026-10-05
+category: cs
+tags: [OSTEP, JVM, HotSpot, Java, thread, Safepoint, GC]
+slug: ostep-jvm-execution-safepoint
+draft: false
+---
+import JvmThreadLayers from '../../components/blog/JvmThreadLayers.astro';
+import JvmSameThreadMode from '../../components/blog/JvmSameThreadMode.astro';
+import JvmLockVsCpu from '../../components/blog/JvmLockVsCpu.astro';
+import JvmPcVsIp from '../../components/blog/JvmPcVsIp.astro';
+import JvmOopMapLens from '../../components/blog/JvmOopMapLens.astro';
+import JvmSafepointLanes from '../../components/blog/JvmSafepointLanes.astro';
+
+OSTEP 6장 *Mechanism: Limited Direct Execution*을 읽고 나서 JVM을 연결해 공부해 보고 싶어졌습니다. 출발점은 다음 질문이었습니다.
+
+> OS가 실행을 관리하면서 해결하는 문제를 JVM은 어떻게 해결할까요?
+
+OS는 프로그램을 CPU에서 실행시키면서도 필요할 때 실행을 중단하고 다른 작업으로 전환할 수 있어야 합니다. JVM도 Java 프로그램을 실행하고 memory를 관리합니다. 그렇다면 JVM 안에도 OS에서 배운 실행 관리 구조와 비슷한 것이 있을까요?
+
+이 질문을 따라가려면 먼저 **OS가 맡는 일과 JVM이 그 위에 더하는 일**을 구분해야 했습니다. platform thread에 CPU를 배정하고 preempt하는 일은 OS가 맡습니다. HotSpot은 그 실행 위에서 Java의 동작 규칙을 구현하고, 사용하지 않는 object의 memory를 회수하는 GC(Garbage Collection) 같은 내부 작업에 필요한 상태를 확보합니다.
+
+이 글에서는 실행 주체와 권한, thread 상태를 차례로 구분한 뒤, OS가 thread를 멈춰도 JVM에는 왜 Safepoint와 OopMap이 필요한지 연결해 봅니다. HotSpot·JDK 25와 platform thread를 중심으로 설명합니다. 공식 문서와 OpenJDK 소스를 바탕으로 정리했으며, 예시의 실행 순서와 값은 설명을 위한 가정입니다. 직접 실행한 실험이나 thread dump 분석 결과는 포함하지 않았습니다.
+
+## 1. OS는 실행을 관리하면서 무엇을 해결했을까요?
+
+OSTEP 6장의 중심에는 **프로그램을 빠르게 실행하면서도 통제권을 유지하는 문제**가 있습니다. 프로그램의 instruction을 CPU가 직접 실행하게 하면 관리 비용을 줄일 수 있지만, OS가 필요한 순간에 개입할 수 있어야 합니다.
+
+책은 크게 두 문제를 다룹니다.
+
+| 문제 | OS와 hardware가 사용하는 방법 |
+| --- | --- |
+| 프로그램이 제한된 작업을 마음대로 수행하지 못하게 하려면? | user mode와 kernel mode를 구분하고, system call로 정해진 kernel 코드에 진입하게 합니다. |
+| 프로그램이 실행을 양보하지 않아도 제어를 되찾으려면? | timer interrupt로 kernel이 실행될 기회를 확보합니다. |
+
+제어를 되찾은 OS는 현재 실행을 계속할지, 다른 실행으로 전환할지 결정합니다. 다른 실행으로 바꾸는 context switch에서는 나중에 원래 실행을 이어갈 수 있도록 필요한 register 등의 execution context를 저장하고 복원합니다. kernel에 진입했다고 매번 context switch가 일어나는 것은 아닙니다. 참고: [OSTEP 6장](https://pages.cs.wisc.edu/~remzi/OSTEP/cpu-mechanisms.pdf).
+
+앞선 [kernel과 CPU의 관계에 관한 글](/blog/ostep-limited-direct-execution/)에서는 이 과정을 살펴봤습니다. 이제 같은 질문을 Java 실행에 적용해 보겠습니다. CPU를 배정하는 주체, 실행 권한을 정하는 주체, Java object를 관리하는 주체가 모두 같은지부터 확인해야 합니다.
+
+## 2. JVM과 HotSpot은 어떤 관계일까요?
+
+JVM은 Java Virtual Machine의 약자입니다. Java Virtual Machine Specification을 줄여 부르는 **JVMS**는 이를 abstract computing machine으로 소개하며, class file의 형식과 JVM instruction의 동작 등을 정의합니다. **HotSpot은 그 규칙을 실제 컴퓨터에서 수행하는 JVM implementation**입니다. 참고: [JVMS §1.2](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-1.html#jvms-1.2).
+
+일반적인 Java 개발에서는 `javac`가 Java source를 bytecode 등이 담긴 class file로 바꿉니다. HotSpot은 bytecode를 interpreter로 처리하거나, JIT compiler로 machine code를 만들어 실행합니다. JIT는 Just-In-Time의 약자로, 여기서는 프로그램 실행 중에 수행하는 compilation을 뜻합니다. 이렇게 만들어진 코드를 JIT compiled code라고 부릅니다. 참고: [JDK 25 JVM 개요](https://docs.oracle.com/en/java/javase/25/vm/java-virtual-machine-technology-overview.html).
+
+```text
+Java source(.java)
+    ↓ javac
+class file(.class, bytecode 포함)
+    ↓ HotSpot
+interpreter로 실행하거나 JIT compiled code로 실행
+```
+
+JVMS는 이 실행이 따라야 할 규칙을 정한 문서입니다. 실행 중에 HotSpot이 specification에 요청을 보내는 관계로 생각하면 안 됩니다.
+
+이 구분은 뒤에서도 중요합니다. thread마다 실행 위치가 있다는 설명은 JVM의 추상적인 모델에 속하고, Safepoint와 OopMap을 어떻게 구현했는지는 HotSpot의 구체적인 동작에 속합니다.
+
+## 3. Java 코드는 어느 thread에서 실행될까요?
+
+Java의 `Thread` API에는 platform thread와 virtual thread가 있습니다. 일반적인 HotSpot 환경에서 실행 중인 **platform thread 하나는 OS thread 하나에 대응**합니다. CPU를 언제 배정받을지 결정하는 과정에는 OS scheduling이 계속 작동합니다. 참고: [JDK 25 Thread 문서](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Thread.html).
+
+이 문서에서 말하는 kernel thread는 OS가 scheduling하는 실행 주체를 가리킵니다. Java 코드를 kernel mode에서 실행한다는 뜻은 아닙니다. 여기서는 이를 OS thread라고 부르겠습니다.
+
+### Application thread는 또 다른 종류일까요?
+
+공부하면서 application thread, compiler thread, GC thread라는 이름도 만났습니다. 그러자 다음 질문이 생겼습니다.
+
+> Application thread는 platform thread와 다른 건가요?
+
+이 이름들은 분류 기준이 다릅니다.
+
+| 표현 | 무엇을 구분하나요? |
+| --- | --- |
+| platform thread / virtual thread | Java API가 제공하는 thread 종류 |
+| application thread / worker thread | application에서 맡은 작업 역할 |
+| compiler thread / GC thread | HotSpot 내부에서 맡은 작업 역할 |
+| daemon / non-daemon | JVM 종료 판단과 관련된 속성 |
+| OS thread | OS가 관리하는 실행 주체 |
+
+예를 들어 `new Thread(task)`로 만든 thread가 보고서를 작성한다면, 종류는 platform thread이고 역할은 application의 worker입니다. application thread라는 이름이 별도의 세 번째 종류를 뜻하는 것은 아닙니다.
+
+HotSpot의 compiler thread는 method의 machine code를 만드는 일을 하고, application thread는 interpreter나 준비된 machine code로 application 작업을 수행합니다. compiler thread도 OS thread를 기반으로 실행됩니다. JDK 25의 `CompileBroker::make_thread()`와 `JavaThread` constructor에서 그 생성 경로를 확인할 수 있습니다. 참고: [CompileBroker](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/hotspot/share/compiler/compileBroker.cpp#L786), [JavaThread](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/hotspot/share/runtime/javaThread.cpp#L608).
+
+application thread마다 전담 compiler thread가 붙는 구조는 아닙니다. 또한 HotSpot 내부 역할 이름을 모두 Java `Thread` API의 종류와 직접 대응시키는 것도 피해야 합니다. 이 표의 목적은 이름마다 묻고 있는 질문이 다르다는 점을 구분하는 것입니다.
+
+### virtual thread에서는 무엇이 달라질까요?
+
+virtual thread에는 Java runtime의 scheduling 계층이 추가됩니다. runtime은 virtual thread를 실제로 실행할 carrier platform thread에 배치하고, OS는 그 아래의 OS thread에 CPU를 배정합니다.
+
+```text
+Java runtime: virtual thread를 carrier platform thread에 배치
+OS: carrier에 대응하는 OS thread에 CPU를 배정
+```
+
+<JvmThreadLayers />
+
+따라서 “JVM은 scheduling을 하지 않는다”라고 일반화할 수는 없습니다. 이 글에서 CPU 배정과 preemption을 OS가 맡는다고 설명하는 대상은 platform thread와 그에 대응하는 OS thread입니다. 참고: [JDK 25 Thread의 Virtual threads 설명](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Thread.html#virtual-threads).
+
+## 4. HotSpot 코드로 들어가면 실행 권한도 달라질까요?
+
+OSTEP을 읽으며 정리한 것 중 하나는 “kernel도 CPU가 실행하는 코드”라는 점이었습니다. HotSpot에도 같은 관점을 적용할 수 있습니다. 실제로 instruction을 실행하는 것은 CPU이고, HotSpot은 그 CPU에서 실행되는 software입니다.
+
+일반적인 HotSpot 환경에서 Java 코드와 HotSpot runtime 코드는 같은 process 안에 있습니다. 여기서 runtime 코드는 object allocation이나 synchronization 등 프로그램 실행을 지원하는 내부 코드를 뜻합니다.
+
+application의 platform thread가 이런 지원을 필요로 하면, **같은 OS thread가 runtime 함수에 들어갔다가 돌아올 수 있습니다.** 그 함수 호출 자체로 CPU 권한이 높아지는 것은 아닙니다.
+
+다만 object를 만들 때마다 반드시 별도 runtime 함수나 OS를 호출한다는 뜻은 아닙니다. runtime 처리 중 OS 기능이 필요하다면 그에 따른 kernel 진입을 따로 구분해야 합니다.
+
+JNI로 C 함수를 호출하는 경우도 마찬가지입니다. JNI는 Java Native Interface로, Java와 C/C++ 등의 코드를 연결하는 interface입니다. C로 작성한 덧셈 함수를 호출하는 것과 그 함수가 system call로 kernel에 진입하는 것은 서로 다른 사건입니다. 참고: [JNI Specification 소개](https://docs.oracle.com/en/java/javase/25/docs/specs/jni/intro.html).
+
+| CPU가 실행하는 코드 | 일반적인 실행 모드 |
+| --- | --- |
+| Java method를 실행하는 interpreter 또는 JIT compiled code | user mode |
+| HotSpot runtime 함수 자체 | user mode |
+| JNI로 호출한 native 함수 자체 | user mode |
+| system call로 진입한 OS kernel 코드 | kernel mode |
+
+<JvmSameThreadMode />
+
+**“JVM이 관리한다”는 표현은 별도의 높은 CPU 권한을 뜻하지 않습니다.** 그렇다면 같은 user mode에서 HotSpot이 더하는 관리는 무엇일까요?
+
+## 5. JVM은 Java의 실행 규칙을 어떻게 지킬까요?
+
+OS는 어떤 register의 값이 Java의 정수인지, Java object를 가리키는 reference인지 해석해서 instruction을 실행하지 않습니다. Java의 규칙을 구현하는 일은 JVM에 필요합니다.
+
+예를 들어 JVM은 class file을 검증하면서 bytecode가 정해진 구조와 type 사용 규칙을 지키는지 확인합니다. 실행 중에는 배열의 범위를 벗어난 접근에 예외를 발생시키는 등 Java가 정한 동작을 보장합니다. 참고: [JVMS §4.10](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-4.html#jvms-4.10), [JVMS §2.11.5](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.11.5).
+
+이 규칙을 지키기 위해 bytecode 하나마다 별도의 관리자 thread가 허락을 내리는 것은 아닙니다. interpreter는 규칙에 맞게 bytecode를 처리하고, JIT compiler는 같은 실행 의미를 유지하는 machine code를 만듭니다. CPU는 그 machine code를 실행합니다. HotSpot은 실행 정보를 수집하고 compilation에 활용해 성능을 높입니다. 참고: [HotSpot의 Tiered Compilation](https://docs.oracle.com/en/java/javase/25/vm/java-hotspot-virtual-machine-performance-enhancements.html).
+
+여기서도 보호의 범위를 구분해야 합니다. bytecode verification은 Java 실행의 규칙을 확인하는 장치입니다. 같은 process의 native 코드까지 별도 process처럼 격리하거나, OS의 권한 보호를 대신하는 기능은 아닙니다.
+
+JVM에는 실행 중인 object를 관리하는 일도 있습니다. GC가 그 예입니다. 이 작업에는 **현재 실행이 어떤 상태이고, 그 상태에 어떤 object reference가 남아 있는지** 알아야 합니다. 그 차이를 보기 전에, Java에서 말하는 thread 상태부터 구분해 보겠습니다.
+
+## 6. CPU를 기다리는 것과 lock을 기다리는 것은 어떻게 다를까요?
+
+`Thread.State`를 공부하면서 가장 오래 머문 부분은 `RUNNABLE`, `WAITING`, `BLOCKED`의 차이였습니다. 모두 실행하지 않는 순간처럼 보일 수 있지만, Java API가 구분하는 이유는 다릅니다.
+
+| 독립적인 상황 | 주요 대기 구간의 Java 상태 |
+| --- | --- |
+| 계산 중 OS에 의해 preempt되어 다음 CPU 실행 기회를 기다림 | `RUNNABLE` |
+| `synchronized`에 들어가려고 다른 thread가 가진 monitor lock을 기다림 | `BLOCKED` |
+| 시간 제한 없는 `join()`으로 아직 종료되지 않은 thread를 기다림 | `WAITING` |
+| `sleep()`으로 양수의 시간 동안 대기 | `TIMED_WAITING` |
+
+각 행은 별개의 예시이며, 호출 내부의 짧은 중간 상태는 생략했습니다. 시간 제한을 둔 `join()`은 실제 대기 구간에서 `TIMED_WAITING`에 해당할 수 있습니다.
+
+특히 **`RUNNABLE`은 지금 CPU에서 실행 중이라는 보장이 아닙니다.** Java의 상태는 OS 상태를 그대로 복사한 값이 아닙니다. OS가 계산 중인 thread를 preempt했다고 Java 상태가 곧바로 `WAITING`이나 `BLOCKED`로 바뀌는 것은 아닙니다. 참고: [JDK 25 Thread.State](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Thread.State.html).
+
+### CPU를 받으려면 먼저 lock을 얻어야 할까요?
+
+여기서 혼동한 것은 CPU 배정과 lock 소유권이었습니다.
+
+monitor lock은 같은 lock을 사용하는 thread들의 공유 데이터 접근을 조정합니다. thread는 CPU에서 코드를 실행하다가 `synchronized`를 만나면 해당 lock의 획득을 시도합니다. 자기만 사용하는 값으로 계산한다면 그 lock이 필요하지 않을 수도 있습니다.
+
+반대로 **lock을 가진 thread가 CPU에서 내려와도 preemption 자체가 lock을 해제하지는 않습니다.** `sleep()`도 보유한 monitor lock을 놓지 않습니다. `Object.wait()`는 기다리는 대상 object의 monitor를 놓고 대기하므로 따로 구분해야 합니다. 참고: [JLS §17.1–17.3](https://docs.oracle.com/javase/specs/jls/se25/html/jls-17.html).
+
+### “A를 preempt했다”에서 누가 무엇을 얻은 걸까요?
+
+저는 한국어의 “선점”을 먼저 차지한다는 뜻으로 읽으면서, “OS가 A를 preempt했다”의 주체와 대상을 섞고 있었습니다.
+
+| 표현 | 의미 |
+| --- | --- |
+| OS preempts A | OS가 A의 CPU 실행을 강제로 중단시킵니다. |
+| A is preempted | A가 실행을 중단당합니다. |
+| A acquires a lock | A가 lock을 획득합니다. |
+
+이제 두 thread를 놓고 보면 구분이 됩니다. B가 공유 재고를 수정하려고 lock을 획득한 뒤 preempt되었다고 가정하겠습니다.
+
+1. B는 CPU에서 내려왔지만 lock은 계속 소유합니다.
+2. CPU를 받은 A가 같은 lock을 요청합니다.
+3. B가 아직 lock을 소유하므로 A는 monitor lock을 기다리며 `BLOCKED`가 될 수 있습니다.
+4. B는 CPU를 다시 배정받으면 작업을 이어가고, 해당 `synchronized` 구간을 빠져나오며 lock을 놓습니다.
+
+<JvmLockVsCpu />
+
+A는 lock을 기다리고, B는 CPU를 기다립니다. **실행하지 않는다는 결과가 같아 보여도 기다리는 이유가 다릅니다.**
+
+## 7. JVM의 실행 위치와 CPU의 실행 위치도 같을까요?
+
+JVM specification은 thread마다 자신의 `pc`, 즉 program counter가 있다고 설명합니다. native가 아닌 method를 실행할 때 이 값은 현재 실행 중인 JVM instruction의 위치를 나타냅니다. native method를 실행할 때 JVM `pc` 값은 specification에서 정의되지 않습니다. 참고: [JVMS §2.5.1](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.5.1).
+
+이 설명은 JVM의 추상적인 실행 모델입니다. 실제 CPU의 instruction pointer는 CPU가 실행하는 **machine instruction의 위치**를 나타냅니다.
+
+interpreter가 bytecode를 처리할 때 CPU는 interpreter의 machine code를 실행합니다. 따라서 “JVM 관점에서 어느 bytecode를 처리하는가”와 “CPU 관점에서 어느 machine instruction을 실행하는가”를 구분해야 합니다. JIT compiled code에서도 bytecode와 machine code가 항상 일대일로 대응한다고 가정할 수는 없습니다.
+
+<JvmPcVsIp />
+
+thread마다 JVM `pc`가 있다는 규칙을 thread마다 물리 CPU register를 하나씩 전용으로 배정한다는 뜻으로 읽으면 안 됩니다. JVMS는 특정 내부 구현 방식 전체를 고정하지 않습니다. 참고: [JVMS Chapter 2](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html).
+
+이 차이는 GC를 살펴볼 때 중요해집니다. JVM이 실제 실행 상태를 해석하려면 추상적인 Java 코드뿐 아니라, **그 코드가 현재 어떤 machine code와 데이터 배치로 실행되고 있는지**에 맞는 정보가 필요하기 때문입니다.
+
+## 8. OS가 thread를 멈추면 GC를 수행할 수 있을까요?
+
+OS가 실행을 중단하고 재개할 수 있다면 다음과 같이 생각할 수 있습니다.
+
+> GC가 필요할 때 OS가 thread를 멈추게 하고, 그 상태에서 작업하면 되지 않을까요?
+
+여기에는 두 가지가 더 필요합니다. **멈춘 실행 상태를 해석할 수 있어야 하고, 작업에 필요한 조건이 유지되도록 관련 실행을 조정해야 합니다.**
+
+### 값을 보존하는 것과 의미를 아는 것은 다릅니다
+
+OS가 execution context를 저장하는 목적은 나중에 그 실행을 이어가는 것입니다. 하지만 GC에는 register와 stack에 남아 있는 값 중 어떤 것이 Java object reference인지 알아내는 일이 필요합니다.
+
+설명을 위해 register 두 개에 같은 비트열이 들어 있다고 가정하겠습니다. 하나는 정수 계산의 결과이고, 다른 하나는 object reference를 표현한 값입니다. 비트열이 같다고 두 값의 의미까지 같지는 않습니다.
+
+OS는 이 값을 저장했다가 복원할 수 있습니다. 그러나 Java object를 추적하려면 어떤 위치를 object reference로 다뤄야 하는지 알아야 합니다. **실행을 재개하기에 충분한 정보가 GC에도 충분한 것은 아닙니다.**
+
+### 한 thread가 멈췄다고 관련 실행이 모두 멈추지는 않습니다
+
+OS가 A를 preempt한 동안 B는 다른 CPU에서 계속 실행할 수 있습니다. A도 다시 CPU를 배정받으면 실행을 이어갑니다.
+
+application의 Java 실행을 멈춰야 하는 GC 단계라면, 필요한 작업을 마치기 전에 관련 실행이 계속 진행하지 않도록 조정해야 합니다. 한 thread가 우연히 CPU를 받지 못하는 상황만으로 이 조건을 확보할 수는 없습니다.
+
+모든 GC 작업이 application을 멈춘 상태에서 수행되는 것은 아닙니다. 예를 들어 G1 collector에는 application과 동시에 진행하는 단계와 실행을 멈추는 단계가 함께 있습니다. 여기서는 실행 정지가 필요한 작업을 중심으로 살펴봅니다. 참고: [JDK 25 G1의 수집 과정](https://docs.oracle.com/en/java/javase/25/gctuning/garbage-first-g1-garbage-collector1.html).
+
+## 9. Frame과 OopMap은 무엇을 알려 줄까요?
+
+method를 호출하면 그 호출을 이어가는 데 필요한 정보가 생깁니다. JVM specification은 이를 <strong>frame</strong>으로 설명합니다. local variables와 계산 중간값을 다루는 operand stack 등이 frame에 포함되며, thread의 JVM stack은 이러한 frame을 저장합니다. 참고: [JVMS §2.6](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.6).
+
+다만 specification의 frame 모양이 최적화된 machine code 실행에서도 그대로 놓인다고 생각하면 안 됩니다. 실제 실행에 필요한 값은 register나 stack의 저장 칸인 stack slot 등에 배치될 수 있습니다.
+
+HotSpot의 **OopMap**은 compiled code의 특정 위치에서 register와 frame의 stack slot이 어떤 정보를 담는지 기술하는 metadata입니다. metadata는 실행에 쓰이는 값 자체와 별도로, 그 값을 해석하는 데 필요한 정보라고 생각하면 됩니다. OopMap에는 object reference와 저장된 register 등에 관한 정보가 포함됩니다. 참고: [JDK 25 OopMap 정의](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/hotspot/share/compiler/oopMap.hpp#L32).
+
+다음은 실제 OopMap 형식을 단순화한 설명용 예시입니다.
+
+| 특정 machine code 위치 P의 실행 상태 | 위치 P에 대응하는 정보 |
+| --- | --- |
+| register R에 값이 있음 | 이 위치의 값은 object reference로 다뤄야 함 |
+| stack slot S에 값이 있음 | 이 위치의 값은 object reference로 다뤄야 함 |
+
+이 정보를 이용하면 비트열을 보고 의미를 추측하는 대신, 해당 실행 위치에서 어디를 object reference로 살펴봐야 하는지 알 수 있습니다.
+
+중요한 것은 **특정 코드 위치에 대응한다**는 점입니다. 위치 P의 OopMap을 임의의 다른 위치 Q에 적용할 수는 없습니다. 앞에서 구분한 CPU의 실제 코드 위치가 상태 해석과 연결되는 지점입니다.
+
+<JvmOopMapLens />
+
+OopMap은 thread를 멈추게 하는 기능이 아닙니다. 또한 GC root 전체의 목록도 아닙니다. 여기서는 compiled frame을 해석하는 데 필요한 정보로 이해하면 됩니다. 이 정보를 사용할 수 있는 실행 상태를 확보하는 과정이 다음의 Safepoint입니다.
+
+## 10. HotSpot은 Safepoint로 어떻게 실행을 조정할까요?
+
+HotSpot은 일부 VM 작업을 위해 **global safepoint**를 사용합니다. 작업에 참여해야 하는 Java thread들이 안전하게 처리 가능한 상태에 있는지 확인하고, 작업이 끝날 때까지 필요한 실행을 조정하는 과정입니다. 여기서 안전하다는 말은 data race가 없는 application이라는 뜻이 아니라, 해당 VM 작업에 필요한 실행 상태가 확보되었다는 뜻입니다.
+
+### 실행 중인 코드가 요청을 확인합니다
+
+interpreter와 JIT compiled code에는 Safepoint 요청을 확인하는 지점이 마련되어 있습니다. 이런 확인을 **polling**이라고 합니다. 요청이 있으면 실행이 Safepoint 처리 경로로 들어갑니다. HotSpot의 `process_if_requested()`에서도 polling이 활성화되어 있는지 확인한 뒤 필요한 처리를 수행합니다. 참고: [Safepoint 요청 확인 코드](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/hotspot/share/runtime/safepointMechanism.inline.hpp#L77).
+
+이를 실행 코드의 협력이라고 설명할 수 있습니다. 개발자가 직접 `yield()`나 `sleep()`을 넣어야 한다는 뜻은 아닙니다. HotSpot이 제공하거나 생성한 코드가 필요한 확인을 수행합니다.
+
+Safepoint가 필요한 VM 작업의 흐름은 다음과 같습니다.
+
+1. HotSpot 내부에서 VM 작업이 요청됩니다.
+2. VM 작업을 처리하는 **VM thread**가 Safepoint 절차를 시작합니다.
+3. Java thread들이 요청을 확인하거나, 이미 안전하게 처리할 수 있는 상태에 있는지 확인됩니다.
+4. 필요한 상태가 확보되면 VM 작업을 수행합니다. 작업에 따라 GC worker 등이 참여할 수 있습니다.
+5. 작업을 마치면 Safepoint를 종료하고 대기 중인 Java 실행이 진행할 수 있게 합니다.
+
+JDK 25의 `VMThread::inner_execute()`에도 Safepoint 필요 여부를 확인하고, 시작·작업 실행·종료 순서로 처리하는 흐름이 있습니다. VM thread 역시 같은 process 안에서 OS scheduling에 따라 실행되는 내부 thread입니다. 참고: [VMThread::inner_execute](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/hotspot/share/runtime/vmThread.cpp#L351).
+
+### 모든 thread를 같은 방법으로 정지시키지는 않습니다
+
+HotSpot은 Java 코드를 실행 중인지, native 코드에 있는지, 이미 내부적으로 대기 중인지에 따라 다르게 처리합니다. native 코드에 있는 thread는 필요한 안전 조건을 만족하면 그 자리에서 실행을 멈추게 하지 않고도 처리할 수 있습니다. 이후 Java 실행으로 돌아오는 경로에서 Safepoint와 조정합니다. 참고: [Safepoint의 실행 상태별 처리](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/hotspot/share/runtime/safepoint.cpp#L253).
+
+따라서 global safepoint가 성립했다는 말을 process 안의 모든 OS thread가 instruction 실행을 완전히 멈췄다는 뜻으로 읽으면 안 됩니다. VM 작업을 수행하는 thread는 계속 일해야 합니다.
+
+여기에서 사용하는 내부 상태도 앞의 `Thread.State`와 다릅니다.
+
+| 상태의 종류 | 구분하려는 것 |
+| --- | --- |
+| Java `Thread.State` | Java API 관점의 실행 가능 상태와 대기 이유 |
+| HotSpot 내부 실행 상태 | Java 실행 중인지, native 실행 중인지 등 VM 내부 처리에 필요한 구분 |
+| OS thread 상태 | OS 관점에서 실행 중인지, CPU나 이벤트를 기다리는지 |
+
+`RUNNABLE`이나 `WAITING`이라는 값 하나만으로 Safepoint 처리 방식을 판단할 수는 없습니다.
+
+## 11. OS가 이미 preempt한 thread라면 어떻게 될까요?
+
+platform thread A가 JIT compiled code를 실행하다 OS에 의해 preempt되었다고 가정하겠습니다. 그동안 HotSpot에 Safepoint가 필요한 작업이 요청됩니다.
+
+이때 **A가 CPU를 받지 못하고 있다는 사실만으로 Safepoint 처리가 끝나지는 않습니다.** A가 Java 실행 중 preempt된 경우에는 다시 CPU를 받아 실행을 진행하고, 요청 확인 지점에서 Safepoint 처리에 참여해야 할 수 있습니다. 안전하게 처리할 수 있는 상태인지는 HotSpot의 확인 절차가 판단합니다. 참고: [Safepoint 상태 확인](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/hotspot/share/runtime/safepoint.cpp#L475).
+
+아래 장면은 그중 한 경로를 단순화한 것입니다. A와 함께, 다른 CPU에서 Java 코드를 실행하는 B와 native 코드에 있는 C, VM 작업을 처리하는 VM thread를 같은 시간축에 놓았습니다.
+
+<JvmSafepointLanes />
+
+이 예시에서 OS와 JVM은 같은 실행에 서로 다른 조건을 적용합니다. OS는 A에 CPU 실행 기회를 배정하고, HotSpot은 VM 작업 중 A가 Java 실행을 계속해도 되는지 조정합니다.
+
+Safepoint가 끝났다는 것은 JVM 쪽의 대기 조건이 풀렸다는 뜻입니다. 그 순간 모든 thread가 동시에 CPU를 받아 실행한다는 뜻은 아닙니다.
+
+## 12. GC에서는 Safepoint와 OopMap이 어떻게 이어질까요?
+
+GC는 object의 도달 가능성을 살펴보고 더 이상 도달할 수 없는 object의 memory를 회수합니다. object를 따라가는 출발점이 되는 reference들을 **GC root**라고 하며, thread의 실행 상태에 있는 reference도 이 과정에 관여합니다. object를 이동시키는 수집 과정이라면 이동 후에도 reference가 올바른 object를 가리키도록 처리해야 합니다. 참고: [JDK 25 GC 구현 개요](https://docs.oracle.com/en/java/javase/25/gctuning/garbage-collector-implementation.html), [G1의 root 탐색과 object 이동](https://docs.oracle.com/en/java/javase/25/gctuning/garbage-first-g1-garbage-collector1.html).
+
+Java 실행을 일시 정지하는 GC 작업을 중심으로 보면 역할이 연결됩니다.
+
+| 역할 | 해결하는 문제 |
+| --- | --- |
+| Safepoint | 작업에 필요한 실행 상태를 확보하고, 관련 Java 실행을 필요한 동안 조정합니다. |
+| OopMap | compiled frame의 해당 코드 위치에서 object reference 등을 찾는 데 필요한 정보를 제공합니다. |
+| GC | 이 정보와 다른 root 정보를 이용해 object를 추적하고 해당 수집 단계의 작업을 수행합니다. |
+
+OS가 저장한 execution context만 보아서는 Java object reference 위치를 모두 알아낼 수 없습니다. 반대로 reference 위치에 관한 정보만 있다고 해서 관련 실행을 조정하는 문제가 저절로 해결되지도 않습니다. **상태를 확보하는 메커니즘과 그 상태를 해석하는 정보가 함께 필요한 이유**입니다.
+
+이 설명이 모든 GC 단계를 Safepoint에서 수행한다는 뜻은 아닙니다. collector의 동시 실행 단계와 reference 처리 방식에는 추가적인 메커니즘이 필요합니다. 여기서 연결한 것은 실행 정지가 필요한 작업과 compiled frame의 reference 정보를 읽는 과정입니다.
+
+## 13. 처음 질문으로 돌아가면
+
+> OS가 실행을 관리하면서 해결하는 문제를 JVM은 어떻게 해결할까요?
+
+이제 문제별로 답할 수 있습니다.
+
+| 문제 | OS와 HotSpot의 역할 |
+| --- | --- |
+| CPU를 언제 배정하고 preempt할까? | platform thread에 대응하는 OS thread를 OS가 scheduling합니다. |
+| 어떤 CPU 권한으로 실행할까? | OS와 hardware의 권한 체계를 따릅니다. Java와 HotSpot 코드는 일반적으로 user mode에서 실행됩니다. |
+| Java의 실행 규칙을 어떻게 지킬까? | HotSpot이 검증, interpreter, JIT compiled code와 runtime 처리를 통해 구현합니다. |
+| VM 작업에 필요한 실행 상태를 어떻게 확보할까? | HotSpot이 Safepoint 등의 메커니즘으로 관련 실행을 조정합니다. |
+| 그 상태에서 object reference를 어떻게 찾을까? | compiled frame에서는 OopMap 같은 metadata를 활용합니다. |
+
+처음에는 OS와 JVM이 각각 프로그램을 실행하므로 비슷한 구조가 하나씩 있을 것이라고 생각했습니다. 구분하고 나니 **HotSpot이 OS의 실행 기능을 이용하면서, Java 실행에 필요한 규칙과 상태 해석을 더한다**는 관계가 보였습니다.
+
+platform thread의 CPU 배정은 OS에 맡기면서도, JVM은 object를 관리하는 데 필요한 실행 상태를 알아야 합니다. 실행을 재개하기 위해 값을 보존하는 것과 그 값을 Java object reference로 해석하는 것의 차이가, OS에서 Safepoint와 OopMap으로 이어지는 연결점이었습니다.

@@ -10,6 +10,7 @@
 - 순서 퍼즐·벽·유령 벽 사례: `GatewayRolloutDemo`, `GatewayKeyOwnership`, `RefreshFamilyDemo`, `PolicyEnforcementDemo`
 - 실행 위치·값 복사·모드 배지 사례: `LdeSyscallTrap`, `LdeFirstRun`, `LdeTimerInterrupt`, `LdeTwoSaves`, `LdeEspOffset`, `LdeSwtchReturn`
 - 락 대기·snapshot 선·대기 고리 사례: `TxStockRace`, `TxSnapshotReads`, `TxDeadlockOrder`, `TxUnlockBeforeCommit`, `TxDuplicateRelease`
+- 실린 lock·값의 의미 태그·safepoint 시간축 사례: `JvmLockVsCpu`, `JvmOopMapLens`, `JvmSafepointLanes`, `JvmPcVsIp`, `JvmSameThreadMode`
 
 ## 1. 먼저 정할 것: 독자가 장면에서 알아낼 변화
 
@@ -72,6 +73,8 @@
 | 값을 직접 움직인다 | 슬라이더를 끄는 동안 장면이 보간 없이 바로 따라오고, 값 숫자가 튀어 오름 | `.scene-range` + `scene.set` | 즉시 |
 | 무엇이 보이는가 (snapshot) | 청록 점선 가로선과 시점(①·④) 라벨이 snapshot. 보이지 않는 버전은 흐려지고 옆에 “✕ 안 보임”, 보이면 “✓ 보임”. 새 snapshot이면 선이 위로 옮겨지고, 읽기 패킷은 안 보이는 버전을 지나 아래로 내려감 | `scene-pointer-*` + 장면의 선 (`TxSnapshotReads`) | `move` |
 | 서로 기다린다 (deadlock) | 락을 쥔 쪽은 행 카드의 테두리 색과 보조 문구로 표시하고, 대기는 트랜잭션 → 행의 주황 행진 점선. 대기가 한 바퀴를 이루면 네 노드를 지나는 빨간 고리가 둘레를 따라 그려지고, 롤백된 쪽의 대기선과 고리가 거둬짐 | 장면 안의 고리·선 (`TxDeadlockOrder`) | `draw` / `cut` |
+| 값의 의미가 정해진다 (metadata 적용) | 같은 값 옆의 태그가 `?`(임시 색 점선)로 있다가, 위치에 맞는 정보 카드(머리에 `@P`, 아래에 칸별 의미)가 날아와 붙으면 `ref`(흐름 색)·`정수`로 바뀜. 근거 없이 고른 칸을 고치면 그 값이 위험 색으로 흔들리고 진짜 reference는 빈 옛 자리를 가리키며 끊김(✕). 위치가 맞지 않는 카드는 다가갔다 튕겨 나오며 위험 색 점선 | `createChip` `is-shared` → `is-swept`, 장면의 카드·화살표 (`JvmOopMapLens`) | `fly` → `draw` |
+| VM 작업을 위해 멈춰 있다 (safepoint 대기) | 실행 구간 막대 대신 임시 색 점선 막대가 자라고, 확인한 지점에 ◆ poll 표시. 확인 수 배지가 다 차야 VM 작업 막대가 시작됨. CPU를 받지 못한 구간은 막대 없이 점선만 | `scene-lane-*` + 장면의 `jvm-sp-*` (`JvmSafepointLanes`) | 선형 |
 | 다음에 누를 것 | 칩에 은은한 맥박 | `data-state="next"` | — |
 
 새 의미가 필요하면 먼저 이 표에 한 줄을 추가하고, 그다음 키트에 부품을 만듭니다.

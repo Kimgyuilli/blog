@@ -1,0 +1,95 @@
+---
+import '../../styles/scene.css';
+import '../../styles/database-demos.css';
+---
+
+<figure class="db-demo jvm-thread-layers" data-blog-demo="jvm-thread-layers" aria-label="platform thread와 virtual thread가 CPU에 이르기까지 거치는 scheduling 계층">
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="왼쪽 platform thread는 OS thread 하나에 대응하고, OS가 그 OS thread에 CPU를 배정합니다. 오른쪽 virtual thread는 Java runtime이 carrier platform thread에 배치하고, carrier는 OS thread 하나에 대응하며, OS가 그 OS thread에 CPU를 배정합니다."></svg>
+  </div>
+  <figcaption class="db-demo-disclaimer">platform thread에서는 CPU 배정을 OS가 맡습니다. virtual thread에서는 그 위에 Java runtime의 배치 계층이 하나 더 있습니다.</figcaption>
+</figure>
+
+<script>
+  import { setAttrs, svg, watchNarrow, type Box } from '../../scripts/blog/scene/core';
+  import { createArrow, createNode } from '../../scripts/blog/scene/parts';
+
+  type Key = 'platform' | 'virtual' | 'carrier' | 'osL' | 'osR' | 'cpuL' | 'cpuR';
+  type Layout = { view: [number, number]; boxes: Record<Key, Box>; carrierLabel: string };
+  const W = 196;
+  const N = 150;
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 300],
+      carrierLabel: 'carrier platform thread',
+      boxes: {
+        platform: { x: 150, y: 34, w: W, h: 40 }, virtual: { x: 410, y: 34, w: W, h: 40 },
+        carrier: { x: 410, y: 116, w: W, h: 40 },
+        osL: { x: 150, y: 198, w: W, h: 40 }, osR: { x: 410, y: 198, w: W, h: 40 },
+        cpuL: { x: 150, y: 270, w: W, h: 40 }, cpuR: { x: 410, y: 270, w: W, h: 40 },
+      },
+    },
+    narrow: {
+      view: [360, 300],
+      carrierLabel: 'carrier thread',
+      boxes: {
+        platform: { x: 92, y: 34, w: N, h: 40 }, virtual: { x: 268, y: 34, w: N, h: 40 },
+        carrier: { x: 268, y: 116, w: N, h: 40 },
+        osL: { x: 92, y: 198, w: N, h: 40 }, osR: { x: 268, y: 198, w: N, h: 40 },
+        cpuL: { x: 92, y: 270, w: N, h: 40 }, cpuR: { x: 268, y: 270, w: N, h: 40 },
+      },
+    },
+  };
+  const LINKS: { from: Key; to: Key; text: string; flow?: boolean }[] = [
+    { from: 'platform', to: 'osL', text: '1:1 대응' },
+    { from: 'virtual', to: 'carrier', text: 'Java runtime이 배치', flow: true },
+    { from: 'carrier', to: 'osR', text: '1:1 대응' },
+    { from: 'osL', to: 'cpuL', text: 'OS가 CPU 배정' },
+    { from: 'osR', to: 'cpuR', text: 'OS가 CPU 배정' },
+  ];
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="jvm-thread-layers"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+
+    const links = LINKS.map((link) => {
+      const line = svg('path', { class: link.flow ? 'scene-line scene-flow' : 'scene-line jvm-layer-line' }, root);
+      const arrow = createArrow(root, link.flow ? 'var(--scene-flow)' : 'var(--scene-dep)');
+      const label = svg('text', { class: `scene-label is-sans ${link.flow ? 'scene-label-flow' : 'scene-label-dep'}`, 'text-anchor': 'middle' }, root);
+      label.textContent = link.text;
+      return { link, line, arrow, label };
+    });
+    const nodes: Record<Key, ReturnType<typeof createNode>> = {
+      platform: createNode(root, { label: 'platform thread', hue: 'var(--scene-hue-blue)' }),
+      virtual: createNode(root, { label: 'virtual thread', hue: 'var(--scene-hue-violet)' }),
+      carrier: createNode(root, { label: '', hue: 'var(--scene-hue-blue)' }),
+      osL: createNode(root, { label: 'OS thread', hue: 'var(--scene-hue-gray)' }),
+      osR: createNode(root, { label: 'OS thread', hue: 'var(--scene-hue-gray)' }),
+      cpuL: createNode(root, { label: 'CPU', hue: 'var(--scene-hue-cyan)' }),
+      cpuR: createNode(root, { label: 'CPU', hue: 'var(--scene-hue-cyan)' }),
+    };
+    const carrierName = nodes.carrier.group.querySelector('.scene-node-name')!;
+
+    watchNarrow(stage, (narrow) => {
+      const l = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      (Object.keys(nodes) as Key[]).forEach((key) => nodes[key].setBox(l.boxes[key]));
+      carrierName.textContent = l.carrierLabel;
+      links.forEach(({ link, line, arrow, label }) => {
+        const a = l.boxes[link.from];
+        const b = l.boxes[link.to];
+        const start = { x: a.x, y: a.y + a.h / 2 + 4 };
+        const end = { x: b.x, y: b.y - b.h / 2 - 5 };
+        setAttrs(line, { d: `M ${start.x} ${start.y} L ${end.x} ${end.y}` });
+        arrow(end, 90);
+        setAttrs(label, { x: a.x, y: (start.y + end.y) / 2 + 4 });
+      });
+    });
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="jvm-thread-layers"] .jvm-layer-line { stroke: var(--scene-dep); stroke-width: 2; }
+</style>

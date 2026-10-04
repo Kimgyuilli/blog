@@ -1,0 +1,438 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import SceneTimeline from './SceneTimeline.astro';
+import '../../styles/scene.css';
+
+const steps = [
+  { name: 'OS의 복원', detail: '값 그대로' },
+  { name: 'Order 이동', detail: '어느 칸?' },
+  { name: 'OopMap @P', detail: 'R2 · S = ref' },
+  { name: '위치 Q라면', detail: '@P ≠ Q' },
+];
+---
+
+<InteractiveDemoFrame demoId="jvm-oopmap-lens" ariaLabel="멈춘 thread의 저장된 값을 OS는 그대로 복원하고, GC는 object를 옮길 때 어느 값을 고쳐야 하는지 OopMap으로 알아내는 과정" title="같은 값을 OS와 GC는 어떻게 볼까요?" description="compiled code의 위치 P에서 멈춘 thread입니다. R1과 R2에는 같은 값이 들어 있습니다. 두 번째 단계에서는 어느 칸을 고칠지 직접 골라 보세요.">
+  <SceneTimeline ariaLabel="OS와 GC의 시선 단계" steps={steps} />
+  <div class="scene-chips jvm-oop-choice" role="group" aria-label="고칠 칸 고르기" data-choice>
+    <span class="scene-chips-label">어느 칸을 새 주소로 고칠까요?</span>
+    <button type="button" class="scene-chip" style="--node-hue: var(--scene-hue-gray)" data-pick="r1">R1 고치기</button>
+    <button type="button" class="scene-chip" style="--node-hue: var(--scene-hue-gray)" data-pick="r2">R2 고치기</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="왼쪽에 JIT compiled code와 실행 위치, 가운데에 멈춘 thread의 저장된 값 pc, R1, R2, slot S, 오른쪽에 heap의 Order와 Item이 있습니다. OS는 네 값을 그대로 복원합니다. GC가 Order를 새 주소로 옮기면 Order를 가리키던 칸을 고쳐야 하는데, R1과 R2는 같은 값이라 값만으로는 고를 수 없습니다. R1을 고치면 정수였던 R1이 망가지고 R2는 비어 버린 옛 주소를 가리킵니다. 위치 P의 OopMap은 R2와 slot S가 reference라고 알려 주어, GC는 R2만 새 주소로 고칩니다. 실행 위치가 Q라면 P의 OopMap은 맞지 않습니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">실제 OopMap 형식과 GC 동작을 단순화한 설명용 모형입니다. 주소와 register 이름, 코드 줄, object 이름은 예시로 정했습니다. 잘못된 칸을 고쳤을 때의 결과는 설명을 위한 가정이며, GC root의 다른 출처와 interpreter frame의 처리 방식은 그리지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, clamp01, createScene, duration, ease, hopLift, pointAt, replayClass, setAttrs, svg, watchNarrow, type Box, type Point } from '../../scripts/blog/scene/core';
+  import { createArrow, createBoundary, createChip, createCodeList, createExecMarker, createNode, landRing, type Rect } from '../../scripts/blog/scene/parts';
+  import { polylineAt } from '../../scripts/blog/scene/packets';
+  import { createStepPlayer } from '../../scripts/blog/scene/step-player';
+
+  // 독자가 볼 변화: OS는 값을 그대로 복원하면 끝이다. GC가 Order를 옮기면 Order를 가리키던 칸을 고쳐야 하는데,
+  // 같은 값인 R1과 R2 중 하나를 골라 보면 값만으로는 근거가 없다는 것을 겪는다. P의 OopMap을 대면 R2만 고쳐지고 R1은 그대로 남는다.
+  type Row = 'pc' | 'r1' | 'r2' | 's';
+  type Pick = 'none' | 'r1' | 'r2';
+  type Tag = '' | '?' | 'ref' | '정수' | '복원';
+  type State = { band: number; hop: number; fly: number; cpu: number; card: number; cardShow: number; order: number; r2Show: number; r2Target: number; sShow: number };
+  type Layout = {
+    view: [number, number];
+    code: Rect; codeRows: { top: number; rowH: number }; tether: (y: number) => Point[];
+    panel: Rect; rowY: Record<Row, number>; rowCard: { x: number; w: number }; labelX: number; valueX: number; tagX: number;
+    cpu: Box;
+    heap: Rect; heapCaption: Point & { anchor: 'start' | 'end' };
+    spots: { old: Point; new: Point; item: Point }; node: { w: number; h: number };
+    route: (from: Point, to: Point, lane: number) => Point[];
+    cardHome: Point; cardApplied: Point;
+  };
+
+  const ROWS: Row[] = ['pc', 'r1', 'r2', 's'];
+  const LABEL: Record<Row, string> = { pc: 'pc', r1: 'R1', r2: 'R2', s: 'slot S' };
+  const START: Record<Row, string> = { pc: 'P', r1: '0x2c10', r2: '0x2c10', s: '0x2d48' };
+  const NEW_ADDR = '0x5a00';
+  const CARD = { w: 168, h: 60 };
+  const P_ROW = 1;
+  const Q_ROW = 3;
+
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 262],
+      code: { x: 12, y: 14, w: 146, h: 162 }, codeRows: { top: 48, rowH: 26 },
+      tether: (y) => [{ x: 180, y: 62 }, { x: 166, y: 62 }, { x: 166, y }],
+      panel: { x: 172, y: 14, w: 214, h: 162 }, rowY: { pc: 62, r1: 88, r2: 114, s: 140 },
+      rowCard: { x: 180, w: 198 }, labelX: 190, valueX: 300, tagX: 344,
+      cpu: { x: 279, y: 222, w: 168, h: 44 },
+      heap: { x: 400, y: 14, w: 148, h: 162 }, heapCaption: { x: 536, y: 36, anchor: 'end' },
+      spots: { old: { x: 474, y: 62 }, new: { x: 474, y: 104 }, item: { x: 474, y: 146 } }, node: { w: 116, h: 34 },
+      route: (from, to) => [from, to],
+      cardHome: { x: 85, y: 222 }, cardApplied: { x: 279, y: 222 },
+    },
+    narrow: {
+      view: [360, 528],
+      code: { x: 12, y: 12, w: 336, h: 138 }, codeRows: { top: 44, rowH: 23 },
+      tether: (y) => [{ x: 340, y: 274 }, { x: 354, y: 274 }, { x: 354, y: 222 }, { x: 350, y }],
+      panel: { x: 12, y: 228, w: 330, h: 150 }, rowY: { pc: 274, r1: 300, r2: 326, s: 352 },
+      rowCard: { x: 20, w: 314 }, labelX: 30, valueX: 222, tagX: 290,
+      cpu: { x: 180, y: 190, w: 168, h: 44 },
+      heap: { x: 12, y: 392, w: 330, h: 126 }, heapCaption: { x: 26, y: 506, anchor: 'start' },
+      spots: { old: { x: 66, y: 458 }, new: { x: 176, y: 458 }, item: { x: 286, y: 458 } }, node: { w: 100, h: 34 },
+      route: (from, to, lane) => {
+        const gx = lane === 0 ? 354 : 348;
+        const gy = lane === 0 ? 410 : 418;
+        return [from, { x: gx, y: from.y }, { x: gx, y: gy }, { x: to.x, y: gy }, to];
+      },
+      cardHome: { x: 96, y: 190 }, cardApplied: { x: 256, y: 190 },
+    },
+  };
+
+  type Snapshot = { values: Record<Row, string>; bad: boolean; tags: Record<Row, Tag>; card: 'hidden' | 'home' | 'applied' | 'rejected'; state: State; r2Mode: 'ok' | 'stale' | 'broken' };
+  const BASE: State = { band: 0, hop: 0, fly: 0, cpu: 0, card: 0, cardShow: 0, order: 0, r2Show: 0, r2Target: 0, sShow: 0 };
+  const UNKNOWN: Record<Row, Tag> = { pc: '', r1: '?', r2: '?', s: '?' };
+  // 각 단계가 끝났을 때의 장면. 2단계는 아직 고르지 않은 상태입니다.
+  const END: Snapshot[] = [
+    { values: { ...START }, bad: false, tags: { pc: '복원', r1: '복원', r2: '복원', s: '복원' }, card: 'hidden', state: { ...BASE, fly: 1, cpu: 1 }, r2Mode: 'ok' },
+    { values: { ...START }, bad: false, tags: UNKNOWN, card: 'hidden', state: { ...BASE, order: 1 }, r2Mode: 'ok' },
+    { values: { ...START, r2: NEW_ADDR }, bad: false, tags: { pc: '', r1: '정수', r2: 'ref', s: 'ref' }, card: 'applied', state: { ...BASE, card: 1, cardShow: 1, order: 1, r2Show: 1, r2Target: 1, sShow: 1 }, r2Mode: 'ok' },
+    { values: { ...START, pc: 'Q' }, bad: false, tags: UNKNOWN, card: 'rejected', state: { ...BASE, band: 1, hop: 1, card: 0.3, cardShow: 1 }, r2Mode: 'ok' },
+  ];
+  const NOTES = {
+    os: 'OS는 실행을 이어가려고 저장한 값을 <strong>그대로 복원</strong>합니다. 어느 값이 object reference인지 몰라도 재개에는 문제가 없습니다.',
+    move: 'GC가 Order를 새 주소 <code>0x5a00</code>으로 옮겼습니다. 이제 Order를 가리키던 칸을 새 주소로 고쳐야 합니다. 그런데 R1과 R2는 <strong>같은 값</strong>입니다. 위에서 고칠 칸을 골라 보세요.',
+    r1: 'R1을 고쳤더니 정수 계산 결과였던 R1이 <strong>엉뚱한 값</strong>이 됐고, 진짜 reference였던 R2는 <strong>비어 버린 옛 주소</strong>를 가리킵니다. 값만 보고 고르면 이런 일이 생길 수 있습니다.',
+    r2: 'R2를 고쳐 Order를 제대로 따라갔습니다. 하지만 <strong>운으로 맞힌 것</strong>입니다. R1도 같은 값이었으니 값만으로는 고를 근거가 없었습니다. 다른 쪽도 골라 보세요.',
+    map: 'GC는 추측하지 않습니다. 멈춘 위치 P에 대응하는 <strong>OopMap</strong>이 R2와 slot S를 reference로 알려 줍니다. GC는 그 칸만 새 주소로 고치고, 같은 값이던 R1은 그대로 둡니다.',
+    q: 'thread가 위치 <strong>Q</strong>에서 멈췄다면 P의 OopMap은 맞지 않습니다. 같은 register라도 위치마다 담긴 값의 의미가 다를 수 있어, <strong>지금 위치에 대응하는 정보</strong>가 필요합니다.',
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="jvm-oopmap-lens"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const choice = demo.querySelector<HTMLElement>('[data-choice]')!;
+    const pickButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-pick]')];
+    const stepButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-step]')];
+    let layout = LAYOUTS.wide;
+    let shown = 0;
+    let r2Mode: Snapshot['r2Mode'] = 'ok';
+
+    const code = createCodeList(root, {
+      caption: 'JIT compiled code',
+      hue: 'var(--scene-hue-blue)',
+      lines: [{ text: 'mov …', mono: true }, { text: 'P: call foo()', mono: true }, { text: 'add …', mono: true }, { text: 'Q: cmp …', mono: true }],
+    });
+    const panel = createBoundary(root, '멈춘 thread의 저장된 값');
+    const heap = createBoundary(root, 'heap');
+    const spotViews = (['old', 'new'] as const).map((key) => {
+      const rect = svg('rect', { class: 'jvm-spot', rx: 10 }, root);
+      const text = svg('text', { class: 'jvm-spot-text', 'text-anchor': 'middle' }, root);
+      text.textContent = key === 'old' ? '@0x2c10' : `@${NEW_ADDR}`;
+      return { key, rect, text };
+    });
+    const arrowViews = (['r2', 's'] as const).map((key) => {
+      const line = svg('path', { class: 'jvm-ref-line' }, root);
+      const head = createArrow(root);
+      const mark = svg('text', { class: 'scene-break' }, root);
+      mark.textContent = '✕';
+      return { key, line, head, mark };
+    });
+    const rows = Object.fromEntries(ROWS.map((row) => {
+      const g = svg('g', { class: 'scene-mem-slot jvm-row' }, root);
+      const card = svg('rect', { class: 'scene-mem-card', rx: 6, height: 22 }, g);
+      const label = svg('text', { class: 'scene-mem-addr' }, g);
+      const value = svg('text', { class: 'scene-mem-value jvm-value' }, g);
+      label.textContent = LABEL[row];
+      const tag = createChip(root, { label: '', hue: 'var(--scene-hue-gray)', width: 56 });
+      tag.group.classList.add('is-sans');
+      return [row, { g, card, label, value, tag }];
+    })) as Record<Row, { g: SVGGElement; card: SVGRectElement; label: SVGTextElement; value: SVGTextElement; tag: ReturnType<typeof createChip> }>;
+    const order = createNode(root, { label: 'Order', hue: 'var(--scene-hue-amber)', sub: '@0x2c10' });
+    const item = createNode(root, { label: 'Item', hue: 'var(--scene-hue-violet)', sub: '@0x2d48' });
+    const cpu = createNode(root, { label: 'CPU', hue: 'var(--scene-hue-cyan)', sub: '' });
+    cpu.group.classList.add('is-sans-sub');
+    const copies = ROWS.map((row) => {
+      const chip = createChip(root, { label: START[row], hue: 'var(--scene-hue-gray)', width: 64 });
+      chip.group.classList.add('is-copy');
+      return chip;
+    });
+    const marker = createExecMarker(root);
+    // OopMap 카드: 어느 위치의 정보인지(@P)와 그 위치에서 reference인 칸이 적혀 있습니다.
+    const card = svg('g', { class: 'jvm-map-card' }, root);
+    const cardBody = svg('g', { class: 'scene-node-body' }, card);
+    svg('rect', { class: 'jvm-map-card-bg', rx: 10, x: -CARD.w / 2, y: -CARD.h / 2, width: CARD.w, height: CARD.h }, cardBody);
+    const cardTitle = svg('text', { class: 'jvm-map-card-title', x: -CARD.w / 2 + 12, y: -CARD.h / 2 + 18 }, cardBody);
+    ['R2 → ref', 'slot S → ref'].forEach((text, i) => {
+      const t = svg('text', { class: 'jvm-map-card-line', x: -CARD.w / 2 + 12, y: -CARD.h / 2 + 36 + i * 15 }, cardBody);
+      t.textContent = text;
+    });
+    const rings = svg('g', {}, root);
+
+    const spotBox = (p: Point): Box => ({ ...p, ...layout.node });
+    const targetOf = (p: Point): Point => (layout === LAYOUTS.narrow
+      ? { x: p.x, y: p.y - layout.node.h / 2 - 5 }
+      : { x: p.x - layout.node.w / 2 - 5, y: p.y });
+    const rowEnd = (row: Row): Point => ({ x: layout.rowCard.x + layout.rowCard.w, y: layout.rowY[row] });
+
+    const drawArrow = (view: (typeof arrowViews)[number], from: Point, to: Point, lane: number, show: number, mode: Snapshot['r2Mode']) => {
+      const points = layout.route(from, to, lane);
+      setAttrs(view.line, { d: `M ${points.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L ')}`, opacity: show });
+      const last = points[points.length - 1];
+      const prev = points[points.length - 2];
+      view.head(last, (Math.atan2(last.y - prev.y, last.x - prev.x) * 180) / Math.PI);
+      view.head.element.style.opacity = String(show);
+      view.line.dataset.mode = mode;
+      view.head.element.style.fill = mode === 'broken' ? 'var(--scene-danger)' : mode === 'stale' ? 'var(--scene-temp)' : 'var(--scene-dep)';
+      const mid = polylineAt(points, 0.55);
+      setAttrs(view.mark, { x: mid.x, y: mid.y, opacity: mode === 'broken' ? show : 0 });
+    };
+
+    const scene = createScene<State>({ ...BASE }, (s) => {
+      const l = layout;
+      const a = code.row(P_ROW);
+      const b = code.row(Q_ROW);
+      const at = bowAt(a, b, s.band, -hopLift(s.hop, 26));
+      marker.place({ ...at, w: a.w, h: a.h }, l.tether(at.y));
+      code.setActive(s.band < 0.5 ? P_ROW : Q_ROW);
+      // heap: Order는 옛 자리에서 새 자리로 옮겨집니다.
+      const orderAt = bowAt(l.spots.old, l.spots.new, s.order, -16 * Math.sin(Math.PI * clamp01(s.order)));
+      order.setBox(spotBox(orderAt));
+      item.setBox(spotBox(l.spots.item));
+      spotViews.forEach(({ key, rect, text }) => {
+        const p = l.spots[key];
+        setAttrs(rect, { x: p.x - l.node.w / 2, y: p.y - l.node.h / 2, width: l.node.w, height: l.node.h });
+        setAttrs(text, { x: p.x, y: p.y + 4, opacity: key === 'old' ? clamp01(s.order * 2 - 1) : clamp01(1 - s.order * 2) });
+      });
+      // reference 화살표: R2 → Order(옛 자리 또는 새 자리), slot S → Item
+      const r2To = pointAt(targetOf(l.spots.old), targetOf(l.spots.new), s.r2Target);
+      drawArrow(arrowViews[0], rowEnd('r2'), r2To, 0, s.r2Show, r2Mode);
+      drawArrow(arrowViews[1], rowEnd('s'), targetOf(l.spots.item), 1, s.sShow, 'ok');
+      // OS 복원: 값 사본이 CPU로 날아가 들어갑니다.
+      cpu.setBox(l.cpu);
+      cpu.group.style.opacity = String(s.cpu);
+      ROWS.forEach((row, i) => {
+        const t = clamp01(s.fly * 1.6 - i * 0.2);
+        const from = { x: l.valueX - 26, y: l.rowY[row] };
+        copies[i].place(bowAt(from, { x: l.cpu.x, y: l.cpu.y }, ease.standard(t), 0), t > 0.001 && t < 0.98 ? 1 : 0);
+      });
+      const cardAt = bowAt(l.cardHome, l.cardApplied, s.card, -14 * Math.sin(Math.PI * clamp01(s.card)));
+      setAttrs(card, { transform: `translate(${cardAt.x.toFixed(1)} ${cardAt.y.toFixed(1)})` });
+      card.style.opacity = String(s.cardShow);
+    });
+
+    const setValues = (values: Record<Row, string>, bad: boolean) => {
+      ROWS.forEach((row) => {
+        const v = rows[row].value;
+        if (v.textContent !== values[row]) {
+          v.textContent = values[row];
+          if (!scene.reduced) replayClass(v, 'is-bump');
+        }
+        const changed = row !== 'pc' && values[row] !== START[row];
+        v.classList.toggle('is-bad', bad && row === 'r1');
+        v.classList.toggle('is-fixed', changed && !(bad && row === 'r1'));
+        rows[row].g.classList.toggle('is-bad', bad && row === 'r1');
+      });
+    };
+    const setTags = (tags: Record<Row, Tag>) => ROWS.forEach((row) => {
+      const tag = rows[row].tag;
+      const text = tags[row];
+      tag.group.style.opacity = text ? '1' : '0';
+      tag.setLabel(text || ' ', text === 'ref' ? 'var(--scene-flow)' : 'var(--scene-hue-gray)');
+      tag.group.classList.toggle('is-shared', text === '?');
+      tag.group.classList.toggle('is-swept', text === 'ref');
+    });
+    const setCard = (mode: Snapshot['card']) => {
+      card.classList.toggle('is-rejected', mode === 'rejected');
+      card.classList.toggle('is-applied', mode === 'applied');
+      cardTitle.textContent = mode === 'rejected' ? 'OopMap @P ≠ pc Q' : 'OopMap @P';
+    };
+    const setCpu = (done: boolean) => {
+      cpu.setSub(done ? '값 그대로 복원 ✓' : '');
+      cpu.flash('is-done', done);
+    };
+    const showChoice = (on: boolean) => {
+      choice.classList.toggle('is-off', !on);
+      pickButtons.forEach((b) => { b.disabled = !on; });
+    };
+    const markPick = (pick: Pick) => pickButtons.forEach((b) => {
+      const mine = b.dataset.pick === pick;
+      b.dataset.state = pick === 'none' ? 'next' : mine ? (pick === 'r1' ? 'fail' : 'ok') : '';
+    });
+    const say = (html: string, alert = false) => {
+      note.innerHTML = html;
+      note.classList.toggle('is-alert', alert);
+      replayClass(note, 'is-entering');
+    };
+
+    const apply = (snap: Snapshot) => {
+      r2Mode = snap.r2Mode;
+      setValues(snap.values, snap.bad);
+      setTags(snap.tags);
+      setCard(snap.card);
+      setCpu(snap.state.cpu > 0.5);
+      order.setSub(snap.state.order > 0.5 ? `@${NEW_ADDR}` : '@0x2c10');
+      scene.set({ ...snap.state });
+    };
+    /** 아직 아무것도 하지 않은 장면: Order는 옛 자리, 값은 처음 그대로입니다. */
+    const fresh = (tags: Record<Row, Tag>, cardShow = 0): Snapshot => ({ values: { ...START }, bad: false, tags, card: cardShow ? 'home' : 'hidden', state: { ...BASE, cardShow }, r2Mode: 'ok' });
+
+    const moveOrder = async (alive: () => boolean) => {
+      if (!(await scene.go({ ...scene.state, order: 1 }, duration.fly)) || !alive()) return false;
+      order.setSub(`@${NEW_ADDR}`);
+      landRing(rings, spotBox(layout.spots.new));
+      return true;
+    };
+
+    const sequences: Record<number, (alive: () => boolean) => Promise<void>> = {
+      0: async (alive) => {
+        apply(fresh({ pc: '복원', r1: '복원', r2: '복원', s: '복원' }));
+        if (!(await scene.go({ ...scene.state, cpu: 1 }, duration.snap)) || !alive()) return;
+        if (!(await scene.go({ ...scene.state, fly: 1 }, duration.fly * 1.6, ease.linear)) || !alive()) return;
+        setCpu(true);
+        landRing(rings, layout.cpu);
+      },
+      1: async (alive) => {
+        apply(fresh(UNKNOWN));
+        showChoice(false);
+        await scene.pause(duration.beat);
+        if (!alive() || !(await moveOrder(alive))) return;
+        say(NOTES.move);
+        showChoice(true);
+        markPick('none');
+      },
+      2: async (alive) => {
+        apply(fresh(UNKNOWN, 1));
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        if (!(await scene.go({ ...scene.state, card: 1 }, duration.fly)) || !alive()) return;
+        setCard('applied');
+        landRing(rings, { ...layout.cardApplied, ...CARD });
+        setTags(END[2].tags);
+        if (!(await scene.go({ ...scene.state, r2Show: 1, sShow: 1 }, duration.draw)) || !alive()) return;
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        // Order가 옮겨지는 동안 R2는 아직 옛 주소를 가리키고, 고친 뒤에야 새 자리로 이어집니다.
+        r2Mode = 'stale';
+        if (!(await moveOrder(alive))) return;
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        setValues(END[2].values, false);
+        r2Mode = 'ok';
+        await scene.go({ ...scene.state, r2Target: 1 }, duration.move);
+      },
+      3: async (alive) => {
+        apply(fresh(UNKNOWN, 1));
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        if (!(await scene.go({ ...scene.state, band: 1, hop: 1 }, duration.fly)) || !alive()) return;
+        setValues(END[3].values, false);
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        if (!(await scene.go({ ...scene.state, card: 0.8 }, 420, ease.out)) || !alive()) return;
+        setCard('rejected');
+        replayClass(card, 'is-shaking');
+        await scene.go({ ...scene.state, card: 0.3 }, duration.snap, ease.overshoot);
+      },
+    };
+
+    const pick = async (choiceKey: Exclude<Pick, 'none'>) => {
+      if (shown !== 1) return;
+      // 고르면 자동 재생을 멈추고, 고른 결과를 읽을 시간을 줍니다.
+      stepButtons[1]?.click();
+      const alive = scene.begin();
+      markPick(choiceKey);
+      apply({ ...END[1] });
+      order.setSub(`@${NEW_ADDR}`);
+      await scene.pause(duration.beat / 2);
+      if (!alive()) return;
+      if (choiceKey === 'r1') {
+        setValues({ ...START, r1: NEW_ADDR }, true);
+        replayClass(rows.r1.g, 'is-shaking');
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        // 진짜 reference였던 R2는 비어 버린 옛 자리를 가리킵니다.
+        r2Mode = 'broken';
+        await scene.go({ ...scene.state, r2Show: 1, r2Target: 0 }, duration.draw);
+        if (!alive()) return;
+        say(NOTES.r1, true);
+      } else {
+        setValues({ ...START, r2: NEW_ADDR }, false);
+        r2Mode = 'ok';
+        await scene.go({ ...scene.state, r2Show: 1, r2Target: 1 }, duration.draw);
+        if (!alive()) return;
+        say(NOTES.r2);
+      }
+    };
+
+    const show = (index: number, instant: boolean) => {
+      const alive = scene.begin();
+      shown = index;
+      showChoice(index === 1);
+      pickButtons.forEach((b) => { b.dataset.state = ''; });
+      const text = [NOTES.os, NOTES.move, NOTES.map, NOTES.q][index];
+      say(text, index === 3);
+      if (instant || scene.reduced) { apply(END[index]); return; }
+      void sequences[index](alive);
+    };
+
+    const applyLayout = () => {
+      const l = layout;
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      code.place(l.code, l.codeRows);
+      panel.place(l.panel, { x: l.panel.x + 14, y: l.panel.y + 24 });
+      heap.place(l.heap, l.heapCaption);
+      ROWS.forEach((row) => {
+        const r = rows[row];
+        const y = l.rowY[row];
+        setAttrs(r.card, { x: l.rowCard.x, y: y - 11, width: l.rowCard.w });
+        setAttrs(r.label, { x: l.labelX, y: y + 4 });
+        setAttrs(r.value, { x: l.valueX, y: y + 4 });
+        r.tag.place({ x: l.tagX, y });
+      });
+      scene.begin();
+      apply(END[shown]);
+      // 진행 중이던 단계가 끊겼어도 2단계라면 고를 수 있는 상태로 돌려 둡니다.
+      showChoice(shown === 1);
+      if (shown === 1) markPick('none');
+    };
+    watchNarrow(stage, (narrow) => { layout = LAYOUTS[narrow ? 'narrow' : 'wide']; applyLayout(); });
+
+    pickButtons.forEach((b) => b.addEventListener('click', () => { void pick(b.dataset.pick as Exclude<Pick, 'none'>); }));
+
+    createStepPlayer(demo, {
+      dwell: (index) => [4200, 9000, 7600, 5600][index] ?? duration.dwell,
+      onStep: show,
+    });
+  });
+</script>
+
+<style is:global>
+  .db-demo[data-blog-demo="jvm-oopmap-lens"] .scene-note { min-height: 5.4em; }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-oop-choice { margin: 10px 0; transition: opacity 240ms ease; }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-oop-choice.is-off { opacity: 0.35; }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-value { font-size: 13px; }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-value.is-bad { fill: var(--scene-danger); }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-value.is-fixed { fill: var(--scene-flow-ink); }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-row { transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-row.is-bad .scene-mem-card { fill: var(--scene-danger-soft); stroke: var(--scene-danger); }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-row.is-shaking { animation: scene-shake 420ms ease-in-out; }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-spot { fill: none; stroke: var(--hairline); stroke-width: 1.5; stroke-dasharray: 3 4; }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-spot-text { fill: var(--muted); font-family: var(--font-mono); font-size: 11px; }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-ref-line { fill: none; stroke: var(--scene-dep); stroke-width: 2; stroke-linejoin: round; }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-ref-line[data-mode="stale"] { stroke: var(--scene-temp); stroke-dasharray: 5 4; }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-ref-line[data-mode="broken"] { stroke: var(--scene-danger); stroke-dasharray: 5 4; }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-map-card-bg { fill: var(--surface); stroke: var(--scene-hue-violet); stroke-width: 1.6; }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-map-card.is-applied .jvm-map-card-bg { stroke: var(--scene-flow); stroke-width: 2; }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-map-card.is-rejected .jvm-map-card-bg { fill: var(--scene-danger-soft); stroke: var(--scene-danger); stroke-dasharray: 4 3; }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-map-card-title { fill: var(--ink); font-size: 12px; font-weight: 800; }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-map-card.is-rejected .jvm-map-card-title { fill: var(--scene-danger); }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-map-card-line { fill: var(--slate); font-family: var(--font-mono); font-size: 11px; font-weight: 700; }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-map-card { transform-box: fill-box; }
+  [data-blog-demo="jvm-oopmap-lens"] .jvm-map-card.is-shaking .scene-node-body { animation: scene-shake 420ms ease-in-out; }
+  @media (prefers-reduced-motion: reduce) {
+    [data-blog-demo="jvm-oopmap-lens"] .jvm-row.is-shaking,
+    [data-blog-demo="jvm-oopmap-lens"] .jvm-map-card.is-shaking .scene-node-body { animation: none; }
+  }
+</style>

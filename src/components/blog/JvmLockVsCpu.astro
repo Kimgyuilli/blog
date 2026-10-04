@@ -1,0 +1,251 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import SceneTimeline from './SceneTimeline.astro';
+import '../../styles/scene.css';
+
+const steps = [
+  { name: 'B가 lock 획득', detail: 'B: CPU 위' },
+  { name: 'B preempt', detail: 'lock은 B에' },
+  { name: 'A가 CPU 받음', detail: 'A: CPU 위' },
+  { name: 'A가 lock 요청', detail: 'A: BLOCKED' },
+  { name: 'B 재개 · 해제', detail: 'lock 풀림' },
+];
+---
+
+<InteractiveDemoFrame demoId="jvm-lock-vs-cpu" ariaLabel="lock을 가진 thread B가 preempt되고 CPU를 받은 thread A가 같은 lock을 기다리는 과정" title="A는 무엇을 기다리고, B는 무엇을 기다릴까요?" description="CPU 하나와 공유 재고의 monitor lock 하나가 있습니다. 카드 아래의 값은 각 thread의 Java Thread.State입니다. lock이 누구에게 붙어 다니는지 보세요.">
+  <SceneTimeline ariaLabel="lock과 CPU 단계" steps={steps} />
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="왼쪽에 CPU, 오른쪽 위에 CPU 대기 영역, 오른쪽 아래에 lock 대기 영역이 있습니다. CPU에서 실행 중인 B가 monitor lock을 얻은 뒤 OS에 의해 preempt되어 CPU 대기 영역으로 옮겨지는데, lock은 B에 붙은 채 함께 옮겨지고 B의 상태는 RUNNABLE 그대로입니다. CPU를 받은 A가 같은 lock을 요청하자 A의 상태가 BLOCKED가 되고 lock 대기 영역으로 옮겨집니다. B가 다시 CPU를 받아 synchronized 구간을 빠져나오면 lock이 제자리로 돌아갑니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">CPU 하나와 thread 둘만 둔 개념 모형입니다. lock을 기다리는 동안 잠깐 spin하는 등의 구현 세부와 OS thread 상태는 그리지 않았습니다. A가 lock 대기 영역으로 옮겨지는 것은 “CPU를 쓰지 않고 lock을 기다린다”는 뜻을 나타낸 것입니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, clamp01, createScene, duration, exitPoint, lerp, setAttrs, svg, watchNarrow, type Box, type Point } from '../../scripts/blog/scene/core';
+  import { createBoundary, createChip, createNode, createTray, landRing, type Rect } from '../../scripts/blog/scene/parts';
+  import { createStepPlayer } from '../../scripts/blog/scene/step-player';
+
+  // 독자가 볼 변화: preempt된 B는 lock을 들고 CPU에서 내려가고 상태는 RUNNABLE 그대로다.
+  // CPU를 받은 A는 B가 들고 있는 lock 앞에서 BLOCKED가 된다. 둘 다 실행하지 않지만 기다리는 대상이 다르다.
+  type Tx = 'a' | 'b';
+  type Place = 'cpu' | 'ready1' | 'ready2' | 'lockWait';
+  type State = { a: number; b: number; free: number; wait: number };
+  type Layout = {
+    view: [number, number];
+    tray: Box; seatDy: number;
+    ready: Rect; lockZone: Rect;
+    spots: Record<Exclude<Place, 'cpu'>, Point>;
+    home: Point; homeCaption: Point;
+    lockDy: number;
+    node: { w: number; h: number };
+  };
+
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 268],
+      tray: { x: 120, y: 150, w: 196, h: 160 }, seatDy: 2,
+      ready: { x: 244, y: 18, w: 306, h: 120 }, lockZone: { x: 244, y: 150, w: 306, h: 108 },
+      spots: { ready1: { x: 322, y: 74 }, ready2: { x: 472, y: 74 }, lockWait: { x: 397, y: 204 } },
+      home: { x: 120, y: 38 }, homeCaption: { x: 120, y: 18 },
+      lockDy: 44,
+      node: { w: 132, h: 48 },
+    },
+    narrow: {
+      view: [360, 452],
+      tray: { x: 180, y: 120, w: 220, h: 150 }, seatDy: 2,
+      ready: { x: 12, y: 210, w: 336, h: 120 }, lockZone: { x: 12, y: 340, w: 336, h: 102 },
+      spots: { ready1: { x: 96, y: 266 }, ready2: { x: 264, y: 266 }, lockWait: { x: 180, y: 392 } },
+      home: { x: 180, y: 26 }, homeCaption: { x: 180, y: 12 },
+      lockDy: 44,
+      node: { w: 132, h: 48 },
+    },
+  };
+  const HUE: Record<Tx, string> = { a: 'var(--scene-hue-blue)', b: 'var(--scene-hue-violet)' };
+  type Snapshot = { a: Place; b: Place; free: number; wait: number; aState: string; bState: string; cpuSub: string };
+  // 단계가 끝났을 때의 장면.
+  const END: Snapshot[] = [
+    { a: 'ready2', b: 'cpu', free: 0, wait: 0, aState: 'RUNNABLE', bState: 'RUNNABLE', cpuSub: 'B 실행' },
+    { a: 'ready2', b: 'ready1', free: 0, wait: 0, aState: 'RUNNABLE', bState: 'RUNNABLE', cpuSub: '비어 있음' },
+    { a: 'cpu', b: 'ready1', free: 0, wait: 0, aState: 'RUNNABLE', bState: 'RUNNABLE', cpuSub: 'A 실행' },
+    { a: 'lockWait', b: 'ready1', free: 0, wait: 1, aState: 'BLOCKED', bState: 'RUNNABLE', cpuSub: '비어 있음' },
+    { a: 'lockWait', b: 'cpu', free: 1, wait: 0, aState: 'BLOCKED', bState: 'RUNNABLE', cpuSub: 'B 실행' },
+  ];
+  const NOTES = [
+    'B가 CPU에서 실행하다 <code>synchronized</code>에 들어가 공유 재고의 <strong>monitor lock을 획득</strong>했습니다. A는 CPU를 받을 차례를 기다리지만 상태는 <code>RUNNABLE</code>입니다.',
+    'OS가 B를 <strong>preempt</strong>했습니다. B는 CPU에서 내려왔지만 <strong>lock은 B에 붙은 채</strong> 함께 옮겨졌습니다. B의 상태도 <code>RUNNABLE</code> 그대로입니다.',
+    'CPU를 받은 A가 실행합니다. A가 CPU를 받았다고 B의 lock이 A에게 넘어가지는 않습니다.',
+    'A가 같은 lock을 요청했지만 B가 아직 소유하고 있습니다. A는 <code>BLOCKED</code>가 되어 lock을 기다립니다. <strong>A는 lock을, B는 CPU를</strong> 기다립니다.',
+    'B가 다시 CPU를 받아 작업을 이어가고, <code>synchronized</code> 구간을 빠져나오며 <strong>lock을 놓습니다</strong>. 이제 A는 lock을 얻을 기회를 갖습니다.',
+  ];
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="jvm-lock-vs-cpu"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    let layout = LAYOUTS.wide;
+    let shown = 0;
+    // 각 thread가 지금 옮겨 가는 길. 상태의 a·b(0~1)가 이 길 위의 진행도입니다.
+    const route: Record<Tx, { from: Place; to: Place }> = { a: { from: 'ready2', to: 'ready2' }, b: { from: 'cpu', to: 'cpu' } };
+
+    const ready = createBoundary(root, 'CPU 대기', 'zone');
+    const lockZone = createBoundary(root, 'lock 대기', 'zone');
+    const homeCaption = svg('text', { class: 'scene-caption', 'text-anchor': 'middle' }, root);
+    homeCaption.textContent = '공유 재고의 monitor';
+    const homeSlot = svg('rect', { class: 'jvm-lock-home', rx: 6, width: 112, height: 22 }, root);
+    const tray = createTray(root, { label: 'CPU', hue: 'var(--scene-hue-cyan)', seatSize: LAYOUTS.wide.node, seatDy: LAYOUTS.wide.seatDy });
+    tray.group.classList.add('is-sans-sub');
+    const waitLine = svg('path', { class: 'jvm-wait' }, root);
+    const waitLabel = svg('text', { class: 'scene-label is-sans jvm-wait-label', 'text-anchor': 'middle' }, root);
+    waitLabel.textContent = 'lock 요청 · 대기';
+    const nodes = {
+      a: createNode(root, { label: 'thread A', hue: HUE.a, sub: 'RUNNABLE' }),
+      b: createNode(root, { label: 'thread B', hue: HUE.b, sub: 'RUNNABLE' }),
+    };
+    const lock = createChip(root, { label: 'lock · B 소유', hue: HUE.b, width: 112 });
+    lock.group.classList.add('is-sans');
+    const rings = svg('g', {}, root);
+
+    const spotOf = (place: Place): Point => (place === 'cpu' ? tray.seat(layout.tray) : layout.spots[place]);
+    const posOf = (tx: Tx, t: number) => {
+      const { from, to } = route[tx];
+      const a = spotOf(from);
+      const b = spotOf(to);
+      // 옮겨질 때는 떠올라 호를 그립니다. 두 thread가 동시에 엇갈리지 않도록 단계마다 하나씩만 움직입니다.
+      return bowAt(a, b, clamp01(t), from === to ? 0 : 34 * Math.sin(Math.PI * clamp01(t)));
+    };
+
+    const scene = createScene<State>({ a: 1, b: 1, free: 0, wait: 0 }, (s) => {
+      const pa = posOf('a', s.a);
+      const pb = posOf('b', s.b);
+      nodes.a.setBox({ ...pa, ...layout.node });
+      nodes.b.setBox({ ...pb, ...layout.node });
+      // lock은 B 카드 아래 자리에 실려 다니다가, 풀리면 monitor 자리로 돌아갑니다.
+      const carried = { x: pb.x, y: pb.y + layout.lockDy };
+      const at = bowAt(carried, layout.home, s.free, 30 * Math.sin(Math.PI * s.free));
+      lock.place(at, 1);
+      // A → lock 대기선. 그려질 때는 A에서 lock 쪽으로 자랍니다.
+      const start = exitPoint({ ...pa, ...layout.node }, at, 4);
+      const target = exitPoint({ ...at, w: lock.width, h: 20 }, pa, 4);
+      const tip = { x: lerp(start.x, target.x, s.wait), y: lerp(start.y, target.y, s.wait) };
+      setAttrs(waitLine, { d: `M ${start.x} ${start.y} L ${tip.x} ${tip.y}`, opacity: s.wait > 0.01 ? 1 : 0 });
+      setAttrs(waitLabel, { x: (start.x + target.x) / 2, y: (start.y + target.y) / 2 - 8, opacity: clamp01(s.wait * 2 - 1) });
+    });
+
+    const setThread = (tx: Tx, state: string) => {
+      const node = nodes[tx];
+      node.setSub(state);
+      node.flash('is-waiting', state === 'BLOCKED');
+    };
+    const setLock = (free: boolean) => lock.setLabel(free ? 'lock · 소유자 없음' : 'lock · B 소유', free ? 'var(--scene-hue-gray)' : HUE.b);
+    const settleText = (snap: Snapshot) => {
+      setThread('a', snap.aState);
+      setThread('b', snap.bState);
+      tray.setSub(snap.cpuSub);
+      setLock(snap.free > 0.5);
+    };
+    const moveTo = async (alive: () => boolean, tx: Tx, place: Place) => {
+      route[tx] = { from: route[tx].to, to: place };
+      scene.set({ ...scene.state, [tx]: 0 });
+      if (!(await scene.go({ ...scene.state, [tx]: 1 }, duration.fly)) || !alive()) return false;
+      landRing(rings, { ...spotOf(place), ...layout.node });
+      return true;
+    };
+    const jump = (snap: Snapshot) => {
+      route.a = { from: snap.a, to: snap.a };
+      route.b = { from: snap.b, to: snap.b };
+      scene.set({ a: 1, b: 1, free: snap.free, wait: snap.wait });
+      settleText(snap);
+    };
+    const say = (index: number) => {
+      note.innerHTML = NOTES[index];
+      note.classList.remove('is-entering');
+      void note.offsetWidth;
+      note.classList.add('is-entering');
+    };
+
+    const sequences: Record<number, (alive: () => boolean) => Promise<void>> = {
+      0: async (alive) => {
+        // lock이 monitor 자리에서 B에게 옮겨 붙습니다.
+        scene.set({ ...scene.state, free: 1 });
+        setLock(true);
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        setLock(false);
+        await scene.go({ ...scene.state, free: 0 }, duration.fly);
+      },
+      1: async (alive) => {
+        tray.setSub('B preempt');
+        if (!(await moveTo(alive, 'b', 'ready1'))) return;
+        tray.setSub('비어 있음');
+        setThread('b', 'RUNNABLE');
+        nodes.b.flash('is-ok');
+      },
+      2: async (alive) => {
+        if (!(await moveTo(alive, 'a', 'cpu'))) return;
+        tray.setSub('A 실행');
+      },
+      3: async (alive) => {
+        if (!(await scene.go({ ...scene.state, wait: 1 }, duration.draw)) || !alive()) return;
+        setThread('a', 'BLOCKED');
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        tray.setSub('비어 있음');
+        await moveTo(alive, 'a', 'lockWait');
+      },
+      4: async (alive) => {
+        if (!(await moveTo(alive, 'b', 'cpu'))) return;
+        tray.setSub('B 실행');
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        setLock(true);
+        if (!(await scene.go({ ...scene.state, wait: 0 }, duration.cut)) || !alive()) return;
+        await scene.go({ ...scene.state, free: 1 }, duration.fly);
+      },
+    };
+
+    const show = (index: number, instant: boolean) => {
+      const alive = scene.begin();
+      const previous = shown;
+      shown = index;
+      say(index);
+      const sequence = sequences[index];
+      if (!instant && sequence && (index === previous + 1 || (index === 0 && previous !== 0))) {
+        jump(index === 0 ? END[0] : END[previous]);
+        void sequence(alive);
+        return;
+      }
+      jump(END[index]);
+    };
+
+    const applyLayout = () => {
+      const l = layout;
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      ready.place(l.ready);
+      lockZone.place(l.lockZone);
+      setAttrs(homeCaption, { x: l.homeCaption.x, y: l.homeCaption.y });
+      setAttrs(homeSlot, { x: l.home.x - 56, y: l.home.y - 11 });
+      tray.setBox(l.tray);
+      scene.begin();
+      jump(END[shown]);
+    };
+    watchNarrow(stage, (narrow) => { layout = LAYOUTS[narrow ? 'narrow' : 'wide']; applyLayout(); });
+
+    createStepPlayer(demo, {
+      dwell: (index) => [3000, 3800, 3000, 5000, 5200][index] ?? duration.dwell,
+      onStep: show,
+    });
+  });
+</script>
+
+<style is:global>
+  .db-demo[data-blog-demo="jvm-lock-vs-cpu"] .scene-note { min-height: 4.2em; }
+  [data-blog-demo="jvm-lock-vs-cpu"] .jvm-lock-home { fill: none; stroke: var(--hairline); stroke-width: 1.5; stroke-dasharray: 3 4; }
+  [data-blog-demo="jvm-lock-vs-cpu"] .jvm-wait { fill: none; stroke: var(--scene-temp); stroke-width: 2.2; stroke-dasharray: 6 5; animation: scene-march 900ms linear infinite; }
+  [data-blog-demo="jvm-lock-vs-cpu"] .jvm-wait-label { fill: var(--scene-temp); }
+  @media (prefers-reduced-motion: reduce) {
+    [data-blog-demo="jvm-lock-vs-cpu"] .jvm-wait { animation: none; }
+  }
+</style>

@@ -1,0 +1,283 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import '../../styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="jvm-pc-vs-ip" ariaLabel="JVM pc가 가리키는 bytecode 위치와 CPU가 실행하는 machine instruction 위치를 비교하는 실험" title="JVM의 pc와 CPU의 실행 위치는 같이 움직일까요?" description="왼쪽은 JVM 관점의 bytecode, 오른쪽은 CPU가 실제로 실행하는 machine code입니다. 실행 방식을 고르고 버튼을 눌러, 두 위치가 각각 언제 움직이는지 보세요.">
+  <DemoControls ariaLabel="실행 방식">
+    <button type="button" data-pc-mode="interp" aria-pressed="true">interpreter</button>
+    <button type="button" data-pc-mode="jit" aria-pressed="false">JIT compiled code</button>
+  </DemoControls>
+  <div class="scene-chips" role="group" aria-label="실행">
+    <button type="button" class="scene-chip is-plain" data-pc-step>▶ bytecode 하나 처리</button>
+    <button type="button" class="scene-chip is-plain" data-pc-reset>↺ 처음부터</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="왼쪽에 bytecode 네 줄과 JVM pc 표시가, 오른쪽에 CPU가 실행하는 machine code와 CPU 실행 위치 띠가 있습니다. interpreter에서는 CPU 실행 위치가 interpreter 코드 네 줄을 지나가는 동안 JVM pc는 bytecode 한 줄에 머물고, 한 바퀴를 돈 뒤에야 다음 bytecode로 옮겨집니다. JIT compiled code에서는 machine instruction 하나가 bytecode 두 줄에 대응하기도 합니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">설명을 위해 단순화한 모형입니다. interpreter 코드는 bytecode 하나를 처리하는 흐름을 네 줄로 요약했고, JIT compiled code와 bytecode의 대응은 예시로 정했습니다. 실제 machine code의 길이와 대응 관계는 HotSpot 버전, 최적화, CPU에 따라 다릅니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, createScene, duration, hopLift, nextHop, setAttrs, svg, watchNarrow, type Box, type Point } from '../../scripts/blog/scene/core';
+  import { createBadge, createCodeList, createExecMarker, createNode, type Rect } from '../../scripts/blog/scene/parts';
+  import { watchDemoPlayback } from '../../scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: interpreter에서 bytecode 하나를 처리하는 동안 CPU 실행 띠는 네 줄을 지나가고 실행 수가 4 오르지만,
+  // JVM pc는 그대로 있다가 마지막 줄에서야 한 칸 내려간다. JIT compiled code에서는 instruction 하나가 bytecode 여러 줄에 대응하기도 한다.
+  type Mode = 'interp' | 'jit';
+  type State = { ip: number; hop: number; pcTop: number; pcBottom: number; show: number; range: number };
+  type Layout = {
+    view: [number, number];
+    bytecode: Rect; machine: Rect; rows: { top: number; rowH: number };
+    pcX: number;
+    cpu: Box; route: Point[];
+    ipBadge: Point; pcBadge: Point; badgeW: number;
+  };
+
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 268],
+      bytecode: { x: 78, y: 14, w: 180, h: 188 }, machine: { x: 290, y: 14, w: 240, h: 188 }, rows: { top: 50, rowH: 28 },
+      pcX: 38,
+      cpu: { x: 482, y: 236, w: 92, h: 40 },
+      route: [{ x: 482, y: 214 }, { x: 482, y: 210 }, { x: 548, y: 210 }, { x: 548, y: 0 }],
+      ipBadge: { x: 16, y: 236 }, pcBadge: { x: 222, y: 236 }, badgeW: 196,
+    },
+    narrow: {
+      view: [360, 474],
+      bytecode: { x: 78, y: 12, w: 236, h: 188 }, machine: { x: 20, y: 214, w: 300, h: 160 }, rows: { top: 50, rowH: 28 },
+      pcX: 38,
+      cpu: { x: 300, y: 442, w: 92, h: 40 },
+      route: [{ x: 300, y: 420 }, { x: 300, y: 396 }, { x: 340, y: 396 }, { x: 340, y: 0 }],
+      ipBadge: { x: 16, y: 402 }, pcBadge: { x: 16, y: 442 }, badgeW: 210,
+    },
+  };
+  /** 마지막 '…'은 이 예시 다음에 이어지는 코드입니다. 마지막 bytecode를 마친 pc가 옮겨 갈 자리입니다. */
+  const BYTECODE = ['iload_1', 'iload_2', 'iadd', 'istore_3', '…'];
+  const WORK = 4;
+  const MACHINE: Record<Mode, { caption: string; lines: { text: string; mono?: boolean }[] }> = {
+    interp: { caption: 'interpreter 코드 (CPU가 실행)', lines: [{ text: '다음 opcode 읽기' }, { text: '해당 처리 코드로 분기' }, { text: 'bytecode 동작 수행' }, { text: 'bytecode 위치 전진' }] },
+    jit: { caption: 'JIT compiled code (CPU가 실행)', lines: [{ text: 'mov eax, ecx', mono: true }, { text: 'add eax, edx', mono: true }, { text: 'mov [rsp+8], eax', mono: true }] },
+  };
+  /** JIT 모드에서 machine instruction마다 대응하는 bytecode 범위(예시). */
+  const JIT_MAP: [number, number][] = [[0, 0], [1, 2], [3, 3]];
+  const BUTTON: Record<Mode, string> = { interp: '▶ bytecode 하나 처리', jit: '▶ instruction 하나 실행' };
+  const NOTES = {
+    interp: {
+      idle: 'JVM pc가 <code>iload_1</code>을 가리킵니다. 버튼을 누르면 interpreter가 이 bytecode 하나를 처리합니다. 청록 띠는 CPU가 지금 실행하는 interpreter의 machine code입니다.',
+      sweep: 'CPU의 실행 위치는 interpreter 코드를 한 줄씩 지나가지만, <strong>JVM pc는 같은 bytecode에 머뭅니다</strong>. CPU가 실행하는 것은 bytecode가 아니라 interpreter의 machine code입니다.',
+      moved: '마지막 줄에서 bytecode 위치를 전진시키자 <strong>JVM pc가 한 칸</strong> 옮겨졌습니다. 그사이 CPU는 instruction <strong>4개</strong>를 실행했습니다. 다음 bytecode도 처리해 보세요.',
+      done: '네 bytecode를 처리하는 동안 CPU는 machine instruction <strong>16개</strong>를 실행했고, JVM pc는 <strong>네 칸</strong> 옮겨졌습니다. 이제 JIT compiled code를 골라 보세요.',
+    },
+    jit: {
+      idle: 'JIT compiled code에서는 CPU가 이 method를 위해 만들어진 machine code를 직접 실행합니다. instruction을 하나씩 실행하며 대응하는 bytecode를 보세요.',
+      one: '이 instruction은 bytecode <code>iload_1</code> 하나에 대응합니다. 다음 instruction도 실행해 보세요.',
+      two: '이 machine instruction 하나가 <strong>bytecode 두 줄</strong>에 대응합니다. bytecode와 machine code를 일대일로 짝지을 수 없습니다.',
+      done: 'machine instruction 3개가 bytecode 4줄의 의미를 수행했습니다. “JVM 관점의 위치”와 “CPU가 실행하는 위치”는 따로 다뤄야 합니다.',
+    },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="jvm-pc-vs-ip"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-pc-mode]')];
+    const stepButton = demo.querySelector<HTMLButtonElement>('[data-pc-step]')!;
+    const resetButton = demo.querySelector<HTMLButtonElement>('[data-pc-reset]')!;
+    let layout = LAYOUTS.wide;
+    let mode: Mode = 'interp';
+    let executed = 0;
+    let pcMoves = 0;
+    let processed = 0;
+    let running = false;
+    let touched = false;
+    let ipFrom = 0;
+    let ipTo = 0;
+
+    const bytecode = createCodeList(root, { caption: 'bytecode (JVM 관점)', hue: 'var(--scene-hue-blue)', lines: BYTECODE.map((text) => ({ text, mono: true })) });
+    const range = svg('rect', { class: 'jvm-pc-range', rx: 7 }, root);
+    const machines = {
+      interp: createCodeList(root, { ...MACHINE.interp, hue: 'var(--scene-hue-violet)' }),
+      jit: createCodeList(root, { ...MACHINE.jit, hue: 'var(--scene-hue-violet)' }),
+    };
+    const pointer = svg('g', { class: 'scene-pointer' }, root);
+    svg('rect', { class: 'scene-pointer-pill', rx: 9, width: 44, height: 22, x: -22, y: -11 }, pointer);
+    const pointerText = svg('text', { class: 'scene-pointer-text', y: 4 }, pointer);
+    pointerText.textContent = 'pc';
+    const pointerArrow = svg('path', { class: 'scene-pointer-arrow' }, pointer);
+    const marker = createExecMarker(root);
+    const cpu = createNode(root, { label: 'CPU', hue: 'var(--scene-hue-cyan)' });
+    const ipBadge = createBadge(root, 'CPU가 실행한 instruction', LAYOUTS.wide.badgeW);
+    const pcBadge = createBadge(root, 'JVM pc 이동', LAYOUTS.wide.badgeW);
+
+    const scene = createScene<State>({ ip: 1, hop: 0, pcTop: 0, pcBottom: 0, show: 0, range: 1 }, (s) => {
+      const list = machines[mode];
+      const a = list.row(ipFrom);
+      const b = list.row(ipTo);
+      // 아래 줄에서 맨 위 줄로 돌아갈 때만 호를 그리며 옮겨 갑니다.
+      const at = bowAt(a, b, s.ip, ipTo < ipFrom ? -hopLift(s.hop, 40) : 0);
+      marker.place({ ...at, w: a.w, h: a.h }, layout.route, s.show);
+      list.setActive(s.show < 0.5 ? -1 : s.ip < 0.5 ? ipFrom : ipTo);
+      const first = bytecode.row(0);
+      const step = bytecode.row(1).y - first.y;
+      const y1 = first.y + step * s.pcTop;
+      const y2 = first.y + step * s.pcBottom;
+      setAttrs(range, { x: first.x - first.w / 2, y: y1 - first.h / 2, width: first.w, height: y2 - y1 + first.h, opacity: s.range });
+      setAttrs(pointer, { transform: `translate(${layout.pcX} ${(y1 + y2) / 2})` });
+      const tip = layout.bytecode.x - 6 - layout.pcX;
+      setAttrs(pointerArrow, { d: `M 24 0 L ${tip} 0 M ${tip - 6} -5 L ${tip} 0 L ${tip - 6} 5` });
+      bytecode.group.querySelectorAll('.scene-code-line').forEach((line, i) => line.classList.toggle('is-active', s.range > 0.5 && i >= Math.round(s.pcTop) && i <= Math.round(s.pcBottom)));
+    });
+
+    const say = (html: string) => {
+      if (note.innerHTML === html) return;
+      note.innerHTML = html;
+      note.classList.remove('is-entering');
+      void note.offsetWidth;
+      note.classList.add('is-entering');
+    };
+    const setCounts = () => {
+      ipBadge.set(String(executed), 'var(--scene-hue-cyan)');
+      if (mode === 'interp') { pcBadge.set(`${pcMoves}칸`, 'var(--scene-hue-blue)'); return; }
+      const [top, bottom] = JIT_MAP[Math.max(0, executed - 1)];
+      pcBadge.set(executed ? (top === bottom ? BYTECODE[top] : `${BYTECODE[top]}–${BYTECODE[bottom]}`) : '—', 'var(--scene-hue-blue)');
+    };
+    const total = () => (mode === 'interp' ? WORK : JIT_MAP.length);
+    const progress = () => (mode === 'interp' ? processed : executed);
+    const refreshButtons = () => {
+      const finished = progress() >= total();
+      stepButton.disabled = running || finished;
+      if (finished) resetButton.dataset.state = 'next';
+      else resetButton.removeAttribute('data-state');
+    };
+
+    const reset = () => {
+      scene.begin();
+      running = false;
+      executed = 0;
+      pcMoves = 0;
+      processed = 0;
+      ipFrom = ipTo = 0;
+      machines.interp.group.style.opacity = mode === 'interp' ? '1' : '0';
+      machines.jit.group.style.opacity = mode === 'jit' ? '1' : '0';
+      machines[mode === 'interp' ? 'jit' : 'interp'].setActive(-1);
+      pointer.style.opacity = mode === 'interp' ? '1' : '0';
+      range.classList.toggle('is-jit', mode === 'jit');
+      pcBadge.group.querySelector('.scene-badge-caption')!.textContent = mode === 'interp' ? 'JVM pc 이동' : '대응 bytecode';
+      stepButton.textContent = BUTTON[mode];
+      scene.set({ ip: 1, hop: 0, pcTop: 0, pcBottom: 0, show: 0, range: mode === 'interp' ? 1 : 0 });
+      setCounts();
+      refreshButtons();
+      say(NOTES[mode].idle);
+    };
+
+    /** CPU 실행 띠를 `row`로 옮기고 실행 수를 1 올립니다. 처음에는 그 자리에 나타납니다. */
+    const execute = async (alive: () => boolean, row: number, extra: Partial<State> = {}) => {
+      const appearing = scene.state.show < 0.5;
+      ipFrom = appearing ? row : ipTo;
+      ipTo = row;
+      const wraps = ipTo < ipFrom;
+      scene.set({ ...scene.state, ip: 0, hop: Math.floor(scene.state.hop + 1e-6) });
+      const ok = await scene.go({ ...scene.state, ...extra, ip: 1, show: 1, hop: wraps ? nextHop(scene.state.hop) : scene.state.hop }, appearing ? duration.snap : wraps ? duration.fly : 420);
+      if (!ok || !alive()) return false;
+      // 띠가 줄에 닿는 순간 그 instruction을 실행한 것으로 셉니다.
+      executed += 1;
+      setCounts();
+      return true;
+    };
+
+    /** interpreter: bytecode 하나를 처리합니다. 띠가 네 줄을 지나간 뒤에야 pc가 한 칸 옮겨 갑니다. */
+    async function processBytecode(alive: () => boolean) {
+      say(NOTES.interp.sweep);
+      for (let row = 0; row < 4; row += 1) {
+        if (!(await execute(alive, row))) return false;
+        await scene.pause(row === 3 ? 160 : 300);
+        if (!alive()) return false;
+      }
+      processed += 1;
+      pcMoves += 1;
+      setCounts();
+      if (!(await scene.go({ ...scene.state, pcTop: processed, pcBottom: processed }, duration.move)) || !alive()) return false;
+      say(processed === WORK ? NOTES.interp.done : NOTES.interp.moved);
+      if (processed === WORK) modeButtons[1].dataset.state = 'next';
+      return true;
+    }
+
+    /** JIT: instruction 하나를 실행하고 대응하는 bytecode 범위를 보여줍니다. */
+    async function executeJit(alive: () => boolean) {
+      const index = executed;
+      const [top, bottom] = JIT_MAP[index];
+      if (!(await execute(alive, index, { pcTop: top, pcBottom: bottom, range: 1 }))) return false;
+      say(index === JIT_MAP.length - 1 ? NOTES.jit.done : top !== bottom ? NOTES.jit.two : NOTES.jit.one);
+      return true;
+    }
+
+    async function step() {
+      if (running || progress() >= total()) return;
+      const alive = scene.begin();
+      running = true;
+      refreshButtons();
+      await (mode === 'interp' ? processBytecode(alive) : executeJit(alive));
+      if (!alive()) return;
+      running = false;
+      refreshButtons();
+    }
+
+    const applyLayout = () => {
+      const l = layout;
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      bytecode.place(l.bytecode, l.rows);
+      machines.interp.place(l.machine, l.rows);
+      machines.jit.place(l.machine, l.rows);
+      cpu.setBox(l.cpu);
+      ipBadge.place(l.ipBadge);
+      pcBadge.place(l.pcBadge);
+      reset();
+    };
+    watchNarrow(stage, (narrow) => { layout = LAYOUTS[narrow ? 'narrow' : 'wide']; applyLayout(); });
+
+    modeButtons.forEach((button) => button.addEventListener('click', () => {
+      touched = true;
+      mode = button.dataset.pcMode as Mode;
+      modeButtons.forEach((b) => { b.setAttribute('aria-pressed', String(b === button)); b.removeAttribute('data-state'); });
+      reset();
+      stepButton.dataset.state = 'next';
+    }));
+    stepButton.addEventListener('click', () => {
+      touched = true;
+      stepButton.removeAttribute('data-state');
+      void step();
+    });
+    resetButton.addEventListener('click', () => {
+      touched = true;
+      reset();
+      stepButton.dataset.state = 'next';
+    });
+
+    // 처음 화면에 들어오면 bytecode 하나를 처리하는 모습을 한 번 저절로 보여줍니다.
+    let played = false;
+    watchDemoPlayback(demo, ({ shouldPlay }) => {
+      if (!shouldPlay || played || touched) return;
+      played = true;
+      window.setTimeout(async () => {
+        if (touched) return;
+        await step();
+        if (!touched) stepButton.dataset.state = 'next';
+      }, 700);
+    }, { threshold: 0.5 });
+    if (scene.reduced) stepButton.dataset.state = 'next';
+  });
+</script>
+
+<style is:global>
+  .db-demo[data-blog-demo="jvm-pc-vs-ip"] .scene-note { min-height: 4.2em; }
+  [data-blog-demo="jvm-pc-vs-ip"] .db-demo-controls { margin-bottom: 0; }
+  [data-blog-demo="jvm-pc-vs-ip"] .scene-chips { margin-top: 10px; }
+  [data-blog-demo="jvm-pc-vs-ip"] .jvm-pc-range { fill: color-mix(in srgb, var(--scene-hue-blue) 10%, transparent); stroke: var(--scene-hue-blue); stroke-width: 1.6; }
+  [data-blog-demo="jvm-pc-vs-ip"] .jvm-pc-range.is-jit { stroke-dasharray: 4 3; }
+</style>

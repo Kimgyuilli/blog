@@ -1,0 +1,232 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import SceneTimeline from './SceneTimeline.astro';
+import '../../styles/scene.css';
+
+const steps = [
+  { name: 'Java 실행', detail: 'user' },
+  { name: 'runtime 함수', detail: 'user 그대로' },
+  { name: 'Java 계속', detail: 'user 그대로' },
+  { name: 'JNI 함수', detail: 'user 그대로' },
+  { name: 'system call', detail: '→ kernel' },
+];
+---
+
+<InteractiveDemoFrame demoId="jvm-same-thread-mode" ariaLabel="같은 OS thread가 Java 코드, HotSpot runtime 함수, JNI 함수, kernel 코드를 차례로 실행할 때 CPU 모드가 언제 바뀌는지 보여주는 장면" title="HotSpot 코드에 들어가면 권한이 높아질까요?" description="OS thread T1 하나가 실행하는 위치를 따라갑니다. 청록색 띠가 CPU가 지금 실행하는 위치입니다. 오른쪽 위의 CPU 모드 배지가 언제 바뀌는지 보세요.">
+  <SceneTimeline ariaLabel="실행 위치 단계" steps={steps} />
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="위에 CPU와 OS thread T1, CPU 모드 배지가 있습니다. user mode 영역 안에 Java method, HotSpot runtime, JNI native 함수 세 코드 영역이 있고, 아래 kernel mode 영역에 OS kernel 코드가 있습니다. 실행 위치가 Java method에서 runtime 함수로, 다시 Java로, JNI 함수로 옮겨 다니는 동안 OS thread는 T1, CPU 모드는 user 그대로입니다. JNI 함수가 system call을 실행할 때에만 실행 위치가 kernel 코드로 옮겨지고 CPU 모드가 kernel로 바뀝니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">가능한 경로 하나를 이어 그린 개념 모형입니다. object를 만들 때마다 runtime 함수를 호출한다는 뜻은 아니며, 여기서는 그런 경로를 탔다고 가정했습니다. 코드 줄은 흐름을 보여주는 요약이고, 실제 함수 이름이나 호출 방식과 다릅니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, createScene, duration, hopLift, lerp, nextHop, setAttrs, watchNarrow, type Box, type Point } from '../../scripts/blog/scene/core';
+  import { createBadge, createBoundary, createCodeList, createExecMarker, createNode, landRing, type Rect } from '../../scripts/blog/scene/parts';
+  import { createStepPlayer } from '../../scripts/blog/scene/step-player';
+
+  // 독자가 볼 변화: 실행 띠가 Java → HotSpot runtime → Java → JNI 함수로 옮겨 다녀도
+  // OS thread는 T1, CPU 모드는 user 그대로다. system call로 kernel 코드에 들어갈 때만 모드가 바뀐다.
+  type Area = 'java' | 'runtime' | 'native' | 'kernel';
+  type Spot = { area: Area; row: number };
+  type State = { move: number; hop: number };
+  type Layout = {
+    view: [number, number];
+    cpu: Box; threadBadge: Point; modeBadge: Point;
+    user: Rect; kernel: Rect; zoneCaption: { user: Point; kernel: Point };
+    areas: Record<Area, Rect>;
+    rows: { top: number; rowH: number };
+    chanY: number;
+  };
+
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 344],
+      cpu: { x: 62, y: 32, w: 92, h: 40 }, threadBadge: { x: 126, y: 32 }, modeBadge: { x: 270, y: 32 },
+      user: { x: 10, y: 62, w: 540, h: 168 }, kernel: { x: 10, y: 240, w: 540, h: 94 },
+      zoneCaption: { user: { x: 536, y: 82 }, kernel: { x: 536, y: 260 } },
+      areas: {
+        java: { x: 22, y: 92, w: 164, h: 128 },
+        runtime: { x: 198, y: 92, w: 164, h: 128 },
+        native: { x: 374, y: 92, w: 164, h: 128 },
+        kernel: { x: 374, y: 266, w: 164, h: 60 },
+      },
+      rows: { top: 46, rowH: 26 },
+      chanY: 80,
+    },
+    narrow: {
+      view: [360, 590],
+      cpu: { x: 54, y: 40, w: 84, h: 40 }, threadBadge: { x: 112, y: 22 }, modeBadge: { x: 112, y: 56 },
+      user: { x: 10, y: 92, w: 340, h: 384 }, kernel: { x: 10, y: 486, w: 340, h: 94 },
+      zoneCaption: { user: { x: 336, y: 112 }, kernel: { x: 336, y: 506 } },
+      areas: {
+        java: { x: 48, y: 122, w: 290, h: 108 },
+        runtime: { x: 48, y: 240, w: 290, h: 108 },
+        native: { x: 48, y: 358, w: 290, h: 108 },
+        kernel: { x: 48, y: 514, w: 290, h: 58 },
+      },
+      rows: { top: 44, rowH: 24 },
+      chanY: 76,
+    },
+  };
+  const AREAS: Area[] = ['java', 'runtime', 'native', 'kernel'];
+  const LISTS: Record<Area, { caption: string; hue: string; lines: { text: string; mono?: boolean }[] }> = {
+    java: { caption: 'Java method', hue: 'var(--scene-hue-blue)', lines: [{ text: 'total += price', mono: true }, { text: 'new Order()', mono: true }, { text: 'nativeAdd(a, b)', mono: true }] },
+    runtime: { caption: 'HotSpot runtime 함수', hue: 'var(--scene-hue-violet)', lines: [{ text: '할당 처리 진입' }, { text: 'object 공간 준비' }, { text: 'Java로 돌아감' }] },
+    native: { caption: 'JNI native 함수', hue: 'var(--scene-hue-pink)', lines: [{ text: 'return a + b;', mono: true }, { text: 'write(fd, buf)', mono: true }, { text: '…' }] },
+    kernel: { caption: 'OS kernel 코드', hue: 'var(--scene-hue-amber)', lines: [{ text: 'system call 처리' }] },
+  };
+  const END: Spot[] = [
+    { area: 'java', row: 0 },
+    { area: 'runtime', row: 1 },
+    { area: 'java', row: 2 },
+    { area: 'native', row: 0 },
+    { area: 'kernel', row: 0 },
+  ];
+  const NOTES = [
+    'OS thread <strong>T1</strong>이 CPU를 배정받아 Java method의 machine code를 실행합니다. CPU 모드는 <strong>user</strong>입니다.',
+    '<code>new Order()</code>에 runtime의 지원이 필요한 경로라고 가정했습니다. <strong>같은 T1</strong>이 HotSpot runtime 함수로 들어갔지만 CPU 모드 배지는 <strong>user 그대로</strong>입니다. 함수 호출일 뿐 권한이 바뀌지 않습니다.',
+    'runtime 함수를 마치고 같은 thread가 Java 실행으로 돌아왔습니다. 이번에는 JNI로 C 함수를 호출하려 합니다.',
+    'JNI로 호출한 C 함수 <code>a + b</code>도 같은 T1이 <strong>user mode</strong>에서 실행합니다. native 코드라고 kernel 코드가 되는 것은 아닙니다.',
+    '그 함수가 <code>write()</code>로 system call을 실행할 때에만 실행 위치가 kernel 코드로 옮겨지고 CPU 모드가 <strong>kernel</strong>로 바뀝니다. JNI 호출과 kernel 진입은 서로 다른 사건입니다.',
+  ];
+  const MODE = { user: { text: 'user', hue: 'var(--scene-hue-gray)' }, kernel: { text: 'kernel', hue: 'var(--scene-hue-amber)' } };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="jvm-same-thread-mode"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    let layout = LAYOUTS.wide;
+    let shown = 0;
+    let from: Spot = END[0];
+    let to: Spot = END[0];
+
+    const userZone = createBoundary(root, 'user mode', 'zone');
+    const kernelZone = createBoundary(root, 'kernel mode', 'zone');
+    const lists = Object.fromEntries(AREAS.map((area) => [area, createCodeList(root, LISTS[area])])) as Record<Area, ReturnType<typeof createCodeList>>;
+    const marker = createExecMarker(root);
+    const cpu = createNode(root, { label: 'CPU', hue: 'var(--scene-hue-cyan)' });
+    const threadBadge = createBadge(root, 'OS thread', 132);
+    const modeBadge = createBadge(root, 'CPU 모드', 132);
+    threadBadge.set('T1', 'var(--scene-hue-cyan)');
+    const rings = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    root.append(rings);
+
+    const boxOf = (spot: Spot) => lists[spot.area].row(spot.row);
+    const scene = createScene<State>({ move: 1, hop: 0 }, (s) => {
+      const a = boxOf(from);
+      const b = boxOf(to);
+      const crossing = from.area !== to.area;
+      const at = bowAt(a, b, s.move, crossing ? hopLift(s.hop, 30) : 0);
+      const box = { ...at, w: lerp(a.w, b.w, s.move), h: lerp(a.h, b.h, s.move) };
+      // 끈은 CPU에서 내려와 코드 영역 사이의 빈 통로를 지나 띠의 왼쪽 가장자리로 이어집니다.
+      const c = layout.cpu;
+      const gapX = box.x - box.w / 2 - 14;
+      marker.place(box, [{ x: c.x, y: c.y + c.h / 2 + 2 }, { x: c.x, y: layout.chanY }, { x: gapX, y: layout.chanY }, { x: gapX, y: box.y }]);
+      const current = s.move < 0.5 ? from : to;
+      AREAS.forEach((area) => lists[area].setActive(current.area === area ? current.row : -1));
+    });
+
+    const aim = (spot: Spot) => {
+      from = scene.state.move < 0.5 ? from : to;
+      to = spot;
+      scene.set({ move: 0, hop: Math.floor(scene.state.hop + 1e-6) });
+    };
+    const travel = (spot: Spot, ms: number) => {
+      aim(spot);
+      return scene.go({ move: 1, hop: nextHop(scene.state.hop) }, ms);
+    };
+    const hop = async (alive: () => boolean, spot: Spot) => {
+      if (!(await travel(spot, duration.fly)) || !alive()) return false;
+      landRing(rings, boxOf(spot));
+      return true;
+    };
+    const setMode = (spot: Spot) => {
+      const mode = spot.area === 'kernel' ? MODE.kernel : MODE.user;
+      modeBadge.set(mode.text, mode.hue);
+    };
+    /** 모드가 그대로라는 것을 보여주려고, 영역을 옮긴 뒤 배지를 한 번 튀게 합니다. */
+    const confirmSame = () => {
+      modeBadge.value.classList.remove('is-bump');
+      void modeBadge.value.getBoundingClientRect();
+      modeBadge.value.classList.add('is-bump');
+    };
+    const say = (index: number) => {
+      note.innerHTML = NOTES[index];
+      note.classList.remove('is-entering');
+      void note.offsetWidth;
+      note.classList.add('is-entering');
+    };
+
+    const sequences: Record<number, (alive: () => boolean) => Promise<void>> = {
+      1: async (alive) => {
+        if (!(await travel({ area: 'java', row: 1 }, duration.move)) || !alive()) return;
+        await scene.pause(duration.beat);
+        if (!alive() || !(await hop(alive, { area: 'runtime', row: 0 }))) return;
+        confirmSame();
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        await travel(END[1], duration.move);
+      },
+      2: async (alive) => {
+        if (!(await travel({ area: 'runtime', row: 2 }, duration.move)) || !alive()) return;
+        await scene.pause(duration.beat);
+        if (!alive() || !(await hop(alive, { area: 'java', row: 1 }))) return;
+        await travel(END[2], duration.move);
+      },
+      3: async (alive) => {
+        if (!(await hop(alive, END[3]))) return;
+        confirmSame();
+      },
+      4: async (alive) => {
+        if (!(await travel({ area: 'native', row: 1 }, duration.move)) || !alive()) return;
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        setMode(END[4]);
+        await hop(alive, END[4]);
+      },
+    };
+
+    const show = (index: number, instant: boolean) => {
+      const alive = scene.begin();
+      const previous = shown;
+      shown = index;
+      say(index);
+      const sequence = sequences[index];
+      if (!instant && sequence && index === previous + 1) {
+        from = to = END[previous];
+        scene.set({ move: 1, hop: 0 });
+        setMode(END[previous]);
+        void sequence(alive);
+        return;
+      }
+      setMode(END[index]);
+      if (instant) { from = to = END[index]; scene.set({ move: 1, hop: 0 }); return; }
+      void travel(END[index], duration.fly);
+    };
+
+    const applyLayout = () => {
+      const l = layout;
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      userZone.place(l.user, { ...l.zoneCaption.user, anchor: 'end' });
+      kernelZone.place(l.kernel, { ...l.zoneCaption.kernel, anchor: 'end' });
+      AREAS.forEach((area) => lists[area].place(l.areas[area], l.rows));
+      cpu.setBox(l.cpu);
+      threadBadge.place(l.threadBadge);
+      modeBadge.place(l.modeBadge);
+      scene.begin();
+      from = to = END[shown];
+      scene.set({ move: 1, hop: 0 });
+      setMode(END[shown]);
+    };
+    watchNarrow(stage, (narrow) => { layout = LAYOUTS[narrow ? 'narrow' : 'wide']; applyLayout(); });
+
+    createStepPlayer(demo, {
+      dwell: (index) => [2600, 4600, 3400, 3600, 4600][index] ?? duration.dwell,
+      onStep: show,
+    });
+  });
+</script>
