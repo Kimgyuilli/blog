@@ -28,7 +28,7 @@
 
   <!-- prod -->
   <rect x="800" y="36" width="500" height="196" fill="#ffffff" stroke="#111" stroke-width="2.5" rx="3"/>
-  <text x="1050" y="66" text-anchor="middle" font-size="15" font-weight="700" fill="#111">prod (제약이 걸린 곳)</text>
+  <text x="1050" y="66" text-anchor="middle" font-size="15" font-weight="700" fill="#111">prod (소유권 이전 전)</text>
   <text x="822" y="98" font-size="13" fill="#333">스키마 소유 · <tspan font-weight="700" fill="#111">레거시 momens-api (타 담당자)</tspan></text>
   <text x="822" y="124" font-size="13" fill="#333">Flyway · <tspan font-weight="700" fill="#111">OFF</tspan>　/　ddl-auto · <tspan font-weight="700" fill="#111">validate</tspan></text>
   <text x="822" y="156" font-size="12.5" fill="#555">서버는 스키마를 만들지 않고 <tspan font-weight="700" fill="#111">검증만</tspan> 한다</text>
@@ -37,7 +37,7 @@
   <text x="822" y="218" font-size="12.5" fill="#555">→ 그래서 배포에 순서가 생긴다</text>
 
   <!-- gate -->
-  <text x="40" y="268" font-size="14" font-weight="700" fill="#111">배포 순서 게이트</text>
+  <text x="40" y="268" font-size="14" font-weight="700" fill="#111">이관 초기의 배포 순서</text>
 
   <rect x="40" y="282" width="360" height="76" fill="#f8f8f8" stroke="#333" stroke-width="1.5" rx="3"/>
   <text x="220" y="312" text-anchor="middle" font-size="13.5" font-weight="700" fill="#111">① 레거시 momens-api가</text>

@@ -6,7 +6,7 @@
   </defs>
 
   <rect width="1340" height="560" fill="#ffffff"/>
-  <text x="40" y="40" font-size="17" font-weight="700" fill="#111">인증 신뢰 경계의 3단계 격상 &#8212; "누구인가"를 뒤로 어떻게 전달하는가</text>
+  <text x="40" y="40" font-size="17" font-weight="700" fill="#111">서비스 간 인증 방식의 변화와 사용자 정보 전달</text>
 
   <!-- column headers -->
   <text x="150" y="76" text-anchor="middle" font-size="13" fill="#666">클라이언트</text>
