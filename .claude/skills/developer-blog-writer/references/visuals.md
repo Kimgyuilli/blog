@@ -2,7 +2,7 @@
 
 글의 핵심 메커니즘이나 비교가 정적인 문장·표만으로 잘 드러나지 않을 때 사용합니다. 시각 요소 자체를 목표로 삼지 말고, 독자가 장면을 보고 답할 질문을 먼저 정합니다.
 
-이 문서는 **글을 쓰는 단계에서 장면을 기획**하는 기준입니다. 장면을 실제로 만들거나 고칠 때는 `blog-interactive-demo` 스킬을 따르고, 품질 기준인 [`docs/animation-standards.md`](../../../../docs/animation-standards.md)를 먼저 읽습니다. 품질의 기준 사례는 `src/content/blog/peekcart-monolith-peel-order.mdx`의 세 장면입니다. 아이디어와 외부 사례는 [`docs/interactive-article-ideas.md`](../../../../docs/interactive-article-ideas.md)에 있습니다.
+이 문서는 **글을 쓰는 단계에서 장면을 기획**하는 기준입니다. 장면을 실제로 만들거나 고칠 때는 `blog-interactive-demo` 스킬을 따르고, 품질 기준인 [`docs/animation-standards.md`](../../../../docs/animation-standards.md)를 먼저 읽습니다. 품질의 기준 사례는 `src/content/blog/peekcart-20-monolith-peel-order.mdx`의 세 장면입니다. 아이디어와 외부 사례는 [`docs/interactive-article-ideas.md`](../../../../docs/interactive-article-ideas.md)에 있습니다.
 
 ## 기획: 독자가 장면에서 알아낼 것
 

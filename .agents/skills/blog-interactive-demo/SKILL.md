@@ -5,7 +5,7 @@ description: Design, build, or improve animated and interactive demos inside a b
 
 # Blog interactive demo
 
-Demos in this blog must reach the quality of the PeekCart monolith-peel post (`src/content/blog/peekcart-monolith-peel-order.mdx`). That post is the reference implementation. A demo that swaps static panels or lists of text does not meet the bar.
+Demos in this blog must reach the quality of the PeekCart monolith-peel post (`src/content/blog/peekcart-20-monolith-peel-order.mdx`). That post is the reference implementation. A demo that swaps static panels or lists of text does not meet the bar.
 
 **Read `docs/animation-standards.md` before writing any code.** It defines the motion vocabulary, timing tokens, layout sizes, and the completion checklist. This skill is the workflow; that document is the standard.
 
