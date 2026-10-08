@@ -1,0 +1,230 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import '../../styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="gateway-trust-layers" ariaLabel="NetworkPolicy와 서명 검증을 각각 켜고 끄며 세 출발지에서 서비스로 요청을 보내는 모형" title="NetworkPolicy 하나로 충분할까요?" description="NetworkPolicy와 서명 검증을 켜고 끄면 세 요청이 다시 출발합니다. 위조한 ADMIN 헤더가 어디서 막히는지 보세요.">
+  <DemoControls ariaLabel="방어 레이어">
+    <button type="button" data-trust-toggle="np" aria-pressed="true">NetworkPolicy</button>
+    <button type="button" data-trust-toggle="sig" aria-pressed="false">서명 검증</button>
+  </DemoControls>
+  <div class="scene-chips" role="group" aria-label="요청">
+    <button type="button" class="scene-chip is-plain" data-trust-send>▶ 세 요청 다시 보내기</button>
+  </div>
+  <div class="scene-stage">
+    <svg data-trust-svg role="img" aria-label="왼쪽 세 출발지(게이트웨이 경유 정상 요청, 게이트웨이 Pod 안의 위조, 다른 Pod의 위조)가 NetworkPolicy 벽과 서명 검증 벽을 지나 오른쪽 서비스로 요청을 보내는 그림"></svg>
+  </div>
+  <p class="scene-note" data-trust-note role="status"></p>
+  <p class="db-demo-disclaimer">글의 표(NetworkPolicy와 서명이 각각 막는 것)를 그림으로 옮긴 모형입니다. 클러스터에서 실측한 것은 NetworkPolicy와 서명 검증이 모두 켜진 상태의 결과(위조·평문 401, 정상 200, 게이트웨이가 아닌 Pod 000)와, 게이트웨이 Pod 안에서 보낸 평문 헤더가 서명만 받는 모드에서 401·평문도 받는 모드에서 200이 된 것입니다. 나머지 조합의 결과와 ADMIN 위조 요청은 설정과 테스트를 근거로 만든 예시이고, 실제로 보내 보지는 않았습니다. "담 꺼짐"은 정책이 강제되지 않는 상태입니다. <code>000</code>은 curl이 HTTP 응답 상태를 받지 못했다는 뜻입니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, ease, setAttrs, svg, watchNarrow, type Point } from '../../scripts/blog/scene/core';
+  import { createNode, createWall } from '../../scripts/blog/scene/parts';
+  import { createPacketLayer } from '../../scripts/blog/scene/packets';
+  import { watchDemoPlayback } from '../../scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: 담만 있으면 담이 들여보내는 게이트웨이 Pod 안에서 지어낸 헤더가 ADMIN으로 인증된다.
+  // 서명 검증을 켜면 같은 요청이 서명 벽에서 튕겨 나오고, 담을 꺼도 위조는 401로 남는다.
+  // 정상 요청은 어느 조합에서도 200이라, 401이 모든 요청을 막은 결과가 아님을 보여 주는 양성 대조가 늘 함께 보인다.
+  type Layers = { np: boolean; sig: boolean };
+  type Layout = { view: [number, number]; senderX: number; sender: { w: number; h: number }; lanes: number[]; npX: number; sigX: number; wallY: [number, number]; target: Point; targetSize: { w: number; h: number }; metric: Point };
+  const SENDERS = [
+    { label: 'gateway', sub: '정상 로그인', allowed: true, forged: false },
+    { label: 'gateway Pod', sub: '안에서 위조', allowed: true, forged: true },
+    { label: '다른 Pod', sub: '위조 헤더', allowed: false, forged: true },
+  ];
+  const LAYOUT: Record<'wide' | 'narrow', Layout> = {
+    wide: { view: [560, 316], senderX: 74, sender: { w: 128, h: 48 }, lanes: [56, 150, 244], npX: 246, sigX: 394, wallY: [22, 282], target: { x: 488, y: 150 }, targetSize: { w: 124, h: 60 }, metric: { x: 488, y: 208 } },
+    narrow: { view: [360, 330], senderX: 62, sender: { w: 116, h: 46 }, lanes: [52, 150, 248], npX: 150, sigX: 244, wallY: [18, 290], target: { x: 306, y: 150 }, targetSize: { w: 100, h: 58 }, metric: { x: 306, y: 206 } },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="gateway-trust-layers"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const root = demo.querySelector<SVGSVGElement>('[data-trust-svg]')!;
+    const stage = demo.querySelector<HTMLElement>('.scene-stage')!;
+    const note = demo.querySelector<HTMLElement>('[data-trust-note]')!;
+    const toggles = [...demo.querySelectorAll<HTMLButtonElement>('[data-trust-toggle]')];
+    const sendButton = demo.querySelector<HTMLButtonElement>('[data-trust-send]')!;
+    let narrow = false;
+    let touched = false;
+    const layers: Layers = { np: true, sig: false };
+    const L = () => (narrow ? LAYOUT.narrow : LAYOUT.wide);
+    // 세 요청이 입구 한 점에 겹치지 않도록 출발지별로 착지 높이를 조금씩 나눕니다.
+    const entryOf = (l: Layout, i = 1) => ({ x: l.target.x - l.targetSize.w / 2 - 6, y: l.target.y + (i - 1) * 16 });
+
+    const tracks = SENDERS.map(() => {
+      const path = svg('path', { class: 'scene-line', 'stroke-dasharray': '2 6' }, root);
+      path.style.stroke = 'color-mix(in srgb, var(--scene-dep) 45%, transparent)';
+      path.style.strokeWidth = '1.5';
+      return path;
+    });
+    const gates = SENDERS.map((sender) => {
+      const g = svg('g', {}, root);
+      const r = svg('rect', { x: -9, y: -9, width: 18, height: 18, rx: 5 }, g);
+      r.style.fill = 'var(--canvas)';
+      r.style.stroke = 'var(--scene-flow)';
+      r.style.strokeWidth = '1.5';
+      const t = svg('text', { y: 4, 'text-anchor': 'middle', class: 'scene-label scene-label-flow' }, g);
+      t.textContent = '✓';
+      g.style.display = sender.allowed ? '' : 'none';
+      return g;
+    });
+    const npWall = createWall(root, 'NetworkPolicy');
+    const sigWall = createWall(root, '서명 검증');
+    const senders = SENDERS.map((s) => createNode(root, { label: s.label, hue: s.label === '다른 Pod' ? 'var(--scene-hue-gray)' : 'var(--scene-hue-pink)', sub: s.sub }));
+    const target = createNode(root, { label: '서비스', hue: 'var(--scene-hue-violet)', sub: ':8080' });
+    const results = SENDERS.map(() => svg('text', { class: 'scene-label', 'text-anchor': 'end' }, root));
+    const metricCaption = svg('text', { class: 'scene-caption', 'text-anchor': 'middle' }, root);
+    metricCaption.textContent = '위조 성공';
+    const metric = svg('text', { class: 'scene-gauge-value', 'text-anchor': 'middle' }, root);
+    metric.style.fontSize = '22px';
+    metric.style.fontWeight = '800';
+    const packets = createPacketLayer(root);
+
+    // npGhost 1 = 담이 강제되지 않음(유령 벽), sigShow 0 = 서명 검증 없음(벽 자체가 없음)
+    const scene = createScene({ npGhost: 0, sigShow: 0 }, (state) => {
+      const l = L();
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      SENDERS.forEach((_, i) => {
+        const y = l.lanes[i];
+        const entry = entryOf(l, i);
+        senders[i].setBox({ x: l.senderX, y, ...l.sender });
+        setAttrs(tracks[i], { d: `M ${l.senderX + l.sender.w / 2 + 4} ${y} L ${l.sigX} ${y} L ${entry.x} ${entry.y}` });
+        setAttrs(gates[i], { transform: `translate(${l.npX} ${y})`, opacity: 1 - state.npGhost });
+      });
+      const captionY = l.wallY[1] + 14;
+      npWall.place({ x: l.npX, y1: l.wallY[0], y2: l.wallY[1] }, { show: 1, ghost: state.npGhost }, { x: l.npX, y: captionY });
+      npWall.caption.textContent = state.npGhost > 0.5 ? 'NetworkPolicy · 강제 안 됨' : 'NetworkPolicy';
+      sigWall.place({ x: l.sigX, y1: l.wallY[0], y2: l.wallY[1] }, { show: state.sigShow, ghost: 0 }, { x: l.sigX, y: captionY });
+      target.setBox({ ...l.target, ...l.targetSize });
+      setAttrs(metricCaption, { x: l.metric.x, y: l.metric.y });
+      setAttrs(metric, { x: l.metric.x, y: l.metric.y + 26 });
+    });
+
+    const key = () => `${layers.np ? 'np' : 'open'}-${layers.sig ? 'sig' : 'plain'}` as const;
+    const NOTES: Record<ReturnType<typeof key>, { idle: string; done: string }> = {
+      'np-plain': {
+        idle: '서명 도입 전의 구조입니다. 서비스는 평문 <code>X-User-*</code> 헤더를 그대로 믿고, NetworkPolicy만 있습니다.',
+        done: 'NetworkPolicy는 다른 Pod의 위조를 000으로 막았지만, <strong>NetworkPolicy가 들여보내는 게이트웨이 Pod 안에서 지어낸 헤더는 ADMIN으로 인증</strong>됐습니다. 이제 서명 검증을 켜 보세요.',
+      },
+      'np-sig': {
+        idle: 'NetworkPolicy는 그대로 두고, 서비스가 게이트웨이가 서명한 내부 토큰만 받게 했습니다.',
+        done: '게이트웨이 Pod 안의 위조도 <strong>서명 검증에서 401</strong>입니다. 정상 요청은 그대로 200이니, 모든 요청을 막아서 나온 401은 아닙니다. 이번에는 NetworkPolicy를 꺼 보세요.',
+      },
+      'open-sig': {
+        idle: '서명 검증은 켠 채 NetworkPolicy가 강제되지 않는 상태입니다.',
+        done: '다른 Pod도 서비스 앞까지 닿지만, 개인키 없이는 신원을 만들 수 없어 <strong>여전히 401</strong>입니다. 그래도 인증 없이 들어오는 직접 요청을 줄이려면 NetworkPolicy는 여전히 필요합니다.',
+      },
+      'open-plain': {
+        idle: 'NetworkPolicy도 서명 검증도 없는 상태입니다.',
+        done: '두 레이어가 모두 없으면 <strong>어느 Pod에서든 헤더 한 줄이 ADMIN</strong>이 됩니다.',
+      },
+    };
+    const setNote = (html: string) => { note.innerHTML = html; };
+    let forgedPassed = 0;
+    const clear = () => {
+      packets.clear();
+      results.forEach((r) => { r.textContent = ''; });
+      target.flash('is-done', false);
+      target.flash('is-error', false);
+      target.setSub(':8080');
+      forgedPassed = 0;
+      bumpText(metric, '– / 2');
+      metric.style.fill = 'var(--slate)';
+    };
+    const showResult = (i: number, text: string, colour: string, x: number, y: number) => {
+      setAttrs(results[i], { x, y });
+      results[i].textContent = text;
+      results[i].style.fill = colour;
+    };
+
+    async function sendAll() {
+      const alive = scene.begin();
+      clear();
+      sendButton.removeAttribute('data-state');
+      const l = L();
+      const { np, sig } = layers;
+      bumpText(metric, '0 / 2');
+      metric.style.fill = 'var(--scene-flow-ink)';
+      await Promise.all(SENDERS.map(async (sender, i) => {
+        await scene.pause(i * 200);
+        if (!alive()) return;
+        const y = l.lanes[i];
+        const label = sender.forged ? '위조 ADMIN' : sig ? '서명 토큰' : 'X-User-*';
+        const p = packets.spawn({ label, tone: sender.forged ? 'temp' : 'dep', at: { x: l.senderX + l.sender.w / 2 - 8, y } });
+        // 담: 허용하지 않은 출발지는 강제되는 담 앞에서 튕겨 나옵니다.
+        if (np && !sender.allowed) {
+          if (!(await p.bounce({ x: l.npX - 8, y }, 30)) || !alive()) return;
+          showResult(i, '000', 'var(--scene-danger)', l.npX + 36, y - 12);
+          await p.fade(700);
+          return;
+        }
+        if (!(await p.travel([{ x: l.npX, y }], 520, ease.linear)) || !alive()) return;
+        if (!np) npWall.pierce();
+        // 서명: 위조한 신원은 서명 벽에서 401로 튕겨 나옵니다.
+        if (sig && sender.forged) {
+          if (!(await p.bounce({ x: l.sigX - 8, y }, 30)) || !alive()) return;
+          showResult(i, '401', 'var(--scene-danger)', l.sigX - 14, y - 12);
+          await p.fade(700);
+          return;
+        }
+        if (!(await p.travel([{ x: l.sigX, y }, entryOf(l, i)], 640, ease.out)) || !alive()) return;
+        await p.land(false);
+        if (!alive()) return;
+        if (sender.forged) {
+          forgedPassed += 1;
+          showResult(i, '200 ADMIN', 'var(--scene-danger)', l.sigX - 14, y - 12);
+          target.flash('is-done', false);
+          target.flash('is-error');
+          target.flash('is-shaking');
+          target.setSub('1번 ADMIN');
+          bumpText(metric, `${forgedPassed} / 2`);
+          metric.style.fill = 'var(--scene-danger)';
+        } else {
+          showResult(i, '200', 'var(--scene-flow-ink)', l.sigX - 14, y - 12);
+          if (!forgedPassed) target.flash('is-done');
+        }
+      }));
+      if (!alive()) return;
+      setNote(NOTES[key()].done);
+      const hint = !layers.sig ? 'sig' : layers.np ? 'np' : null;
+      toggles.forEach((b) => { if (b.dataset.trustToggle === hint) b.dataset.state = 'next'; });
+    }
+
+    async function toggle(which: 'np' | 'sig') {
+      layers[which] = !layers[which];
+      const alive = scene.begin();
+      toggles.forEach((b) => {
+        const k = b.dataset.trustToggle as 'np' | 'sig';
+        b.setAttribute('aria-pressed', String(layers[k]));
+        b.removeAttribute('data-state');
+      });
+      clear();
+      setNote(NOTES[key()].idle);
+      await scene.go({ npGhost: layers.np ? 0 : 1, sigShow: layers.sig ? 1 : 0 }, duration.draw);
+      if (!alive()) return;
+      await sendAll();
+    }
+
+    toggles.forEach((b) => b.addEventListener('click', () => { touched = true; void toggle(b.dataset.trustToggle as 'np' | 'sig'); }));
+    sendButton.addEventListener('click', () => { touched = true; void sendAll(); });
+    watchNarrow(stage, (value) => { narrow = value; scene.begin(); clear(); setNote(NOTES[key()].idle); scene.redraw(); });
+    clear();
+    setNote(NOTES[key()].idle);
+
+    let played = false;
+    watchDemoPlayback(demo, ({ shouldPlay }) => {
+      if (!shouldPlay || played || touched) return;
+      played = true;
+      window.setTimeout(() => { if (!touched) void sendAll(); }, 500);
+    }, { threshold: 0.5 });
+  });
+</script>
+
+<style>
+  [data-blog-demo="gateway-trust-layers"] .db-demo-controls { margin-bottom: 0; }
+  [data-blog-demo="gateway-trust-layers"] .scene-chips { margin-top: 12px; }
+</style>
