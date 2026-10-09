@@ -1,0 +1,341 @@
+---
+/**
+ * 소비 트랜잭션 안에서 Toss 취소를 부르면 롤백이 fence 행까지 지워 다음 요청이 다시 부르는 인과를 보여 주는 타임라인.
+ * toggle을 주면 "진입점·실행자 분리" 모드를 열어 같은 다섯 단계를 비교하게 합니다. 해결책을 설명한 절에서만 엽니다.
+ */
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import SceneTimeline from './SceneTimeline.astro';
+import '../../styles/scene.css';
+
+type Props = { toggle?: boolean };
+const { toggle = false } = Astro.props;
+
+const steps = [
+  { name: 'fence 삽입', detail: '미커밋' },
+  { name: 'Toss 취소 호출', detail: '취소 1회' },
+  { name: '커밋 실패', detail: '결과 저장 중' },
+  { name: '롤백', detail: 'fence 사라짐' },
+  { name: '다음 요청', detail: '취소 2회' },
+];
+---
+
+<InteractiveDemoFrame
+  demoId="refund-fence-rollback"
+  ariaLabel={toggle ? 'PG 호출 위치를 소비 트랜잭션 안과 진입점·실행자 분리 사이에서 바꾸며 같은 다섯 단계를 비교하는 타임라인' : '소비 트랜잭션 안에서 Toss 취소를 호출할 때 롤백으로 fence 행이 사라지고 다음 요청이 Toss를 다시 부르는 타임라인'}
+  title={toggle ? 'PG 호출 위치를 옮기면' : '트랜잭션 안에서 Toss를 부르면'}
+  description={toggle ? '같은 다섯 단계를 두 구조로 비교합니다. 커밋 실패 뒤에 payment_refunds 행이 남는지, Toss 취소 횟수가 몇이 되는지 보세요.' : '요청 A의 소비 트랜잭션이 fence 행을 넣고 Toss를 부른 뒤 커밋에 실패합니다. 행과 Toss 취소 횟수를 따라가 보세요.'}
+>
+  {toggle && (
+    <DemoControls ariaLabel="PG 호출 위치">
+      <button type="button" data-rf-mode="intx" aria-pressed="false">트랜잭션 안에서 호출</button>
+      <button type="button" data-rf-mode="split" aria-pressed="true">진입점 · 실행자 분리</button>
+    </DemoControls>
+  )}
+  <div class="scene-stage" data-stage>
+    <svg data-graphic viewBox="0 0 560 250" role="img" aria-label="왼쪽 점선 상자는 트랜잭션, 안의 두 칩은 payment_refunds 행과 processed_events 기록, 오른쪽 카드는 Toss 쪽 취소 횟수입니다. 트랜잭션 안에서 호출하면 커밋 실패 뒤 롤백이 두 칩을 지우고 다음 요청이 Toss를 다시 불러 취소가 2회가 됩니다. 진입점과 실행자를 나누면 진입점이 커밋한 행이 남아 다음 요청은 0행 no-op이 되고 취소는 1회에 머뭅니다."></svg>
+  </div>
+  <SceneTimeline ariaLabel="다섯 단계" steps={steps} />
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">
+    본문의 설명용 예시를 옮긴 모형입니다. 실패 원인은 "커밋 실패" 하나로 단순화했고, Kafka 재시도 간격, PG 멱등키, 오래된 <code>CLAIMED</code>를 Toss 조회로 확정하는 reconciliation은 그리지 않았습니다. 주문 번호 7은 예시입니다.
+    {!toggle && ' PG 호출 위치를 바꾼 구조는 해결책을 다루는 절에서 같은 장면으로 다시 봅니다.'}
+  </p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, ease, lerp, replayClass, setAttrs, svg, watchNarrow, type Point } from '../../scripts/blog/scene/core';
+  import { createBoundary, createChip, type Rect } from '../../scripts/blog/scene/parts';
+  import { createPacketLayer } from '../../scripts/blog/scene/packets';
+  import { createStepPlayer } from '../../scripts/blog/scene/step-player';
+
+  // 독자가 볼 변화: 트랜잭션 안에서 Toss를 부르면 커밋 실패 뒤 롤백이 fence 행까지 지우고, 다음 요청이 같은 삽입에 성공해
+  // Toss 취소가 1 → 2가 된다. 진입점과 실행자를 나누면 상자가 둘로 갈라지고, 실패해도 커밋된 행이 남아 다음 요청은 튕기며 취소는 1에 머문다.
+  type Mode = 'intx' | 'split';
+  type State = { split: number; row: number; rowC: number; pe: number; peC: number; fail: number; fail2: number };
+  type Layout = {
+    view: [number, number];
+    whole: Rect; entry: Rect; disp: Rect;
+    row: Point; pe: Point; chipW: number;
+    origin: Point; dispLabel: Point;
+    toss: Rect; tossEntry: Point; dropFrom: number;
+  };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 236],
+      whole: { x: 12, y: 30, w: 378, h: 190 }, entry: { x: 12, y: 30, w: 220, h: 190 }, disp: { x: 246, y: 30, w: 144, h: 190 },
+      row: { x: 122, y: 104 }, pe: { x: 122, y: 168 }, chipW: 184,
+      origin: { x: 276, y: 104 }, dispLabel: { x: 318, y: 84 },
+      toss: { x: 420, y: 62, w: 128, h: 112 }, tossEntry: { x: 414, y: 104 }, dropFrom: 8,
+    },
+    narrow: {
+      view: [360, 352],
+      whole: { x: 8, y: 30, w: 344, h: 190 }, entry: { x: 8, y: 30, w: 196, h: 190 }, disp: { x: 214, y: 30, w: 138, h: 190 },
+      row: { x: 106, y: 104 }, pe: { x: 106, y: 168 }, chipW: 172,
+      origin: { x: 283, y: 140 }, dispLabel: { x: 283, y: 120 },
+      toss: { x: 219, y: 244, w: 128, h: 100 }, tossEntry: { x: 283, y: 238 }, dropFrom: 8,
+    },
+  };
+  type Spec = {
+    state: State; caption: string; rowText: string; peText: string; dispText: string;
+    count: number; tossSub: string; danger: boolean; note: string; detail: string;
+  };
+  const base: State = { split: 0, row: 1, rowC: 0, pe: 1, peC: 0, fail: 0, fail2: 0 };
+  const SPECS: Record<Mode, Spec[]> = {
+    intx: [
+      { state: { ...base }, caption: '소비 트랜잭션 · 요청 A', rowText: 'INSERT · 미커밋', peText: '기록 · 미커밋', dispText: '', count: 0, tossSub: '', danger: false, detail: '미커밋',
+        note: '요청 A를 소비하는 트랜잭션이 <code>payment_refunds</code>에 fence 행을 넣었습니다. 아직 커밋 전입니다.' },
+      { state: { ...base }, caption: '소비 트랜잭션 · 요청 A', rowText: 'INSERT · 미커밋', peText: '기록 · 미커밋', dispText: 'Toss 호출', count: 1, tossSub: '', danger: false, detail: '취소 1회',
+        note: '같은 트랜잭션 안에서 Toss 취소를 호출했고 성공했습니다. Toss 쪽 취소는 <strong>1회</strong>입니다.' },
+      { state: { ...base, fail: 1 }, caption: '소비 트랜잭션 · 요청 A', rowText: 'INSERT · 미커밋', peText: '기록 · 미커밋', dispText: '✕ 커밋 실패', count: 1, tossSub: '', danger: false, detail: '결과 저장 중',
+        note: '결과를 저장하고 커밋하려는 순간 실패합니다.' },
+      { state: { ...base, row: 0, pe: 0, fail: 1 }, caption: '소비 트랜잭션 · 롤백', rowText: '행 없음', peText: '기록 없음', dispText: '✕ 롤백', count: 1, tossSub: 'DB 롤백과 무관', danger: false, detail: 'fence 사라짐',
+        note: '트랜잭션이 롤백되며 fence 행과 <code>processed_events</code> 기록이 <strong>함께 사라집니다</strong>. Toss의 취소는 DB 롤백으로 되돌아오지 않습니다.' },
+      { state: { ...base }, caption: '소비 트랜잭션 · 요청 B', rowText: 'INSERT 성공 · 미커밋', peText: '기록 · 미커밋', dispText: 'Toss 호출', count: 2, tossSub: '같은 주문 두 번', danger: true, detail: '취소 2회',
+        note: '요청 B가 도착합니다. fence 행이 없으니 삽입이 성공하고 Toss를 다시 부릅니다. 취소는 <strong>2회</strong>가 됩니다.' },
+    ],
+    split: [
+      { state: { ...base, split: 1, rowC: 1, peC: 1 }, caption: '진입점 · 요청 A', rowText: 'REQUESTED · 커밋됨', peText: '기록 · 커밋됨', dispText: '', count: 0, tossSub: '', danger: false, detail: '행 커밋',
+        note: '진입점이 <code>REQUESTED</code> 행과 <code>processed_events</code>를 넣고 <strong>커밋</strong>한 뒤 끝납니다. Toss는 부르지 않습니다.' },
+      { state: { ...base, split: 1, rowC: 1, peC: 1 }, caption: '진입점 · 요청 A', rowText: 'CLAIMED · 커밋됨', peText: '기록 · 커밋됨', dispText: 'CAS 1행 → 호출', count: 1, tossSub: '', danger: false, detail: '취소 1회',
+        note: 'dispatcher가 <code>REQUESTED → CLAIMED</code> 조건부 UPDATE로 1행을 바꾸고 커밋한 뒤, 트랜잭션 밖에서 Toss 취소를 호출합니다.' },
+      { state: { ...base, split: 1, rowC: 1, peC: 1, fail2: 1 }, caption: '진입점 · 요청 A', rowText: 'CLAIMED · 커밋됨', peText: '기록 · 커밋됨', dispText: '✕ 커밋 실패', count: 1, tossSub: '', danger: false, detail: '결과 저장 중',
+        note: 'dispatcher가 결과를 저장하고 커밋하려는 순간 실패합니다.' },
+      { state: { ...base, split: 1, rowC: 1, peC: 1, fail2: 1 }, caption: '진입점 · 요청 A', rowText: 'CLAIMED · 그대로', peText: '기록 · 그대로', dispText: '✕ 결과만 롤백', count: 1, tossSub: 'DB 롤백과 무관', danger: false, detail: '행 남음',
+        note: '롤백되는 것은 dispatcher의 결과 기록뿐입니다. 진입점이 커밋한 행은 <code>CLAIMED</code>로 남습니다.' },
+      { state: { ...base, split: 1, rowC: 1, peC: 1 }, caption: '진입점 · 요청 B', rowText: 'CLAIMED · 새 INSERT 0행', peText: '기록 · 커밋됨', dispText: '', count: 1, tossSub: '1회 그대로', danger: false, detail: '0행 no-op',
+        note: '요청 B의 삽입은 유니크 제약에 걸려 <strong>0행 no-op</strong>으로 끝나고, Toss 취소는 1회에 머뭅니다. 오래된 <code>CLAIMED</code>는 reconciliation이 Toss 조회로 확정합니다(장면에는 그리지 않았습니다).' },
+    ],
+  };
+
+  const mix = (a: Rect, b: Rect, t: number): Rect => ({ x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t), w: lerp(a.w, b.w, t), h: lerp(a.h, b.h, t) });
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="refund-fence-rollback"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-rf-mode]')];
+    const details = [...demo.querySelectorAll<HTMLElement>('[data-step] small')];
+    let mode: Mode = modeButtons.length ? 'split' : 'intx';
+    let layout = LAYOUTS.wide;
+    let current = -1;
+
+    const violet = 'var(--scene-hue-violet)';
+    const entryBox = createBoundary(root, '');
+    const dispBox = createBoundary(root, 'dispatcher');
+    entryBox.rect.classList.add('rf-box');
+    dispBox.rect.classList.add('rf-box');
+    const call = svg('path', { class: 'rf-call' }, root);
+    const dispLabel = svg('text', { class: 'scene-label is-sans rf-disp', 'text-anchor': 'middle' }, root);
+
+    const row = createChip(root, { label: 'payment_refunds · 주문 7', hue: violet, width: LAYOUTS.wide.chipW });
+    const pe = createChip(root, { label: 'processed_events', hue: violet, width: LAYOUTS.wide.chipW });
+    const rowNarrow = createChip(root, { label: 'payment_refunds · 주문 7', hue: violet, width: LAYOUTS.narrow.chipW });
+    const peNarrow = createChip(root, { label: 'processed_events', hue: violet, width: LAYOUTS.narrow.chipW });
+    const rowText = svg('text', { class: 'scene-label is-sans rf-status', 'text-anchor': 'middle' }, root);
+    const peText = svg('text', { class: 'scene-label is-sans rf-status', 'text-anchor': 'middle' }, root);
+
+    const toss = svg('g', { class: 'scene-node rf-toss' }, root);
+    toss.style.setProperty('--node-hue', 'var(--scene-hue-pink)');
+    const tossBody = svg('g', { class: 'scene-node-body' }, toss);
+    const tossCard = svg('rect', { class: 'scene-node-card', rx: 12 }, tossBody);
+    const tossName = svg('text', { class: 'scene-caption', 'text-anchor': 'middle' }, tossBody);
+    tossName.textContent = 'Toss · 결제 7';
+    const tossCount = svg('text', { class: 'rf-count', 'text-anchor': 'middle' }, tossBody);
+    const tossUnit = svg('text', { class: 'scene-label is-sans rf-unit', 'text-anchor': 'middle' }, tossBody);
+    tossUnit.textContent = '취소 횟수';
+    const tossSub = svg('text', { class: 'scene-label is-sans rf-toss-sub', 'text-anchor': 'middle' }, tossBody);
+
+    const layer = createPacketLayer(root);
+
+    const scene = createScene<State>({ ...SPECS[mode][0].state }, (s) => {
+      const l = layout;
+      const narrow = l === LAYOUTS.narrow;
+      const entry = mix(l.whole, l.entry, s.split);
+      entryBox.place(entry);
+      dispBox.place({ ...l.disp, o: s.split });
+      entryBox.rect.classList.toggle('is-fail', s.fail > 0.5);
+      dispBox.rect.classList.toggle('is-fail', s.fail2 > 0.5);
+      // 실패 정도에 따라 상자 테두리를 위험 색으로 섞습니다.
+      entryBox.rect.style.setProperty('--rf-fail', String(s.fail));
+      dispBox.rect.style.setProperty('--rf-fail', String(s.fail2));
+
+      const chips = narrow ? [rowNarrow, peNarrow] : [row, pe];
+      const hidden = narrow ? [row, pe] : [rowNarrow, peNarrow];
+      hidden.forEach((chip) => chip.place({ x: -200, y: -200 }, 0));
+      chips[0].place(l.row, 0.22 + 0.78 * s.row);
+      chips[1].place(l.pe, 0.22 + 0.78 * s.pe);
+      chips[0].group.classList.toggle('is-pending', s.rowC < 0.5);
+      chips[1].group.classList.toggle('is-pending', s.peC < 0.5);
+      chips[0].group.classList.toggle('is-empty', s.row < 0.5);
+      chips[1].group.classList.toggle('is-empty', s.pe < 0.5);
+      setAttrs(rowText, { x: l.row.x, y: l.row.y + 26 });
+      setAttrs(peText, { x: l.pe.x, y: l.pe.y + 26 });
+
+      const o = l.origin;
+      const t = l.tossEntry;
+      setAttrs(call, { d: narrow ? `M ${o.x} ${o.y} L ${t.x} ${t.y}` : `M ${o.x} ${o.y} L ${t.x} ${t.y}` });
+      setAttrs(dispLabel, { x: lerp(narrow ? l.row.x + 150 : 300, l.dispLabel.x, s.split), y: l.dispLabel.y });
+
+      const b = l.toss;
+      setAttrs(tossCard, { x: b.x, y: b.y, width: b.w, height: b.h });
+      setAttrs(tossName, { x: b.x + b.w / 2, y: b.y + 22 });
+      setAttrs(tossCount, { x: b.x + b.w / 2, y: b.y + b.h / 2 + 8 });
+      setAttrs(tossUnit, { x: b.x + b.w / 2, y: b.y + b.h - 28 });
+      setAttrs(tossSub, { x: b.x + b.w / 2, y: b.y + b.h - 10 });
+    });
+
+    const say = (html: string) => { note.innerHTML = html; replayClass(note, 'is-entering'); };
+    const applyTexts = (sp: Spec, withCount: boolean) => {
+      entryBox.caption.textContent = sp.caption;
+      bumpText(rowText, sp.rowText);
+      bumpText(peText, sp.peText);
+      dispLabel.textContent = sp.dispText;
+      dispLabel.classList.toggle('is-danger', sp.dispText.startsWith('✕'));
+      tossSub.textContent = sp.tossSub;
+      if (withCount) setCount(sp.count, sp.danger);
+      say(sp.note);
+    };
+    const setCount = (n: number, danger: boolean) => {
+      bumpText(tossCount, String(n));
+      toss.classList.toggle('is-error', danger);
+      tossSub.classList.toggle('is-danger', danger);
+    };
+    const syncDetails = () => details.forEach((d, i) => { d.textContent = SPECS[mode][i].detail; });
+
+    /** 위에서 INSERT 패킷이 떨어져 행 칩에 닿습니다. bounce면 유니크 제약에서 튕깁니다. */
+    const insert = async (alive: () => boolean, bounce: boolean) => {
+      const l = layout;
+      const p = layer.spawn({ label: 'INSERT', at: { x: l.row.x, y: l.dropFrom } });
+      if (bounce) {
+        if (!(await p.bounce({ x: l.row.x, y: l.row.y - 14 }, 20)) || !alive()) return false;
+        p.relabel('0행', 'danger');
+        (layout === LAYOUTS.narrow ? rowNarrow : row).flash('is-shaking');
+        await scene.pause(duration.beat);
+        if (alive()) void p.fade();
+        return alive();
+      }
+      if (!(await p.travel([{ x: l.row.x, y: l.row.y - 12 }], 520, ease.out)) || !alive()) return false;
+      p.relabel('1행', 'flow');
+      void p.land(false);
+      return alive();
+    };
+    /** Toss로 취소 호출 패킷을 보냅니다. */
+    const callToss = async (alive: () => boolean, danger: boolean) => {
+      const l = layout;
+      const p = layer.spawn({ label: '취소', tone: danger ? 'danger' : 'dep', at: l.origin });
+      if (!(await p.travel([l.tossEntry], 640)) || !alive()) return false;
+      void p.land(false);
+      return alive();
+    };
+
+    const enter = async (index: number, instant: boolean) => {
+      const prev = current;
+      current = index;
+      const alive = scene.begin();
+      layer.clear();
+      const sp = SPECS[mode][index];
+      const sequential = !instant && (index === prev + 1 || (index === 0 && prev === 4));
+      if (!sequential) {
+        applyTexts(sp, true);
+        if (instant) scene.set({ ...sp.state });
+        else void scene.go({ ...sp.state }, duration.move);
+        return;
+      }
+      if (index === 0) {
+        // 처음으로 돌아올 때: 행을 비워 두고 INSERT가 떨어지며 행이 생깁니다.
+        setCount(0, false);
+        scene.set({ ...sp.state, row: 0, pe: 0, fail: 0, fail2: 0 });
+        applyTexts(sp, false);
+        if (!(await insert(alive, false))) return;
+        await scene.go({ ...sp.state }, duration.move);
+        return;
+      }
+      if (index === 1) {
+        applyTexts(sp, false);
+        await scene.go({ ...sp.state }, duration.snap);
+        if (!alive() || !(await callToss(alive, false))) return;
+        setCount(1, false);
+        return;
+      }
+      if (index === 2) {
+        applyTexts(sp, true);
+        await scene.go({ ...sp.state }, duration.snap, ease.overshoot);
+        if (!alive()) return;
+        replayClass(mode === 'intx' ? entryBox.rect : dispBox.rect, 'is-shaking');
+        return;
+      }
+      if (index === 3) {
+        applyTexts(sp, true);
+        await scene.go({ ...sp.state }, duration.draw);
+        return;
+      }
+      // index 4: 다음 요청
+      applyTexts({ ...sp, rowText: SPECS[mode][3].rowText, peText: SPECS[mode][3].peText, tossSub: '', dispText: '',
+        note: '요청 B가 도착해 같은 주문의 fence 행을 넣으려 합니다.' }, false);
+      await scene.go({ ...SPECS[mode][3].state, fail: 0, fail2: 0 }, duration.snap);
+      if (!alive()) return;
+      if (mode === 'split') {
+        if (!(await insert(alive, true))) return;
+        applyTexts(sp, true);
+        return;
+      }
+      if (!(await insert(alive, false))) return;
+      bumpText(rowText, sp.rowText);
+      bumpText(peText, sp.peText);
+      await scene.go({ ...sp.state }, duration.move);
+      if (!alive()) return;
+      dispLabel.textContent = sp.dispText;
+      if (!(await callToss(alive, true))) return;
+      applyTexts(sp, true);
+      replayClass(toss, 'is-shaking');
+    };
+
+    syncDetails();
+    createStepPlayer(demo, {
+      dwell: (i) => (i === 4 ? duration.dwellLast : duration.dwell + 400),
+      onStep: (i, instant) => { void enter(i, instant); },
+    });
+
+    modeButtons.forEach((button) => button.addEventListener('click', () => {
+      const next = button.dataset.rfMode as Mode;
+      modeButtons.forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
+      if (next === mode) return;
+      mode = next;
+      syncDetails();
+      // 같은 단계를 새 구조로 다시 그립니다. 상자가 갈라지거나 합쳐지는 것이 보이도록 보간합니다.
+      const index = current;
+      current = -1;
+      void enter(index, false);
+    }));
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      layer.clear();
+      scene.redraw();
+    });
+  });
+</script>
+
+<style is:global>
+  .db-demo[data-blog-demo="refund-fence-rollback"] .scene-note { min-height: 4.2em; }
+  [data-blog-demo="refund-fence-rollback"] .db-demo-controls { flex-wrap: wrap; }
+  [data-blog-demo="refund-fence-rollback"] .rf-box { stroke: color-mix(in srgb, var(--scene-danger) calc(var(--rf-fail, 0) * 100%), var(--scene-dep)); transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="refund-fence-rollback"] .rf-box.is-fail { fill: color-mix(in srgb, var(--scene-danger-soft) 60%, transparent); }
+  [data-blog-demo="refund-fence-rollback"] .rf-box.is-shaking { animation: scene-shake 420ms ease-in-out; }
+  [data-blog-demo="refund-fence-rollback"] .rf-call { fill: none; stroke: color-mix(in srgb, var(--scene-dep) 45%, transparent); stroke-width: 1.5; stroke-dasharray: 2 6; }
+  [data-blog-demo="refund-fence-rollback"] .rf-disp { fill: var(--slate); font-weight: 800; }
+  [data-blog-demo="refund-fence-rollback"] .rf-disp.is-danger { fill: var(--scene-danger); }
+  [data-blog-demo="refund-fence-rollback"] .rf-status { fill: var(--slate); font-weight: 700; transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="refund-fence-rollback"] .rf-status.is-bump,
+  [data-blog-demo="refund-fence-rollback"] .rf-count.is-bump { animation: scene-pop 420ms ease-out; }
+  [data-blog-demo="refund-fence-rollback"] .scene-table-chip.is-pending .scene-table-chip-card { stroke: var(--scene-temp); stroke-dasharray: 4 3; }
+  [data-blog-demo="refund-fence-rollback"] .rf-count { fill: var(--ink); font-family: var(--font-mono); font-size: 34px; font-weight: 800; transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="refund-fence-rollback"] .rf-toss.is-error .rf-count { fill: var(--scene-danger); }
+  [data-blog-demo="refund-fence-rollback"] .rf-toss-sub,
+  [data-blog-demo="refund-fence-rollback"] .rf-unit { fill: var(--slate); font-weight: 700; }
+  [data-blog-demo="refund-fence-rollback"] .rf-toss-sub.is-danger { fill: var(--scene-danger); }
+</style>

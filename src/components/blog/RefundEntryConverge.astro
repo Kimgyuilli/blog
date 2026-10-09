@@ -1,0 +1,298 @@
+---
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import '../../styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="refund-entry-converge" ariaLabel="세 진입점의 환불 요청이 payment_refunds.order_id 유니크 제약 하나에서 1행으로 모이고, 그 행을 dispatcher가 claim해 Toss를 부르는 모형" title="세 진입점, 행 하나" description="같은 주문 7에 대해 세 진입점이 환불을 요청합니다. 원하는 순서로, 같은 요청을 여러 번 눌러 보고 dispatcher를 돌려 보세요.">
+  <div class="scene-chips" role="group" aria-label="진입점">
+    <button type="button" class="scene-chip is-plain" data-rc-entry="0">Product 요청</button>
+    <button type="button" class="scene-chip is-plain" data-rc-entry="1">Order 요청</button>
+    <button type="button" class="scene-chip is-plain" data-rc-entry="2">Payment 로컬 감지</button>
+  </div>
+  <div class="scene-chips" role="group" aria-label="실행">
+    <button type="button" class="scene-chip is-plain" data-rc-dispatch>▶ dispatcher 한 주기</button>
+    <button type="button" class="scene-chip is-plain" data-rc-reset>처음부터</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic viewBox="0 0 560 270" role="img" aria-label="왼쪽에 세 진입점(Product 요청 소비, Order 요청 소비, Payment 로컬 감지), 가운데에 payment_refunds 행, 아래에 dispatcher, 오른쪽에 Toss가 있습니다. 첫 삽입이 행을 REQUESTED로 만들면 order_id 유니크 제약의 벽이 세워지고, 이후의 삽입은 순서와 횟수에 상관없이 벽에서 0행 no-op으로 튕깁니다. dispatcher가 CAS로 1행을 claim한 실행에서만 Toss를 부르므로, 행은 1개이고 Toss 취소 호출은 1회입니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">crash가 없는 경로만 그린 모형입니다. crash 때 Toss를 다시 부를 수 있는 경우는 본문의 crash 표에서 다룹니다. Kafka 재시도, DLQ, 결과 회신 이벤트(<code>payment.refunded</code>)와 종결된 fence에 온 요청의 회신 재발행은 그리지 않았습니다. 버튼 순서와 중복 조합은 설명용이고, 실제 코드에서 이 조합은 통합테스트로 고정했습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, ease, replayClass, setAttrs, svg, watchNarrow, type Point, type Box } from '../../scripts/blog/scene/core';
+  import { createNode, createWall, type NodeView } from '../../scripts/blog/scene/parts';
+  import { createPacketLayer } from '../../scripts/blog/scene/packets';
+  import { watchDemoPlayback } from '../../scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: 첫 삽입이 행을 만들면 order_id UNIQUE 벽이 서고, 그 뒤 어느 진입점이 몇 번 오든 벽에서 0행으로 튕긴다.
+  // dispatcher의 CAS가 1행을 바꾼 한 번만 Toss로 이어져, 행 1개 · Toss 호출 1회가 순서와 무관하게 유지된다.
+  type Status = 'none' | 'REQUESTED' | 'CLAIMED' | 'SUCCEEDED';
+  type State = { wall: number; row: number };
+  type Layout = {
+    view: [number, number];
+    entries: Box[]; wallX: number; wallY: [number, number];
+    row: Box; disp: Box; toss: Box;
+    casFrom: Point; casTo: Point; callFrom: Point; callTo: Point; tally: Point;
+  };
+  const ENTRIES = [
+    { label: 'Product', sub: '요청 소비', hue: 'var(--scene-hue-amber)', reason: 'PAID_BUT_UNRESERVED' },
+    { label: 'Order', sub: '요청 소비', hue: 'var(--scene-hue-blue)', reason: 'PAID_BUT_CANCELLED' },
+    { label: 'Payment', sub: '로컬 감지', hue: 'var(--scene-hue-violet)', reason: '' },
+  ];
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 270],
+      entries: [{ x: 70, y: 52, w: 120, h: 46 }, { x: 70, y: 122, w: 120, h: 46 }, { x: 70, y: 192, w: 120, h: 46 }],
+      wallX: 186, wallY: [28, 232],
+      row: { x: 300, y: 98, w: 156, h: 84 }, disp: { x: 300, y: 214, w: 132, h: 40 }, toss: { x: 486, y: 98, w: 120, h: 84 },
+      casFrom: { x: 300, y: 192 }, casTo: { x: 300, y: 142 }, callFrom: { x: 380, y: 98 }, callTo: { x: 424, y: 98 }, tally: { x: 280, y: 260 },
+    },
+    narrow: {
+      view: [360, 336],
+      entries: [{ x: 56, y: 52, w: 100, h: 44 }, { x: 56, y: 116, w: 100, h: 44 }, { x: 56, y: 180, w: 100, h: 44 }],
+      wallX: 122, wallY: [26, 206],
+      row: { x: 248, y: 116, w: 172, h: 84 }, disp: { x: 92, y: 270, w: 132, h: 40 }, toss: { x: 268, y: 270, w: 132, h: 64 },
+      casFrom: { x: 140, y: 248 }, casTo: { x: 216, y: 160 }, callFrom: { x: 268, y: 160 }, callTo: { x: 268, y: 236 }, tally: { x: 180, y: 328 },
+    },
+  };
+  const STATUS_TEXT: Record<Status, string> = { none: '행 없음', REQUESTED: 'REQUESTED', CLAIMED: 'CLAIMED', SUCCEEDED: 'SUCCEEDED' };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="refund-entry-converge"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const entryButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-rc-entry]')];
+    const dispatchButton = demo.querySelector<HTMLButtonElement>('[data-rc-dispatch]')!;
+    const resetButton = demo.querySelector<HTMLButtonElement>('[data-rc-reset]')!;
+    let layout = LAYOUTS.wide;
+
+    const tracks = ENTRIES.map(() => svg('path', { class: 'rc-track' }, root));
+    const casTrack = svg('path', { class: 'rc-track' }, root);
+    const callTrack = svg('path', { class: 'rc-track' }, root);
+    const nodes: NodeView[] = ENTRIES.map((e) => createNode(root, { label: e.label, hue: e.hue, sub: e.sub }));
+    const wall = createWall(root, 'order_id UNIQUE');
+
+    // payment_refunds 행 카드: 행이 없으면 점선 빈 칸, 생기면 실선 카드와 상태 값.
+    const rowGroup = svg('g', { class: 'scene-node rc-row' }, root);
+    rowGroup.style.setProperty('--node-hue', 'var(--scene-hue-violet)');
+    const rowBody = svg('g', { class: 'scene-node-body' }, rowGroup);
+    const rowCard = svg('rect', { class: 'scene-node-card', rx: 12 }, rowBody);
+    const rowCaption = svg('text', { class: 'scene-caption', 'text-anchor': 'middle' }, rowBody);
+    rowCaption.textContent = 'payment_refunds';
+    const rowKey = svg('text', { class: 'scene-label is-sans rc-key', 'text-anchor': 'middle' }, rowBody);
+    rowKey.textContent = 'order_id = 7';
+    const rowStatus = svg('text', { class: 'rc-status', 'text-anchor': 'middle' }, rowBody);
+
+    const disp = createNode(root, { label: 'dispatcher', hue: 'var(--scene-hue-violet)' });
+    const toss = svg('g', { class: 'scene-node rc-toss' }, root);
+    toss.style.setProperty('--node-hue', 'var(--scene-hue-pink)');
+    const tossBody = svg('g', { class: 'scene-node-body' }, toss);
+    const tossCard = svg('rect', { class: 'scene-node-card', rx: 12 }, tossBody);
+    const tossName = svg('text', { class: 'scene-caption', 'text-anchor': 'middle' }, tossBody);
+    tossName.textContent = 'Toss';
+    const tossCount = svg('text', { class: 'rc-count', 'text-anchor': 'middle' }, tossBody);
+    const tossUnit = svg('text', { class: 'scene-label is-sans rc-unit', 'text-anchor': 'middle' }, tossBody);
+    tossUnit.textContent = '취소 호출';
+    const tally = svg('text', { class: 'scene-label is-sans rc-tally', 'text-anchor': 'middle' }, root);
+    const layer = createPacketLayer(root);
+
+    let status: Status = 'none';
+    let tries = 0;
+    let noops = 0;
+    let calls = 0;
+    let claiming = false;
+
+    const scene = createScene<State>({ wall: 0, row: 0 }, (s) => {
+      const l = layout;
+      l.entries.forEach((box, i) => {
+        nodes[i].setBox(box);
+        setAttrs(tracks[i], { d: `M ${box.x + box.w / 2 + 4} ${box.y} L ${l.row.x - l.row.w / 2 - 6} ${l.row.y}` });
+      });
+      wall.place({ x: l.wallX, y1: l.wallY[0], y2: l.wallY[1] }, { show: s.wall, ghost: 0 }, { x: l.wallX, y: l.wallY[0] - 8 });
+      const r = l.row;
+      setAttrs(rowCard, { x: r.x - r.w / 2, y: r.y - r.h / 2, width: r.w, height: r.h });
+      setAttrs(rowCaption, { x: r.x, y: r.y - r.h / 2 + 20 });
+      setAttrs(rowKey, { x: r.x, y: r.y - r.h / 2 + 38 });
+      setAttrs(rowStatus, { x: r.x, y: r.y + r.h / 2 - 14 });
+      rowGroup.classList.toggle('is-empty', s.row < 0.5);
+      rowBody.style.opacity = String(0.45 + 0.55 * s.row);
+      disp.setBox(l.disp);
+      setAttrs(casTrack, { d: `M ${l.casFrom.x} ${l.casFrom.y} L ${l.casTo.x} ${l.casTo.y}` });
+      setAttrs(callTrack, { d: `M ${l.callFrom.x} ${l.callFrom.y} L ${l.callTo.x} ${l.callTo.y}` });
+      const t = l.toss;
+      const narrow = l === LAYOUTS.narrow;
+      setAttrs(tossCard, { x: t.x - t.w / 2, y: t.y - t.h / 2, width: t.w, height: t.h });
+      setAttrs(tossName, { x: narrow ? t.x - 34 : t.x, y: narrow ? t.y - 4 : t.y - t.h / 2 + 22 });
+      setAttrs(tossUnit, { x: narrow ? t.x - 34 : t.x, y: narrow ? t.y + 14 : t.y + t.h / 2 - 12 });
+      setAttrs(tossCount, { x: narrow ? t.x + 36 : t.x, y: narrow ? t.y + 12 : t.y + 12 });
+      setAttrs(tally, { x: l.tally.x, y: l.tally.y });
+    });
+
+    const say = (html: string) => { note.innerHTML = html; replayClass(note, 'is-entering'); };
+    const setStatus = (next: Status) => {
+      status = next;
+      bumpText(rowStatus, STATUS_TEXT[next]);
+      rowGroup.classList.toggle('is-done', next === 'SUCCEEDED');
+      rowStatus.classList.toggle('is-temp', next === 'CLAIMED');
+    };
+    const updateTally = () => {
+      tally.textContent = `INSERT 시도 ${tries} · 1행 ${status === 'none' ? 0 : 1} · 0행 no-op ${noops} · Toss 호출 ${calls}`;
+    };
+    const reset = () => {
+      scene.begin();
+      layer.clear();
+      claiming = false;
+      tries = 0;
+      noops = 0;
+      calls = 0;
+      setStatus('none');
+      bumpText(tossCount, '0');
+      scene.set({ wall: 0, row: 0 });
+      updateTally();
+      entryButtons.forEach((b) => b.removeAttribute('data-state'));
+      dispatchButton.removeAttribute('data-state');
+    };
+
+    const track = (i: number): Point[] => {
+      const l = layout;
+      const box = l.entries[i];
+      const from = { x: box.x + box.w / 2 + 4, y: box.y };
+      const to = { x: l.row.x - l.row.w / 2 - 6, y: l.row.y };
+      return [from, to];
+    };
+    /** 진입점 i의 INSERT 하나. 행이 없으면 1행으로 행을 만들고, 있으면 유니크 벽에서 0행으로 튕깁니다. */
+    const sendEntry = async (i: number) => {
+      // 동시에 보낸 삽입은 먼저 출발한 하나만 행을 만듭니다(유니크 제약이 둘 중 하나만 통과시킵니다).
+      const first = status === 'none' && !claiming;
+      if (first) claiming = true;
+      const [from, to] = track(i);
+      const p = layer.spawn({ label: 'INSERT', tone: 'dep', at: from });
+      tries += 1;
+      updateTally();
+      replayClass(nodes[i].group, 'is-ok');
+      if (!first) {
+        // 벽까지의 지점: 출발점에서 행으로 가는 직선이 벽과 만나는 곳
+        const l = layout;
+        const t = (l.wallX - 6 - from.x) / (to.x - from.x);
+        const hit = { x: l.wallX - 6, y: from.y + (to.y - from.y) * t };
+        const ok = await p.bounce(hit, 26);
+        if (!ok) return;
+        p.relabel('0행', 'danger');
+        noops += 1;
+        updateTally();
+        say(`${ENTRIES[i].label}의 삽입은 <code>order_id</code> 유니크 제약에 걸려 <strong>0행</strong>입니다. 예외 없이 정상 no-op으로 끝나고, 행은 그대로 <code>${STATUS_TEXT[status === 'none' ? 'REQUESTED' : status]}</code>입니다.`);
+        void p.fade(900);
+        return;
+      }
+      const ok = await p.travel([to], 820, ease.out);
+      claiming = false;
+      if (!ok) return;
+      p.relabel('1행', 'flow');
+      void p.land(false);
+      setStatus('REQUESTED');
+      updateTally();
+      say(`${ENTRIES[i].label}의 삽입이 먼저 도착해 <code>REQUESTED</code> 행을 만들었습니다. 이제 같은 <code>order_id</code>의 삽입은 유니크 제약에 막힙니다.`);
+      void scene.go({ wall: 1, row: 1 }, duration.draw);
+      dispatchButton.setAttribute('data-state', 'next');
+    };
+
+    /** dispatcher 한 주기: REQUESTED → CLAIMED CAS가 1행을 바꾼 경우에만 Toss를 부릅니다. */
+    const dispatch = async () => {
+      const l = layout;
+      dispatchButton.removeAttribute('data-state');
+      replayClass(disp.group, 'is-ok');
+      const p = layer.spawn({ label: 'CAS', tone: 'dep', at: l.casFrom });
+      if (status !== 'REQUESTED') {
+        const ok = await p.bounce(l.casTo, 18);
+        if (!ok) return;
+        p.relabel('0행', 'danger');
+        say(status === 'none'
+          ? '집을 <code>REQUESTED</code> 행이 없어 CAS가 <strong>0행</strong>입니다. dispatcher는 아무것도 부르지 않습니다.'
+          : `행이 이미 <code>${STATUS_TEXT[status]}</code>라 <code>REQUESTED → CLAIMED</code> CAS가 <strong>0행</strong>입니다. Toss를 다시 부르지 않습니다.`);
+        void p.fade(900);
+        return;
+      }
+      if (!(await p.travel([l.casTo], 560, ease.out))) return;
+      p.relabel('1행', 'flow');
+      void p.land(false);
+      setStatus('CLAIMED');
+      say('CAS가 <code>REQUESTED → CLAIMED</code>로 <strong>1행</strong>을 바꿨습니다. 이 실행만 Toss를 부릅니다.');
+      await scene.pause(duration.beat);
+      const c = layer.spawn({ label: '취소', tone: 'dep', at: l.callFrom });
+      if (!(await c.travel([l.callTo], 600))) return;
+      void c.land(false);
+      calls += 1;
+      bumpText(tossCount, String(calls));
+      updateTally();
+      await scene.pause(duration.beat);
+      setStatus('SUCCEEDED');
+      updateTally();
+      say(`Toss 취소가 성공해 행이 <code>SUCCEEDED</code>가 됐습니다. 지금까지 INSERT ${tries}번 중 행을 만든 것은 1번이고, Toss 호출은 <strong>1회</strong>입니다. 다른 진입점을 더 눌러 보세요.`);
+    };
+
+    entryButtons.forEach((button) => button.addEventListener('click', () => { void sendEntry(Number(button.dataset.rcEntry)); }));
+    dispatchButton.addEventListener('click', () => { void dispatch(); });
+    resetButton.addEventListener('click', () => {
+      reset();
+      say('세 진입점 중 아무거나 눌러 보세요. 같은 버튼을 여러 번 눌러도 됩니다.');
+      entryButtons.forEach((b) => b.setAttribute('data-state', 'next'));
+    });
+
+    // 처음 보일 때 한 번: Order → Payment → Order(중복) → dispatcher → Product
+    const autoplay = async () => {
+      const alive = scene.begin();
+      const gap = () => scene.pause(duration.read / 2);
+      await scene.pause(400);
+      for (const action of [() => sendEntry(1), () => sendEntry(2), () => sendEntry(1), () => dispatch(), () => sendEntry(0)]) {
+        if (!alive()) return;
+        await action();
+        if (!alive()) return;
+        await gap();
+      }
+      if (!alive()) return;
+      say(`INSERT는 ${tries}번 시도됐지만 행은 1개이고, Toss 취소 호출은 <strong>${calls}회</strong>입니다. <strong>처음부터</strong>를 누르고 순서를 바꿔 직접 보내 보세요.`);
+    };
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      layer.clear();
+      scene.redraw();
+    });
+
+    reset();
+    say('세 진입점이 같은 주문 7에 대해 <code>payment_refunds</code>에 행을 넣으려 합니다.');
+    let played = false;
+    watchDemoPlayback(demo, ({ shouldPlay, reducedMotion }) => {
+      if (played) return;
+      if (reducedMotion) {
+        played = true;
+        say('세 진입점 중 아무거나 눌러 보세요. 첫 삽입만 행을 만들고, 나머지는 <code>order_id</code> 유니크 제약에서 0행 no-op이 됩니다.');
+        return;
+      }
+      if (!shouldPlay) return;
+      played = true;
+      void autoplay();
+    }, { threshold: 0.5 });
+  });
+</script>
+
+<style is:global>
+  .db-demo[data-blog-demo="refund-entry-converge"] .scene-note { min-height: 4.2em; }
+  [data-blog-demo="refund-entry-converge"] .scene-chips + .scene-chips { margin-top: 6px; }
+  [data-blog-demo="refund-entry-converge"] .rc-track { fill: none; stroke: color-mix(in srgb, var(--scene-dep) 40%, transparent); stroke-width: 1.5; stroke-dasharray: 2 6; }
+  [data-blog-demo="refund-entry-converge"] .rc-row.is-empty .scene-node-card { fill: none; stroke-dasharray: 4 4; }
+  [data-blog-demo="refund-entry-converge"] .rc-key { fill: var(--slate); font-family: var(--font-mono); }
+  [data-blog-demo="refund-entry-converge"] .rc-status { fill: var(--ink); font-family: var(--font-mono); font-size: 15px; font-weight: 800; transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="refund-entry-converge"] .rc-status.is-temp { fill: var(--scene-temp); }
+  [data-blog-demo="refund-entry-converge"] .rc-row.is-done .rc-status { fill: var(--scene-flow-ink); }
+  [data-blog-demo="refund-entry-converge"] .rc-count { fill: var(--ink); font-family: var(--font-mono); font-size: 30px; font-weight: 800; transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="refund-entry-converge"] .rc-status.is-bump,
+  [data-blog-demo="refund-entry-converge"] .rc-count.is-bump { animation: scene-pop 420ms ease-out; }
+  [data-blog-demo="refund-entry-converge"] .rc-tally,
+  [data-blog-demo="refund-entry-converge"] .rc-unit { fill: var(--slate); font-weight: 700; }
+</style>

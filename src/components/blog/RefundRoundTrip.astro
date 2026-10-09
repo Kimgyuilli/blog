@@ -1,0 +1,380 @@
+---
+/**
+ * 환불 한 건의 왕복 지도: 세 곳의 감지 → 요청 토픽 → payment_refunds 행 하나 → dispatcher의 Toss 호출 → payment.refunded 회신.
+ * 결과(SUCCEEDED / FAILED / UNRESOLVED)를 바꾸면 회신에 따라 원장 상태가 달라지거나, 회신이 아예 나가지 않는 차이를 보여 줍니다.
+ */
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import SceneTimeline from './SceneTimeline.astro';
+import '../../styles/scene.css';
+
+const steps = [
+  { name: '감지', detail: '세 곳이 각자' },
+  { name: '요청', detail: '행 1개' },
+  { name: '실행', detail: 'Toss 취소' },
+  { name: '회신', detail: '원장 갱신' },
+];
+---
+
+<InteractiveDemoFrame
+  demoId="refund-round-trip"
+  ariaLabel="세 서비스가 감지한 환불 요청이 payment_refunds 행 하나로 모이고, dispatcher가 Toss를 부른 뒤 payment.refunded 회신이 Order, Product, Notification의 상태를 결과에 따라 바꾸는 흐름"
+  title="환불 한 건의 왕복"
+  description="같은 주문 7의 환불이 감지부터 회신까지 어디를 지나는지 봅니다. 결과를 바꿔 회신에 따라 원장 상태가 어떻게 달라지는지 비교해 보세요."
+>
+  <DemoControls ariaLabel="Toss 호출 결과">
+    <button type="button" data-rt-result="SUCCEEDED" aria-pressed="true">SUCCEEDED</button>
+    <button type="button" data-rt-result="FAILED" aria-pressed="false">FAILED</button>
+    <button type="button" data-rt-result="UNRESOLVED" aria-pressed="false">UNRESOLVED</button>
+  </DemoControls>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic viewBox="0 0 560 300" role="img" aria-label="왼쪽에 Product, Order, Notification, 가운데 payment-service 영역에 Payment 로컬 감지, payment_refunds 행, dispatcher, 오른쪽에 Toss가 있습니다. Product와 Order는 각자의 요청 토픽으로, Payment는 직접 같은 행에 삽입을 시도하고 행은 하나만 남습니다. dispatcher가 Toss 취소를 부른 뒤 결과가 SUCCEEDED나 FAILED로 확정되면 payment.refunded가 Order, Product, Notification으로 돌아가고, UNRESOLVED면 회신이 나가지 않아 Order 원장은 OPEN으로 남습니다."></svg>
+  </div>
+  <SceneTimeline ariaLabel="네 단계" steps={steps} />
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">
+    crash가 없는 경로만 그린 모형입니다. Outbox poller와 Kafka 전달 지연, 재시도, reconciliation의 Toss 조회, 종결된 fence에 온 요청의 회신 재발행은 그리지 않았습니다. 요청 세 개가 모두 도착하는 순서와 주문 번호 7은 설명용 예시입니다.
+  </p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, ease, quadAt, replayClass, setAttrs, svg, watchNarrow, type Box, type Point } from '../../scripts/blog/scene/core';
+  import { createBoundary, createCurve, createNode, type LabelSpot, type NodeView } from '../../scripts/blog/scene/parts';
+  import { createPacketLayer } from '../../scripts/blog/scene/packets';
+  import { createStepPlayer } from '../../scripts/blog/scene/step-player';
+
+  // 독자가 볼 변화: 세 곳이 각자 감지해도 요청은 payment_refunds 행 하나로 모이고, 결과는 payment.refunded 하나로 돌아간다.
+  // 결과를 바꾸면 Order 원장이 RESOLVED / REFUND_FAILED가 되거나, UNRESOLVED면 회신이 나가지 않아 OPEN으로 남는다.
+  type Result = 'SUCCEEDED' | 'FAILED' | 'UNRESOLVED';
+  type State = { req: number; rep: number; call: number; row: number };
+  type Curve = { a: Point; c: Point; b: Point };
+  type Spot = Point & { anchor: LabelSpot['anchor'] };
+  type Layout = {
+    view: [number, number];
+    product: Box; order: Box; noti: Box; pay: Box; disp: Box; toss: Box; row: Box;
+    zone: { x: number; y: number; w: number; h: number }; zoneCaption: Spot;
+    req: Curve[]; rep: Curve[]; call: Curve; cas: [Point, Point];
+    reqLabels: Spot[]; repLabel: Spot;
+  };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 300],
+      product: { x: 72, y: 76, w: 124, h: 50 }, order: { x: 72, y: 166, w: 124, h: 50 }, noti: { x: 72, y: 256, w: 124, h: 50 },
+      pay: { x: 308, y: 76, w: 150, h: 44 }, row: { x: 308, y: 166, w: 164, h: 64 }, disp: { x: 308, y: 256, w: 150, h: 40 },
+      toss: { x: 494, y: 166, w: 96, h: 72 },
+      zone: { x: 206, y: 20, w: 204, h: 268 }, zoneCaption: { x: 222, y: 40, anchor: 'start' },
+      req: [
+        { a: { x: 138, y: 76 }, c: { x: 200, y: 80 }, b: { x: 222, y: 150 } },
+        { a: { x: 138, y: 166 }, c: { x: 180, y: 166 }, b: { x: 222, y: 166 } },
+        { a: { x: 308, y: 100 }, c: { x: 308, y: 116 }, b: { x: 308, y: 130 } },
+      ],
+      rep: [
+        { a: { x: 222, y: 150 }, c: { x: 200, y: 84 }, b: { x: 140, y: 80 } },
+        { a: { x: 222, y: 170 }, c: { x: 180, y: 172 }, b: { x: 140, y: 170 } },
+        { a: { x: 222, y: 186 }, c: { x: 200, y: 250 }, b: { x: 140, y: 254 } },
+      ],
+      call: { a: { x: 385, y: 256 }, c: { x: 494, y: 256 }, b: { x: 494, y: 206 } },
+      cas: [{ x: 352, y: 234 }, { x: 352, y: 200 }],
+      reqLabels: [{ x: 12, y: 42, anchor: 'start' }, { x: 12, y: 132, anchor: 'start' }],
+      repLabel: { x: 12, y: 222, anchor: 'start' },
+    },
+    narrow: {
+      view: [360, 376],
+      product: { x: 66, y: 62, w: 112, h: 46 }, order: { x: 66, y: 150, w: 112, h: 46 }, noti: { x: 66, y: 238, w: 112, h: 46 },
+      pay: { x: 252, y: 68, w: 150, h: 40 }, row: { x: 252, y: 160, w: 172, h: 64 }, disp: { x: 252, y: 258, w: 150, h: 40 },
+      toss: { x: 252, y: 340, w: 150, h: 52 },
+      zone: { x: 146, y: 20, w: 208, h: 282 }, zoneCaption: { x: 346, y: 40, anchor: 'end' },
+      req: [
+        { a: { x: 126, y: 62 }, c: { x: 150, y: 70 }, b: { x: 162, y: 146 } },
+        { a: { x: 126, y: 150 }, c: { x: 146, y: 152 }, b: { x: 162, y: 160 } },
+        { a: { x: 252, y: 90 }, c: { x: 252, y: 110 }, b: { x: 252, y: 124 } },
+      ],
+      rep: [
+        { a: { x: 162, y: 142 }, c: { x: 150, y: 76 }, b: { x: 128, y: 66 } },
+        { a: { x: 162, y: 166 }, c: { x: 146, y: 156 }, b: { x: 128, y: 152 } },
+        { a: { x: 162, y: 182 }, c: { x: 150, y: 236 }, b: { x: 128, y: 240 } },
+      ],
+      call: { a: { x: 252, y: 280 }, c: { x: 252, y: 296 }, b: { x: 252, y: 310 } },
+      cas: [{ x: 300, y: 236 }, { x: 300, y: 196 }],
+      reqLabels: [{ x: 10, y: 30, anchor: 'start' }, { x: 10, y: 118, anchor: 'start' }],
+      repLabel: { x: 10, y: 206, anchor: 'start' },
+    },
+  };
+
+  type Look = [string, '' | 'is-temp' | 'is-done' | 'is-error'];
+  const TOSS: Record<Result, Look> = { SUCCEEDED: ['취소 성공', 'is-done'], FAILED: ['거절(4xx)', 'is-error'], UNRESOLVED: ['응답 없음', 'is-temp'] };
+  const ROW: Record<Result, Look> = { SUCCEEDED: ['SUCCEEDED', 'is-done'], FAILED: ['FAILED', 'is-error'], UNRESOLVED: ['UNRESOLVED', 'is-temp'] };
+
+  /** 단계 i가 끝났을 때 각 노드의 보조 문구와 상태. */
+  const looks = (i: number, r: Result) => {
+    const replied = i === 3 && r !== 'UNRESOLVED';
+    return {
+      product: (replied ? (r === 'SUCCEEDED' ? ['종결 기록', 'is-done'] : ['실패 기록', 'is-error']) : ['감지 표시', 'is-temp']) as Look,
+      order: (i === 3 ? (r === 'SUCCEEDED' ? ['RESOLVED', 'is-done'] : r === 'FAILED' ? ['REFUND_FAILED', 'is-error'] : ['OPEN 그대로', 'is-temp']) : ['원장 OPEN', 'is-temp']) as Look,
+      pay: ['로컬 감지', 'is-temp'] as Look,
+      noti: (replied ? (r === 'SUCCEEDED' ? ['환불 알림', 'is-done'] : ['알리지 않음', '']) : ['', '']) as Look,
+      toss: (i >= 2 ? TOSS[r] : ['', '']) as Look,
+      row: (i === 0 ? ['행 없음', ''] : i === 1 ? ['REQUESTED', ''] : ROW[r]) as Look,
+    };
+  };
+  const stateOf = (i: number, r: Result): State => ({
+    req: i === 1 || i === 2 ? 1 : 0,
+    rep: i === 3 && r !== 'UNRESOLVED' ? 1 : 0,
+    call: i >= 2 ? 1 : 0,
+    row: i >= 1 ? 1 : 0,
+  });
+  const NOTES: Record<number, (r: Result) => string> = {
+    0: () => '같은 주문 7을 Product, Order, Payment가 각자 감지합니다. Product와 Order는 감지 기록과 요청 Outbox를 한 트랜잭션에 커밋합니다.',
+    1: () => '요청 세 개가 같은 <code>order_id</code>로 행을 넣으려 하지만 <strong>1행</strong>만 남고 나머지는 0행 no-op입니다. 요청에는 금액을 싣지 않습니다.',
+    2: (r) => r === 'SUCCEEDED'
+      ? 'dispatcher가 행을 <code>CLAIMED</code>로 바꾼 실행만 Toss 취소를 부릅니다. 취소가 성공해 행은 <code>SUCCEEDED</code>입니다.'
+      : r === 'FAILED'
+        ? 'dispatcher가 Toss 취소를 불렀지만 영구 실패로 거절됐습니다. 행은 <code>FAILED</code>로 확정됩니다.'
+        : 'Toss 호출이 타임아웃돼 결과를 모릅니다. 행은 <code>UNRESOLVED</code>로 남고, reconciliation이 Toss 조회로 확정할 때까지 기다립니다.',
+    3: (r) => r === 'SUCCEEDED'
+      ? '<code>payment.refunded</code>가 세 서비스로 돌아갑니다. Order 원장은 <code>RESOLVED</code>가 되고, Notification은 환불 완료를 알립니다.'
+      : r === 'FAILED'
+        ? '같은 회신이지만 결과가 <code>FAILED</code>라 Order 원장은 <code>REFUND_FAILED</code>가 됩니다. Notification은 성공만 알리므로 사용자에게 알리지 않습니다.'
+        : '결과가 확정되지 않았으니 <strong>회신을 발행하지 않습니다</strong>. Order 원장은 <code>OPEN</code>으로 남고, reconciliation이 확정한 뒤에야 회신이 나갑니다.',
+  };
+
+  const sample = (k: Curve, n = 14): Point[] => Array.from({ length: n + 1 }, (_, i) => {
+    const p = quadAt(k.a, k.c, k.b, i / n);
+    return { x: p.x, y: p.y };
+  });
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="refund-round-trip"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const resultButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-rt-result]')];
+    let layout = LAYOUTS.wide;
+    let result: Result = 'SUCCEEDED';
+    let current = -1;
+
+    const zone = createBoundary(root, 'payment-service', 'zone');
+    const casTrack = svg('path', { class: 'rt-track' }, root);
+    const req = [
+      createCurve(root, 'stock.compensation.requested'),
+      createCurve(root, 'order.compensation.requested'),
+      createCurve(root, ''),
+    ];
+    const rep = [createCurve(root, 'payment.refunded'), createCurve(root, ''), createCurve(root, '')];
+    const call = createCurve(root, '');
+
+    const node = (label: string, hue: string) => {
+      const n = createNode(root, { label, hue });
+      n.group.classList.add('is-sans-sub');
+      return n;
+    };
+    const amber = 'var(--scene-hue-amber)';
+    const blue = 'var(--scene-hue-blue)';
+    const violet = 'var(--scene-hue-violet)';
+    const product = node('Product', amber);
+    const order = node('Order', blue);
+    const noti = node('Notification', 'var(--scene-hue-cyan)');
+    const pay = node('Payment', violet);
+    const disp = node('dispatcher', violet);
+    const toss = node('Toss', 'var(--scene-hue-pink)');
+
+    // payment_refunds 행 카드: 행이 없으면 흐린 점선, 생기면 실선 카드와 상태 값.
+    const rowGroup = svg('g', { class: 'scene-node rt-row' }, root);
+    rowGroup.style.setProperty('--node-hue', violet);
+    const rowBody = svg('g', { class: 'scene-node-body' }, rowGroup);
+    const rowCard = svg('rect', { class: 'scene-node-card', rx: 12 }, rowBody);
+    const rowCaption = svg('text', { class: 'scene-caption', 'text-anchor': 'middle' }, rowBody);
+    rowCaption.textContent = 'payment_refunds';
+    const rowKey = svg('text', { class: 'scene-label is-sans rt-key', 'text-anchor': 'middle' }, rowBody);
+    rowKey.textContent = 'order_id = 7';
+    const rowStatus = svg('text', { class: 'rt-status', 'text-anchor': 'middle' }, rowBody);
+    const layer = createPacketLayer(root);
+
+    const scene = createScene<State>(stateOf(0, result), (s) => {
+      const l = layout;
+      zone.place(l.zone, l.zoneCaption);
+      product.setBox(l.product);
+      order.setBox(l.order);
+      noti.setBox(l.noti);
+      pay.setBox(l.pay);
+      disp.setBox(l.disp);
+      toss.setBox(l.toss);
+      req.forEach((curve, i) => curve.draw(l.req[i].a, l.req[i].c, l.req[i].b, s.req, l.reqLabels[i] ?? { ...l.req[i].b, anchor: 'start' }));
+      rep.forEach((curve, i) => curve.draw(l.rep[i].a, l.rep[i].c, l.rep[i].b, s.rep, l.repLabel));
+      call.draw(l.call.a, l.call.c, l.call.b, s.call, { ...l.call.b, anchor: 'start' });
+      setAttrs(casTrack, { d: `M ${l.cas[0].x} ${l.cas[0].y} L ${l.cas[1].x} ${l.cas[1].y}` });
+      casTrack.style.opacity = String(s.row);
+      const r = l.row;
+      setAttrs(rowCard, { x: r.x - r.w / 2, y: r.y - r.h / 2, width: r.w, height: r.h });
+      setAttrs(rowCaption, { x: r.x, y: r.y - r.h / 2 + 20 });
+      setAttrs(rowKey, { x: r.x, y: r.y - r.h / 2 + 37 });
+      setAttrs(rowStatus, { x: r.x, y: r.y + r.h / 2 - 10 });
+      rowGroup.classList.toggle('is-empty', s.row < 0.5);
+      rowBody.style.opacity = String(0.45 + 0.55 * s.row);
+    });
+
+    const say = (html: string) => { note.innerHTML = html; replayClass(note, 'is-entering'); };
+    const setLook = (n: NodeView, [text, cls]: Look) => {
+      n.setSub(text);
+      ['is-temp', 'is-done', 'is-error'].forEach((c) => n.group.classList.toggle(c, c === cls));
+    };
+    const setRow = ([text, cls]: Look) => {
+      if (rowStatus.textContent !== text) bumpText(rowStatus, text);
+      rowGroup.classList.toggle('is-done', cls === 'is-done');
+      rowGroup.classList.toggle('is-error', cls === 'is-error');
+      rowStatus.classList.toggle('is-temp', cls === 'is-temp');
+    };
+    const paint = (i: number) => {
+      const lk = looks(i, result);
+      setLook(product, lk.product);
+      setLook(order, lk.order);
+      setLook(pay, lk.pay);
+      setLook(noti, lk.noti);
+      setLook(toss, lk.toss);
+      setRow(lk.row);
+    };
+
+    /** 단계 1: 세 요청이 조금씩 늦게 출발해 같은 행으로 갑니다. 먼저 닿은 하나만 1행입니다. */
+    const sendRequests = async (alive: () => boolean) => {
+      const l = layout;
+      let first = true;
+      const one = async (k: number, delay: number) => {
+        await scene.pause(delay);
+        if (!alive()) return;
+        const route = sample(l.req[k]);
+        const p = layer.spawn({ label: '요청', at: route[0] });
+        if (!(await p.travel(route, 760, ease.out)) || !alive()) return;
+        if (first) {
+          first = false;
+          p.relabel('1행', 'flow');
+          void p.land(false);
+          setRow(['REQUESTED', '']);
+          void scene.go({ ...scene.state, row: 1 }, duration.move);
+        } else {
+          p.relabel('0행', 'danger');
+          void p.fade(900);
+        }
+      };
+      await Promise.all([one(1, 0), one(0, 200), one(2, 420)]);
+    };
+
+    /** 단계 2: CAS로 행을 집은 dispatcher만 Toss를 부르고, 결과가 행에 남습니다. */
+    const execute = async (alive: () => boolean) => {
+      const l = layout;
+      const c = layer.spawn({ label: 'CAS', at: l.cas[0] });
+      if (!(await c.travel([l.cas[1]], 520, ease.out)) || !alive()) return;
+      c.relabel('1행', 'flow');
+      void c.land(false);
+      setRow(['CLAIMED', 'is-temp']);
+      await scene.go({ ...scene.state, call: 1 }, duration.draw);
+      if (!alive()) return;
+      const p = layer.spawn({ label: '취소', at: l.call.a });
+      if (!(await p.travel(sample(l.call), 640)) || !alive()) return;
+      if (result === 'UNRESOLVED') { p.relabel('?', 'temp'); void p.fade(900); }
+      else { void p.land(false); }
+      setLook(toss, TOSS[result]);
+      if (result === 'FAILED') toss.flash('is-shaking');
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      setRow(ROW[result]);
+    };
+
+    /** 단계 3: 요청 곡선을 거두고, 확정된 결과만 회신으로 돌아갑니다. */
+    const reply = async (alive: () => boolean) => {
+      await scene.go({ ...scene.state, req: 0 }, duration.cut);
+      if (!alive()) return;
+      if (result === 'UNRESOLVED') {
+        paint(3);
+        order.flash('is-shaking');
+        return;
+      }
+      await scene.go({ ...scene.state, rep: 1 }, duration.draw);
+      if (!alive()) return;
+      const l = layout;
+      const lk = looks(3, result);
+      const targets: [NodeView, Look][] = [[product, lk.product], [order, lk.order], [noti, lk.noti]];
+      await Promise.all(l.rep.map(async (k, i) => {
+        await scene.pause(i * 160);
+        if (!alive()) return;
+        const p = layer.spawn({ label: result, tone: result === 'SUCCEEDED' ? 'flow' : 'danger', at: k.a });
+        if (!(await p.travel(sample(k), 700, ease.out)) || !alive()) return;
+        void p.fade(320);
+        setLook(targets[i][0], targets[i][1]);
+        targets[i][0].flash(result === 'SUCCEEDED' ? 'is-ok' : 'is-shaking');
+      }));
+    };
+
+    const enter = async (index: number, instant: boolean) => {
+      const prev = current;
+      current = index;
+      const alive = scene.begin();
+      layer.clear();
+      say(NOTES[index](result));
+      const sequential = !instant && index === prev + 1;
+      if (!sequential) {
+        paint(index);
+        if (instant) scene.set(stateOf(index, result));
+        else void scene.go(stateOf(index, result), duration.move);
+        return;
+      }
+      // 앞 단계의 끝 모습에서 출발해 이번 단계의 움직임을 보여 줍니다.
+      paint(index - 1);
+      if (index === 1) {
+        setRow(['행 없음', '']);
+        scene.set({ ...stateOf(0, result) });
+        await scene.go({ ...scene.state, req: 1 }, duration.draw);
+        if (alive()) await sendRequests(alive);
+      } else if (index === 2) {
+        await execute(alive);
+      } else {
+        await reply(alive);
+      }
+      if (!alive()) return;
+      paint(index);
+      void scene.go(stateOf(index, result), duration.move);
+    };
+
+    createStepPlayer(demo, {
+      dwell: (i) => (i === 3 ? duration.dwellLast : duration.dwell + 600),
+      onStep: (i, instant) => { void enter(i, instant); },
+    });
+
+    resultButtons.forEach((button) => button.addEventListener('click', () => {
+      resultButtons.forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
+      const next = button.dataset.rtResult as Result;
+      if (next === result) return;
+      result = next;
+      // 결과가 갈리는 단계(실행·회신)라면 그 단계를 새 결과로 다시 재생합니다.
+      const index = current;
+      if (index >= 2) {
+        current = index - 1;
+        void enter(index, false);
+      } else {
+        say(NOTES[index](result));
+      }
+    }));
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      layer.clear();
+      scene.redraw();
+    });
+  });
+</script>
+
+<style is:global>
+  .db-demo[data-blog-demo="refund-round-trip"] .scene-note { min-height: 4.2em; }
+  [data-blog-demo="refund-round-trip"] .db-demo-controls { flex-wrap: wrap; }
+  [data-blog-demo="refund-round-trip"] .rt-track { fill: none; stroke: color-mix(in srgb, var(--scene-dep) 45%, transparent); stroke-width: 1.5; stroke-dasharray: 2 6; }
+  [data-blog-demo="refund-round-trip"] .rt-row.is-empty .scene-node-card { stroke-dasharray: 5 4; fill: none; }
+  [data-blog-demo="refund-round-trip"] .rt-row.is-done .scene-node-card { stroke: var(--scene-flow); stroke-width: 2; }
+  [data-blog-demo="refund-round-trip"] .rt-row.is-error .scene-node-card { fill: var(--scene-danger-soft); stroke: var(--scene-danger); stroke-width: 2.5; }
+  [data-blog-demo="refund-round-trip"] .rt-key { fill: var(--slate); }
+  [data-blog-demo="refund-round-trip"] .rt-status { fill: var(--ink); font-family: var(--font-sans); font-size: 12px; font-weight: 800; transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="refund-round-trip"] .rt-status.is-temp { fill: var(--scene-temp); }
+  [data-blog-demo="refund-round-trip"] .rt-row.is-done .rt-status { fill: var(--scene-flow-ink); }
+  [data-blog-demo="refund-round-trip"] .rt-row.is-error .rt-status { fill: var(--scene-danger); }
+  [data-blog-demo="refund-round-trip"] .rt-status.is-bump { animation: scene-pop 420ms ease-out; }
+</style>
