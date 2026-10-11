@@ -1,0 +1,33 @@
+---
+/**
+ * 대조군 판정 비교. 실제로 있었던 세 경우(product 정지의 처음 구성, poller 정지 뒤의 재고 충분, 정상 스택의 재고 충분)를 고르면 시나리오가 어디서 멈췄는지 보이고,
+ * 같은 실패를 세 판정 규칙(아무 실패나 · 실패 지점 · 앞 단계까지)이 각각 어떻게 판정하는지 비교합니다.
+ */
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import '../../styles/scene.css';
+import '../../styles/saga-e2e.css';
+---
+<InteractiveDemoFrame demoId="saga-summary" ariaLabel="대조군이 실패한 지점과 세 판정 규칙의 결과 비교" title="대조군의 실패를 무엇으로 판정할까요?" description="경우를 골라 시나리오가 어디서 멈추는지 보세요. 점선 테두리가 대조군이 기대한 실패 지점입니다. 같은 실패를 세 규칙이 어떻게 판정하는지 아래에서 비교합니다.">
+  <div class="saga-summary">
+    <div class="saga-controls" role="group" aria-label="대조군 경우">
+      <button type="button" data-case="product" aria-pressed="true">product 정지 (처음 구성)</button>
+      <button type="button" data-case="stale" aria-pressed="false">재고 충분 (poller 정지 뒤)</button>
+      <button type="button" data-case="stock" aria-pressed="false">재고 충분 (정상 스택)</button>
+    </div>
+    <div class="scene-stage" data-stage>
+      <svg class="saga-stage" role="img" aria-label="상품 생성, 주문, 예약, 취소 네 단계와 기대한 실패 지점. 시나리오가 실패하거나 시간 초과로 멈춘 단계가 표시됩니다." viewBox="0 0 560 156"></svg>
+    </div>
+    <p class="saga-status" data-note role="status"></p>
+    <ul class="sv-rules" aria-live="polite">
+      <li data-rule="0"><strong>아무 실패나 인정 <code>expect_fail</code></strong><span data-out>판정 전</span></li>
+      <li data-rule="1"><strong>실패 지점 확인 <code>expect_timeout_at</code></strong><span data-out>판정 전</span></li>
+      <li data-rule="2"><strong>앞 단계까지 확인 (원인 관측)</strong><span data-out>판정 전</span></li>
+    </ul>
+    <button type="button" class="saga-replay" data-replay>같은 경우 다시 실행</button>
+  </div>
+  <p class="db-demo-disclaimer">본문에 나온 세 경우를 단계 네 개로 줄인 모형입니다. 시나리오 A 의 결제 단계, 재시도, 실제 대기 시간은 생략했습니다. product 정지 대조군은 이후 상품을 먼저 만든 뒤 product-service 를 멈추도록 다시 구성했습니다. 판정 문구는 설명용이며 실제 로그가 아닙니다.</p>
+</InteractiveDemoFrame>
+<script>
+  import { initSagaSummary } from '../../scripts/blog/saga-e2e/summary';
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="saga-summary"]').forEach(initSagaSummary);
+</script>

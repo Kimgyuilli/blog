@@ -1,0 +1,44 @@
+---
+/**
+ * 주문 한 건이 네 서비스와 Kafka 를 거치는 지도. 주문 성공 / 결제 실패 / 결제 후 취소(환불) 세 경로를 고르면
+ * 같은 order.created 에서 출발한 흐름이 어느 토픽으로 퍼지고 각 서비스 DB 상태가 어떻게 끝나는지 보여 줍니다.
+ */
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import SceneTimeline from './SceneTimeline.astro';
+import '../../styles/scene.css';
+import '../../styles/saga-e2e.css';
+
+const steps = [
+  { name: '주문', detail: 'order.created' },
+  { name: '재고 예약', detail: 'stock.reservation.result' },
+  { name: '결제', detail: 'Toss 승인 성공' },
+  { name: '결과 전파', detail: 'payment.completed' },
+];
+---
+
+<InteractiveDemoFrame
+  demoId="saga-flow"
+  ariaLabel="Order, Payment, Toss 가 위에, Product, Notification 이 아래에 있고 가운데 Kafka 띠가 있습니다. 서비스가 토픽에 발행한 이벤트는 Kafka 를 거쳐 구독한 서비스들로 갈라져 갑니다. 주문 성공이면 payment.completed 로 주문과 예약이 확정되고, 결제 실패면 payment.failed 로 주문 취소와 재고 원복이 일어나며, 결제 후 취소면 환불 요청 토픽 두 개와 payment.refunded 가 오갑니다."
+  title="주문 한 건이 지나가는 길"
+  description="경로를 고르고 단계를 눌러 보세요. 네 서비스는 서로를 직접 호출하지 않고 Kafka 토픽으로만 이어집니다. 카드 아래 문구는 각 서비스 DB 에 남는 대표 상태입니다."
+>
+  <DemoControls ariaLabel="주문 경로">
+    <button type="button" data-flow-scenario="success" aria-pressed="true">주문 성공</button>
+    <button type="button" data-flow-scenario="failure" aria-pressed="false">결제 실패</button>
+    <button type="button" data-flow-scenario="refund" aria-pressed="false">결제 후 취소(환불)</button>
+  </DemoControls>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic class="saga-stage" viewBox="0 0 560 330" role="img" aria-label="Order, Payment, Toss, Product, Notification 과 Kafka 띠. 이벤트가 Kafka 를 거쳐 서비스 사이를 오갑니다."></svg>
+  </div>
+  <SceneTimeline ariaLabel="네 단계" steps={steps} />
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">
+    흐름을 단순화한 모형입니다. Outbox 와 poller, <code>payment.requested</code> 와 주문의 <code>PAYMENT_REQUESTED</code> 상태, <code>product.updated</code>, 재시도와 DLQ 는 그리지 않았습니다. 환불 경로에서는 Payment 자신의 감지와 이 시점의 결제 완료 알림 같은 일부 소비를 생략했고, 환불 원장과 fence 의 자세한 동작은 24편에서 다룹니다. 이벤트가 도착하는 순서와 속도는 설명용입니다.
+  </p>
+</InteractiveDemoFrame>
+
+<script>
+  import { initSagaFlow } from '../../scripts/blog/saga-e2e/flow';
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="saga-flow"]').forEach(initSagaFlow);
+</script>
