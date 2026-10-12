@@ -1,6 +1,33 @@
-# 글 속 데모 공통 부품
+# 글 속 시각자료
 
-각 글의 설명과 애니메이션 장면은 해당 글의 컴포넌트에 둡니다. 여러 글에서 반복되는 화면 틀과 재생 조건만 이곳에서 공유합니다.
+각 글의 설명과 애니메이션 장면은 주제별 폴더에 둡니다. 여러 글에서 반복되는 화면 틀과 컨트롤은 `shared/`에서 공유합니다.
+
+## 폴더 지도
+
+| 폴더 | 시각자료 |
+| --- | --- |
+| `shared/` | 공통 프레임, 컨트롤, 반복 애니메이션 틀, 타임라인, 범례 |
+| `database/basics/` | 정규화, JOIN, 인덱스, 관계도, 트랜잭션 개요 |
+| `database/transactions/` | 격리 수준, 락, 재고 경쟁, 데드락 |
+| `os/scheduling/` | 스레드, 스케줄링, CPU 할당량 |
+| `os/limited-direct-execution/` | 시스템 콜, 인터럽트, 문맥 전환 |
+| `jvm/` | JVM 실행 계층, OopMap, safepoint |
+| `peekcart/monolith-peel/` | 모놀리스 분리 순서와 의존 관계 |
+| `peekcart/db-separation/` | 서비스별 DB 분리, FK, 보존 경계, 부팅 순서 |
+| `peekcart/gateway/` | 게이트웨이 인증, 키 소유권, 토큰과 정책 |
+| `peekcart/refund/` | 환불 흐름과 중복 실행 방지 |
+| `peekcart/saga-e2e/` | Saga 이벤트 흐름과 E2E 검증 |
+| `peekcart/dlq/` | DLQ 재처리, 보존 기간, JPA 상태 |
+
+## 새 컴포넌트의 위치
+
+- 같은 주제의 장면은 기존 폴더에 추가합니다. 새 주제라면 의미를 드러내는 kebab-case 폴더를 만들고 이 표에 추가합니다.
+- 여러 글에서 같은 조작과 접근성 동작이 반복될 때만 `shared/`에 공통 부품을 둡니다.
+- MDX와 컴포넌트의 import는 `@/components/blog/…`, `@/scripts/…`, `@/styles/…`를 사용합니다. `@/`는 `src/`를 가리키므로 폴더 깊이가 바뀌어도 상대 경로를 다시 계산할 필요가 없습니다.
+- 재생 로직과 장면 키트는 `src/scripts/blog/`, 공통 스타일은 `src/styles/`, 개발용 견본과 모음은 `src/components/dev/`에 둡니다.
+- 개발 서버의 `/dev/demos/`에서 데모 모음, `/dev/scene-kit/`에서 공통 부품, `/preview/<slug>/`에서 개별 글을 확인합니다.
+
+## 공통 부품 (`shared/`)
 
 | 부품 | 용도 | 현재 사용처 |
 | --- | --- | --- |

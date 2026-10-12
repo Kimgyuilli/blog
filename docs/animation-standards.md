@@ -138,5 +138,5 @@
 | `src/scripts/blog/scene/console.ts` | `createConsole` (실행 로그) |
 | `src/scripts/blog/scene/step-player.ts` | `createStepPlayer` (타임라인 재생) |
 | `src/styles/scene.css` | 의미 색 토큰과 모든 `scene-*` 스타일 |
-| `src/components/blog/SceneTimeline.astro`, `SceneLegend.astro` | 타임라인·범례 마크업 |
+| `src/components/blog/shared/SceneTimeline.astro`, `SceneLegend.astro` | 타임라인·범례 마크업 |
 | `src/components/dev/SceneKitShowcase.astro` | `/dev/scene-kit/` 견본 |

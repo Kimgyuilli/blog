@@ -4,24 +4,24 @@
  * 새 장면을 만들기 전에 기존 장면과 외부 레퍼런스를 한자리에서 비교해 보는 용도입니다.
  * 데모를 새로 만들면 아래 groups에 한 줄을 추가합니다.
  */
-import SharedBootOrder from '../blog/SharedBootOrder.astro';
-import FkGuardDemo from '../blog/FkGuardDemo.astro';
-import DbSeparationSteps from '../blog/DbSeparationSteps.astro';
-import RetentionBoundary from '../blog/RetentionBoundary.astro';
-import PeelDependencyGraph from '../blog/PeelDependencyGraph.astro';
-import PeelMigrationSteps from '../blog/PeelMigrationSteps.astro';
-import PeelSequenceDiagram from '../blog/PeelSequenceDiagram.astro';
-import ThreadSchedulerLens from '../blog/ThreadSchedulerLens.astro';
-import CpuQuotaExperiment from '../blog/CpuQuotaExperiment.astro';
-import RunqueuePolicyMotion from '../blog/RunqueuePolicyMotion.astro';
-import ExecutionLayersDiagram from '../blog/ExecutionLayersDiagram.astro';
-import SliceDistributionMotion from '../blog/SliceDistributionMotion.astro';
-import NormalizationDemo from '../blog/NormalizationDemo.astro';
-import JoinDemo from '../blog/JoinDemo.astro';
-import MotionJoinDemo from '../blog/MotionJoinDemo.astro';
-import IndexLookupDemo from '../blog/IndexLookupDemo.astro';
-import RelationMapMotion from '../blog/RelationMapMotion.astro';
-import TransactionMotion from '../blog/TransactionMotion.astro';
+import SharedBootOrder from '@/components/blog/peekcart/db-separation/SharedBootOrder.astro';
+import FkGuardDemo from '@/components/blog/peekcart/db-separation/FkGuardDemo.astro';
+import DbSeparationSteps from '@/components/blog/peekcart/db-separation/DbSeparationSteps.astro';
+import RetentionBoundary from '@/components/blog/peekcart/db-separation/RetentionBoundary.astro';
+import PeelDependencyGraph from '@/components/blog/peekcart/monolith-peel/PeelDependencyGraph.astro';
+import PeelMigrationSteps from '@/components/blog/peekcart/monolith-peel/PeelMigrationSteps.astro';
+import PeelSequenceDiagram from '@/components/blog/peekcart/monolith-peel/PeelSequenceDiagram.astro';
+import ThreadSchedulerLens from '@/components/blog/os/scheduling/ThreadSchedulerLens.astro';
+import CpuQuotaExperiment from '@/components/blog/os/scheduling/CpuQuotaExperiment.astro';
+import RunqueuePolicyMotion from '@/components/blog/os/scheduling/RunqueuePolicyMotion.astro';
+import ExecutionLayersDiagram from '@/components/blog/os/scheduling/ExecutionLayersDiagram.astro';
+import SliceDistributionMotion from '@/components/blog/os/scheduling/SliceDistributionMotion.astro';
+import NormalizationDemo from '@/components/blog/database/basics/NormalizationDemo.astro';
+import JoinDemo from '@/components/blog/database/basics/JoinDemo.astro';
+import MotionJoinDemo from '@/components/blog/database/basics/MotionJoinDemo.astro';
+import IndexLookupDemo from '@/components/blog/database/basics/IndexLookupDemo.astro';
+import RelationMapMotion from '@/components/blog/database/basics/RelationMapMotion.astro';
+import TransactionMotion from '@/components/blog/database/basics/TransactionMotion.astro';
 
 type Demo = { name: string; Component: any; form: string; motions: string[] };
 type Group = { id: string; title: string; slug: string; draft?: boolean; note?: string; demos: Demo[] };

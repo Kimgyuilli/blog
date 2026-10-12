@@ -1,0 +1,397 @@
+---
+/**
+ * 재발행한 메시지가 다시 실패할 때 원장 행이 어떻게 쌓이는지 보여 주는 타임라인.
+ * toggle을 주면 "진입점 먼저 ↔ 연결 경로 먼저"를 바꿔 같은 다섯 단계를 비교합니다. 해결책을 설명한 절에서만 엽니다.
+ */
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import SceneTimeline from '@/components/blog/shared/SceneTimeline.astro';
+import '@/styles/scene.css';
+
+type Props = { toggle?: boolean };
+const { toggle = false } = Astro.props;
+
+const steps = [
+  { name: '최초 실패', detail: '미결 1' },
+  { name: '재발행', detail: '미결 1' },
+  { name: '재실패 1', detail: '미결 2' },
+  { name: '운영자 종결', detail: '미결 1' },
+  { name: '중복분 재실패', detail: '미결 2' },
+];
+---
+
+<InteractiveDemoFrame
+  demoId="dlq-replay-correlation"
+  ariaLabel={toggle ? '진입점을 먼저 연 순서와 연결 경로를 먼저 만든 순서에서, 같은 재실패 두 번이 원장에 어떻게 쌓이는지 비교하는 타임라인' : '진입점만 먼저 열린 상태에서 재발행한 메시지가 다시 실패할 때마다 원장에 이어지지 않은 행이 늘어나는 타임라인'}
+  title={toggle ? '같은 재실패, 두 순서' : '진입점만 먼저 열면'}
+  description={toggle ? '같은 다섯 단계를 두 순서로 비교합니다. 재실패 행이 원래 사건 아래로 모이는지, 미결 건수가 실제 사건 수와 같은지 보세요.' : '연결 경로 없이 재발행을 열었다고 가정합니다. 사건은 하나인데 원장의 미결 건수가 어떻게 바뀌는지 보세요.'}
+>
+  {toggle && (
+    <DemoControls ariaLabel="배포 순서">
+      <button type="button" data-rc-mode="entry" aria-pressed="false">진입점 먼저</button>
+      <button type="button" data-rc-mode="corr" aria-pressed="true">연결 경로 먼저</button>
+    </DemoControls>
+  )}
+  <div class="scene-stage" data-stage>
+    <svg data-graphic viewBox="0 0 560 310" role="img" aria-label="위쪽에 원래 토픽, Product 소비자, DLQ가 있고 아래쪽에 원장 행 목록과 미결 건수가 있습니다. 진입점만 먼저 열면 재실패가 원래 행과 연결되지 않은 새 행으로 쌓여 미결 건수가 실제 사건 수 1보다 커지고, 종결한 원래 행은 그대로 해결된 것처럼 남습니다. 연결 경로를 먼저 만들면 재실패 행이 원래 사건 아래 자식으로 붙어 미결은 사건 단위로 1이고, 종결 뒤 늦게 도착한 재실패는 원래 사건을 다시 엽니다."></svg>
+  </div>
+  <SceneTimeline ariaLabel="다섯 단계" steps={steps} />
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">
+    원장 행의 식별자는 위치와 consumer group 등 여러 컬럼이지만 장면에서는 행 번호로 줄였고, 발행 상태는 그리지 않았습니다. 재실패를 연결할 때 실제로는 아홉 가지 값을 대조하지만 "대조 통과" 한 번으로 표시했습니다. 숫자는 예시 모형이고, 중복분은 at-least-once 로 같은 재발행이 두 번 나간 경우를 예로 든 것입니다.
+    {toggle ? ' "진입점 먼저" 순서는 계획 단계에서 바뀌어 실제로 배포된 적이 없는 가정 경로입니다.' : ' 이 순서는 계획 단계에서 바뀌어 실제로 배포된 적이 없는 가정 경로입니다. 연결 경로를 먼저 만든 결과는 해결책을 다루는 절에서 같은 장면으로 다시 봅니다.'}
+  </p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, replayClass, setAttrs, svg, watchNarrow, type Box, type Point } from '@/scripts/blog/scene/core';
+  import { createBoundary, createNode } from '@/scripts/blog/scene/parts';
+  import { createPacketLayer, type Packet } from '@/scripts/blog/scene/packets';
+  import { createStepPlayer } from '@/scripts/blog/scene/step-player';
+
+  // 독자가 볼 변화: 진입점만 먼저 열면 재실패가 날 때마다 원래 행과 연결되지 않은 행이 쌓이고, 미결 건수가 실제 사건 수 1보다 커진다.
+  // 연결 경로를 먼저 만들면 같은 재실패가 원래 사건 아래로 들여 쓰여 모이고, 종결 뒤의 늦은 재실패는 원래 사건을 다시 연다.
+  type Mode = 'entry' | 'corr';
+  type State = { s1: number; s2: number; s3: number; i2: number; i3: number; l2: number; l3: number; alert: number };
+  type Layout = {
+    view: [number, number];
+    topic: Box; product: Box; dlq: Box;
+    ledger: { x: number; y: number; w: number; h: number }; caption: Point;
+    rowX: number; rowW: number; rowH: number; indent: number; rowY: [number, number, number];
+    unresolved: Point; events: Point; alertAt: Point;
+  };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 310],
+      topic: { x: 78, y: 46, w: 128, h: 40 }, product: { x: 240, y: 46, w: 116, h: 40 }, dlq: { x: 392, y: 46, w: 100, h: 40 },
+      ledger: { x: 12, y: 94, w: 400, h: 204 }, caption: { x: 28, y: 284 },
+      rowX: 30, rowW: 232, rowH: 36, indent: 40, rowY: [132, 180, 228],
+      unresolved: { x: 486, y: 162 }, events: { x: 486, y: 246 }, alertAt: { x: 346, y: 132 },
+    },
+    narrow: {
+      view: [360, 384],
+      topic: { x: 60, y: 40, w: 108, h: 38 }, product: { x: 180, y: 40, w: 104, h: 38 }, dlq: { x: 300, y: 40, w: 96, h: 38 },
+      ledger: { x: 8, y: 84, w: 344, h: 214 }, caption: { x: 22, y: 284 },
+      rowX: 18, rowW: 214, rowH: 34, indent: 30, rowY: [122, 170, 218],
+      unresolved: { x: 104, y: 346 }, events: { x: 256, y: 346 }, alertAt: { x: 300, y: 100 },
+    },
+  };
+
+  type RowText = { tag: string; status: string; tone: 'open' | 'done' | 'link' };
+  type Spec = {
+    state: State; rows: [RowText, RowText, RowText];
+    unresolved: number; note: string; detail: string;
+  };
+  const OPEN: RowText = { tag: '', status: 'OPEN', tone: 'open' };
+  const LINK: RowText = { tag: '대조 통과', status: '#1 에 연결', tone: 'link' };
+  const none: State = { s1: 1, s2: 0, s3: 0, i2: 0, i3: 0, l2: 0, l3: 0, alert: 0 };
+  const SPECS: Record<Mode, Spec[]> = {
+    entry: [
+      { state: { ...none }, rows: [OPEN, OPEN, OPEN], unresolved: 1, detail: '미결 1',
+        note: 'Product가 메시지 처리에 실패해 DLQ로 보냈고, 원장에 행 <strong>#1</strong>이 생겼습니다. 사건 1건, 미결 1건입니다.' },
+      { state: { ...none }, rows: [{ ...OPEN, tag: '재발행 1회' }, OPEN, OPEN], unresolved: 1, detail: '미결 1',
+        note: '원인을 고쳤다고 보고 #1을 원래 토픽에 다시 넣었습니다. 아직 연결 경로는 없습니다.' },
+      { state: { ...none, s2: 1 }, rows: [{ ...OPEN, tag: '재발행 1회' }, OPEN, OPEN], unresolved: 2, detail: '미결 2',
+        note: '재발행분이 Product에서 또 실패했습니다. 원장에는 <strong>#1과 연결되지 않은 #2</strong>가 생기고, 사건은 하나인데 미결은 2건입니다.' },
+      { state: { ...none, s2: 1 }, rows: [{ tag: '재발행 1회', status: 'RESOLVED', tone: 'done' }, OPEN, OPEN], unresolved: 1, detail: '미결 1',
+        note: '운영자가 #1 은 재발행이 나갔으니 끝났다고 보고 <strong>#1을 종결</strong>했습니다. 그사이 poller 가 같은 재발행을 한 번 더 보냈고(at-least-once), Product 는 그 중복분을 재시도(1초, 5초, 30초)하고 있습니다.' },
+      { state: { ...none, s2: 1, s3: 1 }, rows: [{ tag: '재발행 1회', status: 'RESOLVED', tone: 'done' }, OPEN, OPEN], unresolved: 2, detail: '미결 2',
+        note: '중복분도 재시도를 다 쓰고 실패해 <strong>#3</strong>이 또 따로 생겼습니다. 종결한 #1은 해결된 것처럼 남고, 미결 2건은 서로 다른 사건처럼 보입니다.' },
+    ],
+    corr: [
+      { state: { ...none }, rows: [OPEN, LINK, LINK], unresolved: 1, detail: '미결 1',
+        note: 'Product가 메시지 처리에 실패해 DLQ로 보냈고, 원장에 행 <strong>#1</strong>이 생겼습니다. 사건 1건, 미결 1건입니다.' },
+      { state: { ...none }, rows: [{ ...OPEN, tag: '재발행 1회' }, LINK, LINK], unresolved: 1, detail: '미결 1',
+        note: '#1을 원래 토픽에 다시 넣었습니다. 메시지 헤더에 원래 사건 번호와 시도 번호가 실려 나갑니다.' },
+      { state: { ...none, s2: 1, i2: 1, l2: 1 }, rows: [{ ...OPEN, tag: '재발행 1회' }, LINK, LINK], unresolved: 1, detail: '미결 1',
+        note: '재발행분이 또 실패했지만, 대조를 통과해 <strong>#2가 #1 아래 자식</strong>으로 붙었습니다. 미결은 사건 단위로 세어 1건입니다.' },
+      { state: { ...none, s2: 1, i2: 1, l2: 1 }, rows: [{ tag: '재발행 1회', status: 'RESOLVED', tone: 'done' }, LINK, LINK], unresolved: 0, detail: '미결 0',
+        note: '운영자가 도메인 상태를 직접 바로잡고 <strong>사건을 종결</strong>했습니다. 미결 0건입니다. 그사이 poller 가 같은 재발행을 한 번 더 보냈고(at-least-once), Product 는 그 중복분을 재시도(1초, 5초, 30초)하고 있습니다.' },
+      { state: { ...none, s2: 1, s3: 1, i2: 1, i3: 1, l2: 1, l3: 1, alert: 1 }, rows: [{ tag: '재발행 1회', status: 'OPEN', tone: 'open' }, LINK, LINK], unresolved: 1, detail: '미결 1',
+        note: '중복분의 재실패가 늦게 도착해 #1 아래에 붙으며 종결된 사건을 <strong>다시 열었고</strong>, 재개방 알림이 나갑니다. 미결 1건과 실제 사건 1건이 같습니다.' },
+    ],
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="dlq-replay-correlation"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-rc-mode]')];
+    const details = [...demo.querySelectorAll<HTMLElement>('[data-step] small')];
+    let mode: Mode = modeButtons.length ? 'corr' : 'entry';
+    let layout = LAYOUTS.wide;
+    let current = -1;
+
+    const ledger = createBoundary(root, '원장 (실패 한 건이 한 행)');
+    const tracks = [0, 1, 2].map(() => svg('path', { class: 'drc-track' }, root));
+    const topic = createNode(root, { label: '원래 토픽', hue: 'var(--scene-hue-gray)' });
+    const product = createNode(root, { label: 'Product', hue: 'var(--scene-hue-amber)' });
+    const dlq = createNode(root, { label: 'DLQ', hue: 'var(--scene-hue-gray)' });
+
+    const treeLines = [0, 1].map(() => svg('path', { class: 'drc-tree' }, root));
+    const rows = [0, 1, 2].map((i) => {
+      const group = svg('g', { class: 'drc-row' }, root);
+      const body = svg('g', { class: 'drc-row-body' }, group);
+      const card = svg('rect', { class: 'drc-row-card', rx: 9 }, body);
+      const name = svg('text', { class: 'scene-label is-sans drc-row-name' }, body);
+      name.textContent = `#${i + 1} ${['원래 실패', '재실패 1', '재실패 2'][i]}`;
+      const tag = svg('text', { class: 'scene-label is-sans drc-row-tag' }, body);
+      const status = svg('text', { class: 'drc-row-status', 'text-anchor': 'end' }, body);
+      return { group, body, card, name, tag, status };
+    });
+    const alertGroup = svg('g', { class: 'drc-alert' }, root);
+    const alertPill = svg('rect', { class: 'drc-alert-pill', rx: 10, height: 20, width: 82 }, alertGroup);
+    const alertText = svg('text', { class: 'scene-label is-sans drc-alert-text', 'text-anchor': 'middle' }, alertGroup);
+    alertText.textContent = '재개방 알림';
+
+    const metric = (caption: string) => {
+      const value = svg('text', { class: 'drc-metric', 'text-anchor': 'middle' }, root);
+      const label = svg('text', { class: 'scene-label is-sans drc-metric-label', 'text-anchor': 'middle' }, root);
+      label.textContent = caption;
+      return { value, label };
+    };
+    const unresolved = metric('원장의 미결');
+    const events = metric('실제 사건');
+    events.value.textContent = '1';
+    const layer = createPacketLayer(root);
+
+    const rowBox = (i: number, indent: number): Box => {
+      const l = layout;
+      const x = l.rowX + l.indent * indent;
+      return { x: x + l.rowW / 2, y: l.rowY[i], w: l.rowW, h: l.rowH };
+    };
+
+    const scene = createScene<State>({ ...SPECS[mode][0].state }, (s) => {
+      const l = layout;
+      ledger.place(l.ledger, { ...l.caption, anchor: 'start' });
+      topic.setBox(l.topic);
+      product.setBox(l.product);
+      dlq.setBox(l.dlq);
+      const right = (b: Box) => b.x + b.w / 2;
+      const left = (b: Box) => b.x - b.w / 2;
+      setAttrs(tracks[0], { d: `M ${right(l.topic) + 4} ${l.topic.y} L ${left(l.product) - 6} ${l.product.y}` });
+      setAttrs(tracks[1], { d: `M ${right(l.product) + 4} ${l.product.y} L ${left(l.dlq) - 6} ${l.dlq.y}` });
+      setAttrs(tracks[2], { d: `M ${l.dlq.x} ${l.dlq.y + l.dlq.h / 2 + 4} L ${l.dlq.x} ${l.ledger.y + 10}` });
+
+      const shows = [s.s1, s.s2, s.s3];
+      const indents = [0, s.i2, s.i3];
+      rows.forEach((row, i) => {
+        const b = rowBox(i, indents[i]);
+        setAttrs(row.group, { transform: `translate(${(b.x - b.w / 2).toFixed(2)} ${(b.y - b.h / 2).toFixed(2)})` });
+        setAttrs(row.card, { width: b.w, height: b.h });
+        setAttrs(row.name, { x: 12, y: b.h / 2 + 4 });
+        setAttrs(row.tag, { x: b.w * 0.47, y: b.h / 2 + 4 });
+        setAttrs(row.status, { x: b.w - 10, y: b.h / 2 + 4 });
+        row.group.style.opacity = String(shows[i]);
+      });
+      // 자식 연결선: #1의 왼쪽 아래에서 내려와 자식 행의 왼쪽으로 꺾입니다. l 값만큼 그려집니다.
+      const parent = rowBox(0, 0);
+      const trunkX = parent.x - parent.w / 2 + 16;
+      [s.l2, s.l3].forEach((amount, k) => {
+        const child = rowBox(k + 1, indents[k + 1]);
+        const top = parent.y + parent.h / 2;
+        const childLeft = child.x - child.w / 2;
+        const down = child.y - top;
+        const across = Math.max(0, childLeft - trunkX);
+        const total = down + across;
+        const drawn = total * amount;
+        const y = top + Math.min(drawn, down);
+        const x = trunkX + Math.max(0, drawn - down);
+        setAttrs(treeLines[k], { d: amount > 0.01 ? `M ${trunkX} ${top} L ${trunkX} ${y.toFixed(2)}${drawn > down ? ` L ${x.toFixed(2)} ${child.y}` : ''}` : '' });
+      });
+      const a = l.alertAt;
+      setAttrs(alertPill, { x: a.x - 41, y: a.y - 10 });
+      setAttrs(alertText, { x: a.x, y: a.y + 4 });
+      alertGroup.style.opacity = String(s.alert);
+
+      setAttrs(unresolved.value, { x: l.unresolved.x, y: l.unresolved.y });
+      setAttrs(unresolved.label, { x: l.unresolved.x, y: l.unresolved.y + 22 });
+      setAttrs(events.value, { x: l.events.x, y: l.events.y });
+      setAttrs(events.label, { x: l.events.x, y: l.events.y + 22 });
+    });
+
+    const say = (html: string) => { note.innerHTML = html; replayClass(note, 'is-entering'); };
+    const applyRows = (sp: Spec) => {
+      sp.rows.forEach((text, i) => {
+        const row = rows[i];
+        // 진입점 먼저 순서에서는 #2와 #3도 독립 행이라 OPEN으로 보입니다.
+        const t = mode === 'entry' || i === 0 ? text : LINK;
+        bumpText(row.tag, t.tag);
+        bumpText(row.status, t.status);
+        row.group.dataset.tone = t.tone;
+      });
+    };
+    const setCount = (n: number) => {
+      bumpText(unresolved.value, String(n));
+      unresolved.value.classList.toggle('is-danger', n > 1);
+      unresolved.value.classList.toggle('is-zero', n === 0);
+    };
+    const apply = (sp: Spec) => { applyRows(sp); setCount(sp.unresolved); say(sp.note); };
+    const syncDetails = () => details.forEach((d, i) => { d.textContent = SPECS[mode][i].detail; });
+
+    const edge = {
+      topicOut: () => ({ x: layout.topic.x + layout.topic.w / 2 + 4, y: layout.topic.y }),
+      productIn: () => ({ x: layout.product.x - layout.product.w / 2 - 6, y: layout.product.y }),
+      productOut: () => ({ x: layout.product.x + layout.product.w / 2 + 4, y: layout.product.y }),
+      dlqIn: () => ({ x: layout.dlq.x - layout.dlq.w / 2 - 6, y: layout.dlq.y }),
+      dlqDown: () => ({ x: layout.dlq.x, y: layout.dlq.y + layout.dlq.h / 2 + 8 }),
+    };
+    /** Product에서 실패한 메시지가 DLQ를 거쳐 원장의 row 자리까지 갑니다. 연결 경로가 있으면 도착 직전에 대조 통과로 바뀝니다. */
+    const failToLedger = async (p: Packet, alive: () => boolean, row: number, indent: number) => {
+      replayClass(product.group, 'is-error');
+      replayClass(product.group, 'is-shaking');
+      p.relabel('실패', 'danger');
+      await scene.pause(duration.beat);
+      if (!alive()) return false;
+      if (!(await p.travel([edge.productOut(), edge.dlqIn()], 520)) || !alive()) return false;
+      product.flash('is-error', false);
+      const b = rowBox(row, indent);
+      const target = { x: b.x + b.w / 2 + 8, y: b.y };
+      if (!(await p.travel([edge.dlqDown(), { x: layout.dlq.x, y: b.y }, target], 820)) || !alive()) return false;
+      if (mode === 'corr' && row > 0) {
+        p.relabel('대조 통과', 'flow');
+        await scene.pause(duration.beat);
+        if (!alive()) return false;
+      }
+      void p.fade(420);
+      return true;
+    };
+    /** #1에서 원래 토픽으로 재발행 메시지를 보냅니다. */
+    const replay = async (alive: () => boolean) => {
+      const l = layout;
+      const p = layer.spawn({ label: '재발행', at: { x: l.topic.x, y: l.rowY[0] - l.rowH / 2 - 4 } });
+      if (!(await p.travel([{ x: l.topic.x, y: l.topic.y + l.topic.h / 2 + 8 }], 620)) || !alive()) return undefined;
+      p.relabel('메시지', 'dep');
+      return p;
+    };
+
+    const enter = async (index: number, instant: boolean) => {
+      const prev = current;
+      current = index;
+      const alive = scene.begin();
+      layer.clear();
+      product.flash('is-error', false);
+      const sp = SPECS[mode][index];
+      const sequential = !instant && !scene.reduced && (index === prev + 1 || (index === 0 && prev === 4));
+      if (!sequential) {
+        apply(sp);
+        if (instant) scene.set({ ...sp.state });
+        else void scene.go({ ...sp.state }, duration.draw);
+        return;
+      }
+      const before = SPECS[mode][index === 0 ? 0 : index - 1];
+      if (index === 0) {
+        scene.set({ ...none, s1: 0 });
+        applyRows(sp);
+        setCount(0);
+        say('결제 완료 메시지가 원래 토픽에서 Product로 갑니다.');
+        const p = layer.spawn({ label: '메시지', at: edge.topicOut() });
+        if (!(await p.travel([edge.productIn()], 620)) || !alive()) return;
+        if (!(await failToLedger(p, alive, 0, 0))) return;
+        await scene.go({ ...sp.state }, duration.draw);
+        if (!alive()) return;
+        apply(sp);
+        return;
+      }
+      if (index === 1) {
+        const p = await replay(alive);
+        if (!p) return;
+        apply(sp);
+        void p.land(true);
+        return;
+      }
+      if (index === 2) {
+        const p = layer.spawn({ label: '메시지', at: edge.topicOut() });
+        say('재발행분이 Product로 갑니다.');
+        if (!(await p.travel([edge.productIn()], 620)) || !alive()) return;
+        if (!(await failToLedger(p, alive, 1, sp.state.i2))) return;
+        // 행이 먼저 나타나고, 상관 경로가 있으면 그다음 연결선이 그려집니다.
+        await scene.go({ ...before.state, s2: 1, i2: sp.state.i2 }, duration.move);
+        if (!alive()) return;
+        apply(sp);
+        await scene.go({ ...sp.state }, duration.draw);
+        return;
+      }
+      if (index === 3) {
+        const p = layer.spawn({ label: '중복분', tone: 'temp', at: edge.topicOut() });
+        if (!(await p.travel([edge.productIn()], 620)) || !alive()) return;
+        p.relabel('재시도 중', 'temp');
+        void p.land(true);
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        apply(sp);
+        replayClass(rows[0].body, 'is-done');
+        return;
+      }
+      // index 4: Product에서 재시도 중이던 메시지가 끝내 실패합니다.
+      applyRows(before);
+      const p = layer.spawn({ label: '재시도 중', tone: 'temp', at: edge.productIn() });
+      say('Product의 재시도가 끝났습니다.');
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      if (!(await failToLedger(p, alive, 2, sp.state.i3))) return;
+      await scene.go({ ...before.state, s3: 1, i3: sp.state.i3 }, duration.move);
+      if (!alive()) return;
+      await scene.go({ ...sp.state }, duration.draw);
+      if (!alive()) return;
+      apply(sp);
+      if (mode === 'corr') replayClass(rows[0].body, 'is-shaking');
+    };
+
+    syncDetails();
+    createStepPlayer(demo, {
+      dwell: (i) => (i === 4 ? duration.dwellLast + 1200 : duration.dwell + 1600),
+      onStep: (i, instant) => { void enter(i, instant); },
+    });
+
+    modeButtons.forEach((button) => button.addEventListener('click', () => {
+      const next = button.dataset.rcMode as Mode;
+      modeButtons.forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
+      if (next === mode) return;
+      mode = next;
+      syncDetails();
+      // 같은 단계를 다른 순서로 다시 그립니다. 행이 들여 쓰이거나 빠지는 것이 보이도록 보간합니다.
+      const index = current;
+      current = -1;
+      void enter(index, false);
+    }));
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      layer.clear();
+      scene.redraw();
+    });
+  });
+</script>
+
+<style is:global>
+  .db-demo[data-blog-demo="dlq-replay-correlation"] .scene-note { min-height: 4.2em; }
+  [data-blog-demo="dlq-replay-correlation"] .drc-track { fill: none; stroke: color-mix(in srgb, var(--scene-dep) 40%, transparent); stroke-width: 1.5; stroke-dasharray: 2 6; }
+  [data-blog-demo="dlq-replay-correlation"] .drc-tree { fill: none; stroke: var(--scene-flow); stroke-width: 2; stroke-linejoin: round; }
+  [data-blog-demo="dlq-replay-correlation"] .drc-row-card { fill: var(--surface); stroke: var(--hairline); stroke-width: 1.4; }
+  [data-blog-demo="dlq-replay-correlation"] .drc-row[data-tone="open"] .drc-row-card { stroke: var(--scene-temp); }
+  [data-blog-demo="dlq-replay-correlation"] .drc-row[data-tone="done"] .drc-row-card { stroke: var(--scene-flow); }
+  [data-blog-demo="dlq-replay-correlation"] .drc-row[data-tone="link"] .drc-row-card { stroke: color-mix(in srgb, var(--scene-flow) 50%, var(--hairline)); stroke-dasharray: 4 3; }
+  [data-blog-demo="dlq-replay-correlation"] .drc-row-name { fill: var(--ink); font-weight: 700; }
+  [data-blog-demo="dlq-replay-correlation"] .drc-row-tag { fill: var(--slate); font-weight: 700; }
+  [data-blog-demo="dlq-replay-correlation"] .drc-row[data-tone="link"] .drc-row-tag { fill: var(--scene-flow-ink); }
+  [data-blog-demo="dlq-replay-correlation"] .drc-row-status { font-family: var(--font-mono); font-size: 11.5px; font-weight: 800; fill: var(--scene-temp); transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="dlq-replay-correlation"] .drc-row[data-tone="done"] .drc-row-status,
+  [data-blog-demo="dlq-replay-correlation"] .drc-row[data-tone="link"] .drc-row-status { fill: var(--scene-flow-ink); }
+  [data-blog-demo="dlq-replay-correlation"] .drc-row-body { transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="dlq-replay-correlation"] .drc-row[data-tone="link"] .drc-row-status { font-family: var(--font-sans); font-size: 11px; }
+  [data-blog-demo="dlq-replay-correlation"] .drc-row-body.is-done { animation: scene-pop 420ms ease-out; }
+  [data-blog-demo="dlq-replay-correlation"] .drc-row-body.is-shaking { animation: scene-shake 420ms ease-in-out; }
+  [data-blog-demo="dlq-replay-correlation"] .drc-alert-pill { fill: color-mix(in srgb, var(--scene-temp) 16%, var(--canvas)); stroke: var(--scene-temp); stroke-width: 1.4; }
+  [data-blog-demo="dlq-replay-correlation"] .drc-alert-text { fill: var(--scene-temp); font-weight: 800; }
+  [data-blog-demo="dlq-replay-correlation"] .drc-metric { fill: var(--ink); font-family: var(--font-mono); font-size: 34px; font-weight: 800; transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="dlq-replay-correlation"] .drc-metric.is-danger { fill: var(--scene-danger); }
+  [data-blog-demo="dlq-replay-correlation"] .drc-metric.is-zero { fill: var(--scene-flow-ink); }
+  [data-blog-demo="dlq-replay-correlation"] .drc-metric.is-bump,
+  [data-blog-demo="dlq-replay-correlation"] .drc-row-status.is-bump,
+  [data-blog-demo="dlq-replay-correlation"] .drc-row-tag.is-bump { animation: scene-pop 420ms ease-out; }
+  [data-blog-demo="dlq-replay-correlation"] .drc-metric-label { fill: var(--slate); font-weight: 700; }
+</style>

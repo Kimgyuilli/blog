@@ -8,11 +8,11 @@ tags: ["CS", "데이터베이스", "트랜잭션", "격리 수준", "락", "MySQ
 draft: false
 slug: "cs-database-transactions-isolation-locks"
 ---
-import TxStockRace from '../../components/blog/TxStockRace.astro';
-import TxSnapshotReads from '../../components/blog/TxSnapshotReads.astro';
-import TxDeadlockOrder from '../../components/blog/TxDeadlockOrder.astro';
-import TxUnlockBeforeCommit from '../../components/blog/TxUnlockBeforeCommit.astro';
-import TxDuplicateRelease from '../../components/blog/TxDuplicateRelease.astro';
+import TxStockRace from '@/components/blog/database/transactions/TxStockRace.astro';
+import TxSnapshotReads from '@/components/blog/database/transactions/TxSnapshotReads.astro';
+import TxDeadlockOrder from '@/components/blog/database/transactions/TxDeadlockOrder.astro';
+import TxUnlockBeforeCommit from '@/components/blog/database/transactions/TxUnlockBeforeCommit.astro';
+import TxDuplicateRelease from '@/components/blog/database/transactions/TxDuplicateRelease.astro';
 
 
 재고가 하나 남은 상품을 두 사람이 동시에 주문하면 어떻게 될까요? 두 요청이 모두 재고 1을 읽었다면, 재고를 줄이고 주문을 저장하는 코드를 트랜잭션으로 묶는 것만으로 충분할까요?

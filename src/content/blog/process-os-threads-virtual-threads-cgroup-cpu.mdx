@@ -9,11 +9,11 @@ slug: process-os-threads-virtual-threads-cgroup-cpu
 draft: false
 ---
 
-import ThreadSchedulerLens from '../../components/blog/ThreadSchedulerLens.astro';
-import CpuQuotaExperiment from '../../components/blog/CpuQuotaExperiment.astro';
-import RunqueuePolicyMotion from '../../components/blog/RunqueuePolicyMotion.astro';
-import ExecutionLayersDiagram from '../../components/blog/ExecutionLayersDiagram.astro';
-import SliceDistributionMotion from '../../components/blog/SliceDistributionMotion.astro';
+import ThreadSchedulerLens from '@/components/blog/os/scheduling/ThreadSchedulerLens.astro';
+import CpuQuotaExperiment from '@/components/blog/os/scheduling/CpuQuotaExperiment.astro';
+import RunqueuePolicyMotion from '@/components/blog/os/scheduling/RunqueuePolicyMotion.astro';
+import ExecutionLayersDiagram from '@/components/blog/os/scheduling/ExecutionLayersDiagram.astro';
+import SliceDistributionMotion from '@/components/blog/os/scheduling/SliceDistributionMotion.astro';
 
 웹 요청 1,000개가 네트워크 응답을 기다리는 동안 CPU는 무엇을 실행할까요? 요청마다 스레드 하나가 붙어 있다면, 기다리는 요청의 스레드도 계속 CPU를 차지하는 걸까요? 가상 스레드를 쓰면 답이 달라질까요?
 

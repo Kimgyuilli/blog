@@ -9,12 +9,12 @@ draft: false
 slug: "cs-database-normalization-joins-indexes"
 ---
 
-import NormalizationDemo from '../../components/blog/NormalizationDemo.astro';
-import JoinDemo from '../../components/blog/JoinDemo.astro';
-import MotionJoinDemo from '../../components/blog/MotionJoinDemo.astro';
-import IndexLookupDemo from '../../components/blog/IndexLookupDemo.astro';
-import RelationMapMotion from '../../components/blog/RelationMapMotion.astro';
-import TransactionMotion from '../../components/blog/TransactionMotion.astro';
+import NormalizationDemo from '@/components/blog/database/basics/NormalizationDemo.astro';
+import JoinDemo from '@/components/blog/database/basics/JoinDemo.astro';
+import MotionJoinDemo from '@/components/blog/database/basics/MotionJoinDemo.astro';
+import IndexLookupDemo from '@/components/blog/database/basics/IndexLookupDemo.astro';
+import RelationMapMotion from '@/components/blog/database/basics/RelationMapMotion.astro';
+import TransactionMotion from '@/components/blog/database/basics/TransactionMotion.astro';
 
 주문 목록에 고객 이름을 보여주려면 어디에 이름을 저장해야 할까요? 주문 행마다 넣으면 조회는 간단하지만, 같은 고객이 주문할 때마다 이름이 반복됩니다. 이름을 바꾸려면 여러 행을 고쳐야 합니다.
 

@@ -9,10 +9,10 @@ tags: [saga, e2e-test, kafka, false-green, negative-control, docker-compose, msa
 draft: false
 ---
 
-import SagaEventMap from '../../components/blog/SagaEventMap.astro';
-import SagaStartPath from '../../components/blog/SagaStartPath.astro';
-import SagaPartitionDelay from '../../components/blog/SagaPartitionDelay.astro';
-import SagaFalseGreenSummary from '../../components/blog/SagaFalseGreenSummary.astro';
+import SagaEventMap from '@/components/blog/peekcart/saga-e2e/SagaEventMap.astro';
+import SagaStartPath from '@/components/blog/peekcart/saga-e2e/SagaStartPath.astro';
+import SagaPartitionDelay from '@/components/blog/peekcart/saga-e2e/SagaPartitionDelay.astro';
+import SagaFalseGreenSummary from '@/components/blog/peekcart/saga-e2e/SagaFalseGreenSummary.astro';
 
 {/*
 독자: 이벤트 기반(Kafka 등) 여러 서비스에 걸친 흐름을 E2E 로 검증하려는 백엔드 개발자. 서비스별 통합테스트는 익숙하지만 비동기 체인 E2E 의 대기와 판정을 설계해 본 경험은 적은 독자

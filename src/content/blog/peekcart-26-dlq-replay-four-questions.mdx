@@ -9,11 +9,11 @@ tags: [kafka, dlq, replay, outbox, idempotency, jpa, kafka-retention, rollback, 
 draft: false
 ---
 
-import DlqFlowOverview from '../../components/blog/DlqFlowOverview.astro';
-import DlqReplayCorrelation from '../../components/blog/DlqReplayCorrelation.astro';
-import DlqReplaySummary from '../../components/blog/DlqReplaySummary.astro';
-import DlqSegmentRetention from '../../components/blog/DlqSegmentRetention.astro';
-import DlqJpaStaleEntity from '../../components/blog/DlqJpaStaleEntity.astro';
+import DlqFlowOverview from '@/components/blog/peekcart/dlq/DlqFlowOverview.astro';
+import DlqReplayCorrelation from '@/components/blog/peekcart/dlq/DlqReplayCorrelation.astro';
+import DlqReplaySummary from '@/components/blog/peekcart/dlq/DlqReplaySummary.astro';
+import DlqSegmentRetention from '@/components/blog/peekcart/dlq/DlqSegmentRetention.astro';
+import DlqJpaStaleEntity from '@/components/blog/peekcart/dlq/DlqJpaStaleEntity.astro';
 
 {/*
 독자: Kafka 의 consumer group, offset 을 익힌 뒤, DLQ 에 쌓인 메시지를 다시 처리하는 경로를 직접 설계하려는 백엔드 개발자

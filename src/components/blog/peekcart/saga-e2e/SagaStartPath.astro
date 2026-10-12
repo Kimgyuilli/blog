@@ -1,0 +1,23 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import '@/styles/scene.css';
+import '@/styles/saga-e2e.css';
+type Props = { solution?: boolean };
+const { solution = false } = Astro.props;
+const methods = ['Kafka 직접', 'outbox INSERT', '운영 seed runner', 'E2E 전용 runner', '실제 HTTP'];
+---
+<InteractiveDemoFrame demoId="saga-start" ariaLabel="시작 방식별 실제 실행 구간" title={solution ? '같은 경로를 HTTP에서 시작하면' : '첫 이벤트는 어디에서 들어올까요?'} description="시작 방식을 고르면 같은 코드 구간 위에서 입력이 이동합니다. 흐린 구간은 테스트가 대신한 곳입니다.">
+  <div class="saga-start" data-solution={String(solution)}>
+    <div class="saga-controls" role="group" aria-label="시작 방식">
+      {methods.slice(0, solution ? 5 : 4).map((name, i) => <button type="button" data-method={i} aria-pressed={i === (solution ? 4 : 0)}>{name}</button>)}
+    </div>
+    <svg class="saga-stage" role="img" aria-label="컨트롤러, 상태 변경, publisher, outbox, poller, Kafka의 실행 구간" viewBox="0 0 560 280"></svg>
+    <p class="saga-status" role="status" aria-live="polite"></p>
+    <button type="button" class="saga-replay">선택한 입력 다시 보내기</button>
+  </div>
+  <p class="db-demo-disclaimer">Payment의 결제 실패 발행 경로만 단순화했습니다. 입력 패킷은 설명용이며 실제 로그가 아닙니다. seed runner는 구현되지 않은 계획입니다. HTTP는 기존 DUAL_ACCEPT 모드입니다. gateway 서명·SIGNED_ONLY와 환불 시나리오의 직접 발행 예외는 이 그림 밖입니다.</p>
+</InteractiveDemoFrame>
+<script>
+  import { initSagaStart } from '@/scripts/blog/saga-e2e/start';
+  document.querySelectorAll<HTMLElement>('.saga-start').forEach(initSagaStart);
+</script>

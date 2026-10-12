@@ -1,0 +1,375 @@
+---
+/**
+ * JPA 잠금 조회 함정 두 개를 영속성 컨텍스트와 DB 를 나란히 놓고 보여 주는 타임라인.
+ * trap="stale": 이미 올라와 있는 엔티티는 잠금 조회로 새로 채워지지 않는다.
+ * trap="detach": clearAutomatically 가 잠가 둔 엔티티를 detach 해 변경이 저장되지 않는다.
+ * 토글로 "처음 구현"과 "바꾼 순서"를 비교합니다.
+ */
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import SceneTimeline from '@/components/blog/shared/SceneTimeline.astro';
+import '@/styles/scene.css';
+
+type Props = { trap: 'stale' | 'detach' };
+const { trap } = Astro.props;
+
+const steps = trap === 'stale'
+  ? [
+      { name: '처음 읽기', detail: 'A: OPEN' },
+      { name: 'B 가 종결', detail: 'DB: RESOLVED' },
+      { name: '잠금 조회', detail: '객체는 그대로' },
+      { name: '폐기 처리', detail: 'A: DISCARDED' },
+      { name: '커밋', detail: 'DB: DISCARDED' },
+    ]
+  : [
+      { name: '잠금 조회', detail: 'A: RESOLVED' },
+      { name: '#2 INSERT', detail: '#1 detach' },
+      { name: '다시 잠금 조회', detail: '건너뜀' },
+      { name: 'reopen()', detail: '객체만 OPEN' },
+      { name: '커밋', detail: 'DB: RESOLVED' },
+    ];
+const title = trap === 'stale' ? '잠금은 얻었는데 객체는 이전 상태' : 'INSERT 뒤에 잠가 둔 객체가 빠져나간다';
+const description = trap === 'stale'
+  ? '왼쪽은 트랜잭션 A 의 영속성 컨텍스트, 오른쪽은 DB 입니다. 두 쪽의 #1 상태가 언제 달라지는지 보고, 순서를 바꾸면 어떻게 되는지 비교해 보세요.'
+  : '왼쪽은 트랜잭션 A 의 영속성 컨텍스트, 오른쪽은 DB 입니다. #2 를 INSERT 한 뒤 #1 객체가 어디에 있는지, 커밋 뒤 DB 값이 무엇인지 보세요.';
+---
+
+<InteractiveDemoFrame
+  demoId="dlq-jpa-stale"
+  ariaLabel={trap === 'stale' ? '이미 영속성 컨텍스트에 있는 엔티티를 잠금 조회로 다시 읽어도 객체 상태가 새로 채워지지 않아, 다른 트랜잭션의 종결을 덮어쓰는 과정을 처음 구현과 바꾼 순서로 비교하는 타임라인' : 'clearAutomatically 가 켜진 INSERT 뒤에 잠가 둔 엔티티가 detach 되어 reopen 이 저장되지 않는 과정을 처음 구현과 바꾼 순서로 비교하는 타임라인'}
+  title={title}
+  description={description}
+>
+  <div data-jpa-root data-trap={trap}>
+    <DemoControls ariaLabel="구현 순서">
+      <button type="button" data-jpa-mode="before" aria-pressed="true">처음 구현</button>
+      <button type="button" data-jpa-mode="after" aria-pressed="false">바꾼 순서</button>
+    </DemoControls>
+    <div class="scene-stage" data-stage>
+      <svg data-graphic viewBox="0 0 560 270" role="img" aria-label={trap === 'stale' ? '왼쪽 상자는 트랜잭션 A 의 영속성 컨텍스트, 오른쪽 상자는 DB 이고, 아래에 트랜잭션 B 가 있습니다. 처음 구현에서는 A 가 #1 을 OPEN 으로 읽어 둔 뒤 B 가 DB 를 RESOLVED 로 바꾸고, A 의 잠금 조회는 잠금만 얻어 객체가 OPEN 으로 남습니다. A 는 폐기 처리를 적용해 커밋하고 DB 는 DISCARDED 가 됩니다. 바꾼 순서에서는 A 가 id 만 읽어 두었다가 잠금 조회에서 RESOLVED 객체를 새로 받아 아무것도 바꾸지 않습니다.' : '왼쪽 상자는 트랜잭션 A 의 영속성 컨텍스트, 오른쪽 상자는 DB 입니다. 처음 구현에서는 #2 INSERT 직후 #1 객체가 상자 밖으로 빠져나가고(detach), reopen 으로 객체만 OPEN 이 되어 커밋해도 DB 는 RESOLVED 로 남습니다. 바꾼 순서에서는 INSERT 뒤에 #1 을 다시 잠금 조회해 관리 중인 객체를 받고, reopen 뒤 커밋하면 DB 가 OPEN 이 됩니다.'}></svg>
+    </div>
+    <SceneTimeline ariaLabel="다섯 단계" steps={steps} />
+    <p class="scene-note" data-note role="status"></p>
+    <p class="db-demo-disclaimer">
+      {trap === 'stale'
+        ? '본문의 재현 실험을 옮긴 모형입니다. 재현과 같이 잠금을 기다리는 경합은 만들지 않았고, "먼저 읽기, 다른 트랜잭션 커밋, 잠금 조회" 순서로 같은 상태를 보여 줍니다. 사건 상태 외의 컬럼과 SQL 의 세부는 그리지 않았습니다.'
+        : '본문의 재현 실험을 옮긴 모형입니다. 실제 코드는 INSERT 전에 아홉 가지를 대조하지만 장면에서는 생략했고, 사건 상태 외의 컬럼과 #2 를 #1 에 연결하는 값은 그리지 않았습니다.'}
+    </p>
+  </div>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, lerp, replayClass, setAttrs, svg, watchNarrow, type Box, type Point } from '@/scripts/blog/scene/core';
+  import { createBoundary, createNode } from '@/scripts/blog/scene/parts';
+  import { createPacketLayer, type PacketTone } from '@/scripts/blog/scene/packets';
+  import { createStepPlayer } from '@/scripts/blog/scene/step-player';
+
+  // 독자가 볼 변화(stale): DB 는 RESOLVED 로 바뀌었는데 A 의 객체는 OPEN 으로 남아 있고, 잠금 조회 뒤에도 그대로라 폐기 처리가 B 의 종결을 덮어쓴다.
+  // 독자가 볼 변화(detach): INSERT 순간 #1 객체가 영속성 컨텍스트 상자 밖으로 밀려나고, 밖에서 바꾼 OPEN 은 DB 로 가지 않는다.
+  type Trap = 'stale' | 'detach';
+  type Mode = 'before' | 'after';
+  type Status = '' | 'OPEN' | 'RESOLVED' | 'DISCARDED';
+  /** card: 컨텍스트 안 #1 객체, load: 0이면 DB 행 자리, 1이면 컨텍스트 자리(값을 복사해 올라옴). out: 1이면 상자 밖(detach). fresh: 다시 조회한 새 객체. */
+  type State = { card: number; load: number; out: number; fresh: number; idc: number; lock: number; row2: number; b: number };
+  type Move = { from: 'A' | 'DB' | 'B'; label: string; tone?: PacketTone; bounce?: boolean };
+  type Spec = {
+    state: State; ctx: Status; freshStatus: Status; db: Status;
+    moves: Move[]; note: string; detail: string; shake?: 'db' | 'ctx';
+  };
+  type Layout = {
+    view: [number, number];
+    ctxBox: { x: number; y: number; w: number; h: number }; dbBox: { x: number; y: number; w: number; h: number };
+    card: Box; outCard: Box; idChip: Box; row1: Box; row2: Box; lockAt: Point; bNode: Box;
+    aEdge: (y: number) => Point; dbEdge: (y: number) => Point;
+  };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 270],
+      ctxBox: { x: 12, y: 30, w: 250, h: 180 }, dbBox: { x: 318, y: 30, w: 230, h: 180 },
+      card: { x: 137, y: 96, w: 210, h: 48 }, outCard: { x: 137, y: 240, w: 210, h: 48 }, idChip: { x: 137, y: 160, w: 120, h: 26 },
+      row1: { x: 433, y: 96, w: 200, h: 48 }, row2: { x: 433, y: 172, w: 200, h: 40 }, lockAt: { x: 433, y: 136 },
+      bNode: { x: 433, y: 244, w: 150, h: 34 },
+      aEdge: (y) => ({ x: 248, y }), dbEdge: (y) => ({ x: 327, y }),
+    },
+    narrow: {
+      view: [360, 430],
+      ctxBox: { x: 8, y: 30, w: 344, h: 128 }, dbBox: { x: 8, y: 214, w: 344, h: 160 },
+      card: { x: 180, y: 92, w: 260, h: 48 }, outCard: { x: 150, y: 186, w: 240, h: 40 }, idChip: { x: 180, y: 140, w: 120, h: 26 },
+      row1: { x: 180, y: 274, w: 260, h: 48 }, row2: { x: 180, y: 346, w: 260, h: 36 }, lockAt: { x: 180, y: 313 },
+      bNode: { x: 180, y: 404, w: 150, h: 34 },
+      aEdge: () => ({ x: 318, y: 162 }), dbEdge: () => ({ x: 318, y: 232 }),
+    },
+  };
+
+  const S = (over: Partial<State> = {}): State => ({ card: 0, load: 1, out: 0, fresh: 0, idc: 0, lock: 0, row2: 0, b: 0, ...over });
+  const SPECS: Record<Trap, Record<Mode, Spec[]>> = {
+    stale: {
+      before: [
+        { state: S({ card: 1, b: 1 }), ctx: 'OPEN', freshStatus: '', db: 'OPEN', detail: 'A: OPEN',
+          moves: [{ from: 'DB', label: 'SELECT' }],
+          note: '트랜잭션 A 가 #1 을 엔티티로 읽어 영속성 컨텍스트에 올렸습니다. 지금은 양쪽 모두 <code>OPEN</code> 입니다.' },
+        { state: S({ card: 1, b: 1 }), ctx: 'OPEN', freshStatus: '', db: 'RESOLVED', detail: 'DB: RESOLVED',
+          moves: [{ from: 'B', label: 'RESOLVED 커밋' }],
+          note: '트랜잭션 B 가 #1 을 먼저 종결하고 커밋했습니다. DB 는 <code>RESOLVED</code> 인데, A 의 객체는 아직 <code>OPEN</code> 입니다.' },
+        { state: S({ card: 1, b: 1, lock: 1 }), ctx: 'OPEN', freshStatus: '', db: 'RESOLVED', detail: '객체는 그대로',
+          moves: [{ from: 'A', label: 'FOR UPDATE' }, { from: 'DB', label: '잠금만', tone: 'temp' }],
+          note: 'A 가 <code>FOR UPDATE</code> 로 다시 읽었습니다. DB 잠금은 얻었지만, 이미 올라와 있는 객체는 <strong>새로 채우지 않아</strong> <code>OPEN</code> 그대로입니다.' },
+        { state: S({ card: 1, b: 1, lock: 1 }), ctx: 'DISCARDED', freshStatus: '', db: 'RESOLVED', detail: 'A: DISCARDED',
+          moves: [],
+          note: 'A 는 객체가 <code>OPEN</code> 이므로 아직 종결되지 않은 사건으로 보고 폐기 처리를 적용합니다. 객체가 <code>DISCARDED</code> 가 됐습니다.' },
+        { state: S({ card: 1, b: 1 }), ctx: 'DISCARDED', freshStatus: '', db: 'DISCARDED', detail: 'DB: DISCARDED', shake: 'db',
+          moves: [{ from: 'A', label: 'UPDATE', tone: 'danger' }],
+          note: '커밋하면 B 가 먼저 해 둔 종결(<code>RESOLVED</code>)을 <strong>덮어써</strong> DB 가 <code>DISCARDED</code> 가 됩니다.' },
+      ],
+      after: [
+        { state: S({ idc: 1, b: 1 }), ctx: '', freshStatus: '', db: 'OPEN', detail: 'A: id 만',
+          moves: [{ from: 'DB', label: 'SELECT id' }],
+          note: 'A 는 엔티티 대신 <strong>id 만</strong> 읽습니다. 영속성 컨텍스트에는 #1 객체가 없습니다.' },
+        { state: S({ idc: 1, b: 1 }), ctx: '', freshStatus: '', db: 'RESOLVED', detail: 'DB: RESOLVED',
+          moves: [{ from: 'B', label: 'RESOLVED 커밋' }],
+          note: '트랜잭션 B 가 #1 을 먼저 종결하고 커밋했습니다. A 쪽에는 낡은 객체가 없습니다.' },
+        { state: S({ idc: 1, card: 1, b: 1, lock: 1 }), ctx: 'RESOLVED', freshStatus: '', db: 'RESOLVED', detail: 'A: RESOLVED',
+          moves: [{ from: 'A', label: 'FOR UPDATE' }, { from: 'DB', label: 'RESOLVED', tone: 'flow' }],
+          note: '객체가 없던 상태에서 잠금 조회했으므로, DB 의 최신 값 <code>RESOLVED</code> 로 객체가 <strong>새로 채워집니다</strong>.' },
+        { state: S({ idc: 1, card: 1, b: 1, lock: 1 }), ctx: 'RESOLVED', freshStatus: '', db: 'RESOLVED', detail: '바꾸지 않음',
+          moves: [],
+          note: '이미 종결된 사건이므로 폐기 처리를 적용하지 않습니다.' },
+        { state: S({ idc: 1, card: 1, b: 1 }), ctx: 'RESOLVED', freshStatus: '', db: 'RESOLVED', detail: 'DB: RESOLVED',
+          moves: [],
+          note: '커밋해도 바뀐 것이 없어 B 의 종결 <code>RESOLVED</code> 가 그대로 남습니다.' },
+      ],
+    },
+    detach: {
+      before: [
+        { state: S({ card: 1, lock: 1 }), ctx: 'RESOLVED', freshStatus: '', db: 'RESOLVED', detail: 'A: RESOLVED',
+          moves: [{ from: 'A', label: 'FOR UPDATE' }, { from: 'DB', label: 'RESOLVED' }],
+          note: 'A 가 #1 을 잠금 조회했습니다. 이미 종결된 사건이라 <code>RESOLVED</code> 입니다. 재실패 #2 가 도착해 #1 을 다시 열어야 하는 상황입니다.' },
+        { state: S({ card: 1, lock: 1, row2: 1, out: 1 }), ctx: 'RESOLVED', freshStatus: '', db: 'RESOLVED', detail: '#1 detach',
+          moves: [{ from: 'A', label: 'INSERT #2' }],
+          note: '#2 를 INSERT 하자 <code>clearAutomatically</code> 가 영속성 컨텍스트를 비웠습니다. #1 객체는 <strong>관리 대상에서 빠졌습니다</strong>(detach).' },
+        { state: S({ card: 1, lock: 1, row2: 1, out: 1 }), ctx: 'RESOLVED', freshStatus: '', db: 'RESOLVED', detail: '건너뜀',
+          moves: [],
+          note: '처음 구현은 #1 을 다시 조회하지 않고 바로 다음 단계로 넘어갑니다.' },
+        { state: S({ card: 1, lock: 1, row2: 1, out: 1 }), ctx: 'OPEN', freshStatus: '', db: 'RESOLVED', detail: '객체만 OPEN',
+          moves: [],
+          note: '<code>reopen()</code> 은 <code>true</code> 를 돌려주고 객체도 <code>OPEN</code> 이 됐습니다. 하지만 관리 대상이 아니라 변경이 추적되지 않습니다.' },
+        { state: S({ card: 1, row2: 1, out: 1 }), ctx: 'OPEN', freshStatus: '', db: 'RESOLVED', detail: 'DB: RESOLVED', shake: 'db',
+          moves: [{ from: 'A', label: 'UPDATE 없음', tone: 'danger', bounce: true }],
+          note: '커밋해도 UPDATE 가 나가지 않아 DB 의 #1 은 <code>RESOLVED</code> 그대로입니다. <strong>예외도 나지 않습니다.</strong>' },
+      ],
+      after: [
+        { state: S({ card: 1, lock: 1 }), ctx: 'RESOLVED', freshStatus: '', db: 'RESOLVED', detail: 'A: RESOLVED',
+          moves: [{ from: 'A', label: 'FOR UPDATE' }, { from: 'DB', label: 'RESOLVED' }],
+          note: 'A 가 #1 을 잠금 조회했습니다. 이미 종결된 사건이라 <code>RESOLVED</code> 입니다. 재실패 #2 가 도착해 #1 을 다시 열어야 하는 상황입니다.' },
+        { state: S({ card: 1, lock: 1, row2: 1, out: 1 }), ctx: 'RESOLVED', freshStatus: '', db: 'RESOLVED', detail: '#1 detach',
+          moves: [{ from: 'A', label: 'INSERT #2' }],
+          note: '#2 를 INSERT 하자 <code>clearAutomatically</code> 가 영속성 컨텍스트를 비웠습니다. #1 객체는 관리 대상에서 빠졌습니다(detach).' },
+        { state: S({ card: 0, lock: 1, row2: 1, out: 1, fresh: 1 }), ctx: 'RESOLVED', freshStatus: 'RESOLVED', db: 'RESOLVED', detail: '새 객체',
+          moves: [{ from: 'A', label: 'FOR UPDATE' }, { from: 'DB', label: 'RESOLVED', tone: 'flow' }],
+          note: 'INSERT 뒤에 #1 을 <strong>다시 잠금 조회</strong>해 관리 중인 객체를 새로 받습니다. 잠금은 이미 A 가 갖고 있어 기다리지 않습니다.' },
+        { state: S({ card: 0, lock: 1, row2: 1, out: 1, fresh: 1 }), ctx: 'RESOLVED', freshStatus: 'OPEN', db: 'RESOLVED', detail: '객체 OPEN',
+          moves: [],
+          note: '관리 중인 객체에 <code>reopen()</code> 을 적용해 <code>OPEN</code> 으로 바꿨습니다.' },
+        { state: S({ card: 0, row2: 1, out: 1, fresh: 1 }), ctx: 'RESOLVED', freshStatus: 'OPEN', db: 'OPEN', detail: 'DB: OPEN',
+          moves: [{ from: 'A', label: 'UPDATE', tone: 'flow' }],
+          note: '바뀐 것이 추적되므로 커밋 때 UPDATE 가 나가고, DB 의 #1 이 <code>OPEN</code> 으로 <strong>저장됩니다</strong>.' },
+      ],
+    },
+  };
+
+  const makeCard = (parent: Element, title: string) => {
+    const group = svg('g', { class: 'djs-card' }, parent);
+    const body = svg('g', { class: 'djs-card-body' }, group);
+    const rect = svg('rect', { class: 'djs-card-rect', rx: 10 }, body);
+    const name = svg('text', { class: 'scene-label is-sans djs-card-name' }, body);
+    name.textContent = title;
+    const sub = svg('text', { class: 'scene-label is-sans djs-card-sub' }, body);
+    const status = svg('text', { class: 'djs-card-status', 'text-anchor': 'end' }, body);
+    return {
+      group, body,
+      place(b: Box, o: number) {
+        setAttrs(group, { transform: `translate(${(b.x - b.w / 2).toFixed(2)} ${(b.y - b.h / 2).toFixed(2)})` });
+        setAttrs(rect, { width: b.w, height: b.h });
+        setAttrs(name, { x: 12, y: sub.textContent ? b.h / 2 - 2 : b.h / 2 + 4 });
+        setAttrs(sub, { x: 12, y: b.h / 2 + 13 });
+        setAttrs(status, { x: b.w - 12, y: b.h / 2 + 5 });
+        group.style.opacity = String(o);
+      },
+      set(next: Status, subText = '') {
+        bumpText(status, next);
+        sub.textContent = subText;
+        group.dataset.status = next;
+      },
+    };
+  };
+  const mixBox = (a: Box, b: Box, t: number): Box => ({ x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t), w: lerp(a.w, b.w, t), h: lerp(a.h, b.h, t) });
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="dlq-jpa-stale"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const host = demo.querySelector<HTMLElement>('[data-jpa-root]')!;
+    const trap = host.dataset.trap as Trap;
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-jpa-mode]')];
+    const details = [...demo.querySelectorAll<HTMLElement>('[data-step] small')];
+    let mode: Mode = 'before';
+    let layout = LAYOUTS.wide;
+    let current = -1;
+
+    const ctxBox = createBoundary(root, '트랜잭션 A 의 영속성 컨텍스트');
+    const dbBox = createBoundary(root, 'DB');
+    const row1 = makeCard(root, '#1 행');
+    const row2 = makeCard(root, '#2 행 (새 재실패)');
+    const lockText = svg('text', { class: 'scene-label is-sans djs-lock', 'text-anchor': 'middle' }, root);
+    lockText.textContent = 'A 가 행 잠금 보유';
+    const idChip = svg('g', { class: 'djs-id' }, root);
+    const idRect = svg('rect', { class: 'djs-id-rect', rx: 8 }, idChip);
+    const idText = svg('text', { class: 'scene-label djs-id-text', 'text-anchor': 'middle' }, idChip);
+    idText.textContent = 'id = 1';
+    const card = makeCard(root, '#1 객체');
+    const fresh = makeCard(root, '#1 객체 (다시 조회)');
+    const bNode = createNode(root, { label: '트랜잭션 B', hue: 'var(--scene-hue-violet)' });
+    const layer = createPacketLayer(root);
+
+    const scene = createScene<State>({ ...SPECS[trap][mode][0].state }, (s) => {
+      const l = layout;
+      ctxBox.place(l.ctxBox);
+      dbBox.place(l.dbBox);
+      row1.place(l.row1, 1);
+      row2.place(l.row2, s.row2);
+      setAttrs(lockText, { x: l.lockAt.x, y: l.lockAt.y, opacity: s.lock });
+      // 컨텍스트 안 객체: DB 행 자리에서 복사돼 올라오고(load), detach 되면 상자 밖으로 밀려납니다(out).
+      const inside = mixBox(l.row1, l.card, s.load);
+      const outBox = mixBox(inside, l.outCard, s.out);
+      const lift = -26 * Math.sin(Math.PI * s.out) * (s.out > 0 && s.out < 1 ? 1 : 0);
+      card.place({ ...outBox, y: outBox.y + lift }, s.card);
+      card.group.classList.toggle('is-detached', s.out > 0.5);
+      fresh.place(l.card, s.fresh);
+      const ic = l.idChip;
+      setAttrs(idRect, { x: ic.x - ic.w / 2, y: ic.y - ic.h / 2, width: ic.w, height: ic.h });
+      setAttrs(idText, { x: ic.x, y: ic.y + 4 });
+      idChip.style.opacity = String(s.idc);
+      bNode.setBox(l.bNode);
+      bNode.group.style.opacity = String(s.b);
+    });
+
+    const say = (html: string) => { note.innerHTML = html; replayClass(note, 'is-entering'); };
+    const apply = (sp: Spec) => {
+      const detached = sp.state.out > 0.5 && sp.state.card > 0.5;
+      const stale = sp.ctx && sp.ctx !== sp.db && !detached;
+      card.set(sp.ctx, detached ? '관리 대상 아님 (detach)' : stale ? 'DB 와 다름' : '');
+      card.group.classList.toggle('is-stale', !!stale);
+      fresh.set(sp.freshStatus, sp.freshStatus && sp.freshStatus !== sp.db ? '커밋 때 UPDATE' : '');
+      row1.set(sp.db);
+      row2.set('');
+      say(sp.note);
+      if (sp.shake === 'db') replayClass(row1.body, 'is-shaking');
+    };
+    const syncDetails = () => details.forEach((d, i) => { d.textContent = SPECS[trap][mode][i].detail; });
+
+    const sendMove = async (mv: Move, alive: () => boolean) => {
+      const l = layout;
+      const y = l.row1.y;
+      if (mv.from === 'B') {
+        const from = { x: l.bNode.x, y: l.bNode.y - l.bNode.h / 2 - 4 };
+        const to = { x: l.row1.x + (layout === LAYOUTS.narrow ? 90 : 60), y: l.row1.y + l.row1.h / 2 + 6 };
+        const p = layer.spawn({ label: mv.label, tone: mv.tone ?? 'dep', at: { x: to.x, y: from.y } });
+        if (!(await p.travel([to], 620)) || !alive()) return false;
+        void p.fade(420);
+        return true;
+      }
+      const a = l.aEdge(y);
+      const d = l.dbEdge(y);
+      const [from, to] = mv.from === 'A' ? [a, d] : [d, a];
+      const p = layer.spawn({ label: mv.label, tone: mv.tone ?? 'dep', at: from });
+      if (mv.bounce) {
+        if (!(await p.bounce(to, 22)) || !alive()) return false;
+        void p.fade(600);
+        return true;
+      }
+      if (!(await p.travel([to], 560)) || !alive()) return false;
+      void p.fade(420);
+      return true;
+    };
+
+    const enter = async (index: number, instant: boolean) => {
+      const prev = current;
+      current = index;
+      const alive = scene.begin();
+      layer.clear();
+      const sp = SPECS[trap][mode][index];
+      const sequential = !instant && !scene.reduced && (index === prev + 1 || (index === 0 && prev === 4));
+      if (!sequential) {
+        apply(sp);
+        if (instant) scene.set({ ...sp.state });
+        else void scene.go({ ...sp.state }, duration.draw);
+        return;
+      }
+      const before = index === 0 ? S({ b: trap === 'stale' ? 1 : 0 }) : SPECS[trap][mode][index - 1].state;
+      if (index === 0) {
+        scene.set({ ...before, load: 0 });
+        row1.set(trap === 'stale' ? 'OPEN' : 'RESOLVED');
+        card.set('');
+        fresh.set('');
+        row2.set('');
+        say(trap === 'stale' ? '#1 은 아직 <code>OPEN</code> 입니다.' : '#1 은 이미 종결돼 <code>RESOLVED</code> 입니다.');
+      }
+      for (const mv of sp.moves) {
+        if (!(await sendMove(mv, alive))) return;
+      }
+      // 새로 올라오는 객체는 DB 행 자리에서 복사돼 컨텍스트로 날아옵니다.
+      const from = { ...scene.state };
+      if (sp.state.card > 0.5 && from.card < 0.5) from.load = 0;
+      scene.set(from);
+      apply(sp);
+      await scene.go({ ...sp.state }, sp.state.out !== before.out ? duration.fly : duration.draw);
+    };
+
+    syncDetails();
+    createStepPlayer(demo, {
+      dwell: (i) => (i === 4 ? duration.dwellLast + 600 : duration.dwell + 900),
+      onStep: (i, instant) => { void enter(i, instant); },
+    });
+
+    modeButtons.forEach((button) => button.addEventListener('click', () => {
+      const next = button.dataset.jpaMode as Mode;
+      modeButtons.forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
+      if (next === mode) return;
+      mode = next;
+      syncDetails();
+      const index = current;
+      current = -1;
+      void enter(index, false);
+    }));
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      layer.clear();
+      scene.redraw();
+    });
+  });
+</script>
+
+<style is:global>
+  .db-demo[data-blog-demo="dlq-jpa-stale"] .scene-note { min-height: 4.2em; }
+  [data-blog-demo="dlq-jpa-stale"] .djs-card-body { transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="dlq-jpa-stale"] .djs-card-body.is-shaking { animation: scene-shake 420ms ease-in-out; }
+  [data-blog-demo="dlq-jpa-stale"] .djs-card-rect { fill: var(--surface); stroke: var(--hairline); stroke-width: 1.5; }
+  [data-blog-demo="dlq-jpa-stale"] .djs-card-name { fill: var(--ink); font-weight: 750; font-size: 12.5px; }
+  [data-blog-demo="dlq-jpa-stale"] .djs-card-sub { fill: var(--slate); font-weight: 700; font-size: 10.5px; }
+  [data-blog-demo="dlq-jpa-stale"] .djs-card-status { font-family: var(--font-mono); font-size: 13px; font-weight: 800; fill: var(--ink); transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="dlq-jpa-stale"] .djs-card-status.is-bump { animation: scene-pop 420ms ease-out; }
+  [data-blog-demo="dlq-jpa-stale"] .djs-card[data-status="OPEN"] .djs-card-status { fill: var(--scene-temp); }
+  [data-blog-demo="dlq-jpa-stale"] .djs-card[data-status="RESOLVED"] .djs-card-status { fill: var(--scene-flow-ink); }
+  [data-blog-demo="dlq-jpa-stale"] .djs-card[data-status="DISCARDED"] .djs-card-status { fill: var(--scene-danger); }
+  [data-blog-demo="dlq-jpa-stale"] .djs-card.is-stale .djs-card-rect { stroke: var(--scene-temp); stroke-dasharray: 5 3; }
+  [data-blog-demo="dlq-jpa-stale"] .djs-card.is-stale .djs-card-sub { fill: var(--scene-temp); }
+  [data-blog-demo="dlq-jpa-stale"] .djs-card.is-detached .djs-card-rect { fill: none; stroke: var(--scene-danger); stroke-dasharray: 4 4; }
+  [data-blog-demo="dlq-jpa-stale"] .djs-card.is-detached .djs-card-sub { fill: var(--scene-danger); }
+  [data-blog-demo="dlq-jpa-stale"] .djs-lock { fill: var(--scene-temp); font-weight: 800; }
+  [data-blog-demo="dlq-jpa-stale"] .djs-id-rect { fill: var(--surface); stroke: var(--scene-hue-gray); stroke-dasharray: 3 3; }
+  [data-blog-demo="dlq-jpa-stale"] .djs-id-text { fill: var(--ink); font-weight: 700; }
+</style>

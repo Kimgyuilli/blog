@@ -3,10 +3,10 @@
  * 장면 키트 견본. 개발 서버의 /dev/scene-kit/ 에서만 보입니다.
  * 새 글의 장면을 만들기 전에 여기서 부품과 움직임을 고르고, 기준은 docs/animation-standards.md를 따릅니다.
  */
-import InteractiveDemoFrame from '../blog/InteractiveDemoFrame.astro';
-import DemoControls from '../blog/DemoControls.astro';
-import SceneTimeline from '../blog/SceneTimeline.astro';
-import SceneLegend from '../blog/SceneLegend.astro';
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import SceneTimeline from '@/components/blog/shared/SceneTimeline.astro';
+import SceneLegend from '@/components/blog/shared/SceneLegend.astro';
 import { duration } from '../../scripts/blog/scene/core';
 import '../../styles/scene.css';
 
