@@ -1,0 +1,291 @@
+---
+/**
+ * 크기 기준 삭제(retention.bytes)는 닫힌 세그먼트만 지운다는 것을 보여 주는 실험 장면.
+ * segment.bytes 를 기본값(1 GiB)과 4 MiB 사이에서 바꿔 같은 쓰기를 반복합니다.
+ */
+import InteractiveDemoFrame from './InteractiveDemoFrame.astro';
+import DemoControls from './DemoControls.astro';
+import '../../styles/scene.css';
+---
+
+<InteractiveDemoFrame
+  demoId="dlq-segment-retention"
+  ariaLabel="한 파티션에 1 MiB 씩 메시지를 쓸 때, segment.bytes 가 1 GiB 이면 활성 세그먼트가 닫히지 않아 retention.bytes 8 MiB 를 넘어도 지워지지 않고, 4 MiB 이면 닫힌 세그먼트가 지워져 파티션 크기가 8 MiB 와 12 MiB 사이에 머무는 모형"
+  title="retention.bytes 를 두어도 파티션이 커지는 이유"
+  description="한 파티션에 1 MiB 씩 메시지를 씁니다. 세그먼트 크기를 바꿔 가며 파티션 크기가 retention.bytes(8 MiB) 근처에 머무는지 보세요."
+>
+  <DemoControls ariaLabel="segment.bytes">
+    <button type="button" data-sr-mode="big" aria-pressed="true">segment.bytes 1 GiB (기본값)</button>
+    <button type="button" data-sr-mode="small" aria-pressed="false">segment.bytes 4 MiB</button>
+  </DemoControls>
+  <div class="scene-chips" role="group" aria-label="쓰기">
+    <button type="button" class="scene-chip is-plain" data-sr-write>1 MiB 쓰기</button>
+    <button type="button" class="scene-chip is-plain" data-sr-auto>계속 쓰기</button>
+    <button type="button" class="scene-chip is-plain" data-sr-reset>처음부터</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic viewBox="0 0 560 200" role="img" aria-label="가로 막대는 한 파티션의 로그이고, 왼쪽이 오래된 세그먼트, 오른쪽 끝이 지금 쓰고 있는 활성 세그먼트입니다. 세로 점선은 retention.bytes 8 MiB 입니다. segment.bytes 가 1 GiB 이면 활성 세그먼트가 닫히지 않아 막대가 8 MiB 를 넘어 계속 길어집니다. 4 MiB 이면 세그먼트가 4 MiB 마다 닫히고, 지워도 8 MiB 이상 남는 만큼 가장 오래된 닫힌 세그먼트가 지워져 막대가 8 MiB 와 12 MiB 사이에 머뭅니다."></svg>
+  </div>
+  <div class="dsr-metrics" aria-hidden="true">
+    <div class="scene-metric"><b data-m-size>0</b><span>파티션 크기(MiB)</span></div>
+    <div class="scene-metric"><b data-m-closed>0</b><span>닫힌 세그먼트</span></div>
+    <div class="scene-metric"><b data-m-deleted>0</b><span>지운 세그먼트</span></div>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">업무 토픽 한 파티션을 1 MiB 단위로 단순화한 모형이고, 쓰기 속도는 예시입니다. 실제 브로커는 삭제 검사를 주기적으로(기본 5분) 하고 지운 세그먼트도 잠시 뒤에 실제로 삭제하지만, 장면에서는 쓰기 직후 바로 검사합니다. 시간 기준 삭제(7일)도 같은 세그먼트 단위로 일어나지만 그리지 않았고, 인덱스 파일도 생략했습니다. segment.bytes 1 GiB 쪽은 20 MiB 이후를 그리지 않습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, ease, replayClass, setAttrs, svg, watchNarrow } from '../../scripts/blog/scene/core';
+  import { createPacketLayer } from '../../scripts/blog/scene/packets';
+  import { watchDemoPlayback } from '../../scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: segment.bytes 가 1 GiB 이면 활성 세그먼트 하나가 retention.bytes 선을 넘어 계속 길어지고 아무것도 지워지지 않는다.
+  // 4 MiB 로 바꾸면 세그먼트가 닫힐 때마다 가장 오래된 것이 위로 걷혀 나가고, 막대가 8 MiB 와 12 MiB 사이를 오간다.
+  type Mode = 'big' | 'small';
+  type Slot = { x: number; w: number; o: number; dy: number };
+  type State = Record<string, Slot>;
+  type Seg = { id: number; size: number; closed: boolean };
+  type Layout = { view: [number, number]; x0: number; scale: number; maxMiB: number; barY: number; barH: number; dropY: number };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: { view: [560, 200], x0: 30, scale: 24, maxMiB: 20, barY: 96, barH: 46, dropY: 26 },
+    narrow: { view: [360, 200], x0: 20, scale: 20, maxMiB: 16, barY: 96, barH: 46, dropY: 26 },
+  };
+  const RETENTION = 8;
+  const SLOTS = 10;
+  const AUTO_LIMIT = 20;
+  const key = (id: number) => `k${id % SLOTS}`;
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="dlq-segment-retention"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-sr-mode]')];
+    const writeButton = demo.querySelector<HTMLButtonElement>('[data-sr-write]')!;
+    const autoButton = demo.querySelector<HTMLButtonElement>('[data-sr-auto]')!;
+    const resetButton = demo.querySelector<HTMLButtonElement>('[data-sr-reset]')!;
+    const m = {
+      size: demo.querySelector<HTMLElement>('[data-m-size]')!,
+      closed: demo.querySelector<HTMLElement>('[data-m-closed]')!,
+      deleted: demo.querySelector<HTMLElement>('[data-m-deleted]')!,
+    };
+    let layout = LAYOUTS.wide;
+    let mode: Mode = 'big';
+    let segs: Seg[] = [];
+    let nextId = 0;
+    let deleted = 0;
+    let busy = false;
+    let auto = false;
+    let autoTimer: number | undefined;
+
+    const track = svg('rect', { class: 'dsr-track', rx: 8 }, root);
+    const ticks = svg('g', { class: 'dsr-ticks' }, root);
+    const retLine = svg('line', { class: 'dsr-ret' }, root);
+    const retLabel = svg('text', { class: 'scene-label is-sans dsr-ret-label', 'text-anchor': 'middle' }, root);
+    retLabel.textContent = 'retention.bytes 8 MiB';
+    const maxLine = svg('line', { class: 'dsr-max' }, root);
+    const maxLabel = svg('text', { class: 'scene-label is-sans dsr-max-label', 'text-anchor': 'middle' }, root);
+    maxLabel.textContent = '최대 12 MiB';
+    const slots = Array.from({ length: SLOTS }, () => {
+      const group = svg('g', { class: 'dsr-seg' }, root);
+      const rect = svg('rect', { class: 'dsr-seg-rect', rx: 6 }, group);
+      const label = svg('text', { class: 'scene-label is-sans dsr-seg-label', 'text-anchor': 'middle' }, group);
+      return { group, rect, label };
+    });
+    const overflow = svg('text', { class: 'scene-label is-sans dsr-overflow', 'text-anchor': 'end' }, root);
+    overflow.textContent = '계속 커짐 (1 GiB 가 되어야 닫힘)';
+    const layer = createPacketLayer(root);
+
+    const empty = (): State => Object.fromEntries(Array.from({ length: SLOTS }, (_, i) => [`k${i}`, { x: layout.x0, w: 0, o: 0, dy: 0 }]));
+    const xOf = (mib: number) => layout.x0 + mib * layout.scale;
+    const axisEnd = () => xOf(layout.maxMiB);
+    const total = () => segs.reduce((sum, s) => sum + s.size, 0);
+    const active = () => segs[segs.length - 1];
+    const segBytes = () => (mode === 'small' ? 4 : 1024);
+
+    /** 현재 세그먼트 목록에서 장면 상태를 만듭니다. gone 에 든 id 는 위로 걷혀 나가는 중입니다. */
+    const target = (gone: number[] = []): State => {
+      const next = { ...scene.state };
+      Object.keys(next).forEach((k) => { next[k] = { ...next[k], o: 0, dy: 0 }; });
+      let at = 0;
+      segs.forEach((s) => {
+        const leaving = gone.includes(s.id);
+        next[key(s.id)] = { x: xOf(at), w: s.size * layout.scale, o: leaving ? 0 : 1, dy: leaving ? -34 : 0 };
+        if (!leaving) at += s.size;
+      });
+      return next;
+    };
+
+    const scene = createScene<State>(empty(), (s) => {
+      const l = layout;
+      const end = axisEnd();
+      setAttrs(track, { x: l.x0, y: l.barY, width: end - l.x0, height: l.barH });
+      ticks.replaceChildren();
+      for (let mib = 0; mib <= l.maxMiB; mib += 4) {
+        const t = svg('text', { class: 'scene-label dsr-tick', x: xOf(mib), y: l.barY + l.barH + 18, 'text-anchor': 'middle' }, ticks);
+        t.textContent = `${mib}`;
+      }
+      const unit = svg('text', { class: 'scene-label is-sans dsr-tick', x: end, y: l.barY + l.barH + 34, 'text-anchor': 'end' }, ticks);
+      unit.textContent = 'MiB';
+      setAttrs(retLine, { x1: xOf(RETENTION), x2: xOf(RETENTION), y1: l.barY - 22, y2: l.barY + l.barH + 6 });
+      setAttrs(retLabel, { x: xOf(RETENTION), y: l.barY - 28 });
+      const showMax = mode === 'small' ? 1 : 0;
+      setAttrs(maxLine, { x1: xOf(12), x2: xOf(12), y1: l.barY - 6, y2: l.barY + l.barH + 6, opacity: showMax });
+      setAttrs(maxLabel, { x: xOf(12) + 4, y: l.barY + l.barH + 50, opacity: showMax, 'text-anchor': 'middle' });
+
+      const byKey = new Map(segs.map((seg) => [key(seg.id), seg]));
+      Object.entries(s).forEach(([k, slot]) => {
+        const view = slots[Number(k.slice(1))];
+        const seg = byKey.get(k);
+        const w = Math.max(0, Math.min(slot.w, end - slot.x));
+        setAttrs(view.rect, { x: slot.x + 1, y: l.barY + slot.dy, width: Math.max(0, w - 2), height: l.barH });
+        view.group.style.opacity = String(slot.o);
+        const isActive = !!seg && !seg.closed;
+        view.group.classList.toggle('is-active', isActive);
+        view.group.classList.toggle('is-over', isActive && total() > RETENTION);
+        setAttrs(view.label, { x: slot.x + w / 2, y: l.barY + slot.dy + l.barH / 2 + 4 });
+        view.label.textContent = !seg ? '' : w < 44 ? '' : seg.closed ? `${seg.size} MiB` : w < 70 ? '쓰는 중' : `쓰는 중 ${seg.size} MiB`;
+      });
+      const over = total() >= l.maxMiB;
+      setAttrs(overflow, { x: end - 8, y: l.barY - 8, opacity: over ? 1 : 0 });
+    });
+
+    const say = (html: string) => { note.innerHTML = html; replayClass(note, 'is-entering'); };
+    const updateMetrics = () => {
+      const size = total();
+      bumpText(m.size, String(size));
+      m.size.className = size > RETENTION + (mode === 'small' ? 4 : 0) ? 'is-danger' : '';
+      bumpText(m.closed, String(segs.filter((s) => s.closed).length));
+      bumpText(m.deleted, String(deleted));
+    };
+
+    const reset = () => {
+      scene.begin();
+      layer.clear();
+      stopAuto();
+      busy = false;
+      nextId = 0;
+      deleted = 0;
+      segs = [{ id: nextId++, size: 0, closed: false }];
+      scene.set(empty());
+      scene.set(target());
+      updateMetrics();
+      say(mode === 'small'
+        ? '<code>segment.bytes</code> 4 MiB 입니다. 세그먼트가 4 MiB 마다 닫힙니다. <strong>계속 쓰기</strong>를 눌러 보세요.'
+        : '<code>segment.bytes</code> 기본값 1 GiB 입니다. 활성 세그먼트는 1 GiB 가 되어야 닫힙니다. <strong>계속 쓰기</strong>를 눌러 보세요.');
+    };
+
+    /** 1 MiB 를 씁니다. 활성 세그먼트가 차면 닫고, 지워도 8 MiB 이상 남으면 가장 오래된 닫힌 세그먼트를 지웁니다. */
+    const writeOnce = async () => {
+      if (busy) return;
+      busy = true;
+      const alive = scene.begin();
+      const l = layout;
+      const act = active();
+      const tipX = Math.min(xOf(total()) + layout.scale / 2, axisEnd() - 10);
+      const p = layer.spawn({ label: '1 MiB', at: { x: tipX, y: l.dropY } });
+      if (!(await p.travel([{ x: tipX, y: l.barY - 12 }], scene.ms(380), ease.out)) || !alive()) { busy = false; return; }
+      void p.fade(200);
+      act.size += 1;
+      updateMetrics();
+      await scene.go(target(), duration.snap);
+      if (!alive()) { busy = false; return; }
+      if (act.size >= segBytes()) {
+        act.closed = true;
+        segs.push({ id: nextId++, size: 0, closed: false });
+        updateMetrics();
+        say(`활성 세그먼트가 ${segBytes()} MiB 가 되어 <strong>닫혔습니다</strong>. 새 활성 세그먼트에 이어서 씁니다.`);
+        await scene.go(target(), duration.snap);
+        if (!alive()) { busy = false; return; }
+      }
+      // 크기 기준 삭제: 가장 오래된 닫힌 세그먼트를 지워도 retention.bytes 이상 남으면 지웁니다.
+      while (segs[0].closed && total() - segs[0].size >= RETENTION) {
+        const oldest = segs[0];
+        say(`파티션이 ${total()} MiB 입니다. 가장 오래된 닫힌 세그먼트를 지워도 ${total() - oldest.size} MiB 가 남으므로 <strong>지웁니다</strong>.`);
+        await scene.go(target([oldest.id]), duration.cut);
+        if (!alive()) { busy = false; return; }
+        segs.shift();
+        deleted += 1;
+        updateMetrics();
+        await scene.go(target(), duration.reflow);
+        if (!alive()) { busy = false; return; }
+      }
+      const size = total();
+      if (mode === 'big' && size > RETENTION) {
+        say(`파티션이 <strong>${size} MiB</strong> 로 retention.bytes 를 넘었지만, 닫힌 세그먼트가 하나도 없어 지울 것이 없습니다. 활성 세그먼트는 1 GiB 까지 계속 커집니다.`);
+      } else if (mode === 'small' && size >= RETENTION && deleted > 0) {
+        say(`파티션은 ${size} MiB 입니다. 세그먼트가 닫힐 때마다 오래된 것이 지워져 <strong>8 MiB 와 12 MiB 사이</strong>에 머뭅니다.`);
+      } else if (!act.closed || mode === 'big') {
+        say(`활성 세그먼트에 1 MiB 를 썼습니다. 파티션은 ${size} MiB 입니다.`);
+      }
+      busy = false;
+      if (mode === 'big' && size >= layout.maxMiB) stopAuto();
+    };
+
+    function stopAuto() {
+      auto = false;
+      window.clearTimeout(autoTimer);
+      autoButton.textContent = '계속 쓰기';
+    }
+    const startAuto = () => {
+      auto = true;
+      autoButton.textContent = '멈추기';
+      let count = 0;
+      const tick = async () => {
+        if (!auto) return;
+        if (count >= AUTO_LIMIT || (mode === 'big' && total() >= layout.maxMiB)) { stopAuto(); return; }
+        count += 1;
+        await writeOnce();
+        if (auto) autoTimer = window.setTimeout(tick, scene.reduced ? 0 : 260);
+      };
+      void tick();
+    };
+
+    writeButton.addEventListener('click', () => { stopAuto(); void writeOnce(); });
+    autoButton.addEventListener('click', () => { if (auto) stopAuto(); else startAuto(); });
+    resetButton.addEventListener('click', () => reset());
+    modeButtons.forEach((button) => button.addEventListener('click', () => {
+      const next = button.dataset.srMode as Mode;
+      modeButtons.forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
+      if (next === mode) return;
+      mode = next;
+      reset();
+      startAuto();
+    }));
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      layer.clear();
+      scene.set(target());
+    });
+
+    reset();
+    let played = false;
+    watchDemoPlayback(demo, ({ shouldPlay, reducedMotion }) => {
+      if (played || reducedMotion || !shouldPlay) return;
+      played = true;
+      startAuto();
+    }, { threshold: 0.5 });
+  });
+</script>
+
+<style is:global>
+  .db-demo[data-blog-demo="dlq-segment-retention"] .scene-note { min-height: 4.2em; }
+  [data-blog-demo="dlq-segment-retention"] .scene-chips { margin-bottom: 6px; }
+  [data-blog-demo="dlq-segment-retention"] .dsr-metrics { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 22px; margin: 4px 4px 2px; }
+  [data-blog-demo="dlq-segment-retention"] .dsr-metrics b.is-danger { color: var(--scene-danger); }
+  [data-blog-demo="dlq-segment-retention"] .dsr-track { fill: color-mix(in srgb, var(--surface) 70%, transparent); stroke: var(--hairline); stroke-dasharray: 3 4; }
+  [data-blog-demo="dlq-segment-retention"] .dsr-tick { fill: var(--slate); font-size: 10.5px; }
+  [data-blog-demo="dlq-segment-retention"] .dsr-ret { stroke: var(--scene-danger); stroke-width: 2; stroke-dasharray: 5 4; }
+  [data-blog-demo="dlq-segment-retention"] .dsr-ret-label { fill: var(--scene-danger); font-weight: 800; }
+  [data-blog-demo="dlq-segment-retention"] .dsr-max { stroke: var(--scene-flow); stroke-width: 1.6; stroke-dasharray: 2 4; }
+  [data-blog-demo="dlq-segment-retention"] .dsr-max-label { fill: var(--scene-flow-ink); font-weight: 800; }
+  [data-blog-demo="dlq-segment-retention"] .dsr-seg-rect { fill: color-mix(in srgb, var(--scene-hue-gray) 22%, var(--surface)); stroke: color-mix(in srgb, var(--scene-hue-gray) 60%, var(--hairline)); stroke-width: 1.4; }
+  [data-blog-demo="dlq-segment-retention"] .dsr-seg.is-active .dsr-seg-rect { fill: color-mix(in srgb, var(--scene-temp) 14%, var(--surface)); stroke: var(--scene-temp); stroke-dasharray: 5 3; }
+  [data-blog-demo="dlq-segment-retention"] .dsr-seg.is-over .dsr-seg-rect { fill: color-mix(in srgb, var(--scene-danger) 12%, var(--surface)); stroke: var(--scene-danger); }
+  [data-blog-demo="dlq-segment-retention"] .dsr-seg-label { fill: var(--ink); font-weight: 700; }
+  [data-blog-demo="dlq-segment-retention"] .dsr-overflow { fill: var(--scene-danger); font-weight: 800; }
+</style>
