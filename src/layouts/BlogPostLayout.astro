@@ -118,3 +118,26 @@ const vectorCover = coverImage?.endsWith('.svg');
     <img class="lightbox-image" alt="" />
   </div>
 </BaseLayout>
+
+<script>
+  import { setupTocHighlight } from '@/scripts/table-of-contents';
+  import { setupReadingProgress } from '@/scripts/reading-progress';
+  import { setupMermaidDiagrams } from '@/scripts/mermaid-diagrams';
+  import { setupCopyButtons } from '@/scripts/code-copy';
+  import { setupImageZoom } from '@/scripts/image-lightbox';
+
+  function initArticle() {
+    setupReadingProgress();
+    setupTocHighlight();
+    // Mermaid replaces its code blocks before code-copy buttons are added.
+    void setupMermaidDiagrams();
+    setupCopyButtons();
+    setupImageZoom();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initArticle);
+  } else {
+    initArticle();
+  }
+</script>

@@ -10,7 +10,7 @@ function showToast(message: string, duration = 2400) {
   }, duration);
 }
 
-// 1. Brand dot — a single click greets the visitor.
+// Brand dot — a single click greets the visitor.
 function setupBrandDot() {
   const dot = document.querySelector<HTMLElement>('.brand-dot');
   if (!dot) return;
@@ -24,7 +24,7 @@ function setupBrandDot() {
   });
 }
 
-// 2. Article finished — toast after the reader reaches the end and lingers.
+// Article finished — toast after the reader reaches the end and lingers.
 function setupArticleFinish() {
   const body = document.querySelector<HTMLElement>('.article-body');
   if (!body) return;
@@ -50,7 +50,7 @@ function setupArticleFinish() {
   observer.observe(sentinel);
 }
 
-// 3. Console greeting.
+// Console greeting.
 function consoleGreeting() {
   const title = '%c개발 노트';
   const titleStyle =
@@ -60,244 +60,9 @@ function consoleGreeting() {
   console.log('%c코드가 궁금하시면 → https://github.com/Kimgyuilli/blog', subStyle);
 }
 
-type MermaidApi = {
-  initialize: (config: Record<string, unknown>) => void;
-  run: (config: { nodes: HTMLElement[] }) => Promise<void>;
-};
-
-function findMermaidBlocks(body: HTMLElement) {
-  return Array.from(body.querySelectorAll<HTMLPreElement>('pre')).filter((pre) => {
-    const language = pre.dataset.language?.toLowerCase();
-    const code = pre.querySelector('code');
-    return language === 'mermaid' || code?.className.toLowerCase().includes('language-mermaid');
-  });
-}
-
-// 6. Mermaid diagrams.
-async function setupMermaidDiagrams() {
-  const body = document.querySelector<HTMLElement>('.article-body');
-  if (!body) return;
-
-  const blocks = findMermaidBlocks(body);
-  if (blocks.length === 0) return;
-
-  const diagrams = blocks.map((pre) => {
-    const diagram = document.createElement('div');
-    diagram.className = 'mermaid-diagram mermaid';
-    diagram.textContent = pre.textContent?.trim() ?? '';
-    pre.replaceWith(diagram);
-    return diagram;
-  });
-
-  try {
-    const mermaidUrl = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-    const module = (await import(/* @vite-ignore */ mermaidUrl)) as
-      | { default?: MermaidApi }
-      | MermaidApi;
-    const mermaid = 'default' in module && module.default ? module.default : module;
-
-    mermaid.initialize({
-      startOnLoad: false,
-      securityLevel: 'strict',
-      theme: 'default',
-    });
-    await mermaid.run({ nodes: diagrams });
-  } catch (error) {
-    console.error('Mermaid rendering failed', error);
-    diagrams.forEach((diagram) => {
-      diagram.classList.add('mermaid-diagram-error');
-    });
-  }
-}
-
-// 7. Code block copy buttons.
-function setupCopyButtons() {
-  const body = document.querySelector<HTMLElement>('.article-body');
-  if (!body) return;
-  const blocks = body.querySelectorAll<HTMLPreElement>('pre');
-  blocks.forEach((pre) => {
-    if (pre.querySelector('.code-copy')) return;
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'code-copy';
-    button.textContent = '복사';
-    button.setAttribute('aria-label', '코드 복사');
-    button.addEventListener('click', async () => {
-      const code = pre.querySelector('code');
-      const text = code?.textContent ?? '';
-      try {
-        await navigator.clipboard.writeText(text);
-        button.textContent = '✓ 복사됨';
-        button.classList.add('code-copy-done');
-        window.setTimeout(() => {
-          button.textContent = '복사';
-          button.classList.remove('code-copy-done');
-        }, 1500);
-      } catch {
-        button.textContent = '실패';
-        window.setTimeout(() => (button.textContent = '복사'), 1500);
-      }
-    });
-    pre.appendChild(button);
-  });
-}
-
-// 4. Reading progress bar at top of viewport.
-function setupReadingProgress() {
-  const article = document.querySelector<HTMLElement>('.article-body');
-  const progress = document.querySelector<HTMLElement>('.reading-progress-bar');
-  if (!article || !progress) return;
-
-  const update = () => {
-    const rect = article.getBoundingClientRect();
-    const articleTop = window.scrollY + rect.top;
-    const articleHeight = article.offsetHeight;
-    const readableHeight = Math.max(articleHeight - window.innerHeight * 0.65, 1);
-    const current = window.scrollY - articleTop + window.innerHeight * 0.18;
-    const ratio = Math.min(Math.max(current / readableHeight, 0), 1);
-    progress.style.transform = `scaleX(${ratio})`;
-  };
-
-  update();
-  window.addEventListener('scroll', update, { passive: true });
-  window.addEventListener('resize', update);
-}
-
-// 5. Keep the current heading visible without interrupting TOC browsing.
-function setupTocHighlight() {
-  const toc = document.querySelector<HTMLElement>('.toc');
-  if (!toc) return;
-  const headings = Array.from(toc.querySelectorAll<HTMLAnchorElement>('a[href^="#"]'))
-    .map((link) => {
-      const heading = document.getElementById(decodeURIComponent(link.hash.slice(1)));
-      return heading ? { link, heading } : null;
-    })
-    .filter((item): item is { link: HTMLAnchorElement; heading: HTMLElement } => Boolean(item));
-  if (headings.length === 0) return;
-
-  let activeLink: HTMLAnchorElement | undefined;
-  let pointerInside = false;
-  let pauseUntil = 0;
-  let resumeTimer = 0;
-  let frame = 0;
-
-  const revealActive = () => {
-    const keyboardFocus = toc.contains(document.activeElement) && document.activeElement?.matches(':focus-visible');
-    if (!activeLink || pointerInside || keyboardFocus || Date.now() < pauseUntil) return;
-    if (toc.clientHeight === 0 || toc.scrollHeight <= toc.clientHeight) return;
-
-    const bounds = toc.getBoundingClientRect();
-    const item = activeLink.getBoundingClientRect();
-    // Leave space for the edge fade and neighbouring entries.
-    const margin = Math.min(36, toc.clientHeight / 4);
-    const top = bounds.top + toc.clientTop + margin;
-    const bottom = bounds.top + toc.clientTop + toc.clientHeight - margin;
-    let delta = 0;
-    if (item.top < top) delta = item.top - top;
-    else if (item.bottom > bottom) delta = item.bottom - bottom;
-    if (delta) {
-      // Scroll only the sidebar; scrollIntoView can also move the article.
-      toc.scrollTo({ top: toc.scrollTop + delta, behavior: 'instant' });
-    }
-  };
-
-  const update = () => {
-    frame = 0;
-    const threshold = window.innerHeight * 0.28;
-    let current = headings[0];
-    for (const item of headings) {
-      if (item.heading.getBoundingClientRect().top > threshold) break;
-      current = item;
-    }
-    if (activeLink !== current.link) {
-      activeLink?.classList.remove('toc-link-active');
-      activeLink?.removeAttribute('aria-current');
-      activeLink = current.link;
-      activeLink.classList.add('toc-link-active');
-      activeLink.setAttribute('aria-current', 'location');
-    }
-    revealActive();
-  };
-  const scheduleUpdate = () => {
-    if (!frame) frame = requestAnimationFrame(update);
-  };
-  const pauseFollowing = () => {
-    pauseUntil = Date.now() + 1200;
-    window.clearTimeout(resumeTimer);
-    resumeTimer = window.setTimeout(scheduleUpdate, 1200);
-  };
-
-  toc.addEventListener('pointerenter', () => { pointerInside = true; });
-  toc.addEventListener('pointerleave', () => {
-    pointerInside = false;
-    pauseFollowing();
-  });
-  toc.addEventListener('pointercancel', () => {
-    pointerInside = false;
-    pauseFollowing();
-  });
-  toc.addEventListener('wheel', pauseFollowing, { passive: true });
-  toc.addEventListener('touchstart', pauseFollowing, { passive: true });
-  toc.addEventListener('touchmove', pauseFollowing, { passive: true });
-  toc.addEventListener('touchend', pauseFollowing, { passive: true });
-  toc.addEventListener('keydown', pauseFollowing);
-  toc.addEventListener('focusout', pauseFollowing);
-  window.addEventListener('scroll', scheduleUpdate, { passive: true });
-  window.addEventListener('resize', scheduleUpdate);
-  // Re-evaluate when images, fonts, or demos change the article's height.
-  const article = document.querySelector<HTMLElement>('.article-body');
-  if (article) new ResizeObserver(scheduleUpdate).observe(article);
-  update();
-}
-
-// 8. Image lightbox — click any article image to view it large.
-function setupImageZoom() {
-  const lightbox = document.querySelector<HTMLElement>('.lightbox');
-  const image = lightbox?.querySelector<HTMLImageElement>('.lightbox-image');
-  const closeBtn = lightbox?.querySelector<HTMLButtonElement>('.lightbox-close');
-  const images = document.querySelectorAll<HTMLImageElement>('.article-body img');
-  if (!lightbox || !image || !closeBtn || images.length === 0) return;
-
-  const open = (src: string, alt: string) => {
-    image.src = src;
-    image.alt = alt;
-    lightbox.hidden = false;
-    requestAnimationFrame(() => lightbox.classList.add('lightbox-visible'));
-    document.body.style.overflow = 'hidden';
-  };
-
-  const close = () => {
-    lightbox.classList.remove('lightbox-visible');
-    document.body.style.overflow = '';
-    window.setTimeout(() => {
-      lightbox.hidden = true;
-      image.src = '';
-    }, 200);
-  };
-
-  images.forEach((img) => {
-    if (img.closest('a')) return;
-    img.classList.add('article-image-zoomable');
-    img.addEventListener('click', () => open(img.currentSrc || img.src, img.alt));
-  });
-
-  closeBtn.addEventListener('click', close);
-  lightbox.addEventListener('click', (event) => {
-    if (event.target === lightbox) close();
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !lightbox.hidden) close();
-  });
-}
-
 function init() {
-  setupReadingProgress();
-  setupTocHighlight();
   setupBrandDot();
   setupArticleFinish();
-  void setupMermaidDiagrams();
-  setupCopyButtons();
-  setupImageZoom();
   consoleGreeting();
 }
 
