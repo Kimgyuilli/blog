@@ -1,0 +1,195 @@
+---
+/**
+ * 응답하지 않는 Redis 앞에서 @Cacheable 요청 하나가 타임아웃을 두 번(조회, 적재) 기다리는 모습을 시간축으로 보여 줍니다.
+ * Lettuce 기본 60초, 처음 계획 1초, 적용한 500ms 세 줄을 같은 시계로 동시에 재생합니다.
+ */
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import '@/styles/scene.css';
+
+const aria = '응답하지 않는 Redis 앞에서 요청 하나가 걸리는 시간을 세 줄로 비교합니다. 각 줄은 조회 타임아웃 대기, DB 조회, 적재 타임아웃 대기 순서로 자랍니다. Lettuce 기본값 60초에서는 첫 대기가 화면 밖으로 이어집니다. 타임아웃 1초에서는 대기 두 번만으로 2초가 되어 검증 상한 2초를 넘습니다. 500ms 에서는 대기 두 번이 1초이고 DB 조회를 더해도 검증 상한 1.5초 안에 들어옵니다.';
+---
+
+<InteractiveDemoFrame
+  demoId="cache-timeout-budget"
+  ariaLabel={aria}
+  title="타임아웃은 요청 하나에 두 번 걸린다"
+  description="Redis 가 연결은 받고 응답하지 않을 때, 상품 조회 요청 하나가 끝나기까지의 시간을 세 가지 타임아웃 설정으로 동시에 재생합니다."
+>
+  <div class="scene-chips" role="group" aria-label="재생">
+    <button type="button" class="scene-chip is-plain" data-tb-replay>다시 재생</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic viewBox="0 0 560 250" role="img" aria-label={aria}></svg>
+  </div>
+  <ul class="tb-legend" aria-hidden="true">
+    <li><i class="is-wait"></i>Redis 타임아웃 대기</li>
+    <li><i class="is-db"></i>DB 조회</li>
+    <li><i class="is-limit"></i>검증 상한</li>
+  </ul>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">DB 조회 구간 0.1초는 그림을 위해 넣은 값이고 측정값이 아닙니다. 상한 2초와 1.5초는 무응답 장애 주입 테스트에 둔 검증 상한이며, 로컬 Docker 에서 잰 것입니다. 이후 같은 경로에 캐시가 하나 더 붙으면서 이 상한은 다시 계산했고, 장면은 이 작업 당시의 값입니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { createScene, ease, replayClass, setAttrs, svg, watchNarrow } from '@/scripts/blog/scene/core';
+  import { watchDemoPlayback } from '@/scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: 세 줄이 같은 시계로 자란다. 60초 줄은 첫 대기만으로 화면 끝을 넘고,
+  // 1초 줄은 두 번째 대기가 끝나기 전에 2초 상한선을 넘어 빨개지며, 500ms 줄은 DB 조회까지 마치고도 1.5초 선 앞에서 끝난다.
+  const DB = 0.1;
+  const MAX = 2.6; // 화면에 그리는 시간축 끝(초)
+  type Lane = { title: string; timeout: number; limit?: number; result: string };
+  const LANES: Lane[] = [
+    { title: 'Lettuce 기본 60초', timeout: 60, result: '첫 대기만 60초' },
+    { title: '1초 (처음 계획)', timeout: 1, limit: 2, result: '상한 2초 초과' },
+    { title: '500ms (적용)', timeout: 0.5, limit: 1.5, result: '상한 1.5초 안' },
+  ];
+  type Layout = { view: [number, number]; x0: number; x1: number; top: number; pitch: number; barH: number; labelInline: boolean };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: { view: [560, 250], x0: 150, x1: 540, top: 58, pitch: 62, barH: 22, labelInline: true },
+    narrow: { view: [360, 320], x0: 16, x1: 344, top: 78, pitch: 76, barH: 20, labelInline: false },
+  };
+  /** t: 흐른 시간(초). */
+  type State = { t: number };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="cache-timeout-budget"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const replay = demo.querySelector<HTMLButtonElement>('[data-tb-replay]')!;
+    let layout = LAYOUTS.wide;
+
+    const axis = svg('line', { class: 'tb-axis' }, root);
+    const ticks = [0, 0.5, 1, 1.5, 2, 2.5].map((v) => ({ v, line: svg('line', { class: 'tb-tick' }, root), text: svg('text', { class: 'scene-label tb-tick-text', 'text-anchor': 'middle' }, root) }));
+    const clock = svg('text', { class: 'scene-label tb-clock', 'text-anchor': 'end' }, root);
+    const lanes = LANES.map((lane) => {
+      const g = svg('g', { class: 'tb-lane' }, root);
+      const title = svg('text', { class: 'scene-label is-sans tb-title' }, g);
+      title.textContent = lane.title;
+      const track = svg('rect', { class: 'tb-track', rx: 5 }, g);
+      const get = svg('rect', { class: 'tb-bar is-wait', rx: 4 }, g);
+      const db = svg('rect', { class: 'tb-bar is-db', rx: 3 }, g);
+      const set = svg('rect', { class: 'tb-bar is-wait', rx: 4 }, g);
+      const getText = svg('text', { class: 'scene-label is-sans tb-seg', 'text-anchor': 'middle' }, g);
+      const setText = svg('text', { class: 'scene-label is-sans tb-seg', 'text-anchor': 'middle' }, g);
+      const limit = svg('line', { class: 'tb-limit' }, g);
+      const limitText = svg('text', { class: 'scene-label is-sans tb-limit-text', 'text-anchor': 'middle' }, g);
+      const result = svg('text', { class: 'scene-label is-sans tb-result', 'text-anchor': 'end' }, g);
+      const more = svg('text', { class: 'scene-label is-sans tb-more', 'text-anchor': 'end' }, g);
+      return { lane, g, title, track, get, db, set, getText, setText, limit, limitText, result, more };
+    });
+
+    const x = (sec: number) => layout.x0 + (Math.min(sec, MAX) / MAX) * (layout.x1 - layout.x0);
+    const seg = (el: SVGRectElement, from: number, to: number, t: number, y: number, h: number) => {
+      const end = Math.min(to, t);
+      const w = end > from ? x(end) - x(from) : 0;
+      setAttrs(el, { x: x(from), y, width: Math.max(0, w), height: h });
+      return end > from;
+    };
+
+    const scene = createScene<State>({ t: MAX }, (s) => {
+      const l = layout;
+      const axisY = l.top - 22;
+      setAttrs(axis, { x1: l.x0, x2: l.x1, y1: axisY, y2: axisY });
+      ticks.forEach(({ v, line, text }) => {
+        setAttrs(line, { x1: x(v), x2: x(v), y1: axisY - 4, y2: l.top + l.pitch * LANES.length - 18 });
+        setAttrs(text, { x: x(v), y: axisY - 8 });
+        text.textContent = v === 0 ? '0초' : `${v}초`;
+      });
+      setAttrs(clock, { x: l.x1, y: l.top + l.pitch * LANES.length + 2 });
+      clock.textContent = `경과 ${Math.min(s.t, MAX).toFixed(1)}초`;
+      lanes.forEach((v, i) => {
+        const y = l.top + i * l.pitch + (l.labelInline ? 0 : 12);
+        const h = l.barH;
+        if (l.labelInline) setAttrs(v.title, { x: 12, y: y + h / 2 + 4 });
+        else setAttrs(v.title, { x: l.x0, y: y - 8 });
+        setAttrs(v.track, { x: l.x0, y, width: l.x1 - l.x0, height: h });
+        const t1 = v.lane.timeout;
+        const t2 = t1 + DB;
+        const t3 = t2 + v.lane.timeout;
+        seg(v.get, 0, t1, s.t, y, h);
+        const dbOn = seg(v.db, t1, t2, s.t, y + 3, h - 6);
+        seg(v.set, t2, t3, s.t, y, h);
+        v.db.style.opacity = dbOn ? '1' : '0';
+        // 구간 글씨: 대기 구간이 충분히 그려진 뒤에만 보입니다.
+        const showGet = s.t > Math.min(t1, MAX) * 0.5;
+        setAttrs(v.getText, { x: (x(0) + x(Math.min(t1, s.t))) / 2, y: y + h / 2 + 4, opacity: showGet ? 1 : 0 });
+        v.getText.textContent = t1 >= MAX ? '조회 대기 60초' : `조회 ${t1}초`;
+        const showSet = s.t > t2 + (t3 - t2) * 0.5 && t3 <= MAX;
+        setAttrs(v.setText, { x: (x(t2) + x(Math.min(t3, s.t))) / 2, y: y + h / 2 + 4, opacity: showSet ? 1 : 0 });
+        v.setText.textContent = `적재 ${t1}초`;
+        if (v.lane.limit) {
+          setAttrs(v.limit, { x1: x(v.lane.limit), x2: x(v.lane.limit), y1: y - 6, y2: y + h + 6, opacity: 1 });
+          setAttrs(v.limitText, { x: x(v.lane.limit), y: y + h + 18, opacity: 1 });
+          v.limitText.textContent = `상한 ${v.lane.limit}초`;
+        } else {
+          setAttrs(v.limit, { opacity: 0 });
+          setAttrs(v.limitText, { opacity: 0 });
+        }
+        const over = v.lane.limit !== undefined && s.t > v.lane.limit && t3 > v.lane.limit;
+        const done = s.t >= Math.min(t3, MAX) - 1e-6;
+        v.g.classList.toggle('is-over', over || (t1 >= MAX && s.t >= MAX - 1e-6));
+        v.g.classList.toggle('is-ok', done && !over && t3 <= MAX && v.lane.limit !== undefined && t3 <= v.lane.limit);
+        setAttrs(v.more, { x: l.x1 - 6, y: y + h / 2 + 4, opacity: t1 >= MAX && s.t >= MAX * 0.9 ? 1 : 0 });
+        v.more.textContent = '60초까지 계속';
+        const showResult = done || over;
+        setAttrs(v.result, { x: l.x1, y: l.labelInline ? y - 6 : y - 8, opacity: showResult ? 1 : 0 });
+        if (v.result.textContent !== v.lane.result) v.result.textContent = v.lane.result;
+      });
+    });
+
+    const say = (html: string) => { note.innerHTML = html; replayClass(note, 'is-entering'); };
+    const END = '1초 설정은 조회와 적재에서 한 번씩, <strong>대기만 2초</strong>라 상한 2초를 넘습니다. 500ms 로 낮추면 대기 두 번이 1초이고 DB 조회를 더해도 1.5초 안에 끝납니다. 같은 경로에 캐시가 하나 더 붙으면 대기 횟수도 늘어납니다.';
+    const play = async () => {
+      const alive = scene.begin();
+      scene.set({ t: 0 });
+      say('Redis 가 응답하지 않습니다. 세 줄 모두 먼저 조회에서 타임아웃을 기다립니다.');
+      const ok = await scene.go({ t: MAX }, scene.ms(6200), ease.linear);
+      if (!ok || !alive()) return;
+      say(END);
+    };
+    replay.addEventListener('click', () => { void play(); });
+
+    scene.set({ t: MAX });
+    say(END);
+    let started = false;
+    watchDemoPlayback(demo, ({ shouldPlay }) => {
+      if (shouldPlay && !started) { started = true; void play(); }
+    }, { threshold: 0.5 });
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      scene.redraw();
+    });
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="cache-timeout-budget"] .scene-note { min-height: 4.4em; }
+  [data-blog-demo="cache-timeout-budget"] .tb-axis { stroke: var(--slate); stroke-width: 1.2; }
+  [data-blog-demo="cache-timeout-budget"] .tb-tick { stroke: var(--hairline); stroke-width: 1; stroke-dasharray: 2 4; }
+  [data-blog-demo="cache-timeout-budget"] .tb-tick-text { fill: var(--slate); font-family: var(--font-mono); font-size: 10px; font-weight: 700; }
+  [data-blog-demo="cache-timeout-budget"] .tb-clock { fill: var(--slate); font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; }
+  [data-blog-demo="cache-timeout-budget"] .tb-title { fill: var(--ink); font-size: 11.5px; font-weight: 800; }
+  [data-blog-demo="cache-timeout-budget"] .tb-track { fill: color-mix(in srgb, var(--surface) 70%, transparent); stroke: var(--hairline); stroke-dasharray: 3 4; }
+  [data-blog-demo="cache-timeout-budget"] .tb-bar.is-wait { fill: color-mix(in srgb, var(--scene-temp) 22%, transparent); stroke: var(--scene-temp); stroke-width: 1.4; stroke-dasharray: 5 3; }
+  [data-blog-demo="cache-timeout-budget"] .tb-bar.is-db { fill: var(--scene-hue-cyan); }
+  [data-blog-demo="cache-timeout-budget"] .tb-seg { fill: var(--scene-temp); font-size: 10.5px; font-weight: 800; }
+  [data-blog-demo="cache-timeout-budget"] .tb-limit { stroke: var(--scene-danger); stroke-width: 2; stroke-dasharray: 4 3; }
+  [data-blog-demo="cache-timeout-budget"] .tb-limit-text { fill: var(--scene-danger); font-size: 10px; font-weight: 800; }
+  [data-blog-demo="cache-timeout-budget"] .tb-result { fill: var(--slate); font-size: 11px; font-weight: 800; }
+  [data-blog-demo="cache-timeout-budget"] .tb-more { fill: var(--scene-temp); font-size: 10.5px; font-weight: 800; }
+  [data-blog-demo="cache-timeout-budget"] .tb-lane.is-over .tb-bar.is-wait { fill: color-mix(in srgb, var(--scene-danger) 18%, transparent); stroke: var(--scene-danger); }
+  [data-blog-demo="cache-timeout-budget"] .tb-lane.is-over .tb-result { fill: var(--scene-danger); }
+  [data-blog-demo="cache-timeout-budget"] .tb-lane.is-ok .tb-result { fill: var(--scene-flow-ink); }
+  [data-blog-demo="cache-timeout-budget"] .tb-lane.is-ok .tb-track { stroke: var(--scene-flow); }
+  [data-blog-demo="cache-timeout-budget"] .tb-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 2px 0; padding: 0; color: var(--slate); font-size: 0.76rem; list-style: none; }
+  [data-blog-demo="cache-timeout-budget"] .tb-legend li { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+  [data-blog-demo="cache-timeout-budget"] .tb-legend i { display: inline-block; width: 16px; height: 10px; border-radius: 3px; }
+  [data-blog-demo="cache-timeout-budget"] .tb-legend i.is-wait { background: color-mix(in srgb, var(--scene-temp) 22%, transparent); border: 1.4px dashed var(--scene-temp); }
+  [data-blog-demo="cache-timeout-budget"] .tb-legend i.is-db { background: var(--scene-hue-cyan); }
+  [data-blog-demo="cache-timeout-budget"] .tb-legend i.is-limit { width: 0; height: 12px; border-left: 2px dashed var(--scene-danger); border-radius: 0; }
+</style>

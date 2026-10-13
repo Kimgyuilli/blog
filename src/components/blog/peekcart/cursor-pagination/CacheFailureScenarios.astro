@@ -1,0 +1,291 @@
+---
+/**
+ * Redis 조회 캐시가 실패할 때 요청 하나하나가 어디로 가는지 패킷으로 보여 줍니다.
+ * 정상, 장애(기본 핸들러), 장애(fail-open 핸들러), 무효화 실패 네 상황을 같은 다섯 번의 조회로 비교합니다.
+ */
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+
+const aria = '왼쪽은 클라이언트, 가운데는 상품 서비스, 오른쪽 위는 Redis 캐시, 오른쪽 아래는 MySQL 입니다. Redis 가 정상이면 같은 상품을 다섯 번 조회해도 DB 조회는 처음 한 번이고 나머지는 캐시에서 응답합니다. Redis 가 연결을 거부할 때 기본 핸들러는 다섯 번 모두 500 을 돌려주고, fail-open 핸들러는 다섯 번 모두 200 으로 응답하지만 DB 조회도 다섯 번입니다. 무효화가 실패하면 DB 의 가격은 12,000 원으로 바뀌었는데 이후 조회는 캐시에 남은 10,000 원을 돌려줍니다.';
+---
+
+<InteractiveDemoFrame
+  demoId="cache-failure-scenarios"
+  ariaLabel={aria}
+  title="Redis 가 실패하면 요청은 어디로 갈까"
+  description="상황을 고르면 같은 상품을 다섯 번 조회합니다. 요청이 Redis 와 MySQL 중 어디까지 가는지, 아래 숫자가 어떻게 쌓이는지 보세요."
+>
+  <div data-cf-root>
+    <DemoControls ariaLabel="Redis 상황">
+      <button type="button" data-cf-mode="normal" aria-pressed="true">Redis 정상</button>
+      <button type="button" data-cf-mode="default" aria-pressed="false">장애, 기본 핸들러</button>
+      <button type="button" data-cf-mode="open" aria-pressed="false">장애, fail-open 핸들러</button>
+      <button type="button" data-cf-mode="evict" aria-pressed="false">무효화 실패</button>
+    </DemoControls>
+    <div class="scene-stage" data-stage>
+      <svg data-graphic viewBox="0 0 560 250" role="img" aria-label={aria}></svg>
+    </div>
+    <div class="cf-metrics" aria-hidden="true">
+      <div class="scene-metric"><b data-m-req>0</b><span>조회 요청</span></div>
+      <div class="scene-metric"><b data-m-hit>0</b><span>캐시 적중</span></div>
+      <div class="scene-metric"><b data-m-db>0</b><span>DB 조회</span></div>
+      <div class="scene-metric"><b data-m-err>0</b><span data-m-err-label>500 응답</span></div>
+    </div>
+    <p class="scene-note" data-note role="status"></p>
+    <p class="db-demo-disclaimer">장애는 Redis 가 연결을 거부하는 경우로 그렸습니다. 재현 실험에서는 연결이 끊긴 직후 첫 조회만 명령 타임아웃(약 0.5초)을 기다렸고 이후 조회는 바로 실패했는데, 장면에서는 첫 대기를 생략했습니다. 무응답일 때 걸리는 타임아웃 대기는 아래 시간축 장면에서 따로 보여 줍니다. 다섯 번 조회해 DB 조회도 다섯 번이 된 것은 장애 주입 테스트의 순차 조회 결과이고, 동시 요청이 몰리는 경우는 재지 않았습니다. 가격 10,000 원과 12,000 원은 무효화 실패를 보이려고 넣은 예시 값입니다. 무효화 실패 장면에서는 수정 요청 동안만 Redis 가 응답하지 않았다고 가정했습니다.</p>
+  </div>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, exitPoint, replayClass, setAttrs, svg, wait, watchNarrow, type Box, type Point } from '@/scripts/blog/scene/core';
+  import { createNode } from '@/scripts/blog/scene/parts';
+  import { createPacketLayer, type PacketTone } from '@/scripts/blog/scene/packets';
+  import { watchDemoPlayback } from '@/scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: Redis 가 정상이면 두 번째 조회부터 Redis 에서 바로 돌아오고 DB 조회 수가 1 에 머문다.
+  // 장애가 나면 GET 이 Redis 앞에서 튕기고, 기본 핸들러는 그 자리에서 500 을 돌려주며 fail-open 핸들러는 매번 MySQL 까지 내려가 DB 조회가 5 가 된다.
+  // 무효화 실패에서는 MySQL 의 가격만 12,000 으로 바뀌고 Redis 의 10,000 이 남아, 이후 조회가 이전 가격을 돌려준다.
+  type Mode = 'normal' | 'default' | 'open' | 'evict';
+  type Key = 'client' | 'service' | 'redis' | 'db';
+  type Layout = { view: [number, number]; boxes: Record<Key, Box> };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 250],
+      boxes: {
+        client: { x: 66, y: 125, w: 104, h: 46 },
+        service: { x: 244, y: 125, w: 136, h: 56 },
+        redis: { x: 458, y: 58, w: 150, h: 56 },
+        db: { x: 458, y: 192, w: 150, h: 56 },
+      },
+    },
+    narrow: {
+      view: [360, 300],
+      boxes: {
+        client: { x: 180, y: 38, w: 130, h: 44 },
+        service: { x: 180, y: 140, w: 170, h: 56 },
+        redis: { x: 92, y: 254, w: 150, h: 56 },
+        db: { x: 268, y: 254, w: 150, h: 56 },
+      },
+    },
+  };
+  const NOTES: Record<Mode, { run: string; end: string }> = {
+    normal: {
+      run: '첫 조회는 캐시가 비어 있어 MySQL 에서 읽고 Redis 에 적재합니다. 그다음부터는 Redis 에서 바로 응답합니다.',
+      end: '다섯 번 조회했고 DB 조회는 <strong>한 번</strong>입니다. 나머지 네 번은 캐시에서 응답했습니다.',
+    },
+    default: {
+      run: 'Redis 가 연결을 거부합니다. 기본 <code>SimpleCacheErrorHandler</code> 는 이 예외를 다시 던집니다.',
+      end: 'MySQL 은 정상인데 다섯 번 모두 <strong>500</strong> 입니다. 요청이 DB 까지 내려가지 못했습니다.',
+    },
+    open: {
+      run: '같은 장애에서 fail-open 핸들러는 조회 실패를 캐시 미스로 넘기고 MySQL 에서 읽습니다. 적재도 실패하지만 응답에는 영향이 없습니다.',
+      end: '다섯 번 모두 200 으로 응답했지만 캐시가 채워지지 않아 <strong>DB 조회도 다섯 번</strong>입니다. Redis 장애가 DB 부하로 이어집니다.',
+    },
+    evict: {
+      run: '가격을 12,000 원으로 바꾸는 요청입니다. MySQL 에는 커밋됐지만, 이때 Redis 가 응답하지 않아 캐시 무효화가 실패합니다.',
+      end: 'Redis 는 다시 살아났지만 캐시에는 10,000 원이 남아 있습니다. 이후 조회는 DB 를 읽지 않고 <strong>이전 가격</strong>을 돌려주고, TTL(상세 30분)이 끝날 때까지 이어집니다.',
+    },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="cache-failure-scenarios"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const buttons = [...demo.querySelectorAll<HTMLButtonElement>('[data-cf-mode]')];
+    const m = {
+      req: demo.querySelector<HTMLElement>('[data-m-req]')!,
+      hit: demo.querySelector<HTMLElement>('[data-m-hit]')!,
+      db: demo.querySelector<HTMLElement>('[data-m-db]')!,
+      err: demo.querySelector<HTMLElement>('[data-m-err]')!,
+      errLabel: demo.querySelector<HTMLElement>('[data-m-err-label]')!,
+    };
+    let layout = LAYOUTS.wide;
+    let mode: Mode = 'normal';
+
+    const links = (['cs', 'sr', 'sd'] as const).map(() => svg('line', { class: 'cf-link' }, root));
+    const nodes: Record<Key, ReturnType<typeof createNode>> = {
+      client: createNode(root, { label: '클라이언트', hue: 'var(--scene-hue-gray)' }),
+      service: createNode(root, { label: '상품 서비스', hue: 'var(--scene-hue-blue)' }),
+      redis: createNode(root, { label: 'Redis', hue: 'var(--scene-hue-pink)' }),
+      db: createNode(root, { label: 'MySQL', hue: 'var(--scene-hue-cyan)' }),
+    };
+    Object.values(nodes).forEach((n) => n.group.classList.add('is-sans-sub'));
+    const layer = createPacketLayer(root);
+
+    const scene = createScene({ k: 0 }, () => {
+      const b = layout.boxes;
+      (Object.keys(nodes) as Key[]).forEach((k) => nodes[k].setBox(b[k]));
+      const pairs: [Key, Key][] = [['client', 'service'], ['service', 'redis'], ['service', 'db']];
+      pairs.forEach(([a, c], i) => {
+        const p = exitPoint(b[a], b[c], 4);
+        const q = exitPoint(b[c], b[a], 4);
+        setAttrs(links[i], { x1: p.x, y1: p.y, x2: q.x, y2: q.y });
+      });
+    });
+
+    const path = (a: Key, c: Key): Point[] => {
+      const b = layout.boxes;
+      return [exitPoint(b[a], b[c], 6), exitPoint(b[c], b[a], 6)];
+    };
+    const say = (html: string) => { note.innerHTML = html; replayClass(note, 'is-entering'); };
+    const counts = { req: 0, hit: 0, db: 0, err: 0 };
+    const show = () => {
+      bumpText(m.req, String(counts.req));
+      bumpText(m.hit, String(counts.hit));
+      bumpText(m.db, String(counts.db));
+      bumpText(m.err, String(counts.err));
+      m.err.classList.toggle('is-danger', counts.err > 0);
+      m.db.classList.toggle('is-danger', mode === 'open' && counts.db > 1);
+    };
+    const setRedis = (sub: string, error: boolean) => {
+      nodes.redis.setSub(sub);
+      nodes.redis.group.classList.toggle('is-error', error);
+    };
+
+    /** a 에서 c 로 갔다가(필요하면 돌아오는) 패킷 한 번. */
+    const go = async (alive: () => boolean, a: Key, c: Key, label: string, tone: PacketTone = 'dep', ms = 520) => {
+      const [p, q] = path(a, c);
+      const pk = layer.spawn({ label, tone, at: p });
+      const ok = await pk.travel([q], scene.ms(ms));
+      if (!ok || !alive()) return false;
+      void pk.fade(260);
+      return true;
+    };
+    const blocked = async (alive: () => boolean, label: string) => {
+      const [p, q] = path('service', 'redis');
+      const pk = layer.spawn({ label, tone: 'dep', at: p });
+      const ok = await pk.bounce(q, 26);
+      if (!ok || !alive()) return false;
+      replayClass(nodes.redis.group, 'is-shaking');
+      void pk.fade(420);
+      return true;
+    };
+
+    const reset = (next: Mode) => {
+      counts.req = 0; counts.hit = 0; counts.db = 0; counts.err = 0;
+      nodes.redis.group.classList.remove('is-temp');
+      m.errLabel.textContent = next === 'evict' ? '이전 가격 응답' : '500 응답';
+      nodes.service.setSub(next === 'default' ? '기본 핸들러' : next === 'normal' ? '' : 'fail-open 핸들러');
+      nodes.db.setSub(next === 'evict' ? '가격 10,000' : '');
+      if (next === 'normal') setRedis('정상, 비어 있음', false);
+      else if (next === 'evict') setRedis('가격 10,000', false);
+      else setRedis('연결 거부', true);
+      show();
+    };
+
+    const finalCounts: Record<Mode, typeof counts> = {
+      normal: { req: 5, hit: 4, db: 1, err: 0 },
+      default: { req: 5, hit: 0, db: 0, err: 5 },
+      open: { req: 5, hit: 0, db: 5, err: 0 },
+      evict: { req: 3, hit: 3, db: 0, err: 3 },
+    };
+
+    const run = async (next: Mode) => {
+      mode = next;
+      const alive = scene.begin();
+      layer.clear();
+      reset(next);
+      say(NOTES[next].run);
+      if (scene.reduced) {
+        Object.assign(counts, finalCounts[next]);
+        if (next === 'normal') setRedis('적재됨', false);
+        if (next === 'evict') { nodes.db.setSub('가격 12,000'); setRedis('가격 10,000, 이전 값', false); nodes.redis.group.classList.add('is-temp'); }
+        show();
+        say(NOTES[next].end);
+        return;
+      }
+      nodes.redis.group.classList.remove('is-temp');
+      if (next === 'evict') {
+        if (!(await go(alive, 'client', 'service', 'PUT 가격'))) return;
+        if (!(await go(alive, 'service', 'db', 'UPDATE'))) return;
+        bumpText(nodes.db.group.querySelector('.scene-node-sub')!, '가격 12,000');
+        nodes.db.flash('is-ok');
+        setRedis('응답 없음', true);
+        if (!(await blocked(alive, 'EVICT'))) return;
+        if (!(await go(alive, 'service', 'client', '200', 'flow'))) return;
+        await wait(scene.ms(duration.beat));
+        if (!alive()) return;
+        setRedis('가격 10,000, 이전 값', false);
+        nodes.redis.group.classList.add('is-temp');
+        nodes.redis.flash('is-ok');
+        await wait(scene.ms(duration.beat));
+      }
+      const total = next === 'evict' ? 3 : 5;
+      for (let i = 0; i < total; i += 1) {
+        if (!alive()) return;
+        counts.req += 1; show();
+        const fast = i > 0 ? 0.75 : 1;
+        if (!(await go(alive, 'client', 'service', 'GET', 'dep', 460 * fast))) return;
+        if (next === 'normal' || next === 'evict') {
+          const hit = next === 'evict' || i > 0;
+          if (!(await go(alive, 'service', 'redis', 'GET', 'dep', 420 * fast))) return;
+          if (hit) {
+            counts.hit += 1; show();
+            if (!(await go(alive, 'redis', 'service', next === 'evict' ? '10,000' : 'HIT', next === 'evict' ? 'temp' : 'flow', 420 * fast))) return;
+          } else {
+            if (!(await go(alive, 'redis', 'service', 'MISS', 'dep', 420))) return;
+            counts.db += 1; show();
+            if (!(await go(alive, 'service', 'db', 'SELECT'))) return;
+            nodes.db.flash('is-ok');
+            if (!(await go(alive, 'db', 'service', '행'))) return;
+            if (!(await go(alive, 'service', 'redis', 'SET'))) return;
+            setRedis('적재됨', false);
+            nodes.redis.flash('is-ok');
+          }
+          if (next === 'evict') { counts.err += 1; show(); }
+          if (!(await go(alive, 'service', 'client', next === 'evict' ? '10,000' : '200', next === 'evict' ? 'temp' : 'flow', 420 * fast))) return;
+          continue;
+        }
+        if (!(await blocked(alive, 'GET'))) return;
+        if (next === 'default') {
+          counts.err += 1; show();
+          nodes.service.flash('is-shaking');
+          if (!(await go(alive, 'service', 'client', '500', 'danger'))) return;
+          continue;
+        }
+        counts.db += 1; show();
+        if (!(await go(alive, 'service', 'db', 'SELECT', 'dep', 420 * fast))) return;
+        nodes.db.flash('is-ok');
+        if (!(await go(alive, 'db', 'service', '행', 'dep', 420 * fast))) return;
+        if (!(await blocked(alive, 'SET'))) return;
+        if (!(await go(alive, 'service', 'client', '200', 'flow', 420 * fast))) return;
+      }
+      if (!alive()) return;
+      say(NOTES[next].end);
+    };
+
+    buttons.forEach((button) => button.addEventListener('click', () => {
+      buttons.forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
+      void run(button.dataset.cfMode as Mode);
+    }));
+
+    // 처음에는 정상 상황의 결과를 그려 두고, 화면에 보이면 한 번 저절로 보여 줍니다.
+    reset('normal');
+    Object.assign(counts, finalCounts.normal);
+    setRedis('적재됨', false);
+    show();
+    say(NOTES.normal.end);
+    let started = false;
+    watchDemoPlayback(demo, ({ shouldPlay }) => {
+      if (shouldPlay && !started) { started = true; void run(mode); }
+    }, { threshold: 0.45 });
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      layer.clear();
+      scene.redraw();
+    });
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="cache-failure-scenarios"] .scene-note { min-height: 4.4em; }
+  [data-blog-demo="cache-failure-scenarios"] .cf-metrics { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 22px; margin: 6px 4px 2px; }
+  [data-blog-demo="cache-failure-scenarios"] .cf-metrics b.is-danger { color: var(--scene-danger); }
+  [data-blog-demo="cache-failure-scenarios"] .scene-node.is-temp .scene-node-card { stroke: var(--scene-temp); stroke-width: 2; stroke-dasharray: 5 3; }
+  [data-blog-demo="cache-failure-scenarios"] .cf-link { stroke: var(--hairline); stroke-width: 2; stroke-dasharray: 4 4; }
+</style>

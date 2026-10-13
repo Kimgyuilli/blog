@@ -1,0 +1,245 @@
+---
+/**
+ * Redis 컨테이너에 @ServiceConnection 을 붙이면 애플리케이션이 Toxiproxy 를 거치지 않아,
+ * 프록시를 꺼도 장애가 Redis 연결에 전달되지 않는 모습을 직접 해 보게 합니다.
+ */
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+
+const aria = '왼쪽은 테스트 중인 애플리케이션, 가운데는 Toxiproxy, 오른쪽은 Redis 컨테이너, 가운데 아래는 MySQL 입니다. Redis 에 ServiceConnection 을 붙이면 애플리케이션이 프록시를 거치지 않고 Redis 컨테이너 포트로 바로 연결해, 프록시를 꺼도 요청이 Redis 에서 정상으로 돌아옵니다. 프록시 주소를 직접 연결하면 요청이 프록시를 거치고, 프록시를 끄면 요청이 프록시에서 막혀 MySQL 로 응답합니다.';
+---
+
+<InteractiveDemoFrame
+  demoId="cache-service-connection"
+  ariaLabel={aria}
+  title="프록시를 껐는데 Redis 가 멀쩡하다면"
+  description="장애 주입 테스트의 연결 방식을 고르고 프록시를 꺼 보세요. 조회 요청이 어느 길로 가는지, 아래 두 테스트 결과가 어떻게 되는지 보세요."
+>
+  <div data-sc-root>
+    <DemoControls ariaLabel="Redis 연결 방식">
+      <button type="button" data-sc-mode="sc" aria-pressed="true">@ServiceConnection 붙임</button>
+      <button type="button" data-sc-mode="proxy" aria-pressed="false">프록시 주소 직접 연결</button>
+    </DemoControls>
+    <div class="scene-chips" role="group" aria-label="장애 주입">
+      <button type="button" class="scene-chip is-plain" data-sc-toggle data-state="next">프록시 끄기</button>
+    </div>
+    <div class="scene-stage" data-stage>
+      <svg data-graphic viewBox="0 0 560 250" role="img" aria-label={aria}></svg>
+    </div>
+    <ul class="sc-results" aria-live="polite">
+      <li data-r-first><span>첫 번째 테스트: 프록시를 끄면 조회 경로가 영향을 받는가</span><b>대기</b></li>
+      <li data-r-fault><span>장애 주입 테스트: Redis 장애에도 200 으로 응답하는가</span><b>대기</b></li>
+    </ul>
+    <p class="scene-note" data-note role="status"></p>
+    <p class="db-demo-disclaimer">연결 거부를 프록시 끄기(<code>disable()</code>)로 주입하는 경우만 그렸고, 무응답(<code>timeout</code> toxic)은 생략했습니다. "첫 번째 테스트"는 다른 테스트의 전제를 확인하려고 맨 앞에 둔 테스트이고, <code>@ServiceConnection</code> 을 붙인 상태에서는 이 테스트가 실패해 우회를 알려 줍니다. 재현 실험에서 Redis 에 <code>@ServiceConnection</code> 을 붙여 돌리면 응답이 200 인지만 보는 테스트(위 두 번째 줄)는 통과했고, fallback 카운터까지 보는 테스트는 첫 번째 테스트와 함께 실패했습니다.</p>
+  </div>
+</InteractiveDemoFrame>
+
+<script>
+  import { createScene, duration, exitPoint, replayClass, setAttrs, svg, wait, watchNarrow, type Box, type Point } from '@/scripts/blog/scene/core';
+  import { createNode } from '@/scripts/blog/scene/parts';
+  import { arcPoints, createPacketLayer } from '@/scripts/blog/scene/packets';
+  import { watchDemoPlayback } from '@/scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: @ServiceConnection 을 붙인 상태에서 프록시를 끄면 프록시는 빨개지지만, 요청은 위쪽 우회선으로 Redis 에 가서 그대로 돌아온다.
+  // 프록시 주소를 직접 연결하면 같은 조작에서 요청이 프록시 앞에서 튕기고 MySQL 로 내려간다.
+  type Mode = 'sc' | 'proxy';
+  type Key = 'app' | 'proxy' | 'redis' | 'db';
+  type Layout = { view: [number, number]; boxes: Record<Key, Box>; lift: number };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 250], lift: 70,
+      boxes: {
+        app: { x: 78, y: 122, w: 124, h: 52 },
+        proxy: { x: 280, y: 122, w: 132, h: 52 },
+        redis: { x: 482, y: 122, w: 132, h: 52 },
+        db: { x: 280, y: 214, w: 132, h: 44 },
+      },
+    },
+    narrow: {
+      view: [360, 280], lift: 46,
+      boxes: {
+        app: { x: 56, y: 136, w: 96, h: 52 },
+        proxy: { x: 180, y: 136, w: 112, h: 52 },
+        redis: { x: 304, y: 136, w: 100, h: 52 },
+        db: { x: 180, y: 240, w: 120, h: 44 },
+      },
+    },
+  };
+  /** sc: 1이면 @ServiceConnection 으로 프록시를 우회, off: 1이면 프록시가 꺼진 상태. */
+  type State = { sc: number; off: number };
+  const NOTES = {
+    'sc-on': '<code>@ServiceConnection</code> 이 Redis 컨테이너 포트를 애플리케이션에 바로 넘겨, 조회가 프록시 위로 돌아 Redis 로 갑니다. <strong>프록시 끄기</strong>를 눌러 보세요.',
+    'sc-off': '프록시를 껐는데도 조회는 Redis 에서 그대로 돌아옵니다. 장애가 애플리케이션의 Redis 연결에 전달되지 않아, 장애 주입 테스트는 실제로는 정상인 Redis 앞에서 통과합니다.',
+    'proxy-on': '이제 애플리케이션은 프록시 주소로 연결합니다. 조회가 프록시를 거쳐 Redis 로 갑니다. 프록시를 꺼 보세요.',
+    'proxy-off': '프록시를 끄자 조회가 프록시 앞에서 막히고, fail-open 핸들러가 MySQL 에서 읽어 응답합니다. 첫 번째 테스트가 확인하는 것이 바로 이 변화입니다.',
+  } as const;
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="cache-service-connection"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-sc-mode]')];
+    const toggle = demo.querySelector<HTMLButtonElement>('[data-sc-toggle]')!;
+    const rFirst = demo.querySelector<HTMLElement>('[data-r-first] b')!;
+    const rFault = demo.querySelector<HTMLElement>('[data-r-fault] b')!;
+    let layout = LAYOUTS.wide;
+    let mode: Mode = 'sc';
+    let off = false;
+    let visible = false;
+
+    const wireProxy = svg('polyline', { class: 'sc-wire' }, root);
+    const wireDirect = svg('path', { class: 'sc-wire is-direct' }, root);
+    const wireDb = svg('line', { class: 'sc-wire is-db' }, root);
+    const directLabel = svg('text', { class: 'scene-label is-sans sc-wire-label', 'text-anchor': 'middle' }, root);
+    directLabel.textContent = '컨테이너 포트로 바로 연결';
+    const nodes: Record<Key, ReturnType<typeof createNode>> = {
+      app: createNode(root, { label: '테스트 앱', hue: 'var(--scene-hue-blue)' }),
+      proxy: createNode(root, { label: 'Toxiproxy', hue: 'var(--scene-hue-amber)' }),
+      redis: createNode(root, { label: 'Redis', hue: 'var(--scene-hue-pink)' }),
+      db: createNode(root, { label: 'MySQL', hue: 'var(--scene-hue-cyan)' }),
+    };
+    Object.values(nodes).forEach((n) => n.group.classList.add('is-sans-sub'));
+    const layer = createPacketLayer(root);
+
+    const directPoints = () => {
+      const b = layout.boxes;
+      const a = { x: b.app.x, y: b.app.y - b.app.h / 2 - 4 };
+      const c = { x: b.redis.x, y: b.redis.y - b.redis.h / 2 - 4 };
+      return arcPoints(a, c, layout.lift, 20);
+    };
+    const proxyPoints = (): Point[] => {
+      const b = layout.boxes;
+      return [exitPoint(b.app, b.proxy, 6), exitPoint(b.proxy, b.app, 6), exitPoint(b.proxy, b.redis, 6), exitPoint(b.redis, b.proxy, 6)];
+    };
+
+    const scene = createScene<State>({ sc: 1, off: 0 }, (s) => {
+      const b = layout.boxes;
+      (Object.keys(nodes) as Key[]).forEach((k) => nodes[k].setBox(b[k]));
+      setAttrs(wireProxy, { points: proxyPoints().map((p) => `${p.x},${p.y}`).join(' '), opacity: 1 - 0.75 * s.sc });
+      const d = directPoints();
+      setAttrs(wireDirect, { d: `M ${d.map((p) => `${p.x} ${p.y}`).join(' L ')}`, opacity: s.sc });
+      const top = d[Math.floor(d.length / 2)];
+      setAttrs(directLabel, { x: top.x, y: top.y - 8, opacity: s.sc });
+      const p = exitPoint(b.app, b.db, 4);
+      const q = exitPoint(b.db, b.app, 4);
+      setAttrs(wireDb, { x1: p.x, y1: p.y, x2: q.x, y2: q.y });
+    });
+
+    const say = (html: string) => { note.innerHTML = html; replayClass(note, 'is-entering'); };
+    const setResult = (el: HTMLElement, text: string, tone: 'ok' | 'fail' | 'warn' | '') => {
+      el.textContent = text;
+      el.dataset.tone = tone;
+      if (!scene.reduced) replayClass(el, 'is-bump');
+    };
+    const sync = () => {
+      nodes.proxy.setSub(off ? '꺼짐 (disable)' : '');
+      nodes.proxy.group.classList.toggle('is-error', off);
+      nodes.app.setSub(mode === 'sc' ? '컨테이너 직접' : '프록시 경유');
+      toggle.textContent = off ? '프록시 다시 켜기' : '프록시 끄기';
+      toggle.dataset.state = off ? '' : 'next';
+      say(NOTES[`${mode}-${off ? 'off' : 'on'}`]);
+      if (mode === 'sc') {
+        setResult(rFirst, '실패, 우회를 알려 줌', 'fail');
+        setResult(rFault, off ? '통과, 실제로는 Redis 정상' : '통과', off ? 'warn' : 'ok');
+      } else {
+        setResult(rFirst, '통과', 'ok');
+        setResult(rFault, '통과', 'ok');
+      }
+    };
+    const apply = () => {
+      sync();
+      layer.clear();
+      void scene.go({ sc: mode === 'sc' ? 1 : 0, off: off ? 1 : 0 }, duration.draw);
+    };
+
+    // 화면에 보이는 동안 조회 요청을 일정한 간격으로 흘립니다.
+    let loopId = 0;
+    const loop = async () => {
+      const id = ++loopId;
+      while (id === loopId && visible) {
+        void sendOne();
+        await wait(scene.reduced ? 100000 : 1300);
+      }
+    };
+    const sendOne = async () => {
+      const b = layout.boxes;
+      if (mode === 'sc') {
+        const pts = directPoints();
+        const pk = layer.spawn({ label: 'GET', at: pts[0] });
+        if (!(await pk.travel(pts, 900))) return;
+        replayClass(nodes.redis.group, 'is-ok');
+        pk.relabel('HIT', 'flow');
+        if (!(await pk.travel([...pts].reverse(), 900))) return;
+        void pk.fade(260);
+        return;
+      }
+      const pts = proxyPoints();
+      const pk = layer.spawn({ label: 'GET', at: pts[0] });
+      if (off) {
+        if (!(await pk.bounce(pts[1], 24))) return;
+        replayClass(nodes.proxy.group, 'is-shaking');
+        void pk.fade(380);
+        const from = exitPoint(b.app, b.db, 6);
+        const to = exitPoint(b.db, b.app, 6);
+        const q = layer.spawn({ label: 'SELECT', at: from });
+        if (!(await q.travel([to], 620))) return;
+        replayClass(nodes.db.group, 'is-ok');
+        void q.fade(300);
+        return;
+      }
+      if (!(await pk.travel(pts, 900))) return;
+      replayClass(nodes.redis.group, 'is-ok');
+      pk.relabel('HIT', 'flow');
+      if (!(await pk.travel([...pts].reverse(), 900))) return;
+      void pk.fade(260);
+    };
+
+    modeButtons.forEach((button) => button.addEventListener('click', () => {
+      modeButtons.forEach((x) => x.setAttribute('aria-pressed', String(x === button)));
+      const next = button.dataset.scMode as Mode;
+      if (next === mode) return;
+      mode = next;
+      off = false;
+      apply();
+    }));
+    toggle.addEventListener('click', () => { off = !off; apply(); });
+
+    sync();
+    scene.redraw();
+    watchDemoPlayback(demo, ({ shouldPlay }) => {
+      visible = shouldPlay;
+      if (shouldPlay) void loop();
+      else { loopId += 1; layer.clear(); }
+    }, { threshold: 0.35 });
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      layer.clear();
+      scene.redraw();
+    });
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="cache-service-connection"] .scene-note { min-height: 4.4em; }
+  [data-blog-demo="cache-service-connection"] .sc-wire { fill: none; stroke: var(--scene-dep); stroke-width: 2; stroke-dasharray: 4 4; }
+  [data-blog-demo="cache-service-connection"] .sc-wire.is-direct { stroke: var(--scene-temp); stroke-width: 2.4; stroke-dasharray: 6 4; }
+  [data-blog-demo="cache-service-connection"] .sc-wire.is-db { stroke: var(--hairline); }
+  [data-blog-demo="cache-service-connection"] .sc-wire-label { fill: var(--scene-temp); font-size: 11px; font-weight: 800; }
+  [data-blog-demo="cache-service-connection"] .sc-results { display: grid; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; font-size: 0.84rem; }
+  [data-blog-demo="cache-service-connection"] .sc-results li { display: flex; justify-content: space-between; gap: 12px; margin: 0; padding: 8px 12px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface); }
+  [data-blog-demo="cache-service-connection"] .sc-results span { color: var(--charcoal); }
+  [data-blog-demo="cache-service-connection"] .sc-results b { flex: none; display: inline-block; font-weight: 800; color: var(--slate); }
+  [data-blog-demo="cache-service-connection"] .sc-results b[data-tone="ok"] { color: var(--scene-flow-ink); }
+  [data-blog-demo="cache-service-connection"] .sc-results b[data-tone="fail"] { color: var(--scene-danger); }
+  [data-blog-demo="cache-service-connection"] .sc-results b[data-tone="warn"] { color: var(--scene-temp); }
+  [data-blog-demo="cache-service-connection"] .sc-results b.is-bump { animation: scene-pop 420ms ease-out; }
+  @media (max-width: 560px) {
+    [data-blog-demo="cache-service-connection"] .sc-results li { flex-direction: column; gap: 2px; }
+  }
+</style>

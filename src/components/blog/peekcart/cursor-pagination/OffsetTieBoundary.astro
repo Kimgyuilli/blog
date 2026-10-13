@@ -1,0 +1,219 @@
+---
+/**
+ * 정렬 키가 같은 20건을 offset 으로 두 페이지에 나눠 받을 때, 어떤 행은 두 페이지에 모두 나오고 어떤 행은 어디에도 나오지 않는 모습.
+ * 값은 MySQL 8.0.46 재현 실험의 1페이지와 2페이지 결과 그대로입니다.
+ */
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import SceneTimeline from '@/components/blog/shared/SceneTimeline.astro';
+import '@/styles/scene.css';
+
+const steps = [
+  { name: '1페이지 요청', detail: 'LIMIT 0, 10' },
+  { name: '2페이지 요청', detail: 'LIMIT 10, 10' },
+  { name: '두 페이지 합치기', detail: '20건 중 15건' },
+];
+---
+
+<InteractiveDemoFrame
+  demoId="cursor-offset-tie"
+  ariaLabel="주문 시각이 같은 주문 20건을 ORDER BY ordered_at DESC 와 offset 으로 10건씩 두 번 받았을 때 겹치는 행과 빠지는 행을 보여 주는 타임라인"
+  title="같은 시각의 20건을 10건씩 두 번 받으면"
+  description="위 칸은 주문 시각이 모두 같은 주문 20건입니다. 1페이지와 2페이지가 각각 어떤 주문을 가져가는지, 두 페이지를 합치면 무엇이 남는지 보세요."
+>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic viewBox="0 0 560 284" role="img" aria-label="위쪽에 주문 시각이 같은 주문 20건이 id 순서로 놓여 있습니다. ORDER BY ordered_at DESC LIMIT 0, 10 으로 받은 1페이지에는 931, 956, 926, 901, 981, 936, 906, 911, 951, 976 이, LIMIT 10, 10 으로 받은 2페이지에는 951, 976, 936, 941, 966, 991, 901, 961, 926, 921 이 들어갑니다. 951, 976, 936, 901, 926 다섯 건은 두 페이지에 모두 나오고, 916, 946, 971, 986, 996 다섯 건은 어느 페이지에도 나오지 않습니다."></svg>
+  </div>
+  <div class="cot-metrics" aria-hidden="true">
+    <div class="scene-metric"><b data-m-got>0</b><span>받은 행</span></div>
+    <div class="scene-metric"><b data-m-dup>0</b><span>두 번 나온 행</span></div>
+    <div class="scene-metric"><b data-m-miss>아직</b><span>안 나온 행</span></div>
+  </div>
+  <SceneTimeline ariaLabel="세 단계" steps={steps} />
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">MySQL 8.0.46 재현 실험에서 한 사용자의 주문 시각을 20건씩 같게 만든 뒤, <code>user_id</code> 인덱스와 filesort 를 쓰는 실행계획에서 받은 첫 두 페이지입니다. 같은 조건을 두 번 반복했을 때 결과가 같았지만, 동률 행의 순서는 실행계획에 따라 달라지므로 다른 환경에서는 겹치는 id 가 다를 수 있습니다. 주문의 다른 컬럼은 그리지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, clamp01, createScene, duration, lerp, replayClass, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { landRing } from '@/scripts/blog/scene/parts';
+  import { createStepPlayer } from '@/scripts/blog/scene/step-player';
+
+  // 독자가 볼 변화: 1페이지와 2페이지가 같은 묶음에서 10건씩 가져가는데, 다섯 건은 양쪽에 다 들어가고 다섯 건은 위 칸에 남아 아무 데도 가지 않는다.
+  const IDS = Array.from({ length: 20 }, (_, i) => 901 + i * 5);
+  const PAGE1 = [931, 956, 926, 901, 981, 936, 906, 911, 951, 976];
+  const PAGE2 = [951, 976, 936, 941, 966, 991, 901, 961, 926, 921];
+  const DUP = new Set(PAGE1.filter((id) => PAGE2.includes(id)));
+  const MISS = new Set(IDS.filter((id) => !PAGE1.includes(id) && !PAGE2.includes(id)));
+
+  /** p1, p2: 각 페이지의 사본이 위 칸에서 페이지 칸으로 날아간 정도(0~1, 칩마다 조금씩 늦게 출발). mark: 합쳐 보기의 색 입히기. */
+  type State = { p1: number; p2: number; mark: number };
+  type Layout = {
+    view: [number, number]; chip: { w: number; h: number };
+    pool: (i: number) => Point; slot: (page: 0 | 1, i: number) => Point;
+    poolBox: { x: number; y: number; w: number; h: number }; trays: { x: number; y: number; w: number; h: number }[];
+  };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 284], chip: { w: 44, h: 22 },
+      pool: (i) => ({ x: 46 + (i % 10) * 52, y: 62 + Math.floor(i / 10) * 30 }),
+      slot: (page, i) => ({ x: 46 + i * 52, y: page === 0 ? 176 : 252 }),
+      poolBox: { x: 12, y: 14, w: 536, h: 112 },
+      trays: [{ x: 12, y: 132, w: 536, h: 64 }, { x: 12, y: 208, w: 536, h: 64 }],
+    },
+    narrow: {
+      view: [360, 390], chip: { w: 52, h: 22 },
+      pool: (i) => ({ x: 48 + (i % 5) * 66, y: 58 + Math.floor(i / 5) * 28 }),
+      slot: (page, i) => ({ x: 48 + (i % 5) * 66, y: (page === 0 ? 222 : 326) + Math.floor(i / 5) * 28 }),
+      poolBox: { x: 8, y: 12, w: 344, h: 160 },
+      trays: [{ x: 8, y: 180, w: 344, h: 94 }, { x: 8, y: 284, w: 344, h: 94 }],
+    },
+  };
+  const STATES: State[] = [{ p1: 1, p2: 0, mark: 0 }, { p1: 1, p2: 1, mark: 0 }, { p1: 1, p2: 1, mark: 1 }];
+  const NOTES = [
+    '<code>ORDER BY ordered_at DESC LIMIT 0, 10</code>. 20건의 주문 시각이 모두 같아서, 어떤 10건이 먼저 오는지는 정렬이 정하지 못합니다. 실행계획이 읽은 순서대로 10건이 왔습니다.',
+    '<code>LIMIT 10, 10</code>. 같은 SQL 을 다시 실행해 앞의 10건을 건너뛰었는데, 이번에 정렬된 20건의 순서가 1페이지 때와 같다는 보장이 없습니다.',
+    '두 페이지를 합치면 20건을 받았지만 서로 다른 주문은 <strong>15건</strong>입니다. 빨간 다섯 건은 두 번 나왔고, 점선 다섯 건은 어느 페이지에도 나오지 않았습니다.',
+  ];
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="cursor-offset-tie"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const mGot = demo.querySelector<HTMLElement>('[data-m-got]')!;
+    const mDup = demo.querySelector<HTMLElement>('[data-m-dup]')!;
+    const mMiss = demo.querySelector<HTMLElement>('[data-m-miss]')!;
+    let layout = LAYOUTS.wide;
+    let current = -1;
+
+    const boxes = [
+      { rect: svg('rect', { class: 'cot-box', rx: 14 }, root), text: svg('text', { class: 'scene-label is-sans cot-caption' }, root), caption: '주문 시각이 같은 20건 (id 순)' },
+      { rect: svg('rect', { class: 'cot-box', rx: 14 }, root), text: svg('text', { class: 'scene-label is-sans cot-caption' }, root), caption: '1페이지 (LIMIT 0, 10)' },
+      { rect: svg('rect', { class: 'cot-box', rx: 14 }, root), text: svg('text', { class: 'scene-label is-sans cot-caption' }, root), caption: '2페이지 (LIMIT 10, 10)' },
+    ];
+    boxes.forEach((b) => { b.text.textContent = b.caption; });
+    const missText = svg('text', { class: 'scene-label is-sans cot-miss-caption', 'text-anchor': 'end' }, root);
+    missText.textContent = '점선: 어느 페이지에도 없음';
+
+    const makeChip = (id: number, kind: 'pool' | 'copy') => {
+      const group = svg('g', { class: `cot-chip is-${kind}` }, root);
+      const body = svg('g', { class: 'cot-chip-body' }, group);
+      const rect = svg('rect', { class: 'cot-chip-rect', rx: 6 }, body);
+      const text = svg('text', { class: 'cot-chip-text', 'text-anchor': 'middle' }, body);
+      text.textContent = String(id);
+      return {
+        id, group, body,
+        place(at: Point, o: number) {
+          const { w, h } = layout.chip;
+          setAttrs(group, { transform: `translate(${at.x.toFixed(2)} ${at.y.toFixed(2)})` });
+          setAttrs(rect, { x: -w / 2, y: -h / 2, width: w, height: h });
+          setAttrs(text, { x: 0, y: 4 });
+          group.style.opacity = String(o);
+        },
+      };
+    };
+    const pool = IDS.map((id) => makeChip(id, 'pool'));
+    // 사본이 위 칸 위를 날아가므로 나중에 그려 위에 오게 둡니다.
+    const copies = [PAGE1, PAGE2].map((page) => page.map((id) => makeChip(id, 'copy')));
+
+    // 칩마다 조금씩 늦게 출발합니다(물결). p 가 0에서 1로 가는 동안 i 번째 칩의 진행도.
+    const local = (p: number, i: number) => clamp01((p - i * 0.05) / 0.55);
+    const scene = createScene<State>({ p1: 0, p2: 0, mark: 0 }, (s) => {
+      const l = layout;
+      [l.poolBox, ...l.trays].forEach((b, i) => {
+        setAttrs(boxes[i].rect, { x: b.x, y: b.y, width: b.w, height: b.h });
+        setAttrs(boxes[i].text, { x: b.x + 14, y: b.y + 20 });
+      });
+      setAttrs(missText, { x: l.poolBox.x + l.poolBox.w - 14, y: l.poolBox.y + 20, opacity: s.mark });
+      pool.forEach((chip, i) => {
+        chip.place(l.pool(i), 1);
+        const marked = s.mark > 0.5;
+        chip.group.classList.toggle('is-dup', marked && DUP.has(chip.id));
+        chip.group.classList.toggle('is-miss', marked && MISS.has(chip.id));
+        chip.group.classList.toggle('is-once', marked && !DUP.has(chip.id) && !MISS.has(chip.id));
+      });
+      copies.forEach((page, pi) => {
+        const p = pi === 0 ? s.p1 : s.p2;
+        page.forEach((chip, i) => {
+          const t = local(p, i);
+          const from = l.pool(IDS.indexOf(chip.id));
+          const to = l.slot(pi as 0 | 1, i);
+          const lift = 30 * Math.sin(Math.PI * t);
+          chip.place({ x: lerp(from.x, to.x, t), y: lerp(from.y, to.y, t) - lift }, t <= 0 ? 0 : 1);
+          chip.group.classList.toggle('is-flying', t > 0 && t < 1);
+          chip.group.classList.toggle('is-dup', s.mark > 0.5 && DUP.has(chip.id));
+        });
+      });
+    });
+
+    const say = (html: string) => { note.innerHTML = html; replayClass(note, 'is-entering'); };
+    const metrics = (index: number) => {
+      bumpText(mGot, String(index === 0 ? 10 : 20));
+      bumpText(mDup, index === 2 ? String(DUP.size) : '0');
+      bumpText(mMiss, index === 2 ? String(MISS.size) : '아직');
+      mDup.classList.toggle('is-danger', index === 2);
+      mMiss.classList.toggle('is-danger', index === 2);
+    };
+    const ringPage = (page: 0 | 1) => {
+      const t = layout.trays[page];
+      landRing(root, { x: t.x + t.w / 2, y: t.y + t.h / 2, w: t.w, h: t.h });
+    };
+
+    const enter = async (index: number, instant: boolean) => {
+      const prev = current;
+      current = index;
+      const alive = scene.begin();
+      say(NOTES[index]);
+      metrics(index);
+      const target = STATES[index];
+      if (instant) { scene.set({ ...target }); return; }
+      // 앞으로 한 단계만 갈 때는 날아가는 과정을 보여 주고, 처음으로 돌아가면 사본을 거둔 뒤 다시 날립니다.
+      if (index === 0) scene.set({ p1: 0, p2: 0, mark: 0 });
+      else if (index !== prev + 1) { await scene.go({ ...target }, duration.draw); return; }
+      if (index === 2) {
+        await scene.go({ ...target }, duration.draw);
+        if (!alive()) return;
+        DUP.forEach((id) => {
+          const chip = pool.find((c) => c.id === id)!;
+          replayClass(chip.body, 'is-shaking');
+        });
+        return;
+      }
+      const ok = await scene.go({ ...target }, duration.fly * 2.2);
+      if (!ok || !alive()) return;
+      ringPage(index as 0 | 1);
+    };
+
+    createStepPlayer(demo, {
+      dwell: (i) => (i === 2 ? duration.dwellLast + 1200 : duration.dwell + 1400),
+      onStep: (i, instant) => { void enter(i, instant); },
+    });
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      scene.redraw();
+    });
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="cursor-offset-tie"] .scene-note { min-height: 4.4em; }
+  [data-blog-demo="cursor-offset-tie"] .cot-metrics { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 22px; margin: 6px 4px 2px; }
+  [data-blog-demo="cursor-offset-tie"] .cot-metrics b.is-danger { color: var(--scene-danger); }
+  [data-blog-demo="cursor-offset-tie"] .cot-box { fill: color-mix(in srgb, var(--surface) 70%, transparent); stroke: var(--hairline); stroke-width: 1.2; stroke-dasharray: 4 4; }
+  [data-blog-demo="cursor-offset-tie"] .cot-caption { fill: var(--slate); font-size: 11.5px; font-weight: 750; }
+  [data-blog-demo="cursor-offset-tie"] .cot-miss-caption { fill: var(--scene-danger); font-size: 11px; font-weight: 750; }
+  [data-blog-demo="cursor-offset-tie"] .cot-chip-body { transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="cursor-offset-tie"] .cot-chip-body.is-shaking { animation: scene-shake 420ms ease-in-out; }
+  [data-blog-demo="cursor-offset-tie"] .cot-chip-rect { fill: var(--surface); stroke: color-mix(in srgb, var(--scene-hue-blue) 45%, var(--hairline)); stroke-width: 1.3; transition: fill 240ms ease, stroke 240ms ease; }
+  [data-blog-demo="cursor-offset-tie"] .cot-chip-text { fill: var(--charcoal); font-family: var(--font-mono); font-size: 11px; font-weight: 700; }
+  [data-blog-demo="cursor-offset-tie"] .cot-chip.is-copy .cot-chip-rect { fill: color-mix(in srgb, var(--scene-hue-blue) 12%, var(--canvas)); stroke: var(--scene-hue-blue); }
+  [data-blog-demo="cursor-offset-tie"] .cot-chip.is-flying .cot-chip-rect { stroke-dasharray: 3 3; }
+  [data-blog-demo="cursor-offset-tie"] .cot-chip.is-once .cot-chip-rect { fill: var(--scene-flow-soft); stroke: var(--scene-flow); }
+  [data-blog-demo="cursor-offset-tie"] .cot-chip.is-dup .cot-chip-rect { fill: var(--scene-danger-soft); stroke: var(--scene-danger); stroke-width: 2; }
+  [data-blog-demo="cursor-offset-tie"] .cot-chip.is-dup .cot-chip-text { fill: var(--scene-danger); }
+  [data-blog-demo="cursor-offset-tie"] .cot-chip.is-miss .cot-chip-rect { fill: none; stroke: var(--scene-danger); stroke-dasharray: 3 3; }
+  [data-blog-demo="cursor-offset-tie"] .cot-chip.is-miss .cot-chip-text { fill: var(--scene-danger); }
+</style>

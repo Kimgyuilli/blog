@@ -1,0 +1,358 @@
+---
+/**
+ * 결과가 같은 질의 변경(커서 조건을 행 생성자로 바꿈)을 두 테스트에 넣었을 때, 운영 질의를 재는 테스트만 실패하는 장면.
+ * 값은 재현 실험 값이고, "재구성한 처음 테스트"는 원본이 남아 있지 않아 고친 두 성질만 되돌린 버전입니다.
+ */
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+
+const aria = '위쪽은 운영 질의의 커서 조건과 테스트 안에 손으로 쓴 SQL, 아래쪽은 최종 테스트와 재구성한 처음 테스트입니다. 최종 테스트는 실행계획과 읽은 행 수를 모두 운영 질의로 잽니다. 재구성한 테스트는 실행계획은 운영 질의로 보지만 접근 방식으로 ref 와 range 를 모두 허용하고 사용한 키를 보지 않으며, 읽은 행 수는 손으로 쓴 SQL 로 잽니다. 커서 조건을 OR 조건에서 행 생성자로 바꾸면 결과 행은 같지만 최종 테스트는 접근 방식 ref 와 읽은 행 수 40, 420, 920 으로 실패하고, 재구성한 테스트는 20, 20, 20 을 보고하며 통과합니다.';
+---
+
+<InteractiveDemoFrame
+  demoId="cursor-row-ctor"
+  ariaLabel={aria}
+  title="행 생성자로 바꾸면 두 테스트는 어떻게 될까"
+  description="운영 질의의 커서 조건을 뜻이 같은 행 생성자로 바꿔 보세요. 두 테스트가 각각 어느 SQL 을 재는지 연결선을 따라가 보세요."
+>
+  <div data-rc-root>
+    <DemoControls ariaLabel="운영 질의의 커서 조건">
+      <button type="button" data-rc-mode="or" aria-pressed="true">OR 조건</button>
+      <button type="button" data-rc-mode="row" aria-pressed="false">행 생성자</button>
+    </DemoControls>
+    <div class="scene-stage" data-stage>
+      <svg data-graphic viewBox="0 0 560 356" role="img" aria-label={aria}></svg>
+    </div>
+    <p class="scene-note" data-note role="status"></p>
+    <p class="db-demo-disclaimer">MySQL 8.0.46, 주문 5,000건(대상 사용자 1,000건) 한 환경의 재현 실험 값입니다. 처음 작성한 테스트는 원본이 남아 있지 않아, 본문의 세 번째 문제에 해당하는 두 성질(접근 방식으로 ref 도 허용하고 사용한 키를 보지 않음, 읽은 행 수를 손으로 쓴 SQL 로 잼)만 되돌려 재구성했습니다. 행 생성자로 바꾸면 실행계획 테스트에 고정해 둔 바인드 값 개수가 맞지 않아 먼저 JDBC 오류가 나는데, 장면은 바인드 개수를 맞춘 버전의 결과입니다. 결과 정확성을 보는 통합 테스트는 두 조건 모두에서 통과해 그리지 않았습니다.</p>
+  </div>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, replayClass, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createPacketLayer } from '@/scripts/blog/scene/packets';
+
+  // 독자가 볼 변화: 위 운영 질의를 행 생성자로 바꾸면, 운영 질의에서 선이 이어진 최종 테스트의 커서 막대가 offset 막대만큼 솟고 실패한다.
+  // 손으로 쓴 SQL 에서 선이 이어진 재구성 테스트의 막대는 그대로라 통과한다. 결과 행(정확성)은 양쪽 모두 바뀌지 않는다.
+  type Mode = 'or' | 'row';
+  type State = { f0: number; f1: number; f2: number; r0: number; r1: number; r2: number };
+  type Rect = { x: number; y: number; w: number; h: number };
+  type Layout = {
+    view: [number, number]; narrow: boolean;
+    prod: Rect; hand: Rect; final: Rect; recon: Rect;
+    wires: { from: Point; to: Point; src: 'prod' | 'hand' }[];
+    plan: { y: number; h: number }; rows: { y: number; h: number }; barMax: number;
+  };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 356], narrow: false,
+      prod: { x: 16, y: 14, w: 374, h: 62 }, hand: { x: 404, y: 14, w: 140, h: 62 },
+      final: { x: 16, y: 118, w: 256, h: 228 }, recon: { x: 288, y: 118, w: 256, h: 228 },
+      wires: [
+        { from: { x: 144, y: 78 }, to: { x: 144, y: 116 }, src: 'prod' },
+        { from: { x: 336, y: 78 }, to: { x: 336, y: 116 }, src: 'prod' },
+        { from: { x: 474, y: 78 }, to: { x: 474, y: 116 }, src: 'hand' },
+      ],
+      plan: { y: 36, h: 62 }, rows: { y: 106, h: 112 }, barMax: 40,
+    },
+    narrow: {
+      view: [360, 500], narrow: true,
+      prod: { x: 8, y: 10, w: 344, h: 58 }, hand: { x: 238, y: 80, w: 114, h: 58 },
+      final: { x: 8, y: 152, w: 168, h: 336 }, recon: { x: 184, y: 152, w: 168, h: 336 },
+      wires: [
+        { from: { x: 92, y: 70 }, to: { x: 92, y: 150 }, src: 'prod' },
+        { from: { x: 222, y: 70 }, to: { x: 222, y: 150 }, src: 'prod' },
+        { from: { x: 305, y: 140 }, to: { x: 305, y: 150 }, src: 'hand' },
+      ],
+      plan: { y: 34, h: 118 }, rows: { y: 160, h: 166 }, barMax: 76,
+    },
+  };
+  const CODE: Record<Mode, string> = {
+    or: 'ordered_at < ? OR (ordered_at = ? AND id < ?)',
+    row: '(ordered_at, id) < (?, ?)',
+  };
+  const OFFSET = [40, 420, 920];
+  const DEPTHS = ['20', '400', '900'];
+  const VALUES: Record<Mode, State> = {
+    or: { f0: 20, f1: 20, f2: 20, r0: 20, r1: 20, r2: 20 },
+    row: { f0: 40, f1: 420, f2: 920, r0: 20, r1: 20, r2: 20 },
+  };
+  type Check = { value: string; mark: 'ok' | 'fail' | 'none'; hint: string };
+  const PLAN: Record<'final' | 'recon', Record<Mode, { access: Check; keys: Check }>> = {
+    final: {
+      or: { access: { value: 'range', mark: 'ok', hint: '통과' }, keys: { value: 'user_id, ordered_at, id', mark: 'ok', hint: '' } },
+      row: { access: { value: 'ref', mark: 'fail', hint: '실패, range 기대' }, keys: { value: 'user_id 만', mark: 'fail', hint: '' } },
+    },
+    recon: {
+      or: { access: { value: 'range', mark: 'ok', hint: 'ref, range 허용' }, keys: { value: '확인하지 않음', mark: 'none', hint: '' } },
+      row: { access: { value: 'ref', mark: 'ok', hint: 'ref, range 허용' }, keys: { value: '확인하지 않음', mark: 'none', hint: '' } },
+    },
+  };
+  const NOTES: Record<Mode, string> = {
+    or: '지금은 두 테스트 모두 통과합니다. 커서가 읽은 행은 깊이와 상관없이 20건이고, offset 은 40, 420, 920건입니다. 위의 조건을 <strong>행 생성자</strong>로 바꿔 보세요.',
+    row: '결과 행은 똑같습니다. 그런데 MySQL 8.0 은 이 형태에서 인덱스 범위를 <code>user_id</code> 까지만 써서, 커서가 offset 과 같은 만큼 읽습니다. 운영 질의를 재는 최종 테스트는 <strong>실패</strong>하고, 행 수를 손으로 쓴 SQL 로 재는 재구성 테스트는 여전히 20, 20, 20 을 보고하며 <strong>통과</strong>합니다.',
+  };
+
+  const text = (parent: Element, cls: string, anchor: 'start' | 'middle' | 'end' = 'start') => svg('text', { class: `scene-label ${cls}`, 'text-anchor': anchor }, parent);
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="cursor-row-ctor"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const buttons = [...demo.querySelectorAll<HTMLButtonElement>('[data-rc-mode]')];
+    let mode: Mode = 'or';
+    let shown: Mode = 'or';
+    let layout = LAYOUTS.wide;
+
+    // 위: 운영 질의와 손으로 쓴 SQL
+    const wires = layout.wires.map((w) => svg('line', { class: `rc-wire is-${w.src}` }, root));
+    const source = (cls: string, title: string) => {
+      const g = svg('g', { class: `rc-source ${cls}` }, root);
+      const body = svg('g', { class: 'rc-body' }, g);
+      const rect = svg('rect', { class: 'rc-source-rect', rx: 10 }, body);
+      const bar = svg('rect', { class: 'rc-source-accent', rx: 2, width: 4 }, body);
+      const head = text(body, 'is-sans rc-source-title');
+      head.textContent = title;
+      const code = text(body, 'rc-code');
+      return { g, body, rect, bar, head, code };
+    };
+    const prod = source('is-prod', '운영 질의의 커서 조건');
+    const hand = source('is-hand', '손으로 쓴 SQL');
+
+    // 아래: 두 테스트
+    const test = (title: string) => {
+      const g = svg('g', { class: 'rc-test' }, root);
+      const body = svg('g', { class: 'rc-body' }, g);
+      const rect = svg('rect', { class: 'rc-test-rect', rx: 12 }, body);
+      const head = text(body, 'is-sans rc-test-title');
+      head.textContent = title;
+      const badge = text(body, 'is-sans rc-badge', 'end');
+      const panel = () => svg('rect', { class: 'rc-panel', rx: 8 }, body);
+      const planPanel = panel();
+      const rowsPanel = panel();
+      const planTitle = text(body, 'is-sans rc-panel-title');
+      planTitle.textContent = '실행계획';
+      const planTag = text(body, 'is-sans rc-tag', 'end');
+      const accessLabel = text(body, 'is-sans rc-key');
+      accessLabel.textContent = '접근 방식';
+      const accessValue = text(body, 'rc-value');
+      const accessHint = text(body, 'is-sans rc-hint');
+      const keysLabel = text(body, 'is-sans rc-key');
+      keysLabel.textContent = '사용한 키';
+      const keysValue = text(body, 'rc-value');
+      const rowsTitle = text(body, 'is-sans rc-panel-title');
+      rowsTitle.textContent = '읽은 행 수';
+      const rowsTag = text(body, 'is-sans rc-tag', 'end');
+      const rowsMark = text(body, 'is-sans rc-hint');
+      const bars = DEPTHS.map(() => ({
+        off: svg('rect', { class: 'rc-bar is-offset', rx: 2 }, body),
+        cur: svg('rect', { class: 'rc-bar is-cursor', rx: 2 }, body),
+        offText: text(body, 'rc-bar-text is-offset', 'middle'),
+        curText: text(body, 'rc-bar-text is-cursor', 'middle'),
+        depth: text(body, 'is-sans rc-depth', 'middle'),
+      }));
+      const base = svg('line', { class: 'rc-base' }, body);
+      const legend = text(body, 'is-sans rc-legend');
+      return { g, body, rect, head, badge, planPanel, rowsPanel, planTitle, planTag, accessLabel, accessValue, accessHint, keysLabel, keysValue, rowsTitle, rowsTag, rowsMark, bars, base, legend };
+    };
+    const finalTest = test('최종 테스트');
+    const reconTest = test('재구성한 처음 테스트');
+    const layer = createPacketLayer(root);
+
+    const placeSource = (s: ReturnType<typeof source>, r: Rect, code: string) => {
+      setAttrs(s.g, { transform: `translate(${r.x} ${r.y})` });
+      setAttrs(s.rect, { width: r.w, height: r.h });
+      setAttrs(s.bar, { x: 7, y: 10, height: r.h - 20 });
+      setAttrs(s.head, { x: 18, y: 22 });
+      setAttrs(s.code, { x: 18, y: r.h - 16 });
+      s.code.textContent = code;
+    };
+
+    const placeTest = (t: ReturnType<typeof test>, r: Rect, which: 'final' | 'recon', vals: number[]) => {
+      const l = layout;
+      const pad = 10;
+      const pw = r.w - pad * 2;
+      setAttrs(t.g, { transform: `translate(${r.x} ${r.y})` });
+      setAttrs(t.rect, { width: r.w, height: r.h });
+      setAttrs(t.head, { x: 14, y: 22 });
+      setAttrs(t.badge, { x: r.w - 14, y: 22 });
+      setAttrs(t.planPanel, { x: pad, y: l.plan.y, width: pw, height: l.plan.h });
+      setAttrs(t.rowsPanel, { x: pad, y: l.rows.y, width: pw, height: l.rows.h });
+      const px = pad + 10;
+      setAttrs(t.planTitle, { x: px, y: l.plan.y + 17 });
+      setAttrs(t.planTag, { x: pad + pw - 8, y: l.plan.y + 17 });
+      t.planTag.textContent = l.narrow ? '운영 질의' : '입력: 운영 질의';
+      if (l.narrow) {
+        setAttrs(t.accessLabel, { x: px, y: l.plan.y + 38 });
+        setAttrs(t.accessValue, { x: px, y: l.plan.y + 55 });
+        setAttrs(t.accessHint, { x: px, y: l.plan.y + 70 });
+        setAttrs(t.keysLabel, { x: px, y: l.plan.y + 90 });
+        setAttrs(t.keysValue, { x: px, y: l.plan.y + 107 });
+      } else {
+        setAttrs(t.accessLabel, { x: px, y: l.plan.y + 36 });
+        setAttrs(t.accessValue, { x: px + 62, y: l.plan.y + 36 });
+        setAttrs(t.accessHint, { x: px + 130, y: l.plan.y + 36 });
+        setAttrs(t.keysLabel, { x: px, y: l.plan.y + 53 });
+        setAttrs(t.keysValue, { x: px + 62, y: l.plan.y + 53 });
+      }
+      setAttrs(t.rowsTitle, { x: px, y: l.rows.y + 17 });
+      if (l.narrow) setAttrs(t.rowsTag, { x: px, y: l.rows.y + 33, 'text-anchor': 'start' });
+      else setAttrs(t.rowsTag, { x: pad + pw - 8, y: l.rows.y + 17, 'text-anchor': 'end' });
+      t.rowsTag.textContent = which === 'final' ? (l.narrow ? '운영 질의' : '입력: 운영 질의') : (l.narrow ? '손으로 쓴 SQL' : '입력: 손으로 쓴 SQL');
+      t.rowsTag.classList.toggle('is-hand', which === 'recon');
+      const baseY = l.rows.y + l.rows.h - 20;
+      const left = pad + 14;
+      const span = pw - 28;
+      setAttrs(t.base, { x1: left - 4, x2: left + span + 4, y1: baseY, y2: baseY });
+      const scale = l.barMax / 920;
+      t.bars.forEach((b, i) => {
+        const cx = left + span * ((i + 0.5) / 3);
+        const bw = l.narrow ? 11 : 14;
+        const oh = Math.max(2, OFFSET[i] * scale);
+        const ch = Math.max(2, vals[i] * scale);
+        setAttrs(b.off, { x: cx - bw - 1.5, y: baseY - oh, width: bw, height: oh });
+        setAttrs(b.cur, { x: cx + 1.5, y: baseY - ch, width: bw, height: ch });
+        setAttrs(b.offText, { x: cx - bw / 2 - 1.5, y: baseY - oh - 4 });
+        setAttrs(b.curText, { x: cx + bw / 2 + 1.5, y: baseY - ch - 4 });
+        // 커서 막대가 offset 막대만큼 자라면 두 숫자가 겹치므로 offset 숫자는 감춥니다.
+        b.offText.textContent = l.narrow || vals[i] > OFFSET[i] * 0.6 ? '' : String(OFFSET[i]);
+        b.curText.textContent = String(Math.round(vals[i]));
+        setAttrs(b.depth, { x: cx, y: baseY + 14 });
+        b.depth.textContent = l.narrow ? DEPTHS[i] : `깊이 ${DEPTHS[i]}`;
+        b.cur.classList.toggle('is-hand', which === 'recon');
+        b.curText.classList.toggle('is-hand', which === 'recon');
+      });
+      setAttrs(t.legend, { x: px, y: l.rows.y + (l.narrow ? 49 : 33) });
+      t.legend.textContent = '회색은 offset, 색은 cursor';
+      t.rowsTitle.textContent = l.narrow ? '깊이별 읽은 행 수' : '읽은 행 수';
+      if (l.narrow) setAttrs(t.rowsMark, { x: px, y: l.rows.y + 65, 'text-anchor': 'start' });
+      else setAttrs(t.rowsMark, { x: pad + pw - 8, y: l.rows.y + 33, 'text-anchor': 'end' });
+    };
+
+    const scene = createScene<State>({ ...VALUES.or }, (s) => {
+      const l = layout;
+      placeSource(prod, l.prod, CODE[shown]);
+      placeSource(hand, l.hand, l.narrow ? 'OR 조건' : 'OR 조건 그대로');
+      l.wires.forEach((w, i) => setAttrs(wires[i], { x1: w.from.x, y1: w.from.y, x2: w.to.x, y2: w.to.y }));
+      placeTest(finalTest, l.final, 'final', [s.f0, s.f1, s.f2]);
+      placeTest(reconTest, l.recon, 'recon', [s.r0, s.r1, s.r2]);
+    });
+
+    const setCheck = (el: SVGTextElement, c: Check) => {
+      bumpText(el, c.value);
+      el.dataset.mark = c.mark;
+    };
+    const apply = (m: Mode) => {
+      ([['final', finalTest], ['recon', reconTest]] as const).forEach(([which, t]) => {
+        const p = PLAN[which][m];
+        setCheck(t.accessValue, p.access);
+        t.accessHint.textContent = p.access.hint;
+        t.accessHint.dataset.mark = which === 'final' ? p.access.mark : '';
+        setCheck(t.keysValue, p.keys);
+        const flat = which === 'recon' || m === 'or';
+        bumpText(t.rowsMark, flat ? '일정함, 통과' : 'offset 과 같음, 실패');
+        t.rowsMark.dataset.mark = flat ? 'ok' : 'fail';
+        const pass = p.access.mark !== 'fail' && p.keys.mark !== 'fail' && flat;
+        bumpText(t.badge, pass ? '통과' : '실패');
+        t.g.classList.toggle('is-fail', !pass);
+        t.g.classList.toggle('is-pass', pass);
+      });
+      prod.g.classList.toggle('is-changed', m === 'row');
+    };
+    const say = (html: string) => { note.innerHTML = html; replayClass(note, 'is-entering'); };
+
+    const switchTo = async (next: Mode) => {
+      const alive = scene.begin();
+      layer.clear();
+      mode = next;
+      shown = next;
+      scene.redraw();
+      replayClass(prod.body, 'is-bump');
+      if (scene.reduced) { apply(next); scene.set({ ...VALUES[next] }); say(NOTES[next]); return; }
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      // 세 연결선을 따라 SQL 이 테스트로 내려갑니다.
+      const trips = layout.wires.map((w) => {
+        const p = layer.spawn({ label: 'SQL', tone: w.src === 'prod' ? (next === 'row' ? 'temp' : 'dep') : 'dep', at: w.from });
+        return p.travel([w.from, w.to], 640).then((ok) => { if (ok) void p.fade(360); return ok; });
+      });
+      const ok = (await Promise.all(trips)).every(Boolean);
+      if (!ok || !alive()) return;
+      apply(next);
+      say(NOTES[next]);
+      await scene.go({ ...VALUES[next] }, duration.draw);
+      if (!alive()) return;
+      [finalTest, reconTest].forEach((t) => { if (t.g.classList.contains('is-fail')) replayClass(t.body, 'is-shaking'); });
+    };
+
+    buttons.forEach((button) => button.addEventListener('click', () => {
+      const next = button.dataset.rcMode as Mode;
+      buttons.forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
+      if (next === mode) return;
+      void switchTo(next);
+    }));
+
+    apply('or');
+    say(NOTES.or);
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      root.classList.toggle('rc-narrow', narrow);
+      layer.clear();
+      apply(shown);
+      scene.redraw();
+    });
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="cursor-row-ctor"] .scene-note { min-height: 5.2em; }
+  [data-blog-demo="cursor-row-ctor"] .rc-body { transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="cursor-row-ctor"] .rc-body.is-shaking { animation: scene-shake 420ms ease-in-out; }
+  [data-blog-demo="cursor-row-ctor"] .rc-body.is-bump { animation: scene-pop 420ms ease-out; }
+  [data-blog-demo="cursor-row-ctor"] .rc-source-rect { fill: var(--surface); stroke: var(--hairline); stroke-width: 1.4; }
+  [data-blog-demo="cursor-row-ctor"] .rc-source.is-prod { --rc-hue: var(--scene-hue-blue); }
+  [data-blog-demo="cursor-row-ctor"] .rc-source.is-hand { --rc-hue: var(--scene-hue-violet); }
+  [data-blog-demo="cursor-row-ctor"] .rc-source-accent { fill: var(--rc-hue); }
+  [data-blog-demo="cursor-row-ctor"] .rc-source-title { fill: var(--slate); font-size: 11px; font-weight: 750; }
+  [data-blog-demo="cursor-row-ctor"] .rc-code { fill: var(--ink); font-family: var(--font-mono); font-size: 11px; font-weight: 700; }
+  [data-blog-demo="cursor-row-ctor"] .rc-source.is-prod.is-changed .rc-source-rect { stroke: var(--scene-temp); stroke-dasharray: 5 3; }
+  [data-blog-demo="cursor-row-ctor"] .rc-source.is-prod.is-changed .rc-code { fill: var(--scene-temp); }
+  [data-blog-demo="cursor-row-ctor"] .rc-wire { stroke-width: 2; stroke-dasharray: 4 4; }
+  [data-blog-demo="cursor-row-ctor"] .rc-wire.is-prod { stroke: var(--scene-hue-blue); }
+  [data-blog-demo="cursor-row-ctor"] .rc-wire.is-hand { stroke: var(--scene-hue-violet); }
+  [data-blog-demo="cursor-row-ctor"] .rc-test-rect { fill: var(--surface); stroke: var(--hairline); stroke-width: 1.5; transition: stroke 240ms ease; }
+  [data-blog-demo="cursor-row-ctor"] .rc-test.is-pass .rc-test-rect { stroke: var(--scene-flow); }
+  [data-blog-demo="cursor-row-ctor"] .rc-test.is-fail .rc-test-rect { stroke: var(--scene-danger); stroke-width: 2; }
+  [data-blog-demo="cursor-row-ctor"] .rc-test-title { fill: var(--ink); font-size: 12.5px; font-weight: 800; }
+  [data-blog-demo="cursor-row-ctor"] .rc-badge { font-size: 12px; font-weight: 800; transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="cursor-row-ctor"] .rc-test.is-pass .rc-badge { fill: var(--scene-flow-ink); }
+  [data-blog-demo="cursor-row-ctor"] .rc-test.is-fail .rc-badge { fill: var(--scene-danger); }
+  [data-blog-demo="cursor-row-ctor"] .rc-panel { fill: color-mix(in srgb, var(--canvas) 70%, transparent); stroke: var(--hairline); stroke-dasharray: 3 3; }
+  [data-blog-demo="cursor-row-ctor"] .rc-panel-title { fill: var(--charcoal); font-size: 11px; font-weight: 800; }
+  [data-blog-demo="cursor-row-ctor"] .rc-tag { fill: var(--scene-hue-blue); font-size: 10px; font-weight: 750; }
+  [data-blog-demo="cursor-row-ctor"] .rc-tag.is-hand { fill: var(--scene-hue-violet); }
+  [data-blog-demo="cursor-row-ctor"] .rc-key { fill: var(--slate); font-size: 10.5px; font-weight: 700; }
+  [data-blog-demo="cursor-row-ctor"] .rc-narrow .rc-value { font-size: 9.5px; }
+  [data-blog-demo="cursor-row-ctor"] .rc-value { fill: var(--ink); font-family: var(--font-mono); font-size: 10.5px; font-weight: 750; transform-box: fill-box; transform-origin: left center; }
+  [data-blog-demo="cursor-row-ctor"] .rc-value[data-mark="ok"] { fill: var(--scene-flow-ink); }
+  [data-blog-demo="cursor-row-ctor"] .rc-value[data-mark="fail"] { fill: var(--scene-danger); }
+  [data-blog-demo="cursor-row-ctor"] .rc-value[data-mark="none"] { fill: var(--muted); font-family: var(--font-sans); }
+  [data-blog-demo="cursor-row-ctor"] .rc-hint { fill: var(--slate); font-size: 10px; font-weight: 700; transform-box: fill-box; transform-origin: left center; }
+  [data-blog-demo="cursor-row-ctor"] .rc-hint[data-mark="ok"] { fill: var(--scene-flow-ink); }
+  [data-blog-demo="cursor-row-ctor"] .rc-hint[data-mark="fail"] { fill: var(--scene-danger); }
+  [data-blog-demo="cursor-row-ctor"] .is-bump { animation: scene-pop 420ms ease-out; }
+  [data-blog-demo="cursor-row-ctor"] .rc-legend { fill: var(--muted); font-size: 9.5px; font-weight: 700; }
+  [data-blog-demo="cursor-row-ctor"] .rc-base { stroke: var(--hairline); stroke-width: 1.2; }
+  [data-blog-demo="cursor-row-ctor"] .rc-bar.is-offset { fill: color-mix(in srgb, var(--scene-dep) 40%, transparent); }
+  [data-blog-demo="cursor-row-ctor"] .rc-bar.is-cursor { fill: var(--scene-hue-blue); }
+  [data-blog-demo="cursor-row-ctor"] .rc-bar.is-cursor.is-hand { fill: var(--scene-hue-violet); }
+  [data-blog-demo="cursor-row-ctor"] .rc-bar-text { font-family: var(--font-mono); font-size: 9.5px; font-weight: 700; }
+  [data-blog-demo="cursor-row-ctor"] .rc-bar-text.is-offset { fill: var(--slate); }
+  [data-blog-demo="cursor-row-ctor"] .rc-bar-text.is-cursor { fill: var(--scene-hue-blue); }
+  [data-blog-demo="cursor-row-ctor"] .rc-bar-text.is-cursor.is-hand { fill: var(--scene-hue-violet); }
+  [data-blog-demo="cursor-row-ctor"] .rc-depth { fill: var(--slate); font-size: 10px; font-weight: 700; }
+</style>

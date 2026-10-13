@@ -1,0 +1,337 @@
+---
+/**
+ * 주문 시각 10종에 20건씩 동률인 200건을 10건씩 끝까지 넘기며, 각 주문이 몇 번 나왔는지를 칸 색으로 쌓아 보여 줍니다.
+ * variant="fetch": 다음 페이지를 가리키는 방식(offset, cursor)과 tie-break 유무를 바꿔 봅니다.
+ * variant="mutation": 정상 커서 조건을 한 군데씩 망가뜨려 봅니다.
+ * 수치는 MySQL 8.0.46 재현 실험 값이고, 칸의 위치는 아래 안내문의 범위에서 정했습니다.
+ */
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+
+type Props = { variant: 'fetch' | 'mutation' };
+const { variant } = Astro.props;
+
+const modes = variant === 'fetch'
+  ? [
+      { id: 'offset-time', label: 'offset (ordered_at)' },
+      { id: 'offset-tie', label: 'offset (ordered_at, id)' },
+      { id: 'cursor', label: 'cursor (ordered_at, id)' },
+    ]
+  : [
+      { id: 'cursor', label: '정상' },
+      { id: 'no-id', label: 'id 비교 삭제' },
+      { id: 'lte', label: '< 를 <= 로' },
+      { id: 'asc', label: 'id ASC' },
+    ];
+const title = variant === 'fetch' ? '200건을 끝까지 넘겨 보면' : '커서 조건을 한 군데씩 망가뜨리면';
+const description = variant === 'fetch'
+  ? '한 줄이 주문 시각 하나이고, 줄마다 같은 시각의 주문 20건이 id 가 큰 순서로 놓여 있습니다. 10건씩 끝까지 넘기는 동안 칸이 몇 번 칠해지는지 보세요.'
+  : '같은 200건을 정상 커서 조건과, 조건을 한 군데씩 바꾼 질의로 끝까지 넘깁니다. 어느 변경이 무엇을 깨는지 칸의 색과 커서 표시로 보세요.';
+const aria = variant === 'fetch'
+  ? '주문 시각 10종에 20건씩 동률인 200건을 10건씩 끝까지 넘깁니다. offset 에 ordered_at 만 정렬하면 받은 200건 중 서로 다른 주문은 177건이고 23건이 빠집니다. offset 에 ordered_at, id 로 정렬하거나 cursor 로 넘기면 200건이 모두 한 번씩 나옵니다.'
+  : '같은 200건을 커서로 끝까지 넘깁니다. 정상 조건은 20페이지에 200건이 한 번씩 나옵니다. id 비교를 지우면 같은 첫 페이지가 반복돼 40페이지 상한에서 멈추고 서로 다른 주문은 10건입니다. < 를 <= 로 바꾸면 페이지마다 직전 마지막 행이 다시 나와 222건 중 22건이 중복입니다. id 정렬을 ASC 로 뒤집으면 100건을 받고 서로 다른 주문은 55건, 145건이 빠집니다.';
+---
+
+<InteractiveDemoFrame demoId="cursor-tie-grid" ariaLabel={aria} title={title} description={description}>
+  <div data-grid-root data-variant={variant}>
+    <DemoControls ariaLabel={variant === 'fetch' ? '정렬과 다음 페이지 지정 방식' : '커서 조건'}>
+      {modes.map((mode, i) => (
+        <button type="button" data-grid-mode={mode.id} aria-pressed={i === 0 ? 'true' : 'false'}>{mode.label}</button>
+      ))}
+    </DemoControls>
+    <div class="scene-stage" data-stage>
+      <svg data-graphic viewBox="0 0 560 290" role="img" aria-label={aria}></svg>
+    </div>
+    <div class="ctg-metrics" aria-hidden="true">
+      <div class="scene-metric"><b data-m-pages>0</b><span>요청한 페이지</span></div>
+      <div class="scene-metric"><b data-m-got>0</b><span>받은 행</span></div>
+      <div class="scene-metric"><b data-m-distinct>0</b><span>서로 다른 행</span></div>
+      <div class="scene-metric"><b data-m-miss>아직</b><span>안 나온 행</span></div>
+    </div>
+    <ul class="ctg-legend" aria-hidden="true">
+      <li><i class="is-once"></i>한 번 나옴</li>
+      <li><i class="is-dup"></i>두 번 이상</li>
+      <li><i class="is-miss"></i>끝까지 안 나옴</li>
+      <li><i class="is-page"></i>방금 받은 페이지</li>
+      <li><i class="is-cursor"></i>커서가 가리키는 행</li>
+      {variant === 'fetch' && <li><i class="is-skip"></i>offset 이 건너뛸 행</li>}
+    </ul>
+    <p class="scene-note" data-note role="status"></p>
+    <p class="db-demo-disclaimer">
+      {variant === 'fetch'
+        ? 'MySQL 8.0.46 재현 실험(사용자 1명, 주문 시각 10종에 20건씩, 페이지 10건)의 합계를 옮겼습니다. ordered_at 만으로 정렬한 offset 에서 첫 줄은 실험의 1페이지와 2페이지 결과 그대로이고, 나머지 줄에서 어느 칸이 겹치고 빠지는지는 실험에서 따로 기록하지 않아 합계(중복 23건, 누락 23건)에 맞춰 모형이 배치했습니다. 동률을 20건씩 몰아 둔 것은 현상을 보이기 위한 분포이고, 실제 주문 데이터의 동률 빈도를 뜻하지 않습니다.'
+        : 'MySQL 8.0.46 재현 실험에서 같은 SQL 을 MySQL 클라이언트로 손으로 순회한 결과입니다(주문 시각 10종에 20건씩, 페이지 10건, 다음 페이지 유무는 11건을 읽어 확인, 40페이지 상한). 칸의 위치는 각 조건이 돌려주는 행을 정렬 순서에서 계산한 것이고 합계는 실험 값과 같습니다. 애플리케이션 테스트는 동률 다섯 건으로 같은 변경을 잡았고, 그 결과는 통과와 실패로만 남아 있습니다.'}
+    </p>
+  </div>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, ease, replayClass, setAttrs, svg, watchNarrow } from '@/scripts/blog/scene/core';
+  import { watchDemoPlayback } from '@/scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화(fetch): ordered_at 만으로 정렬한 offset 은 줄마다 빨간 칸(두 번)과 점선 칸(안 나옴)을 남기고, id 를 덧붙이거나 cursor 로 넘기면 200칸이 모두 한 번씩 칠해진다.
+  //   offset 은 매번 앞에서부터 건너뛰고(위 줄이 흐려짐), cursor 는 직전 마지막 행에 꽂힌 표시에서 이어 간다.
+  // 독자가 볼 변화(mutation): id 비교를 지우면 첫 줄 왼쪽 10칸만 계속 칠해지고, <= 는 페이지마다 이음매 한 칸이 빨개지고, id ASC 는 줄 오른쪽 절반과 다음 줄 한 칸만 칠하고 건너뛴다.
+  type Mode = 'offset-time' | 'offset-tie' | 'cursor' | 'no-id' | 'lte' | 'asc';
+  type Plan = { pages: number[][]; offset: boolean; cap?: boolean };
+  const ROWS = 10;
+  const COLS = 20;
+  const SIZE = 10;
+  const cell = (row: number, col: number) => row * COLS + col;
+
+  // 같은 시각 안의 칸은 id 가 큰 쪽이 왼쪽입니다. 첫 줄은 재현 실험의 id(901~996, 5 간격)입니다.
+  const ID_COL = (id: number) => (996 - id) / 5;
+  const FIRST_ROW = {
+    a: [931, 956, 926, 901, 981, 936, 906, 911, 951, 976].map(ID_COL),
+    b: [951, 976, 936, 941, 966, 991, 901, 961, 926, 921].map(ID_COL),
+  };
+  // 나머지 줄의 겹침 수(합 18 + 첫 줄 5 = 23). 위치는 정해진 순열로 고릅니다.
+  const OVERLAP = [5, 2, 1, 3, 2, 1, 3, 2, 2, 2];
+  const shuffled = (seed: number) => {
+    const order = Array.from({ length: COLS }, (_, i) => i);
+    let x = seed * 9301 + 49297;
+    for (let i = COLS - 1; i > 0; i -= 1) {
+      x = (x * 9301 + 49297) % 233280;
+      const j = Math.floor((x / 233280) * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    return order;
+  };
+
+  const plan = (mode: Mode): Plan => {
+    const pages: number[][] = [];
+    if (mode === 'offset-time') {
+      for (let r = 0; r < ROWS; r += 1) {
+        if (r === 0) { pages.push(FIRST_ROW.a.map((c) => cell(0, c)), FIRST_ROW.b.map((c) => cell(0, c))); continue; }
+        const o = shuffled(r + 3);
+        const d = OVERLAP[r];
+        const a = o.slice(0, SIZE);
+        const b = [...a.slice(SIZE - d), ...o.slice(SIZE, SIZE * 2 - d)];
+        pages.push(a.map((c) => cell(r, c)), b.map((c) => cell(r, c)));
+      }
+      return { pages, offset: true };
+    }
+    if (mode === 'offset-tie' || mode === 'cursor') {
+      for (let k = 0; k < ROWS * 2; k += 1) pages.push(Array.from({ length: SIZE }, (_, i) => k * SIZE + i));
+      return { pages, offset: mode === 'offset-tie' };
+    }
+    if (mode === 'no-id') {
+      // (ordered_at < T OR ordered_at = T) 는 ordered_at <= T 와 같아, 매번 첫 페이지로 돌아갑니다.
+      for (let k = 0; k < 40; k += 1) pages.push(Array.from({ length: SIZE }, (_, i) => i));
+      return { pages, offset: false, cap: true };
+    }
+    if (mode === 'lte') {
+      // id <= I 는 직전 페이지의 마지막 행을 다시 포함합니다.
+      for (let k = 0; ; k += 1) {
+        const start = k * (SIZE - 1);
+        const page = Array.from({ length: SIZE }, (_, i) => start + i).filter((c) => c < ROWS * COLS);
+        pages.push(page);
+        if (page.length < SIZE) break;
+      }
+      return { pages, offset: false };
+    }
+    // id ASC: 줄 안의 읽는 순서가 오른쪽(작은 id)부터입니다. 커서 조건은 여전히 id < I 라 같은 줄의 앞 9건과 다음 줄 첫 1건을 읽고, 그 다음 줄은 건너뜁니다.
+    for (let r = 0; r < ROWS; r += 2) {
+      pages.push(Array.from({ length: SIZE }, (_, i) => cell(r, COLS - 1 - i)));
+      pages.push([...Array.from({ length: SIZE - 1 }, (_, i) => cell(r, COLS - 1 - i)), cell(r + 1, COLS - 1)]);
+    }
+    pages.push([]);
+    return { pages, offset: false };
+  };
+
+  const NOTES: Record<Mode, { run: string; end: string }> = {
+    'offset-time': {
+      run: '<code>ORDER BY ordered_at DESC LIMIT n, 10</code>. 줄마다 같은 시각의 20건을 두 페이지로 나눠 받습니다.',
+      end: '20페이지, 200건을 받았지만 서로 다른 주문은 <strong>177건</strong>입니다. 23건은 두 번 나오고 23건은 한 번도 나오지 않았습니다. 같은 순회를 다시 해도 같은 칸이 틀립니다.',
+    },
+    'offset-tie': {
+      run: '<code>ORDER BY ordered_at DESC, id DESC LIMIT n, 10</code>. id 가 동률을 끊어 줄 안의 순서가 하나로 정해집니다.',
+      end: '200건이 모두 한 번씩 나왔습니다. 다만 페이지가 깊어질수록 <code>OFFSET</code> 이 커지고, 흐려진 위 줄은 매번 다시 읽고 버리는 행입니다.',
+    },
+    cursor: {
+      run: '커서 = 직전 페이지 마지막 행의 <code>(ordered_at, id)</code>. 다음 요청은 그 표시 다음부터 읽습니다.',
+      end: '20페이지에 200건이 모두 한 번씩 나왔습니다. 건너뛸 행을 세지 않고 표시한 위치에서 이어 읽습니다.',
+    },
+    'no-id': {
+      run: '<code>ordered_at &lt; T OR ordered_at = T</code>. id 비교가 빠지면 커서 시각과 같은 행이 전부 다시 조건에 들어옵니다.',
+      end: '매번 같은 첫 페이지가 돌아와 <strong>40페이지 상한</strong>에서 멈췄습니다. 400건을 받았고 서로 다른 주문은 10건입니다.',
+    },
+    lte: {
+      run: '<code>id &lt;= I</code>. 커서가 가리키는 마지막 행이 다음 페이지 첫 줄에 다시 들어옵니다.',
+      end: '23페이지, 222건을 받았습니다. 200건은 모두 나왔지만 페이지가 바뀔 때마다 한 건씩, <strong>22건이 중복</strong>입니다.',
+    },
+    asc: {
+      run: '<code>ORDER BY ordered_at DESC, id ASC</code> 인데 커서 조건은 그대로 <code>id &lt; I</code>. 정렬 방향과 비교 방향이 어긋납니다.',
+      end: '11번 요청해 100건을 받았고 서로 다른 주문은 55건, <strong>145건이 빠졌습니다</strong>. 줄 하나를 반쯤 읽고 다음 줄은 한 칸만 본 뒤 건너뜁니다.',
+    },
+  };
+
+  type Layout = { view: [number, number]; x0: number; y0: number; cw: number; ch: number; gap: number; pitch: number; label: (r: number) => string; labelX: number; head: number };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: { view: [560, 290], x0: 72, y0: 54, cw: 20, ch: 17, gap: 4, pitch: 22, label: (r) => `시각 ${r + 1}`, labelX: 16, head: 28 },
+    narrow: { view: [360, 268], x0: 42, y0: 54, cw: 12, ch: 14, gap: 3, pitch: 19, label: (r) => `T${r + 1}`, labelX: 10, head: 28 },
+  };
+  /** p: 받은 페이지 수(소수부는 다음 페이지가 오는 중). */
+  type State = { p: number };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="cursor-tie-grid"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const buttons = [...demo.querySelectorAll<HTMLButtonElement>('[data-grid-mode]')];
+    const m = {
+      pages: demo.querySelector<HTMLElement>('[data-m-pages]')!,
+      got: demo.querySelector<HTMLElement>('[data-m-got]')!,
+      distinct: demo.querySelector<HTMLElement>('[data-m-distinct]')!,
+      miss: demo.querySelector<HTMLElement>('[data-m-miss]')!,
+    };
+    let mode = buttons[0].dataset.gridMode as Mode;
+    let current = plan(mode);
+    let layout = LAYOUTS.wide;
+    let shownPages = -1;
+
+    const skip = svg('rect', { class: 'ctg-skip', rx: 6 }, root);
+    const skipText = svg('text', { class: 'scene-label is-sans ctg-skip-text' }, root);
+    const head = svg('text', { class: 'scene-label is-sans ctg-head' }, root);
+    const labels = Array.from({ length: ROWS }, () => svg('text', { class: 'scene-label is-sans ctg-row-label' }, root));
+    labels.forEach((t, r) => { t.dataset.row = String(r); });
+    const cells = Array.from({ length: ROWS * COLS }, () => svg('rect', { class: 'ctg-cell', rx: 3 }, root));
+    const frames = Array.from({ length: SIZE }, () => svg('rect', { class: 'ctg-frame', rx: 4 }, root));
+    const marker = svg('g', { class: 'ctg-marker' }, root);
+    const markerRing = svg('rect', { class: 'ctg-marker-ring', rx: 5 }, marker);
+    const capText = svg('text', { class: 'scene-label is-sans ctg-cap', 'text-anchor': 'end' }, root);
+    capText.textContent = '40페이지 상한에서 멈춤';
+
+    const pos = (index: number) => {
+      const l = layout;
+      const r = Math.floor(index / COLS);
+      const c = index % COLS;
+      return { x: l.x0 + c * (l.cw + l.gap), y: l.y0 + r * l.pitch };
+    };
+
+    const scene = createScene<State>({ p: 0 }, (s) => {
+      const l = layout;
+      const done = Math.floor(s.p + 1e-6);
+      const counts = new Array<number>(ROWS * COLS).fill(0);
+      current.pages.slice(0, done).forEach((page) => page.forEach((c) => { counts[c] += 1; }));
+      const finished = done >= current.pages.length;
+      setAttrs(head, { x: l.x0, y: l.head });
+      head.textContent = layout === LAYOUTS.wide ? '같은 시각 안에서는 왼쪽일수록 id 가 큽니다' : '왼쪽일수록 id 가 큼';
+      labels.forEach((t, r) => {
+        setAttrs(t, { x: l.labelX, y: l.y0 + r * l.pitch + l.ch / 2 + 4 });
+        t.textContent = l.label(r);
+      });
+      cells.forEach((rect, i) => {
+        const { x, y } = pos(i);
+        setAttrs(rect, { x, y, width: l.cw, height: l.ch });
+        const n = counts[i];
+        rect.setAttribute('class', `ctg-cell${n === 1 ? ' is-once' : n >= 2 ? ' is-dup' : finished ? ' is-miss' : ''}`);
+      });
+      // 방금 받은 페이지의 칸에 테두리를 씌웁니다.
+      const last = current.pages[done - 1] ?? [];
+      frames.forEach((f, i) => {
+        const c = last[i];
+        if (c === undefined) { f.style.opacity = '0'; return; }
+        const { x, y } = pos(c);
+        setAttrs(f, { x: x - 2, y: y - 2, width: l.cw + 4, height: l.ch + 4 });
+        f.style.opacity = '1';
+      });
+      // offset 은 다음 요청이 건너뛸 위 줄들을 흐리게 덮습니다. cursor 는 직전 마지막 행에 표시를 둡니다.
+      const right = l.x0 + COLS * (l.cw + l.gap) - 4;
+      const offsetLive = current.offset && done > 0 && !finished;
+      const rowsSkipped = offsetLive ? Math.floor((done * SIZE) / COLS) : 0;
+      setAttrs(skip, { x: l.x0 - 4, y: l.y0 - 3, width: COLS * (l.cw + l.gap) + 4, height: Math.max(0, rowsSkipped * l.pitch - l.gap + 4), opacity: rowsSkipped > 0 ? 1 : 0 });
+      setAttrs(skipText, { x: right, y: l.head, 'text-anchor': 'end', opacity: offsetLive ? 1 : 0 });
+      skipText.textContent = `다음 요청: OFFSET ${done * SIZE}`;
+      const tailPage = [...current.pages.slice(0, done)].reverse().find((page) => page.length > 0);
+      if (!current.offset && tailPage) {
+        const { x, y } = pos(tailPage[tailPage.length - 1]);
+        setAttrs(markerRing, { x: x - 4, y: y - 4, width: l.cw + 8, height: l.ch + 8 });
+        marker.style.opacity = '1';
+      } else {
+        marker.style.opacity = '0';
+      }
+      setAttrs(capText, { x: right, y: l.head, opacity: current.cap && finished ? 1 : 0 });
+
+      if (done !== shownPages) {
+        shownPages = done;
+        const got = counts.reduce((a, n) => a + n, 0);
+        const distinct = counts.filter((n) => n > 0).length;
+        bumpText(m.pages, String(done));
+        bumpText(m.got, String(got));
+        bumpText(m.distinct, String(distinct));
+        bumpText(m.miss, finished ? String(ROWS * COLS - distinct) : '아직');
+        m.miss.classList.toggle('is-danger', finished && distinct < ROWS * COLS);
+        m.distinct.classList.toggle('is-danger', finished && distinct < got);
+        frames.forEach((f) => { if (!scene.reduced) replayClass(f, 'is-hit'); });
+      }
+    });
+
+    const say = (html: string) => { note.innerHTML = html; replayClass(note, 'is-entering'); };
+    let started = false;
+    const run = async () => {
+      started = true;
+      const alive = scene.begin();
+      current = plan(mode);
+      shownPages = -1;
+      scene.set({ p: 0 });
+      say(NOTES[mode].run);
+      const n = current.pages.length;
+      const per = Math.min(300, 6400 / n);
+      const ok = await scene.go({ p: n }, scene.ms(per * n), ease.linear);
+      if (!ok || !alive()) return;
+      say(NOTES[mode].end);
+    };
+
+    buttons.forEach((button) => button.addEventListener('click', () => {
+      buttons.forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
+      mode = button.dataset.gridMode as Mode;
+      void run();
+    }));
+
+    // 처음에는 끝난 상태를 그려 두고, 화면에 보이면 한 번 저절로 넘깁니다.
+    current = plan(mode);
+    scene.set({ p: current.pages.length });
+    say(NOTES[mode].end);
+    watchDemoPlayback(demo, ({ shouldPlay }) => {
+      if (shouldPlay && !started) void run();
+    }, { threshold: 0.45 });
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      shownPages = -1;
+      scene.redraw();
+    });
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="cursor-tie-grid"] .scene-note { min-height: 4.4em; }
+  [data-blog-demo="cursor-tie-grid"] .ctg-metrics { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 22px; margin: 6px 4px 2px; }
+  [data-blog-demo="cursor-tie-grid"] .ctg-metrics b.is-danger { color: var(--scene-danger); }
+  [data-blog-demo="cursor-tie-grid"] .ctg-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 2px 0; padding: 0; color: var(--slate); font-size: 0.76rem; list-style: none; }
+  [data-blog-demo="cursor-tie-grid"] .ctg-legend li { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+  [data-blog-demo="cursor-tie-grid"] .ctg-legend i { display: inline-block; width: 14px; height: 11px; border-radius: 3px; border: 1.5px solid; }
+  [data-blog-demo="cursor-tie-grid"] .ctg-legend i.is-once { background: color-mix(in srgb, var(--scene-flow) 55%, transparent); border-color: var(--scene-flow); }
+  [data-blog-demo="cursor-tie-grid"] .ctg-legend i.is-dup { background: var(--scene-danger); border-color: var(--scene-danger); }
+  [data-blog-demo="cursor-tie-grid"] .ctg-legend i.is-miss { border-color: var(--scene-danger); border-style: dashed; }
+  [data-blog-demo="cursor-tie-grid"] .ctg-legend i.is-page { border-color: var(--ink); border-width: 2px; }
+  [data-blog-demo="cursor-tie-grid"] .ctg-head { fill: var(--slate); font-size: 11px; font-weight: 700; }
+  [data-blog-demo="cursor-tie-grid"] .ctg-row-label { fill: var(--slate); font-size: 11px; font-weight: 700; }
+  [data-blog-demo="cursor-tie-grid"] .ctg-cell { fill: var(--surface); stroke: var(--hairline); stroke-width: 1; transition: fill 160ms ease, stroke 160ms ease; }
+  [data-blog-demo="cursor-tie-grid"] .ctg-cell.is-once { fill: color-mix(in srgb, var(--scene-flow) 55%, transparent); stroke: var(--scene-flow); }
+  [data-blog-demo="cursor-tie-grid"] .ctg-cell.is-dup { fill: var(--scene-danger); stroke: var(--scene-danger); }
+  [data-blog-demo="cursor-tie-grid"] .ctg-cell.is-miss { fill: none; stroke: var(--scene-danger); stroke-width: 1.4; stroke-dasharray: 3 2; }
+  [data-blog-demo="cursor-tie-grid"] .ctg-frame { fill: none; stroke: var(--ink); stroke-width: 2; pointer-events: none; transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="cursor-tie-grid"] .ctg-frame.is-hit { animation: scene-pop 300ms ease-out; }
+  [data-blog-demo="cursor-tie-grid"] .ctg-skip { fill: color-mix(in srgb, var(--slate) 22%, transparent); stroke: var(--scene-dep); stroke-dasharray: 4 3; pointer-events: none; }
+  [data-blog-demo="cursor-tie-grid"] .ctg-skip-text { fill: var(--scene-temp); font-size: 11px; font-weight: 800; }
+  [data-blog-demo="cursor-tie-grid"] .ctg-cap { fill: var(--scene-danger); font-size: 11px; font-weight: 800; }
+  [data-blog-demo="cursor-tie-grid"] .ctg-marker-ring { fill: none; stroke: var(--scene-hue-blue); stroke-width: 2.5; }
+  [data-blog-demo="cursor-tie-grid"] .ctg-legend i.is-skip { background: color-mix(in srgb, var(--slate) 22%, transparent); border-color: var(--scene-dep); border-style: dashed; }
+  [data-blog-demo="cursor-tie-grid"] .ctg-legend i.is-cursor { border-color: var(--scene-hue-blue); border-width: 2.5px; }
+</style>
