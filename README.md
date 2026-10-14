@@ -88,6 +88,24 @@ public/
   images/blog/
 ```
 
+## 공통 스타일 수정
+
+`BaseLayout.astro`는 `src/styles/global.css`만 불러옵니다. 이 파일은 아래 스타일을 순서대로 import하는 진입점입니다. 기존 선택자와 우선순위를 유지하기 위해 기본 스타일을 먼저, 기능별 스타일을 나중에 불러옵니다.
+
+| 파일 (`src/styles/`) | 담당 영역 |
+| --- | --- |
+| `base.css` | 테마 변수, 초기화, 기본 타이포그래피 |
+| `site-layout.css` | 사이트 헤더, 내비게이션, 페이지 여백, 푸터 |
+| `post-list.css` | 글 카드, 태그, 카테고리, 빈 목록·404 |
+| `home.css` | 홈 섹션, 공지, 사이드바 위젯 |
+| `article.css` | 글 레이아웃, 본문, 표·이미지, 관련 글 |
+| `article-tools.css` | 목차, 읽기 진행률, 이미지 확대 |
+| `code-blocks.css` | 코드 창, 구문 색상, 줄 번호, 복사 버튼 |
+| `link-mentions.css` | 외부 링크 멘션과 사이트 아이콘 |
+| `extras.css` | 미니게임, 토스트 알림 |
+
+반응형 규칙은 해당 기능 파일에서 함께 관리합니다. 개별 글의 데모 스타일과 장면 키트 스타일은 기존 파일을 사용합니다.
+
 ## Cloudflare Pages 배포
 
 1. GitHub에 새 저장소를 만들고 이 프로젝트를 push합니다.

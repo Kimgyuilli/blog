@@ -1,0 +1,138 @@
+/* Site header, navigation, page shell, and footer. */
+.site-shell {
+  width: min(100% - 40px, var(--max-width));
+  margin-inline: auto;
+}
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--canvas) 88%, transparent);
+  border-bottom: 1px solid var(--hairline-soft);
+  backdrop-filter: blur(16px);
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 64px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 0.96rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.brand-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--brand-green);
+  box-shadow: 0 0 0 5px var(--brand-green-soft);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.brand-dot:hover {
+  transform: scale(1.15);
+}
+
+.brand-dot-pop {
+  animation: brand-dot-pop 0.6s ease;
+}
+
+@keyframes brand-dot-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.8); box-shadow: 0 0 0 10px var(--brand-green-soft); }
+  100% { transform: scale(1); box-shadow: 0 0 0 5px var(--brand-green-soft); }
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nav-links a,
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--slate);
+  background: transparent;
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.nav-links a:hover,
+.theme-toggle:hover {
+  border-color: var(--hairline);
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+.theme-toggle {
+  cursor: pointer;
+}
+
+.page {
+  padding-block: 56px 80px;
+}
+
+.footer {
+  padding-block: 28px 44px;
+  border-top: 1px solid var(--hairline-soft);
+  color: var(--slate);
+  background: var(--canvas);
+  font-size: 0.9rem;
+}
+
+.footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@media (max-width: 680px) {
+  .site-shell {
+    width: min(100% - 24px, var(--max-width));
+  }
+
+  .nav {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+    padding-block: 12px;
+  }
+
+  .nav-links {
+    width: 100%;
+    justify-content: space-between;
+    gap: 4px;
+  }
+
+  .nav-links a,
+  .theme-toggle {
+    min-height: 40px;
+    padding-inline: 10px;
+    font-size: 0.88rem;
+  }
+
+  .page {
+    padding-block: 36px 60px;
+  }
+}
