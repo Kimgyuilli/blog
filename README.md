@@ -90,6 +90,8 @@ public/
 
 ## 공통 스타일 수정
 
+파비콘 원본은 `public/favicon.svg`입니다. 수정한 뒤 `npm run generate:favicon`을 실행하면 ICO, 32px PNG, Apple 홈 화면 아이콘이 갱신됩니다. 공통 `BaseLayout.astro`에서 불러옵니다.
+
 `BaseLayout.astro`는 `src/styles/global.css`만 불러옵니다. 이 파일은 아래 스타일을 순서대로 import하는 진입점입니다. 기존 선택자와 우선순위를 유지하기 위해 기본 스타일을 먼저, 기능별 스타일을 나중에 불러옵니다.
 
 | 파일 (`src/styles/`) | 담당 영역 |
