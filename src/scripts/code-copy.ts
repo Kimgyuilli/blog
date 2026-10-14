@@ -18,29 +18,27 @@ export function setupCopyButtons() {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'code-copy';
-    button.textContent = '복사';
     button.setAttribute('aria-label', '코드 복사');
-    button.setAttribute('aria-live', 'polite');
+    button.title = '코드 복사';
+    let resetTimer: number | undefined;
     button.addEventListener('click', async () => {
-      const text = code?.textContent ?? '';
+      window.clearTimeout(resetTimer);
+      button.classList.remove('code-copy-done', 'code-copy-error');
       try {
-        await navigator.clipboard.writeText(text);
-        button.textContent = '✓ 복사됨';
+        await navigator.clipboard.writeText(code.textContent ?? '');
         button.setAttribute('aria-label', '코드 복사 완료');
+        button.title = '복사 완료';
         button.classList.add('code-copy-done');
-        window.setTimeout(() => {
-          button.textContent = '복사';
-          button.setAttribute('aria-label', '코드 복사');
-          button.classList.remove('code-copy-done');
-        }, 1500);
       } catch {
-        button.textContent = '실패';
         button.setAttribute('aria-label', '코드 복사 실패');
-        window.setTimeout(() => {
-          button.textContent = '복사';
-          button.setAttribute('aria-label', '코드 복사');
-        }, 1500);
+        button.title = '복사 실패 — 다시 시도하세요';
+        button.classList.add('code-copy-error');
       }
+      resetTimer = window.setTimeout(() => {
+        button.setAttribute('aria-label', '코드 복사');
+        button.title = '코드 복사';
+        button.classList.remove('code-copy-done', 'code-copy-error');
+      }, 1500);
     });
     pre.appendChild(button);
   });
