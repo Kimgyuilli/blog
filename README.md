@@ -70,6 +70,8 @@ slug: "post-slug"
 - `slug`는 실제 URL `/blog/post-slug/`에 사용됩니다.
 - `draft: true`인 글은 목록, 상세 페이지, RSS에 포함되지 않습니다.
 - 이미지는 `public/images/blog`에 두고 본문에서는 `/images/blog/file-name.png`처럼 참조합니다.
+- 외부 링크는 `[Astro 문서](https://docs.astro.build/)`처럼 쓰면 본문에서 사이트 아이콘이 붙는 인라인 URL 멘션으로 표시됩니다. Markdown과 MDX 모두 적용되며, 표시 문구는 작성한 그대로 유지합니다(페이지 제목 자동 수집은 하지 않습니다).
+- 아이콘은 해당 사이트의 `/favicon.ico`를 HTTPS로 불러오고, 실패하면 공통 아이콘을 표시합니다. JavaScript가 꺼져 있으면 일반 링크로 동작합니다. 내부 경로, 각주, 이미지 링크는 바꾸지 않으며, HTML/MDX에서 `data-no-link-mention` 속성을 붙인 링크나 영역은 제외할 수 있습니다.
 
 ## 폴더 구조
 

@@ -125,6 +125,7 @@ const vectorCover = coverImage?.endsWith('.svg');
   import { setupMermaidDiagrams } from '@/scripts/mermaid-diagrams';
   import { setupCopyButtons } from '@/scripts/code-copy';
   import { setupImageZoom } from '@/scripts/image-lightbox';
+  import { setupLinkMentions } from '@/scripts/link-mentions';
 
   function initArticle() {
     setupReadingProgress();
@@ -132,6 +133,7 @@ const vectorCover = coverImage?.endsWith('.svg');
     // Mermaid replaces its code blocks before code-copy buttons are added.
     void setupMermaidDiagrams();
     setupCopyButtons();
+    setupLinkMentions();
     setupImageZoom();
   }
 
