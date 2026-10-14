@@ -639,59 +639,116 @@ h3 {
   font-weight: 500;
 }
 
+/* Editor-style fences: the header stays still while the code scrolls. */
 .article-body pre {
-  overflow-x: auto;
-  margin-block: 24px;
-  padding: 22px 24px;
+  position: relative;
+  overflow: hidden !important;
+  margin-block: 28px;
+  padding: 0;
   border: 1px solid var(--code-border);
-  border-radius: 10px;
+  border-radius: 6px;
   background: var(--code-bg) !important;
   color: var(--code-text) !important;
   font-family: var(--font-mono);
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   line-height: 1.7;
   tab-size: 2;
   -moz-tab-size: 2;
   color-scheme: light;
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--code-text) 25%, transparent) transparent;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.07);
+}
+
+.article-body pre::before {
+  display: block;
+  height: 42px;
+  padding: 0 100px 0 76px;
+  border-bottom: 1px solid var(--code-border);
+  background: var(--surface);
+  color: var(--slate);
+  content: attr(data-language);
+  font-size: 0.7rem;
+  line-height: 42px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.article-body pre::after {
+  position: absolute;
+  top: 15px;
+  left: 16px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 17px 0 #febc2e, 34px 0 #28c840;
+  content: '';
+  pointer-events: none;
 }
 
 html.dark .article-body pre {
   color-scheme: dark;
+  box-shadow: none;
 }
 
-html.dark .article-body .astro-code,
 html.dark .article-body .astro-code span {
   color: var(--shiki-dark) !important;
-  background-color: var(--shiki-dark-bg) !important;
 }
 
 .article-body pre[data-language="plaintext"] span {
   color: var(--code-text) !important;
 }
 
-.article-body pre::-webkit-scrollbar {
-  height: 8px;
-}
-
-.article-body pre::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.article-body pre::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--code-text) 22%, transparent);
-  border-radius: 999px;
-}
-
 .article-body pre code {
   display: block;
-  padding: 0;
+  overflow-x: auto;
+  padding: 16px 20px;
   border: 0;
   background: transparent;
   font-family: inherit;
+  font-size: inherit;
   font-variant-ligatures: none;
+  line-height: inherit;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--code-text) 25%, transparent) transparent;
+}
+
+.article-body pre code:has(> .line) {
+  padding-inline: 0;
+  counter-reset: code-line;
+}
+
+.article-body pre code > .line {
+  display: inline-block;
+  min-width: 100%;
+  padding-right: 20px;
+}
+
+.article-body pre code > .line::before {
+  position: sticky;
+  left: 0;
+  display: inline-block;
+  width: calc(var(--line-number-digits, 3) * 1ch + 24px);
+  margin-right: 18px;
+  padding-right: 12px;
+  border-right: 1px solid var(--code-border);
+  background: var(--code-bg);
+  color: var(--muted);
+  content: counter(code-line);
+  counter-increment: code-line;
+  text-align: right;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.article-body pre code:focus-visible {
+  outline: 2px solid var(--brand-green-deep);
+  outline-offset: -2px;
 }
 
 .article-body .mermaid-diagram {
@@ -1551,41 +1608,37 @@ html.dark .article-body .astro-code span {
   transform: translate(-50%, 0) scale(1);
 }
 
-.article-body pre {
-  position: relative;
-}
-
 .code-copy {
   position: absolute;
-  top: 8px;
+  top: 5px;
   right: 8px;
+  min-height: 32px;
   padding: 4px 10px;
-  border: 1px solid var(--code-border);
-  border-radius: 6px;
-  background: var(--canvas);
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
   color: var(--slate);
+  font-family: var(--font-sans);
   font-size: 0.74rem;
   font-weight: 500;
+  line-height: 1.4;
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.article-body pre:hover .code-copy,
 .code-copy:focus-visible {
-  opacity: 1;
+  outline: 2px solid var(--brand-green-deep);
+  outline-offset: 1px;
 }
 
 .code-copy:hover {
-  background: color-mix(in srgb, var(--brand-green) 14%, var(--canvas));
-  border-color: color-mix(in srgb, var(--brand-green) 40%, var(--code-border));
+  background: var(--canvas);
+  border-color: var(--code-border);
   color: var(--ink);
 }
 
 .code-copy-done {
-  opacity: 1 !important;
-  border-color: color-mix(in srgb, var(--brand-green) 60%, transparent);
-  color: color-mix(in srgb, var(--brand-green) 80%, var(--code-text));
+  color: var(--brand-green-deep);
 }
 
 .not-found-actions {
