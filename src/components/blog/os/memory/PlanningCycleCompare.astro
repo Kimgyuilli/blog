@@ -1,0 +1,388 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="planning-cycle-compare" ariaLabel="같은 planning 작업을 glibc 방식과 jemalloc 방식으로 반복할 때 작업 뒤 RSS 비교" title="같은 작업을 반복하면 RSS는 어디서 멈출까요?" description="두 할당자에 같은 요청을 같은 순서로 보냅니다. 작업마다 1KB와 2KB 블록 10개를 쓰고, 마지막 1KB 두 개는 결과로 남아 다음 작업이 끝날 때 해제됩니다. 작업을 실행해 보세요.">
+  <DemoControls ariaLabel="planning 작업">
+    <button type="button" data-run>planning 작업 실행</button>
+    <button type="button" data-reset>처음으로</button>
+  </DemoControls>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="왼쪽은 glibc 방식, 오른쪽은 jemalloc 방식입니다. 작업이 끝나면 glibc 방식은 맨 위 페이지에 남은 결과 블록 때문에 아래의 빈 페이지를 돌려주지 못하고, jemalloc 방식은 빈 페이지를 잠시 뒤 모두 운영체제로 반환합니다."></svg>
+  </div>
+  <div class="cycle-readouts" aria-label="작업이 끝난 뒤 RSS">
+    <span>작업 <b data-cycle>0</b>회</span>
+    <span>glibc 방식 RSS <b data-rss="g">0KB</b></span>
+    <span>jemalloc 방식 RSS <b data-rss="j">0KB</b></span>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">페이지 4KB, 블록 1KB와 2KB로 단순화한 모형입니다. glibc 방식은 낮은 주소의 빈 공간부터 채우고 heap 맨 위의 빈 페이지만 자동으로 반환합니다. jemalloc 방식은 size class별 slab에 블록을 모으고, 통째로 빈 페이지를 잠시 뒤 반환합니다(실제 대기 시간은 dirty_decay_ms 설정). Picnic처럼 시간이 지날수록 계속 늘어나는 현상까지 재현한 모형은 아니며, 작업이 끝난 뒤 남는 메모리의 차이만 보여 줍니다. 실제 측정값이 아닙니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, bumpText, clamp01, createScene, duration, ease, hopLift, nextHop, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createBoundary, landRing, type Rect } from '@/scripts/blog/scene/parts';
+
+  const PAGES = 4;
+  const CELLS = 4;
+  const PAGE_KB = 4;
+  /** 한 작업의 요청 순서: [크기(KB), 결과로 남는지]. 남는 블록은 다음 작업이 끝날 때 해제됩니다. */
+  const WORKLOAD: [1 | 2, boolean][] = [[2, false], [1, false], [2, false], [1, false], [1, false], [2, false], [1, false], [2, false], [1, true], [1, true]];
+
+  type Side = 'g' | 'j';
+  type Block = { id: number; page: number; cell: number; size: 1 | 2; keep: boolean; born: number };
+  type Model = { kind: (0 | 1 | 2)[]; cells: (number | null)[][]; resident: boolean[]; blocks: Map<number, Block> };
+  type PageView = { on: number; out: number; hop: number; decay: number };
+  type PanelState = { pages: PageView[]; cells: number[][]; keep: number[][] };
+  type State = { g: PanelState; j: PanelState };
+
+  const emptyModel = (): Model => ({
+    kind: Array.from({ length: PAGES }, () => 0),
+    cells: Array.from({ length: PAGES }, () => Array.from({ length: CELLS }, () => null)),
+    resident: Array.from({ length: PAGES }, () => false),
+    blocks: new Map(),
+  });
+
+  /** glibc 방식: 낮은 주소부터 같은 페이지 안의 연속된 빈 공간을 찾고, 없으면 heap 맨 위에 페이지를 붙입니다. */
+  function placeGlibc(m: Model, size: 1 | 2): { page: number; cell: number } | undefined {
+    for (let p = 0; p < PAGES; p += 1) {
+      if (!m.resident[p]) continue;
+      for (let c = 0; c + size <= CELLS; c += 1) {
+        if (m.cells[p].slice(c, c + size).every((x) => x === null)) return { page: p, cell: c };
+      }
+    }
+    const top = m.resident.lastIndexOf(true) + 1;
+    if (top >= PAGES) return undefined;
+    m.resident[top] = true;
+    m.kind[top] = 1;
+    return { page: top, cell: 0 };
+  }
+
+  /** jemalloc 방식: 같은 size class의 slab에서 낮은 주소부터 빈 region을 찾고, 없으면 비어 있는 가장 낮은 자리에 slab을 만듭니다. */
+  function placeJemalloc(m: Model, size: 1 | 2): { page: number; cell: number } | undefined {
+    for (let p = 0; p < PAGES; p += 1) {
+      if (!m.resident[p] || m.kind[p] !== size) continue;
+      for (let c = 0; c < CELLS; c += size) if (m.cells[p][c] === null) return { page: p, cell: c };
+    }
+    const slot = m.resident.indexOf(false);
+    if (slot < 0) return undefined;
+    m.resident[slot] = true;
+    m.kind[slot] = size;
+    return { page: slot, cell: 0 };
+  }
+
+  const layouts = {
+    wide: {
+      view: [560, 262] as [number, number],
+      panels: { g: { x: 8, y: 30, w: 268, h: 160 }, j: { x: 284, y: 30, w: 268, h: 160 } } as Record<Side, Rect>,
+      pageW: 118, pageH: 52,
+      home: (panel: Rect, p: number): Point => ({ x: panel.x + 72 + (p % 2) * 126, y: panel.y + 56 + Math.floor(p / 2) * 62 }),
+      os: (panel: Rect, p: number): Point => ({ x: panel.x + 44 + p * 60, y: 238 }),
+      osY: 206,
+      osScale: 0.42,
+    },
+    narrow: {
+      view: [360, 488] as [number, number],
+      panels: { g: { x: 6, y: 30, w: 348, h: 160 }, j: { x: 6, y: 262, w: 348, h: 160 } } as Record<Side, Rect>,
+      pageW: 156, pageH: 52,
+      home: (panel: Rect, p: number): Point => ({ x: panel.x + 90 + (p % 2) * 168, y: panel.y + 56 + Math.floor(p / 2) * 62 }),
+      os: (panel: Rect, p: number): Point => ({ x: panel.x + 48 + p * 68, y: panel.y + 202 }),
+      osY: 0,
+      osScale: 0.36,
+    },
+  };
+  type Layout = (typeof layouts)['wide'];
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="planning-cycle-compare"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const runButton = demo.querySelector<HTMLButtonElement>('[data-run]')!;
+    const resetButton = demo.querySelector<HTMLButtonElement>('[data-reset]')!;
+    const cycleOut = demo.querySelector<HTMLElement>('[data-cycle]')!;
+    const rssOut: Record<Side, HTMLElement> = { g: demo.querySelector('[data-rss="g"]')!, j: demo.querySelector('[data-rss="j"]')! };
+    let layout: Layout = layouts.wide;
+    let narrow = false;
+
+    // ── 모형 ──
+    let models: Record<Side, Model> = { g: emptyModel(), j: emptyModel() };
+    const hops: Record<Side, number[]> = { g: [0, 0, 0, 0], j: [0, 0, 0, 0] };
+    const returned: Record<Side, boolean[]> = { g: [false, false, false, false], j: [false, false, false, false] };
+    const decay: Record<Side, number[]> = { g: [0, 0, 0, 0], j: [0, 0, 0, 0] };
+    let cycle = 0;
+    let nextId = 0;
+    const rssKb = (side: Side) => models[side].resident.filter(Boolean).length * PAGE_KB;
+    const isEmptyPage = (m: Model, p: number) => m.resident[p] && m.cells[p].every((x) => x === null);
+    const topPage = (m: Model) => m.resident.lastIndexOf(true);
+
+    const panelTarget = (side: Side): PanelState => {
+      const m = models[side];
+      return {
+        pages: Array.from({ length: PAGES }, (_, p) => ({ on: m.resident[p] || returned[side][p] ? 1 : 0, out: returned[side][p] ? 1 : 0, hop: hops[side][p], decay: decay[side][p] })),
+        cells: m.cells.map((row) => row.map((id) => (id === null ? 0 : 1))),
+        keep: m.cells.map((row) => row.map((id) => (id !== null && m.blocks.get(id)?.keep ? 1 : 0))),
+      };
+    };
+    const target = (): State => ({ g: panelTarget('g'), j: panelTarget('j') });
+
+    // ── 그림 ──
+    const panels = (['g', 'j'] as Side[]).map((side) => {
+      const box = createBoundary(root, side === 'g' ? 'glibc 방식' : 'jemalloc 방식');
+      const os = createBoundary(root, '운영체제로 반환', 'zone');
+      const slots = Array.from({ length: PAGES }, () => svg('rect', { rx: 9, fill: 'none', stroke: 'var(--hairline)', 'stroke-dasharray': '2 6' }, root));
+      const pages = Array.from({ length: PAGES }, (_, p) => {
+        const group = svg('g', { class: 'scene-alloc-page' }, root);
+        group.style.setProperty('--node-hue', 'var(--scene-hue-blue)');
+        const card = svg('rect', { class: 'scene-alloc-card', rx: 9 }, group);
+        const label = svg('text', { class: 'scene-label scene-label-dep' }, group);
+        const tag = svg('text', { class: 'scene-label is-sans', 'text-anchor': 'end' }, group);
+        const cells = Array.from({ length: CELLS }, () => {
+          const free = svg('rect', { class: 'scene-alloc-free', rx: 4 }, group);
+          const fill = svg('rect', { class: 'scene-alloc-used', rx: 4 }, group);
+          return { free, fill };
+        });
+        const decayTrack = svg('rect', { rx: 2, fill: 'var(--hairline)' }, group);
+        const decayFill = svg('rect', { rx: 2, fill: 'var(--scene-flow)' }, group);
+        return { group, card, label, tag, cells, decayTrack, decayFill, p };
+      });
+      return { side, box, os, slots, pages };
+    });
+
+    const cellBox = (side: Side, p: number, c: number) => {
+      const { pageW: w, pageH: h } = layout;
+      const unit = (w - 16 - 3 * 3) / CELLS;
+      const span = models[side].kind[p] === 2 ? 2 : 1;
+      return { x: -w / 2 + 8 + c * (unit + 3), y: -h / 2 + 19, width: span * unit + (span - 1) * 3, height: h - 31 };
+    };
+
+    const sizePanel = (side: Side) => {
+      const panel = panels.find((x) => x.side === side)!;
+      const rect = layout.panels[side];
+      panel.box.place(rect, { x: rect.x + 12, y: rect.y - 8, anchor: 'start' });
+      const osRect = narrow
+        ? { x: rect.x, y: rect.y + rect.h + 6, w: rect.w, h: 52 }
+        : { x: rect.x, y: layout.osY, w: rect.w, h: 52 };
+      panel.os.place(osRect, { x: osRect.x + 12, y: osRect.y + 16, anchor: 'start' });
+      const { pageW: w, pageH: h } = layout;
+      panel.slots.forEach((slot, p) => {
+        const at = layout.home(rect, p);
+        setAttrs(slot, { x: at.x - w / 2, y: at.y - h / 2, width: w, height: h });
+      });
+      panel.pages.forEach((view, p) => {
+        setAttrs(view.card, { x: -w / 2, y: -h / 2, width: w, height: h });
+        setAttrs(view.label, { x: -w / 2 + 8, y: -h / 2 + 13 });
+        setAttrs(view.tag, { x: w / 2 - 8, y: -h / 2 + 13 });
+        setAttrs(view.decayTrack, { x: -w / 2 + 8, y: h / 2 - 8, width: w - 16, height: 3 });
+        view.cells.forEach(({ free, fill }, c) => {
+          const span = models[side].kind[p] === 2 ? 2 : 1;
+          const hidden = span === 2 && c % 2 === 1;
+          const box = cellBox(side, p, c);
+          setAttrs(free, { ...box, opacity: hidden ? 0 : 1 });
+          setAttrs(fill, box);
+          fill.style.display = hidden ? 'none' : '';
+        });
+      });
+    };
+    const syncLabels = () => {
+      panels.forEach(({ side, pages }) => {
+        const m = models[side];
+        const top = topPage(m);
+        pages.forEach((view) => {
+          const p = view.p;
+          const kindText = side === 'j' && m.kind[p] ? ` ${m.kind[p]}KB slab` : '';
+          view.label.textContent = `p${p + 1}${kindText}`;
+          let tag = '';
+          let colour = 'var(--scene-dep)';
+          if (m.resident[p] && side === 'g' && p === top && !isEmptyPage(m, p) && cycle > 0 && m.cells.some((row, q) => q !== p && m.resident[q] && row.every((x) => x === null))) {
+            tag = narrow ? '맨 위' : '맨 위, 사용 중';
+          } else if (isEmptyPage(m, p)) {
+            tag = side === 'g' ? '비었지만 남음' : '반환 대기';
+            colour = side === 'g' ? 'var(--scene-temp)' : 'var(--scene-flow)';
+          }
+          view.tag.textContent = tag;
+          view.tag.style.fill = colour;
+          view.group.classList.toggle('is-reclaimable', side === 'j' && isEmptyPage(m, p));
+          view.group.classList.toggle('is-stuck', side === 'g' && isEmptyPage(m, p));
+          view.group.classList.toggle('is-returned', returned[side][p]);
+        });
+      });
+      sizePanel('g');
+      sizePanel('j');
+    };
+
+    const scene = createScene<State>(target(), (s) => {
+      panels.forEach(({ side, pages }) => {
+        const rect = layout.panels[side];
+        const ps = s[side];
+        pages.forEach((view) => {
+          const p = view.p;
+          const st = ps.pages[p];
+          const at = bowAt(layout.home(rect, p), layout.os(rect, p), st.out, hopLift(st.hop, 36));
+          const scale = 1 + (layout.osScale - 1) * st.out;
+          setAttrs(view.group, { transform: `translate(${at.x.toFixed(2)} ${at.y.toFixed(2)}) scale(${scale.toFixed(3)})` });
+          view.group.style.opacity = String(st.on);
+          view.label.style.opacity = String(1 - st.out);
+          view.tag.style.opacity = String(1 - st.out);
+          const w = layout.pageW - 16;
+          setAttrs(view.decayTrack, { opacity: st.decay > 0.001 && st.out < 0.5 ? 1 : 0 });
+          setAttrs(view.decayFill, { x: -layout.pageW / 2 + 8, y: layout.pageH / 2 - 8, width: w * clamp01(st.decay), height: 3, opacity: st.decay > 0.001 && st.out < 0.5 ? 1 : 0 });
+          view.cells.forEach(({ fill }, c) => {
+            setAttrs(fill, { opacity: ps.cells[p][c] });
+            fill.style.setProperty('--node-hue', ps.keep[p][c] > 0.5 ? 'var(--scene-hue-pink)' : 'var(--scene-hue-blue)');
+          });
+        });
+      });
+    });
+
+    const showRss = (bump: boolean) => {
+      (['g', 'j'] as Side[]).forEach((side) => {
+        const text = `${rssKb(side)}KB`;
+        if (bump) bumpText(rssOut[side], text);
+        else rssOut[side].textContent = text;
+      });
+    };
+    const say = (html: string, alert = false) => {
+      note.classList.toggle('is-alert', alert);
+      note.innerHTML = html;
+    };
+
+    const resetAll = () => {
+      scene.begin();
+      models = { g: emptyModel(), j: emptyModel() };
+      (['g', 'j'] as Side[]).forEach((side) => {
+        returned[side].forEach((was, p) => { if (was) hops[side][p] = nextHop(hops[side][p]); });
+        returned[side] = [false, false, false, false];
+        decay[side] = [0, 0, 0, 0];
+      });
+      cycle = 0;
+      cycleOut.textContent = '0';
+      runButton.disabled = false;
+      syncLabels();
+      showRss(false);
+      scene.set(target());
+      say('두 할당자 모두 비어 있습니다. <strong>planning 작업 실행</strong>을 눌러 같은 요청 10개를 보내 보세요. 작업이 끝난 뒤 RSS는 어떻게 될까요?');
+    };
+
+    /** 반환된 페이지가 다시 쓰이면 운영체제 영역에서 제자리로 돌아옵니다. */
+    const bringBack = (side: Side, p: number) => {
+      if (!returned[side][p]) return;
+      returned[side][p] = false;
+      hops[side][p] = nextHop(hops[side][p]);
+    };
+
+    const runCycle = async () => {
+      const alive = scene.begin();
+      runButton.disabled = true;
+      cycle += 1;
+      bumpText(cycleOut, String(cycle));
+      decay.g = [0, 0, 0, 0];
+      decay.j = [0, 0, 0, 0];
+      say(`작업 ${cycle}: 두 할당자에 1KB와 2KB 요청을 같은 순서로 보냅니다…`);
+
+      // 1. 할당
+      for (const [size, keep] of WORKLOAD) {
+        const id = nextId++;
+        (['g', 'j'] as Side[]).forEach((side) => {
+          const m = models[side];
+          const before = [...m.resident];
+          const spot = side === 'g' ? placeGlibc(m, size) : placeJemalloc(m, size);
+          if (!spot) return;
+          m.resident.forEach((on, p) => { if (on && !before[p]) bringBack(side, p); });
+          m.blocks.set(id, { id, page: spot.page, cell: spot.cell, size, keep, born: cycle });
+          for (let c = spot.cell; c < spot.cell + size; c += 1) m.cells[spot.page][c] = id;
+        });
+        syncLabels();
+        showRss(false);
+        if (!(await scene.go(target(), scene.ms(180))) || !alive()) return;
+      }
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+
+      // 2. 작업 끝: 이번 작업의 임시 블록과 지난 작업의 결과 블록을 해제
+      (['g', 'j'] as Side[]).forEach((side) => {
+        const m = models[side];
+        m.blocks.forEach((b) => {
+          const dies = !b.keep || b.born < cycle;
+          if (!dies) return;
+          for (let c = b.cell; c < b.cell + b.size; c += 1) m.cells[b.page][c] = null;
+          m.blocks.delete(b.id);
+        });
+      });
+      syncLabels();
+      say('작업이 끝나 임시 블록을 해제했습니다. 분홍 블록은 작업 결과로 남아 다음 작업이 끝날 때까지 쓰입니다. 두 할당자가 빈 페이지를 어떻게 처리하는지 보세요.');
+      if (!(await scene.go(target(), duration.draw)) || !alive()) return;
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+
+      // 3. 할당자의 정리
+      const g = models.g;
+      const gTrim: number[] = [];
+      for (let p = topPage(g); p >= 0 && isEmptyPage(g, p); p -= 1) gTrim.push(p);
+      const jEmpty = [...Array(PAGES).keys()].filter((p) => isEmptyPage(models.j, p));
+      const before = { g: rssKb('g'), j: rssKb('j') };
+
+      // jemalloc: 빈 페이지마다 반환 대기 막대가 찹니다.
+      jEmpty.forEach((p) => { decay.j[p] = 1; });
+      if (!(await scene.go(target(), scene.ms(1600), ease.linear)) || !alive()) return;
+
+      const sendBack = (side: Side, list: number[]) => list.forEach((p) => {
+        models[side].resident[p] = false;
+        models[side].kind[p] = 0;
+        returned[side][p] = true;
+        decay[side][p] = 0;
+        hops[side][p] = nextHop(hops[side][p]);
+      });
+      sendBack('g', gTrim);
+      sendBack('j', jEmpty);
+      syncLabels();
+      if (!(await scene.go(target(), duration.fly)) || !alive()) return;
+      (['g', 'j'] as Side[]).forEach((side) => {
+        const rect = layout.panels[side];
+        (side === 'g' ? gTrim : jEmpty).forEach((p) => {
+          const at = layout.os(rect, p);
+          landRing(root, { x: at.x, y: at.y, w: layout.pageW * layout.osScale + 6, h: layout.pageH * layout.osScale + 6 });
+        });
+      });
+      showRss(true);
+      runButton.disabled = false;
+
+      const gKept = [...Array(PAGES).keys()].filter((p) => isEmptyPage(g, p)).length;
+      const used = 2;
+      say(`작업 ${cycle}이 끝났습니다. 남은 결과 블록은 양쪽 모두 ${used}KB입니다. `
+        + (gKept
+          ? `glibc 방식은 결과 블록이 <strong>heap 맨 위 페이지</strong>에 놓여 그 아래의 빈 페이지 ${gKept}개를 돌려주지 못하고 RSS가 <strong>${rssKb('g')}KB</strong>로 남았습니다. `
+          : `glibc 방식은 맨 위부터 빈 페이지를 돌려줘 RSS가 ${before.g}KB에서 ${rssKb('g')}KB가 됐습니다. `)
+        + `jemalloc 방식은 결과 블록이 모인 slab 하나만 남기고 빈 페이지를 위치와 상관없이 반환해 <strong>${rssKb('j')}KB</strong>가 됐습니다.`
+        + (cycle === 1 ? ' 작업을 한 번 더 실행해 보세요.' : ''), Boolean(gKept));
+    };
+
+    runButton.addEventListener('click', () => { void runCycle(); });
+    resetButton.addEventListener('click', resetAll);
+
+    const applyLayout = () => {
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      syncLabels();
+      scene.redraw();
+    };
+    watchNarrow(stage, (isNarrow) => {
+      narrow = isNarrow;
+      layout = layouts[isNarrow ? 'narrow' : 'wide'];
+      applyLayout();
+    });
+    resetAll();
+    applyLayout();
+  });
+</script>
+
+<style>
+  .cycle-readouts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .cycle-readouts span { display: inline-flex; align-items: baseline; gap: 6px; }
+  .cycle-readouts b { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .cycle-readouts b:global(.is-bump) { animation: scene-pop 420ms ease-out; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cycle-readouts b:global(.is-bump) { animation: none; }
+  }
+</style>

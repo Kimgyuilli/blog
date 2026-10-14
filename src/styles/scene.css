@@ -701,7 +701,28 @@ html.dark .db-demo {
   100% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--scene-flow) 0%, transparent); }
 }
 
+/* 할당자 페이지와 블록: 사용 중(주인 색 채움) · 해제했지만 할당자가 들고 있음(임시 색 점선) · 반환된 페이지(흐린 점선) */
+.scene-alloc-card { fill: var(--surface); stroke: var(--hairline); stroke-width: 1.5; transition: stroke 240ms ease, fill 240ms ease; }
+.scene-alloc-page.is-reclaimable .scene-alloc-card { stroke: var(--scene-flow); stroke-dasharray: 5 4; }
+.scene-alloc-page.is-stuck .scene-alloc-card { stroke: var(--scene-temp); stroke-dasharray: 5 4; }
+.scene-alloc-page.is-returned .scene-alloc-card { fill: transparent; stroke: var(--scene-dep); stroke-dasharray: 4 3; }
+.scene-alloc-sub { fill: var(--scene-flow); font-size: 11px; font-weight: 700; }
+.scene-alloc-free { fill: color-mix(in srgb, var(--scene-temp) 10%, transparent); stroke: var(--scene-temp); stroke-width: 1.3; stroke-dasharray: 4 3; transition: stroke 200ms ease; }
+.scene-alloc-used { fill: color-mix(in srgb, var(--node-hue) 58%, var(--surface)); stroke: var(--node-hue); stroke-width: 1.3; pointer-events: none; }
+.scene-alloc-page.is-returned .scene-alloc-free { fill: transparent; stroke: var(--scene-dep); opacity: 0.5; }
+.scene-alloc-block { cursor: pointer; outline: none; }
+.scene-alloc-block:hover .scene-alloc-free { stroke-width: 2.2; }
+.scene-alloc-block:focus-visible .scene-alloc-free { stroke: var(--ink); stroke-width: 2.5; stroke-dasharray: none; }
+.scene-alloc-page.is-returned .scene-alloc-block { cursor: default; }
+.scene-alloc-block.is-misfit { transform-box: fill-box; transform-origin: center; animation: scene-shake 420ms ease-in-out; }
+.scene-alloc-block.is-misfit .scene-alloc-free { stroke: var(--scene-danger); stroke-width: 2; stroke-dasharray: none; fill: color-mix(in srgb, var(--scene-danger) 12%, transparent); }
+
+/* 수준 막대: 한 축 위에서 여러 지표의 크기를 비교합니다 (PicnicMemoryLevels) */
+.scene-level-bar { fill: color-mix(in srgb, var(--node-hue) 58%, var(--surface)); stroke: var(--node-hue); stroke-width: 1.3; transition: fill 240ms ease, stroke 240ms ease; }
+.scene-level-gap { fill: color-mix(in srgb, var(--scene-temp) 16%, transparent); stroke: var(--scene-temp); stroke-width: 1.3; stroke-dasharray: 4 3; }
+
 @media (prefers-reduced-motion: reduce) {
+  .scene-alloc-block.is-misfit,
   .scene-line.is-flowing,
   .scene-line.is-flowing-reverse,
   .scene-flow,

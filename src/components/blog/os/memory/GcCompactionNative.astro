@@ -1,0 +1,207 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import SceneTimeline from '@/components/blog/shared/SceneTimeline.astro';
+import '@/styles/scene.css';
+
+const steps = [
+  { name: '할당된 상태', detail: 'D가 버퍼를 가리킴' },
+  { name: 'mark', detail: '살아 있는 객체 찾기' },
+  { name: 'compaction', detail: '힙 객체를 한쪽으로' },
+  { name: 'Cleaner의 free', detail: '버퍼 자리가 빔' },
+];
+---
+
+<InteractiveDemoFrame demoId="gc-compaction-native" ariaLabel="GC compaction이 Java 힙 객체는 옮기지만 off-heap direct buffer는 옮기지 못하는 과정" title="GC가 힙을 정리하면 off-heap 버퍼도 정리될까요?" description="위는 GC가 관리하는 Java 힙, 아래는 malloc으로 받은 off-heap 메모리입니다. D는 DirectByteBuffer 객체이고, 선은 D가 들고 있는 버퍼 주소입니다.">
+  <SceneTimeline ariaLabel="GC compaction 단계" steps={steps} />
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="Java 힙에 일반 객체와 DirectByteBuffer 객체 D1부터 D5가 있고, 각 D는 아래 off-heap 메모리의 버퍼 B1부터 B5를 가리킵니다. GC가 쓰레기 객체를 지우고 살아 있는 객체를 왼쪽으로 모으면 힙의 빈 공간은 오른쪽에 하나로 모입니다. 버퍼는 움직이지 않고, 죽은 D의 버퍼 B2와 B4가 free되면 off-heap 메모리에는 빈 공간이 흩어져 남습니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">객체 수와 버퍼 크기는 설명을 위해 정한 모형입니다. 실제 GC는 힙을 여러 영역으로 나눠 일부만 옮기기도 하고, Cleaner는 GC가 끝난 뒤 별도 스레드에서 실행됩니다. off-heap 버퍼의 위치는 할당자가 정합니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, clamp01, createScene, duration, hopLift, nextHop, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createBoundary } from '@/scripts/blog/scene/parts';
+  import { createStepPlayer } from '@/scripts/blog/scene/step-player';
+
+  type Obj = { label: string; dbb?: number; garbage: boolean };
+  // 힙 객체. dbb는 가리키는 버퍼 번호입니다.
+  const OBJECTS: Obj[] = [
+    { label: 'obj', garbage: false },
+    { label: 'D1', dbb: 0, garbage: false },
+    { label: 'obj', garbage: true },
+    { label: 'D2', dbb: 1, garbage: true },
+    { label: 'obj', garbage: false },
+    { label: 'D3', dbb: 2, garbage: false },
+    { label: 'D4', dbb: 3, garbage: true },
+    { label: 'obj', garbage: true },
+    { label: 'D5', dbb: 4, garbage: false },
+  ];
+  const BUFFERS = [{ w: 3 }, { w: 4 }, { w: 3 }, { w: 4 }, { w: 3 }];
+  const COMPACT_SLOT = (() => {
+    let next = 0;
+    return OBJECTS.map((o) => (o.garbage ? -1 : next++));
+  })();
+
+  type State = { pos: number[]; hop: number[]; mark: number; gone: number; freed: number; heapGap: number };
+  type Layout = {
+    view: [number, number];
+    heap: { x: number; y: number; w: number; h: number };
+    native: { x: number; y: number; w: number; h: number };
+    slot0: number;
+    slotW: number;
+    objW: number;
+    objH: number;
+    objY: number;
+    bufY: number;
+    bufH: number;
+    unit: number;
+    bufX0: number;
+  };
+  const layouts: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 334],
+      heap: { x: 12, y: 38, w: 536, h: 98 }, native: { x: 12, y: 196, w: 536, h: 122 },
+      slot0: 52, slotW: 56, objW: 46, objH: 34, objY: 92,
+      bufY: 240, bufH: 34, unit: 26, bufX0: 34,
+    },
+    narrow: {
+      view: [360, 334],
+      heap: { x: 6, y: 38, w: 348, h: 98 }, native: { x: 6, y: 196, w: 348, h: 122 },
+      slot0: 30, slotW: 37, objW: 32, objH: 34, objY: 92,
+      bufY: 240, bufH: 34, unit: 17, bufX0: 18,
+    },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="gc-compaction-native"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    let layout = layouts.wide;
+
+    const heapBox = createBoundary(root, 'Java 힙 (GC가 관리)');
+    const nativeBox = createBoundary(root, 'off-heap 메모리 (malloc으로 받은 버퍼)', 'zone');
+    const heapGapRect = svg('rect', { class: 'scene-level-gap', rx: 8 }, root);
+    const heapGapLabel = svg('text', { class: 'scene-label is-sans', 'text-anchor': 'middle' }, root);
+    heapGapLabel.textContent = '하나로 모인 빈 공간';
+    heapGapLabel.style.fill = 'var(--scene-temp)';
+
+    const lines = OBJECTS.map((o) => (o.dbb === undefined ? undefined : svg('line', { stroke: 'var(--scene-hue-violet)', 'stroke-width': 1.6, 'stroke-dasharray': '4 3' }, root)));
+
+    const buffers = BUFFERS.map((b, i) => {
+      const group = svg('g', { class: 'scene-alloc-page' }, root);
+      group.style.setProperty('--node-hue', 'var(--scene-hue-violet)');
+      const free = svg('rect', { class: 'scene-alloc-free', rx: 6 }, group);
+      const used = svg('rect', { class: 'scene-alloc-used', rx: 6 }, group);
+      const label = svg('text', { class: 'scene-label', 'text-anchor': 'middle' }, group);
+      label.textContent = `B${i + 1}`;
+      label.style.fill = 'var(--ink)';
+      return { group, free, used, label, w: b.w };
+    });
+    const holeLabel = svg('text', { class: 'scene-label is-sans', 'text-anchor': 'middle' }, root);
+    holeLabel.textContent = '흩어진 빈 공간, 옮길 수 없음';
+    holeLabel.style.fill = 'var(--scene-temp)';
+
+    const objects = OBJECTS.map((o) => {
+      const group = svg('g', {}, root);
+      group.style.setProperty('--node-hue', o.dbb === undefined ? 'var(--scene-hue-blue)' : 'var(--scene-hue-violet)');
+      const card = svg('rect', { class: 'scene-alloc-used', rx: 6 }, group);
+      const label = svg('text', { class: 'scene-label', 'text-anchor': 'middle' }, group);
+      label.textContent = o.label;
+      label.style.fill = 'var(--ink)';
+      const strike = svg('line', { stroke: 'var(--scene-danger)', 'stroke-width': 2 }, group);
+      return { group, card, label, strike };
+    });
+
+    const slotX = (slot: number) => layout.slot0 + slot * layout.slotW;
+    const bufferBox = (i: number) => {
+      let x = layout.bufX0;
+      for (let k = 0; k < i; k += 1) x += BUFFERS[k].w * layout.unit + 6;
+      return { x, w: BUFFERS[i].w * layout.unit };
+    };
+
+    const scene = createScene<State>({ pos: OBJECTS.map((_, i) => i), hop: OBJECTS.map(() => 0), mark: 0, gone: 0, freed: 0, heapGap: 0 }, (s) => {
+      const { objW, objH, objY, bufY, bufH } = layout;
+      const objCenter: Point[] = [];
+      OBJECTS.forEach((o, i) => {
+        const view = objects[i];
+        const from = { x: slotX(i), y: objY };
+        const to = { x: slotX(COMPACT_SLOT[i] < 0 ? i : COMPACT_SLOT[i]), y: objY };
+        const t = Math.abs(to.x - from.x) < 0.01 ? 0 : clamp01((slotX(s.pos[i]) - from.x) / (to.x - from.x));
+        const at = bowAt(from, to, t, hopLift(s.hop[i], 22));
+        objCenter[i] = at;
+        setAttrs(view.card, { x: at.x - objW / 2, y: at.y - objH / 2, width: objW, height: objH });
+        setAttrs(view.label, { x: at.x, y: at.y + 4 });
+        const marked = o.garbage ? s.mark : 0;
+        setAttrs(view.strike, { x1: at.x - objW / 2 + 4, x2: at.x - objW / 2 + 4 + (objW - 8) * marked, y1: at.y, y2: at.y, opacity: marked > 0.01 ? 1 : 0 });
+        view.group.style.opacity = String(o.garbage ? (1 - 0.45 * s.mark) * (1 - s.gone) : 1);
+      });
+      BUFFERS.forEach((_, i) => {
+        const view = buffers[i];
+        const { x, w } = bufferBox(i);
+        const owner = OBJECTS.findIndex((o) => o.dbb === i);
+        const dead = OBJECTS[owner].garbage;
+        setAttrs(view.free, { x, y: bufY - bufH / 2, width: w, height: bufH });
+        setAttrs(view.used, { x, y: bufY - bufH / 2, width: w, height: bufH, opacity: dead ? 1 - s.freed : 1 });
+        setAttrs(view.label, { x: x + w / 2, y: bufY + 4, opacity: dead ? 1 - s.freed * 0.6 : 1 });
+        const line = lines[owner]!;
+        const top = objCenter[owner];
+        setAttrs(line, { x1: top.x, y1: top.y + objH / 2, x2: x + w / 2, y2: bufY - bufH / 2, opacity: dead ? (1 - s.gone) * (1 - 0.4 * s.mark) : 1 });
+      });
+      // 힙 오른쪽에 모인 빈 공간
+      const live = COMPACT_SLOT.filter((v) => v >= 0).length;
+      const gx = slotX(live) - layout.objW / 2;
+      const gw = slotX(OBJECTS.length - 1) + layout.objW / 2 - gx;
+      setAttrs(heapGapRect, { x: gx, y: objY - objH / 2, width: gw, height: objH, opacity: s.heapGap });
+      setAttrs(heapGapLabel, { x: gx + gw / 2, y: objY - objH / 2 - 8, opacity: s.heapGap });
+      const b2 = bufferBox(1);
+      const b4 = bufferBox(3);
+      setAttrs(holeLabel, { x: (b2.x + b4.x + b4.w) / 2, y: bufY + bufH / 2 + 20, opacity: s.freed });
+    });
+
+    const base = (): State => ({ pos: OBJECTS.map((_, i) => i), hop: scene.state.hop, mark: 0, gone: 0, freed: 0, heapGap: 0 });
+    const compacted = (hop: number[]): State => ({ pos: OBJECTS.map((o, i) => (o.garbage ? i : COMPACT_SLOT[i])), hop, mark: 1, gone: 1, freed: 0, heapGap: 1 });
+    const notes = [
+      'Java 힙에 일반 객체(obj)와 <strong>DirectByteBuffer 객체(D1~D5)</strong>가 있습니다. 각 D는 off-heap 버퍼의 주소를 숫자로 들고 있습니다.',
+      'GC가 reference를 따라가며 살아 있는 객체를 찾습니다. 아무도 가리키지 않는 obj 두 개와 <strong>D2, D4</strong>는 garbage로 남습니다.',
+      'GC가 살아 있는 객체를 왼쪽으로 모으고 reference를 새 주소로 고칩니다. 힙의 빈 공간은 오른쪽에 하나로 모입니다. <strong>버퍼 B1~B5는 전혀 움직이지 않았습니다.</strong>',
+      '죽은 D2와 D4의 Cleaner가 <strong>free</strong>를 호출해 B2와 B4 자리가 빕니다. 빈 공간은 B1과 B3 사이, B3와 B5 사이에 흩어져 남고, 할당자는 버퍼를 옮겨 빈 공간을 모을 수 없습니다.',
+    ];
+
+    const onStep = async (index: number, instant: boolean) => {
+      const alive = scene.begin();
+      note.innerHTML = notes[index];
+      note.classList.toggle('is-alert', index === 3);
+      const hop = scene.state.hop.map((h) => nextHop(h));
+      const targets: State[] = [base(), { ...base(), mark: 1 }, compacted(hop), { ...compacted(hop), freed: 1 }];
+      const next = targets[index];
+      if (instant) { scene.set(next); return; }
+      if (index === 2) {
+        // 빼는 것 먼저: 쓰레기를 걷어 낸 뒤 살아 있는 객체를 옮깁니다.
+        const from = scene.state;
+        if (from.gone < 0.99) {
+          if (!(await scene.go({ ...from, mark: 1, gone: 1 }, duration.cut)) || !alive()) return;
+        }
+        await scene.go(next, duration.fly);
+        return;
+      }
+      if (index === 3 && scene.state.heapGap < 0.99) {
+        if (!(await scene.go(compacted(hop), duration.fly)) || !alive()) return;
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+      }
+      await scene.go({ ...next, hop: index >= 2 ? scene.state.hop : next.hop }, duration.draw);
+    };
+
+    const applyLayout = () => {
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      heapBox.place(layout.heap);
+      nativeBox.place(layout.native, { x: layout.native.x + 16, y: layout.native.y + layout.native.h - 12, anchor: 'start' });
+      scene.redraw();
+    };
+    watchNarrow(stage, (narrow) => { layout = layouts[narrow ? 'narrow' : 'wide']; applyLayout(); });
+    applyLayout();
+    createStepPlayer(demo, { dwell: (i) => (i === 3 ? 5200 : 3400), onStep: (i, instant) => { void onStep(i, instant); } });
+  });
+</script>

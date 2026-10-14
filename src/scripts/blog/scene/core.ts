@@ -28,6 +28,9 @@ export const lerp = (from: number, to: number, t: number) => from + (to - from) 
 /** Interpolate every number inside two objects of the same shape. Non-numbers switch at the end. */
 export function lerpState<T>(from: T, to: T, t: number): T {
   if (typeof from === 'number' && typeof to === 'number') return lerp(from, to, t) as T;
+  if (Array.isArray(from) && Array.isArray(to)) {
+    return to.map((b, i) => (from[i] === undefined ? b : lerpState(from[i], b, t))) as T;
+  }
   if (from && to && typeof from === 'object') {
     const result: Record<string, unknown> = {};
     Object.keys(to as object).forEach((key) => {

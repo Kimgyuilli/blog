@@ -1,0 +1,213 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import SceneTimeline from '@/components/blog/shared/SceneTimeline.astro';
+import '@/styles/scene.css';
+
+const steps = [
+  { name: '힙은 여유', detail: '약 2.5GB / 상한 4GB' },
+  { name: 'JVM 지표 합계', detail: '4GB 미만' },
+  { name: '컨테이너 한도', detail: '6GB에서 종료' },
+  { name: 'jemalloc 적용', detail: '약 4GB에서 안정' },
+];
+---
+
+<InteractiveDemoFrame demoId="picnic-memory-levels" ariaLabel="Picnic 장애에서 Java 힙, JVM 지표, 컨테이너 메모리의 크기 비교" title="힙은 4GB 아래인데 컨테이너는 6GB에 닿았습니다" description="Picnic 글에 나온 수치를 0~6GB 축 하나에 놓았습니다. 단계를 따라가며 어느 막대가 컨테이너 한도에 닿는지 보세요.">
+  <SceneTimeline ariaLabel="Picnic 장애 수치 단계" steps={steps} />
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="세 줄의 막대가 같은 GB 축 위에 있습니다. Java 힙 사용량은 약 2.5GB로 힙 상한 4GB 아래, JVM 지표 합계는 4GB 미만입니다. 컨테이너 메모리는 6GB 한도까지 올라가 종료되고, jemalloc 적용 뒤에는 약 4GB에서 멈춥니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">수치는 Picnic 글에 나온 값만 옮겼습니다. JVM 지표 합계 막대는 힙 약 2.5GB, off-heap 500MB 미만, direct buffer 약 600MB를 더한 최댓값(약 3.6GB)으로 그렸습니다. 메모리가 시간에 따라 늘어난 곡선은 그리지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, clamp01, createScene, duration, ease, setAttrs, svg, watchNarrow } from '@/scripts/blog/scene/core';
+  import { createWall } from '@/scripts/blog/scene/parts';
+  import { createStepPlayer } from '@/scripts/blog/scene/step-player';
+
+  const MAX_GB = 6;
+  const JVM_GB = 3.6;
+  type State = { heap: number; jvm: number; ctr: number; gap: number; danger: number; stable: number };
+  type Row = { name: string; sub: string; hue: string };
+  const ROWS: Row[] = [
+    { name: 'Java 힙 사용량', sub: '', hue: 'var(--scene-hue-blue)' },
+    { name: 'JVM 지표 합계', sub: '힙 + off-heap + direct buffer', hue: 'var(--scene-hue-violet)' },
+    { name: '컨테이너 메모리', sub: 'cgroup 사용량', hue: 'var(--scene-hue-gray)' },
+  ];
+  type Layout = {
+    view: [number, number];
+    x0: number;
+    x6: number;
+    barH: number;
+    barY: (i: number) => number;
+    nameAt: (i: number) => { x: number; y: number };
+    subAt: (i: number) => { x: number; y: number } | undefined;
+    axisY: number;
+    gapLabelY: number;
+    top: number;
+    short: boolean;
+  };
+  const layouts: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 252], x0: 188, x6: 494, barH: 26,
+      barY: (i) => 62 + i * 52,
+      nameAt: (i) => ({ x: 16, y: 62 + i * 52 + (ROWS[i].sub ? 11 : 17) }),
+      subAt: (i) => (ROWS[i].sub ? { x: 16, y: 62 + i * 52 + 26 } : undefined),
+      axisY: 214, gapLabelY: 204, top: 46, short: false,
+    },
+    narrow: {
+      view: [360, 290], x0: 16, x6: 296, barH: 22,
+      barY: (i) => 70 + i * 62,
+      nameAt: (i) => ({ x: 16, y: 70 + i * 62 - 7 }),
+      subAt: () => undefined,
+      axisY: 254, gapLabelY: 244, top: 46, short: true,
+    },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="picnic-memory-levels"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    let layout = layouts.wide;
+
+    const text = (value: string, cls: string, parent: Element = root) => {
+      const element = svg('text', { class: cls }, parent);
+      element.textContent = value;
+      return element;
+    };
+    const ticks = [0, 2, 4, 6].map((gb) => ({
+      gb,
+      line: svg('line', { stroke: 'var(--hairline)', 'stroke-dasharray': '3 5' }, root),
+      label: text(`${gb}GB`, 'scene-caption'),
+    }));
+    const axis = svg('line', { stroke: 'var(--hairline)', 'stroke-width': 1.5 }, root);
+    const heapLimit = svg('line', { stroke: 'var(--scene-hue-blue)', 'stroke-width': 1.5, 'stroke-dasharray': '5 4' }, root);
+    const heapLimitLabel = text('힙 상한 4GB', 'scene-label is-sans');
+    heapLimitLabel.style.fill = 'var(--scene-hue-blue)';
+    const rows = ROWS.map((row) => {
+      const shell = svg('g', { class: 'scene-node' }, root);
+      shell.style.setProperty('--node-hue', row.hue);
+      const body = svg('g', { class: 'scene-node-body' }, shell);
+      const track = svg('rect', { class: 'scene-lane-track', rx: 6 }, body);
+      const bar = svg('rect', { class: 'scene-level-bar', rx: 6 }, body);
+      const gap = svg('rect', { class: 'scene-level-gap', rx: 6 }, body);
+      const name = text(row.name, 'scene-label is-sans scene-label-dep', root);
+      const sub = text(row.sub, 'scene-caption', root);
+      sub.style.fontWeight = '500';
+      sub.style.fontSize = '11px';
+      const value = text('', 'scene-label', root);
+      value.style.fill = 'var(--ink)';
+      return { row, shell, track, gap, bar, name, sub, value };
+    });
+    const gapLabel = text('JVM 지표로 설명되지 않는 부분', 'scene-label is-sans');
+    gapLabel.style.fill = 'var(--scene-temp)';
+    setAttrs(gapLabel, { 'text-anchor': 'end' });
+    const wall = createWall(root, '컨테이너 한도 6GB');
+
+    const xOf = (gb: number) => layout.x0 + ((layout.x6 - layout.x0) * gb) / MAX_GB;
+    const fmt = (gb: number) => (Math.abs(gb - Math.round(gb)) < 0.05 ? `${Math.round(gb)}GB` : `${gb.toFixed(1)}GB`);
+
+    const scene = createScene<State>({ heap: 0, jvm: 0, ctr: 0, gap: 0, danger: 0, stable: 0 }, (s) => {
+      const values = [s.heap, s.jvm, s.ctr];
+      rows.forEach((view, i) => {
+        const y = layout.barY(i);
+        const v = values[i];
+        setAttrs(view.track, { x: xOf(0), y, width: xOf(MAX_GB) - xOf(0), height: layout.barH });
+        setAttrs(view.bar, { x: xOf(0), y, width: Math.max(0, xOf(v) - xOf(0)), height: layout.barH, opacity: v > 0.02 ? 1 : 0 });
+        const valueX = Math.min(xOf(v) + 8, xOf(MAX_GB) + 8);
+        setAttrs(view.value, { x: valueX, y: y + layout.barH / 2 + 4, opacity: clamp01(v * 3) });
+      });
+      // 힙 사용량 라벨
+      rows[0].value.textContent = `약 ${fmt(s.heap)}`;
+      rows[1].value.textContent = '4GB 미만';
+      const ctr = rows[2];
+      if (s.danger > 0.5) ctr.value.textContent = '도달';
+      else if (s.stable > 0.5) ctr.value.textContent = `약 ${fmt(s.ctr)}`;
+      else ctr.value.textContent = '';
+      ctr.shell.style.setProperty('--node-hue', s.danger > 0.5 ? 'var(--scene-danger)' : s.stable > 0.5 ? 'var(--scene-flow)' : ROWS[2].hue);
+      ctr.value.style.fill = s.danger > 0.5 ? 'var(--scene-danger)' : s.stable > 0.5 ? 'var(--scene-flow)' : 'var(--ink)';
+
+      // 컨테이너 막대 중 JVM 지표 합계를 넘는 구간
+      const gy = layout.barY(2);
+      const gapFrom = xOf(JVM_GB);
+      const gapTo = xOf(Math.max(JVM_GB, s.ctr));
+      setAttrs(ctr.gap, { x: gapFrom, y: gy - 3, width: Math.max(0, gapTo - gapFrom), height: layout.barH + 6, opacity: s.gap });
+      setAttrs(gapLabel, { x: xOf(MAX_GB) - 8, y: layout.gapLabelY, opacity: s.gap * clamp01((s.ctr - JVM_GB) / 0.8) });
+    });
+
+    const notes = [
+      'Java 힙 사용량은 약 2.5GB이고 힙 상한은 4GB입니다. 힙만 보면 <strong>여유가 있습니다.</strong>',
+      'NMT로 본 off-heap은 500MB 미만, direct buffer는 약 600MB였습니다. 힙과 더해도 <strong>4GB 미만</strong>입니다.',
+      '컨테이너 메모리는 계속 늘어 <strong>한도 6GB에 도달</strong>했고, 컨테이너가 종료된 뒤 재시작됐습니다. 4GB 미만인 JVM 지표 합계로는 남은 차이를 설명할 수 없었습니다.',
+      '할당자를 jemalloc으로 바꿔 다시 띄우자 메모리 증가가 멈추고 <strong>약 4GB에서 안정</strong>됐습니다. 팀은 로컬 재현과 glibc 할당 통계로 할당자 안에 쌓이는 단편화를 확인했습니다.',
+    ];
+    const states: State[] = [
+      { heap: 2.5, jvm: 0, ctr: 0, gap: 0, danger: 0, stable: 0 },
+      { heap: 2.5, jvm: JVM_GB, ctr: 0, gap: 0, danger: 0, stable: 0 },
+      { heap: 2.5, jvm: JVM_GB, ctr: MAX_GB, gap: 1, danger: 1, stable: 0 },
+      { heap: 2.5, jvm: JVM_GB, ctr: 4, gap: 0, danger: 0, stable: 1 },
+    ];
+
+    const onStep = async (index: number, instant: boolean) => {
+      const alive = scene.begin();
+      note.classList.toggle('is-alert', index === 2);
+      note.innerHTML = notes[index];
+      const next = states[index];
+      if (instant) { scene.set(next); return; }
+      if (index === 0) {
+        scene.set({ ...next, heap: 0 });
+        await scene.go(next, duration.draw);
+        return;
+      }
+      if (index === 2) {
+        // 컨테이너 막대가 한도까지 자란 뒤에 실패를 보여줍니다.
+        scene.set({ ...scene.state, ctr: 0, gap: 0, danger: 0, stable: 0, heap: 2.5, jvm: JVM_GB });
+        note.classList.remove('is-alert');
+        note.innerHTML = '컨테이너 메모리가 계속 늘어납니다…';
+        if (!(await scene.go({ ...next, gap: 1, danger: 0 }, duration.draw * 1.8, ease.linear)) || !alive()) return;
+        scene.set(next);
+        note.classList.add('is-alert');
+        note.innerHTML = notes[index];
+        rows[2].shell.classList.remove('is-shaking');
+        void rows[2].shell.getBoundingClientRect();
+        rows[2].shell.classList.add('is-shaking');
+        bumpText(rows[2].value, rows[2].value.textContent ?? '');
+        return;
+      }
+      if (index === 3) {
+        // 재시작: 막대를 거둔 뒤 jemalloc 상태로 다시 자랍니다.
+        if (!(await scene.go({ ...scene.state, ctr: 0, gap: 0, danger: 0 }, duration.cut)) || !alive()) return;
+        await scene.pause(duration.beat / 2);
+        if (!alive()) return;
+        await scene.go(next, duration.draw);
+        return;
+      }
+      await scene.go(next, duration.draw);
+    };
+
+    const applyLayout = () => {
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      const bottom = layout.barY(2) + layout.barH;
+      ticks.forEach(({ gb, line, label }) => {
+        setAttrs(line, { x1: xOf(gb), x2: xOf(gb), y1: layout.top + 6, y2: layout.axisY });
+        setAttrs(label, { x: xOf(gb), y: layout.axisY + 18, 'text-anchor': gb === 0 ? 'start' : 'middle' });
+      });
+      setAttrs(axis, { x1: xOf(0), x2: xOf(MAX_GB), y1: layout.axisY, y2: layout.axisY });
+      const heapY = layout.barY(0);
+      setAttrs(heapLimit, { x1: xOf(4), x2: xOf(4), y1: heapY - 8, y2: heapY + layout.barH + 6 });
+      setAttrs(heapLimitLabel, { x: xOf(4), y: heapY - 13, 'text-anchor': 'middle' });
+      rows.forEach((view, i) => {
+        setAttrs(view.name, layout.nameAt(i));
+        const sub = layout.subAt(i);
+        view.sub.style.display = sub ? '' : 'none';
+        if (sub) setAttrs(view.sub, sub);
+      });
+      wall.place({ x: xOf(MAX_GB), y1: layout.top, y2: bottom + 8 }, { show: 1, ghost: 0 }, { x: xOf(MAX_GB) - (layout.short ? 24 : 40), y: layout.top - 14 });
+      wall.caption.textContent = layout.short ? '한도 6GB' : '컨테이너 한도 6GB';
+      scene.redraw();
+    };
+    watchNarrow(stage, (narrow) => { layout = layouts[narrow ? 'narrow' : 'wide']; applyLayout(); });
+    applyLayout();
+    createStepPlayer(demo, { dwell: (i) => (i === 3 ? 5200 : 3600), onStep: (i, instant) => { void onStep(i, instant); } });
+  });
+</script>
