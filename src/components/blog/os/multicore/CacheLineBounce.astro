@@ -1,0 +1,353 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="cache-line-bounce" ariaLabel="head와 tail의 배치에 따라 캐시 라인이 코어 사이를 옮겨 다니는지 보는 실험" title="다른 변수를 고치는데 라인이 왜 옮겨 갈까요?" description="Consumer는 head만, Producer는 tail만 고칩니다. 배치를 고르면 같은 순서로 쓰기 여섯 번을 실행하고, 캐시 라인이 몇 번 옮겨 가는지 셉니다.">
+  <DemoControls ariaLabel="head와 tail의 배치">
+    <button type="button" data-mode="shared" aria-pressed="true">같은 라인</button>
+    <button type="button" data-mode="padded" aria-pressed="false">CachePadded</button>
+    <button type="button" data-mode="multi" aria-pressed="false">CachePadded + Producer 2개</button>
+    <button type="button" data-action="replay">다시 실행</button>
+  </DemoControls>
+
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="코어 세 개 아래에 각 코어의 캐시가 있습니다. head와 tail이 든 캐시 라인은 쓰기 권한을 가진 캐시에 놓이고, 다른 코어가 쓰면 그 코어의 캐시로 옮겨 가며 떠난 자리에는 무효가 된 복사본이 점선으로 남습니다."></svg>
+  </div>
+
+  <div class="cline-readouts" aria-label="이번 실행의 횟수">
+    <span>쓰기 <b data-writes>0</b></span>
+    <span>라인 이동 <b data-moves>0</b></span>
+  </div>
+  <ul class="cline-legend">
+    <li><i class="is-owner"></i>쓰기 권한이 있는 복사본</li>
+    <li><i class="is-ghost"></i>무효가 된 복사본</li>
+    <li><i class="is-pad"></i>패딩</li>
+  </ul>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">
+    무효화 기반 캐시 일관성을 단순화한 모형입니다. 쓰기 권한이 있는 복사본과 무효가 된 복사본만 그렸고, 읽기로 생기는 공유 상태와 큐가 반대쪽 인덱스를 읽는 경로는 생략했습니다.
+    실제 <code>ArrayQueue</code>의 인덱스에는 순환 횟수 정보가 함께 들어 있고, <code>CachePadded</code>는 x86-64에서 128바이트 단위로 맞춥니다. 횟수는 이 순서의 쓰기에서 나온 값이며 측정값이 아닙니다.
+  </p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, hopLift, lerp, nextHop, replayClass, setAttrs, svg, watchNarrow } from '@/scripts/blog/scene/core';
+  import { createBoundary, createNode, landRing } from '@/scripts/blog/scene/parts';
+  import { createPacketLayer } from '@/scripts/blog/scene/packets';
+
+  type Mode = 'shared' | 'padded' | 'multi';
+  const HEAD = 0;
+  const TAIL = 1;
+  const LINES = [HEAD, TAIL];
+  const CORES = [
+    { caption: 'Core 0', name: 'Consumer', subject: 'Consumer가', hue: 'var(--scene-hue-cyan)' },
+    { caption: 'Core 1', name: 'Producer 1', subject: 'Producer 1이', hue: 'var(--scene-hue-amber)' },
+    { caption: 'Core 2', name: 'Producer 2', subject: 'Producer 2가', hue: 'var(--scene-hue-amber)' },
+  ];
+  const FIELD = [
+    { name: 'head', object: 'head를', hue: 'var(--scene-hue-cyan)' },
+    { name: 'tail', object: 'tail을', hue: 'var(--scene-hue-amber)' },
+  ];
+  /** [쓰는 코어, 고치는 필드] 순서. */
+  const WRITES: Record<Mode, [number, number][]> = {
+    shared: [[1, TAIL], [0, HEAD], [1, TAIL], [0, HEAD], [1, TAIL], [0, HEAD]],
+    padded: [[1, TAIL], [0, HEAD], [1, TAIL], [0, HEAD], [1, TAIL], [0, HEAD]],
+    multi: [[1, TAIL], [2, TAIL], [0, HEAD], [1, TAIL], [2, TAIL], [0, HEAD]],
+  };
+  /** 실행을 시작할 때 각 라인의 쓰기 권한을 가진 코어. 모든 배치에서 그 라인을 처음 쓰는 코어가 들고 시작합니다. */
+  const START_OWNER: Record<Mode, [number, number]> = { shared: [1, 1], padded: [0, 1], multi: [0, 1] };
+
+  type LineState = { col: number; hop: number; ghost: number[] };
+  type State = { split: number; p2: number; lines: LineState[] };
+  type Layout = {
+    view: [number, number];
+    col0: number;
+    gap: number;
+    nodeY: number;
+    nodeW: number;
+    nodeH: number;
+    capY: number;
+    box: { y: number; h: number; w: number };
+    card: { w: number; h: number; fw: number };
+    slot: { one: number; head: number; tail: number };
+    pad: string;
+    lift: number;
+  };
+  const layouts: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 258], col0: 95, gap: 185, nodeY: 58, nodeW: 150, nodeH: 40, capY: 26,
+      box: { y: 96, h: 150, w: 170 }, card: { w: 150, h: 32, fw: 60 },
+      slot: { one: 171, head: 146, tail: 200 }, pad: 'padding', lift: 54,
+    },
+    narrow: {
+      view: [360, 258], col0: 62, gap: 118, nodeY: 58, nodeW: 108, nodeH: 40, capY: 26,
+      box: { y: 96, h: 150, w: 112 }, card: { w: 104, h: 30, fw: 46 },
+      slot: { one: 171, head: 146, tail: 200 }, pad: 'pad', lift: 48,
+    },
+  };
+
+  let hatchSeq = 0;
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="cache-line-bounce"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const writesOut = demo.querySelector<HTMLElement>('[data-writes]')!;
+    const movesOut = demo.querySelector<HTMLElement>('[data-moves]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-mode]')];
+    let layout = layouts.wide;
+    let mode: Mode = 'shared';
+    let started = false;
+
+    // ── 논리 모형 ──
+    let owner = [...START_OWNER.shared];
+    // 같은 라인·CachePadded에서는 Producer가 하나뿐이라 번호 없이 부릅니다.
+    const producerName = () => (mode === 'multi' ? 'Producer 1' : 'Producer');
+    const subject = (core: number) => (core === 1 && mode !== 'multi' ? 'Producer가' : CORES[core].subject);
+    let ghost = LINES.map(() => CORES.map(() => 0));
+    const hops = LINES.map(() => 0);
+    const values = [0, 0];
+    let writes = 0;
+    let moves = 0;
+    const split = () => (mode === 'shared' ? 0 : 1);
+    const target = (): State => ({
+      split: split(),
+      p2: mode === 'multi' ? 1 : 0,
+      lines: LINES.map((i) => ({ col: owner[i], hop: hops[i], ghost: [...ghost[i]] })),
+    });
+
+    // ── 그림 ──
+    const hatchId = `cline-hatch-${++hatchSeq}`;
+    const defs = svg('defs', {}, root);
+    const pattern = svg('pattern', { id: hatchId, patternUnits: 'userSpaceOnUse', width: 6, height: 6, patternTransform: 'rotate(45)' }, defs);
+    svg('line', { x1: 0, y1: 0, x2: 0, y2: 6, stroke: 'var(--hairline)', 'stroke-width': 2.2 }, pattern);
+
+    const boxes = CORES.map(() => createBoundary(root, '캐시'));
+    const coreCaptions = CORES.map((core) => {
+      const text = svg('text', { class: 'scene-caption', 'text-anchor': 'middle' }, root);
+      text.textContent = core.caption;
+      return text;
+    });
+    const coreViews = CORES.map((core) => createNode(root, { label: core.name, hue: core.hue }));
+    coreViews[2].group.classList.add('is-sans-sub');
+
+    const ghostLayer = svg('g', {}, root);
+    const ghosts = LINES.map(() => CORES.map(() => {
+      const group = svg('g', { class: 'scene-cline-ghost' }, ghostLayer);
+      const rect = svg('rect', { rx: 7 }, group);
+      const text = svg('text', { class: 'scene-label is-sans', 'text-anchor': 'middle', y: 4 }, group);
+      text.textContent = '무효';
+      return { group, rect };
+    }));
+
+    const lineLayer = svg('g', {}, root);
+    const lineViews = LINES.map((i) => {
+      const group = svg('g', { class: 'scene-cline' }, lineLayer);
+      const body = svg('g', { class: 'scene-cline-body' }, group);
+      const card = svg('rect', { class: 'scene-cline-card', rx: 7 }, body);
+      const pad = svg('rect', { class: 'scene-cline-pad', rx: 4, fill: `url(#${hatchId})` }, body);
+      const padText = svg('text', { class: 'scene-cline-padtext', y: 3.6 }, body);
+      const fieldGroup = svg('g', {}, body);
+      fieldGroup.style.setProperty('--node-hue', FIELD[i].hue);
+      const field = svg('rect', { class: 'scene-cline-field', rx: 4 }, fieldGroup);
+      const text = svg('text', { class: 'scene-cline-text', y: 3.8 }, fieldGroup);
+      text.textContent = `${FIELD[i].name} 0`;
+      return { group, card, pad, padText, fieldGroup, field, text };
+    });
+    const packets = createPacketLayer(root);
+
+    // ── 좌표 ──
+    const colX = (col: number) => layout.col0 + col * layout.gap;
+    const slotY = (line: number, s: number) => lerp(layout.slot.one, line === HEAD ? layout.slot.head : layout.slot.tail, s);
+    const headX = () => -layout.card.w / 2 + 5 + layout.card.fw / 2;
+    const fieldX = (line: number, s: number) => (line === HEAD ? headX() : lerp(-headX(), headX(), s));
+
+    const sizeAll = () => {
+      const { w, h, fw } = layout.card;
+      const box = { x: -w / 2, y: -h / 2, width: w, height: h };
+      lineViews.forEach((view) => {
+        setAttrs(view.card, box);
+        setAttrs(view.field, { x: -fw / 2, y: -(h - 10) / 2, width: fw, height: h - 10 });
+        const padLeft = -w / 2 + 5 + fw + 4;
+        setAttrs(view.pad, { x: padLeft, y: -(h - 10) / 2, width: w / 2 - 5 - padLeft, height: h - 10 });
+        setAttrs(view.padText, { x: (padLeft + w / 2 - 5) / 2 });
+        view.padText.textContent = layout.pad;
+      });
+      ghosts.forEach((row) => row.forEach(({ rect }) => setAttrs(rect, box)));
+      CORES.forEach((_, k) => {
+        const x = colX(k);
+        const { y, h: bh, w: bw } = layout.box;
+        boxes[k].place({ x: x - bw / 2, y, w: bw, h: bh }, { x, y: y + bh - 10, anchor: 'middle' });
+        setAttrs(coreCaptions[k], { x, y: layout.capY });
+        coreViews[k].setBox({ x, y: layout.nodeY, w: layout.nodeW, h: layout.nodeH });
+      });
+    };
+
+    const scene = createScene<State>(target(), (s) => {
+      const p2 = lerp(0.32, 1, s.p2);
+      coreViews[2].group.style.opacity = String(p2);
+      coreCaptions[2].style.opacity = String(p2);
+      boxes[2].rect.style.opacity = String(p2);
+      boxes[2].caption.style.opacity = String(p2);
+      s.lines.forEach((line, i) => {
+        const view = lineViews[i];
+        const y = slotY(i, s.split);
+        const x = colX(line.col);
+        setAttrs(view.group, { transform: `translate(${x.toFixed(2)} ${(y - hopLift(line.hop, layout.lift)).toFixed(2)})` });
+        // 같은 라인일 때는 tail 카드의 테두리를 숨겨 head 카드 하나처럼 보이게 합니다.
+        view.card.style.opacity = String(i === TAIL ? s.split : 1);
+        view.pad.style.opacity = String(s.split);
+        view.padText.style.opacity = String(s.split);
+        setAttrs(view.fieldGroup, { transform: `translate(${fieldX(i, s.split).toFixed(2)} 0)` });
+        line.ghost.forEach((o, k) => {
+          const g = ghosts[i][k].group;
+          setAttrs(g, { transform: `translate(${colX(k)} ${y.toFixed(2)})` });
+          g.style.opacity = String(o * (i === TAIL ? s.split : 1));
+        });
+      });
+    });
+
+    const say = (html: string, alert = false) => {
+      note.classList.toggle('is-alert', alert);
+      note.innerHTML = html;
+    };
+    const syncCounts = () => {
+      bumpText(writesOut, String(writes));
+      bumpText(movesOut, String(moves));
+      movesOut.classList.toggle('is-danger', moves > 0);
+    };
+    const interrupt = () => {
+      const alive = scene.begin();
+      packets.clear();
+      return alive;
+    };
+
+    const write = async (core: number, line: number, alive: () => boolean) => {
+      const s = split();
+      const label = `${FIELD[line].name}++`;
+      const packet = packets.spawn({ label, at: { x: colX(core), y: layout.nodeY + layout.nodeH / 2 + 12 } });
+      const to = { x: colX(core) + fieldX(line, s), y: slotY(line, s) };
+      if (!(await packet.travel([to], 520)) || !alive()) return false;
+      if (owner[line] !== core) {
+        const from = owner[line];
+        packet.relabel(label, 'temp');
+        say(`${subject(core)} ${FIELD[line].object} 쓰려는데 이 라인의 쓰기 권한은 ${CORES[from].caption} 캐시에 있습니다. 권한을 받아 오면서 ${CORES[from].caption}의 복사본은 무효가 됩니다.`);
+        await scene.pause(duration.beat / 2);
+        if (!alive()) return false;
+        const moving = mode === 'shared' ? LINES : [line];
+        moving.forEach((i) => {
+          ghost[i][from] = 1;
+          ghost[i][core] = 0;
+          owner[i] = core;
+          hops[i] = nextHop(hops[i]);
+        });
+        if (!(await scene.go(target(), duration.fly)) || !alive()) return false;
+        landRing(root, { x: colX(core), y: slotY(line, s), w: layout.card.w + 6, h: layout.card.h + 6 });
+        moves += 1;
+      } else {
+        say(`${subject(core)} ${FIELD[line].object} 씁니다. 쓰기 권한이 이미 이 캐시에 있어서 라인은 움직이지 않습니다.`);
+      }
+      values[line] += 1;
+      writes += 1;
+      bumpText(lineViews[line].text, `${FIELD[line].name} ${values[line]}`);
+      if (!scene.reduced) replayClass(lineViews[line].group, 'is-written');
+      syncCounts();
+      packet.relabel(label, 'flow');
+      void packet.land(false);
+      await scene.pause(duration.beat);
+      return alive();
+    };
+
+    const summary = () => {
+      if (mode === 'shared') {
+        say(`Producer는 tail만, Consumer는 head만 고쳤는데 쓰기 ${writes}번에 라인이 <strong>${moves}번</strong> 옮겨 갔습니다. 두 변수가 같은 라인에 있어서 한쪽이 쓸 때마다 다른 쪽 복사본이 무효가 됩니다. 앞에서 본 False Sharing입니다.`, true);
+      } else if (mode === 'padded') {
+        say(`같은 순서의 쓰기 ${writes}번에서 라인 이동은 <strong>${moves}번</strong>입니다. head와 tail이 서로 다른 라인에 있어서 각 코어가 자기 라인의 쓰기 권한을 계속 들고 있습니다.`);
+      } else {
+        say(`패딩을 했는데도 tail 라인이 두 Producer 사이에서 <strong>${moves}번</strong> 옮겨 갔습니다. 두 코어가 같은 tail을 고치는 True Sharing이라 패딩으로는 줄지 않습니다. head 라인은 한 번도 움직이지 않았습니다.`, true);
+      }
+    };
+
+    const run = async () => {
+      started = true;
+      const alive = interrupt();
+      const start = START_OWNER[mode];
+      LINES.forEach((i) => {
+        if (owner[i] !== start[i]) hops[i] = nextHop(hops[i]);
+        owner[i] = start[i];
+      });
+      ghost = LINES.map(() => CORES.map(() => 0));
+      values.fill(0);
+      writes = 0;
+      moves = 0;
+      LINES.forEach((i) => { lineViews[i].text.textContent = `${FIELD[i].name} 0`; });
+      syncCounts();
+      say(mode === 'shared'
+        ? 'head와 tail이 같은 라인에 있습니다. 쓰기를 시작합니다.'
+        : mode === 'padded'
+          ? '라인이 둘로 나뉘어 head 라인은 Consumer, tail 라인은 Producer 캐시에 있습니다. 같은 순서로 다시 씁니다.'
+          : 'Producer 2가 함께 tail을 고칩니다. head와 tail은 여전히 다른 라인에 있습니다.');
+      if (!(await scene.go(target(), duration.draw)) || !alive()) return;
+      await scene.pause(duration.beat);
+      for (const [core, line] of WRITES[mode]) {
+        if (!alive() || !(await write(core, line, alive))) return;
+      }
+      summary();
+    };
+
+    modeButtons.forEach((button) => button.addEventListener('click', () => {
+      mode = button.dataset.mode as Mode;
+      modeButtons.forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
+      coreViews[2].setSub(mode === 'multi' ? '' : '쉬는 중');
+      syncNames();
+      void run();
+    }));
+    demo.querySelector('[data-action="replay"]')!.addEventListener('click', () => { void run(); });
+
+    const syncNames = () => {
+      coreViews[1].group.querySelector('.scene-node-name')!.textContent = producerName();
+    };
+
+    const applyLayout = () => {
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      sizeAll();
+      scene.set(scene.state);
+    };
+    watchNarrow(stage, (narrow) => { layout = layouts[narrow ? 'narrow' : 'wide']; applyLayout(); });
+    coreViews[2].setSub('쉬는 중');
+    syncNames();
+    say('Consumer는 head만, Producer는 tail만 고칩니다. 두 변수가 같은 64바이트 라인에 있을 때 쓰기 여섯 번이면 라인은 몇 번 옮겨 갈까요?');
+    applyLayout();
+
+    // 화면에 처음 들어오면 한 번 실행합니다.
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        // 질문을 읽고 예측할 시간을 잠시 둔 뒤 실행합니다.
+        window.setTimeout(() => { if (!started) void run(); }, scene.reduced ? 0 : 1200);
+      }, { threshold: 0.6 });
+      observer.observe(stage);
+    }
+  });
+</script>
+
+<style>
+  .cline-readouts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .cline-readouts span { display: inline-flex; align-items: baseline; gap: 6px; }
+  .cline-readouts b { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .cline-readouts b:global(.is-danger) { color: var(--scene-danger); }
+  .cline-readouts b:global(.is-bump) { animation: scene-pop 420ms ease-out; }
+  .cline-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 2px 0; padding: 0; color: var(--slate); font-size: 0.76rem; list-style: none; }
+  .cline-legend li { display: inline-flex; align-items: center; gap: 7px; margin: 0; }
+  .cline-legend i { display: inline-block; width: 20px; height: 12px; border-radius: 3px; }
+  .cline-legend i.is-owner { border: 1.6px solid color-mix(in srgb, var(--ink) 55%, var(--hairline)); background: var(--surface); }
+  .cline-legend i.is-ghost { border: 1.4px dashed var(--scene-dep); }
+  .cline-legend i.is-pad { border: 1px solid var(--hairline); background: repeating-linear-gradient(45deg, var(--hairline) 0 2px, transparent 2px 5px); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cline-readouts b:global(.is-bump) { animation: none; }
+  }
+</style>

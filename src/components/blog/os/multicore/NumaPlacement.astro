@@ -1,0 +1,314 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="numa-placement" ariaLabel="CPU affinity와 memory policy가 각각 무엇을 옮기는지 보는 실험" title="실행 위치를 옮기면 데이터도 따라올까요?" description="스레드가 node 1에서 실행되며 node 1 메모리에 페이지 네 개를 할당한 상태입니다. CPU affinity부터 눌러 보고, 설정을 하나씩 바꿀 때마다 읽기가 노드 사이 연결을 건너는지 확인하세요.">
+  <DemoControls ariaLabel="바꿀 설정">
+    <button type="button" data-action="affinity" aria-pressed="false">CPU affinity를 node 0으로</button>
+    <button type="button" data-action="policy" aria-pressed="false">memory policy를 node 0으로</button>
+    <button type="button" data-action="migrate" aria-pressed="false">기존 페이지를 node 0으로 옮기기</button>
+    <button type="button" data-action="reset">처음으로</button>
+  </DemoControls>
+
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="NUMA 노드 두 개에 각각 CPU 두 개와 메모리가 있고, 두 노드는 interconnect로 이어져 있습니다. 스레드가 페이지를 읽을 때 페이지가 다른 노드에 있으면 읽기가 interconnect를 건넙니다."></svg>
+  </div>
+
+  <div class="numa-readouts" aria-label="현재 설정과 마지막 읽기">
+    <span>CPU affinity <b data-affinity>없음</b></span>
+    <span>memory policy <b data-policy>없음</b></span>
+    <span>원격 읽기 <b data-remote>0 / 4</b></span>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">
+    스레드 하나와 페이지 네 개로 단순화한 모형입니다. 처음 페이지는 기본 정책(local allocation)에 따라 스레드가 실행되던 node 1에 할당됐다고 보고, 자동 NUMA 밸런싱은 꺼져 있다고 가정했습니다.
+    기존 페이지를 옮기는 작업이 policy 변경과 별개라는 점만 보여 주며, 실제로 페이지를 옮기는 방법과 비용은 그리지 않았습니다. 읽기가 이동하는 시간은 경로 길이에 맞춰 그렸을 뿐 실제 지연 비율이 아닙니다.
+  </p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, bumpText, clamp01, createScene, duration, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createBoundary, createChip, createNode, landRing, type Rect } from '@/scripts/blog/scene/parts';
+  import { createPacketLayer, polylineAt } from '@/scripts/blog/scene/packets';
+
+  const PAGES = 4;
+  const START_CPU = 2;
+  const PAGE_HUE = 'var(--scene-hue-blue)';
+  const THREAD_HUE = 'var(--scene-hue-violet)';
+
+  /** move: 0이면 node 1, 1이면 node 0. 페이지 이동은 번호마다 조금씩 늦게 출발합니다. */
+  type State = { thread: number; pages: number; aff: number; pol: number };
+  type Layout = {
+    view: [number, number];
+    nodes: Rect[];
+    cpu: (k: number) => Point;
+    cpuSize: { w: number; h: number };
+    seatDy: number;
+    lane: (node: number) => number;
+    port: (node: number) => Point;
+    mem: (node: number) => Rect;
+    memCaption: (node: number) => Point & { anchor: 'start' | 'middle' | 'end' };
+    page: (node: number, i: number) => Point;
+    link: [Point, Point];
+    linkLabel: Point & { anchor: 'start' | 'middle' | 'end' };
+    affZone: Rect;
+    affCaption: Point;
+    polZone: Rect;
+    polCaption: Point;
+    lift: number;
+    threadLift: number;
+  };
+  const layouts: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 276],
+      nodes: [{ x: 10, y: 30, w: 236, h: 236 }, { x: 314, y: 30, w: 236, h: 236 }],
+      cpu: (k) => ({ x: [69, 187, 373, 491][k], y: 84 }),
+      cpuSize: { w: 96, h: 36 },
+      seatDy: 40,
+      lane: () => 148,
+      port: (n) => ({ x: n === 0 ? 246 : 314, y: 148 }),
+      mem: (n) => ({ x: (n === 0 ? 10 : 314) + 12, y: 160, w: 212, h: 92 }),
+      memCaption: (n) => ({ x: (n === 0 ? 10 : 314) + 24, y: 240, anchor: 'start' }),
+      page: (n, i) => ({ x: (n === 0 ? 10 : 314) + 52 + i * 44, y: 198 }),
+      link: [{ x: 246, y: 148 }, { x: 314, y: 148 }],
+      linkLabel: { x: 280, y: 168, anchor: 'middle' },
+      affZone: { x: 18, y: 62, w: 220, h: 44 },
+      affCaption: { x: 232, y: 56 },
+      polZone: { x: 18, y: 154, w: 220, h: 104 },
+      polCaption: { x: 226, y: 240 },
+      lift: 40,
+      threadLift: 76,
+    },
+    narrow: {
+      view: [360, 450],
+      nodes: [{ x: 8, y: 26, w: 330, h: 200 }, { x: 8, y: 240, w: 330, h: 200 }],
+      cpu: (k) => ({ x: [74, 184, 74, 184][k], y: (k < 2 ? 26 : 240) + 58 }),
+      cpuSize: { w: 92, h: 34 },
+      seatDy: 38,
+      lane: (n) => (n === 0 ? 26 : 240) + 120,
+      port: (n) => ({ x: 348, y: (n === 0 ? 26 : 240) + 120 }),
+      mem: (n) => ({ x: 20, y: (n === 0 ? 26 : 240) + 130, w: 306, h: 62 }),
+      memCaption: (n) => ({ x: 32, y: (n === 0 ? 26 : 240) + 156, anchor: 'start' }),
+      page: (n, i) => ({ x: 124 + i * 50, y: (n === 0 ? 26 : 240) + 152 }),
+      link: [{ x: 348, y: 146 }, { x: 348, y: 360 }],
+      linkLabel: { x: 340, y: 237, anchor: 'end' },
+      affZone: { x: 22, y: 62, w: 214, h: 44 },
+      affCaption: { x: 324, y: 52 },
+      polZone: { x: 14, y: 151, w: 318, h: 72 },
+      polCaption: { x: 316, y: 210 },
+      lift: 36,
+      threadLift: -46,
+    },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="numa-placement"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const affOut = demo.querySelector<HTMLElement>('[data-affinity]')!;
+    const polOut = demo.querySelector<HTMLElement>('[data-policy]')!;
+    const remoteOut = demo.querySelector<HTMLElement>('[data-remote]')!;
+    const buttons = {
+      affinity: demo.querySelector<HTMLButtonElement>('[data-action="affinity"]')!,
+      policy: demo.querySelector<HTMLButtonElement>('[data-action="policy"]')!,
+      migrate: demo.querySelector<HTMLButtonElement>('[data-action="migrate"]')!,
+    };
+    let layout = layouts.wide;
+    let started = false;
+
+    // ── 논리 모형 ──
+    let affinity = false;
+    let policy = false;
+    let migrated = false;
+    const threadNode = () => (affinity ? 0 : 1);
+    const pageNode = () => (migrated ? 0 : 1);
+    const target = (): State => ({ thread: affinity ? 1 : 0, pages: migrated ? 1 : 0, aff: affinity ? 1 : 0, pol: policy ? 1 : 0 });
+
+    // ── 그림 ──
+    const nodeBoxes = [0, 1].map((n) => createBoundary(root, `NUMA node ${n}`));
+    const affZone = createBoundary(root, 'affinity: node 0', 'zone');
+    const polZone = createBoundary(root, 'policy: node 0', 'zone');
+    const memBoxes = [0, 1].map(() => createBoundary(root, '메모리'));
+    const link = svg('line', { class: 'scene-numa-link' }, root);
+    const linkLabel = svg('text', { class: 'scene-label scene-label-dep is-sans' }, root);
+    linkLabel.textContent = 'interconnect';
+    const cpus = [0, 1, 2, 3].map((k) => createNode(root, { label: `CPU ${k}`, hue: 'var(--scene-hue-gray)' }));
+    const pages = Array.from({ length: PAGES }, (_, i) => createChip(root, { label: `p${i + 1}`, hue: PAGE_HUE, width: 38 }));
+    const thread = createChip(root, { label: 'thread', hue: THREAD_HUE, width: 62 });
+    const packets = createPacketLayer(root);
+
+    const seat = (cpu: number): Point => {
+      const at = layout.cpu(cpu);
+      return { x: at.x, y: at.y + layout.seatDy };
+    };
+    const threadAt = (t: number) => {
+      const a = seat(START_CPU);
+      const b = seat(0);
+      return bowAt(a, b, t, layout.threadLift * Math.sin(Math.PI * t));
+    };
+    const pageAt = (i: number, m: number) => {
+      const t = clamp01((m - i * 0.1) / 0.7);
+      return bowAt(layout.page(1, i), layout.page(0, i), t, layout.lift * Math.sin(Math.PI * t));
+    };
+
+    const scene = createScene<State>(target(), (s) => {
+      thread.place(threadAt(s.thread));
+      pages.forEach((page, i) => page.place(pageAt(i, s.pages)));
+      affZone.place({ ...layout.affZone, o: s.aff }, { ...layout.affCaption, anchor: 'end' });
+      polZone.place({ ...layout.polZone, o: s.pol }, { ...layout.polCaption, anchor: 'end' });
+    });
+
+    const say = (html: string, alert = false) => {
+      note.classList.toggle('is-alert', alert);
+      note.innerHTML = html;
+    };
+    const syncButtons = () => {
+      (Object.keys(buttons) as (keyof typeof buttons)[]).forEach((key) => {
+        const on = key === 'affinity' ? affinity : key === 'policy' ? policy : migrated;
+        buttons[key].setAttribute('aria-pressed', String(on));
+        buttons[key].disabled = on;
+      });
+      bumpText(affOut, affinity ? 'node 0' : '없음');
+      bumpText(polOut, policy ? 'node 0' : '없음');
+    };
+    const interrupt = () => {
+      const alive = scene.begin();
+      packets.clear();
+      return alive;
+    };
+
+    /** 페이지마다 한 번씩 읽습니다. 원격 읽기는 interconnect를 건너고, 도착할 때 수치가 오릅니다. */
+    const readBurst = async (alive: () => boolean) => {
+      const tn = threadNode();
+      const pn = pageNode();
+      const to = seat(affinity ? 0 : START_CPU);
+      const remote = tn !== pn;
+      let count = 0;
+      bumpText(remoteOut, `0 / ${PAGES}`);
+      remoteOut.classList.remove('is-remote');
+      const reads = Array.from({ length: PAGES }, async (_, i) => {
+        await scene.pause(i * 170);
+        if (!alive()) return false;
+        const from = layout.page(pn, i);
+        const route = remote
+          ? [from, { x: from.x, y: layout.lane(pn) }, layout.port(pn), layout.port(tn), { x: to.x, y: layout.lane(tn) }, to]
+          : [from, { x: from.x, y: layout.lane(pn) }, { x: to.x, y: layout.lane(tn) }, to];
+        const length = route.slice(1).reduce((sum, p, k) => sum + Math.hypot(p.x - route[k].x, p.y - route[k].y), 0);
+        const packet = packets.spawn({ label: 'read', tone: remote ? 'temp' : 'flow', at: polylineAt(route, 0) });
+        if (!(await packet.travel(route, 240 + length * 1.9)) || !alive()) return false;
+        if (remote) {
+          count += 1;
+          bumpText(remoteOut, `${count} / ${PAGES}`);
+          remoteOut.classList.add('is-remote');
+        }
+        void packet.land(false);
+        return true;
+      });
+      const done = await Promise.all(reads);
+      return done.every(Boolean) && alive();
+    };
+
+    const afterNote = () => {
+      const remote = threadNode() !== pageNode();
+      if (!affinity && !policy && !migrated) {
+        return say('스레드가 node 1의 CPU 2에서 실행되고, 페이지 네 개도 node 1 메모리에 있습니다. 모든 읽기가 같은 노드 안에서 끝납니다. CPU affinity를 node 0으로 바꾸면 어떻게 될까요?');
+      }
+      if (!remote && policy && !affinity && !migrated) {
+        return say('memory policy를 node 0으로 바꿨습니다. 기존 페이지는 node 1에 그대로라 지금은 원격 읽기가 0번입니다. 하지만 스레드가 node 1에서 실행되는 동안 <strong>새로 할당하는 페이지는 node 0에 생겨 원격 읽기가 됩니다.</strong> 실행 위치도 함께 맞춰야 합니다.', true);
+      }
+      if (!remote) {
+        return say(`스레드와 페이지가 모두 node ${threadNode()}에 있어서 <strong>원격 읽기가 0번</strong>입니다.${affinity && migrated ? ' 실행 위치와 데이터 위치를 둘 다 맞춘 결과입니다.' : ''}`);
+      }
+      if (migrated && !affinity) {
+        return say('페이지는 node 0으로 옮겨졌지만 스레드가 아직 node 1에서 실행 중입니다. 이번에는 반대 방향으로 <strong>읽기 4번이 모두 interconnect를 건넙니다.</strong>', true);
+      }
+      if (policy) {
+        return say('memory policy를 node 0으로 바꿨지만 이미 node 1에 할당된 페이지 네 개는 움직이지 않았습니다. 정책은 이후 할당에 적용되므로 <strong>원격 읽기도 그대로</strong>입니다. 기존 페이지는 따로 옮겨야 합니다.', true);
+      }
+      return say('스레드는 node 0의 CPU 0으로 옮겨졌지만 페이지는 node 1에 그대로 남았습니다. <strong>읽기 4번이 모두 interconnect를 건넙니다.</strong> CPU affinity가 정하는 것은 실행 위치뿐입니다.', true);
+    };
+
+    const apply = async (kind: 'affinity' | 'policy' | 'migrate') => {
+      started = true;
+      const alive = interrupt();
+      if (kind === 'affinity') affinity = true;
+      if (kind === 'policy') policy = true;
+      if (kind === 'migrate') migrated = true;
+      syncButtons();
+      say(kind === 'affinity' ? '스레드가 실행될 수 있는 CPU를 node 0으로 제한합니다…'
+        : kind === 'policy' ? '메모리를 node 0에 할당하도록 정책을 바꿉니다…'
+          : '기존 페이지를 node 0 메모리로 옮깁니다…');
+      if (!(await scene.go(target(), kind === 'policy' ? duration.draw : duration.fly + 300)) || !alive()) return;
+      if (kind === 'affinity') {
+        const at = seat(0);
+        landRing(root, { x: at.x, y: at.y, w: 68, h: 26 });
+      }
+      if (kind === 'migrate') {
+        for (let i = 0; i < PAGES; i += 1) {
+          const at = layout.page(0, i);
+          landRing(root, { x: at.x, y: at.y, w: 44, h: 26 });
+        }
+      }
+      await scene.pause(duration.beat);
+      if (!alive() || !(await readBurst(alive))) return;
+      afterNote();
+    };
+
+    const reset = async () => {
+      const alive = interrupt();
+      affinity = false;
+      policy = false;
+      migrated = false;
+      syncButtons();
+      afterNote();
+      if (!(await scene.go(target(), duration.fly)) || !alive()) return;
+      await readBurst(alive);
+    };
+
+    buttons.affinity.addEventListener('click', () => { void apply('affinity'); });
+    buttons.policy.addEventListener('click', () => { void apply('policy'); });
+    buttons.migrate.addEventListener('click', () => { void apply('migrate'); });
+    demo.querySelector('[data-action="reset"]')!.addEventListener('click', () => { void reset(); });
+
+    const applyLayout = () => {
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      nodeBoxes.forEach((box, n) => box.place(layout.nodes[n]));
+      memBoxes.forEach((box, n) => box.place(layout.mem(n), layout.memCaption(n)));
+      cpus.forEach((cpu, k) => cpu.setBox({ ...layout.cpu(k), ...layout.cpuSize }));
+      setAttrs(link, { x1: layout.link[0].x, y1: layout.link[0].y, x2: layout.link[1].x, y2: layout.link[1].y });
+      setAttrs(linkLabel, { x: layout.linkLabel.x, y: layout.linkLabel.y, 'text-anchor': layout.linkLabel.anchor });
+      interrupt();
+      scene.set(target());
+      // 배치가 바뀌며 진행 중이던 동작이 멈췄으니, 설명도 지금 상태에 맞춥니다.
+      afterNote();
+    };
+    watchNarrow(stage, (narrow) => { layout = layouts[narrow ? 'narrow' : 'wide']; applyLayout(); });
+    syncButtons();
+    afterNote();
+    applyLayout();
+
+    // 화면에 처음 들어오면 지금 상태의 읽기를 한 번 보여 줍니다.
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        if (!started) void readBurst(scene.begin());
+      }, { threshold: 0.6 });
+      observer.observe(stage);
+    }
+  });
+</script>
+
+<style>
+  .numa-readouts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .numa-readouts span { display: inline-flex; align-items: baseline; gap: 6px; }
+  .numa-readouts b { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .numa-readouts b:global(.is-remote) { color: var(--scene-temp); }
+  .numa-readouts b:global(.is-bump) { animation: scene-pop 420ms ease-out; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .numa-readouts b:global(.is-bump) { animation: none; }
+  }
+</style>

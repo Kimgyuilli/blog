@@ -12,6 +12,7 @@
 - 락 대기·snapshot 선·대기 고리 사례: `TxStockRace`, `TxSnapshotReads`, `TxDeadlockOrder`, `TxUnlockBeforeCommit`, `TxDuplicateRelease`
 - 실린 lock·값의 의미 태그·safepoint 시간축 사례: `JvmLockVsCpu`, `JvmOopMapLens`, `JvmSafepointLanes`, `JvmPcVsIp`, `JvmSameThreadMode`
 - 할당자 블록·페이지 반환·수준 막대 사례: `AllocatorPageReturn`, `PicnicMemoryLevels`, `GcCompactionNative`, `PlanningCycleCompare`, `HoleReuseCompare`
+- 캐시 라인 이동·원격 메모리 읽기 사례: `CacheLineBounce`, `NumaPlacement`
 
 ## 1. 먼저 정할 것: 독자가 장면에서 알아낼 변화
 
@@ -81,6 +82,8 @@
 | 반환을 기다린다 (decay) | 통째로 빈 페이지 아래에 흐름 색 얇은 막대가 선형으로 차고, 다 차면 페이지가 운영체제 영역으로 날아감. 반환하지 못하는 빈 페이지는 임시 색 점선 테두리와 "비었지만 남음" | `scene-alloc-page.is-stuck`, 장면의 decay 막대 (`PlanningCycleCompare`) | 선형 → `fly` |
 | 크기가 맞지 않는다 (조각) | 요청 패킷이 빈 조각에 부딪혀 튕기고, 빈 조각들이 위험 색 실선으로 흔들림 | `bounce` + `scene-alloc-block.is-misfit` | 420 + 300 |
 | 같은 축 위의 크기 비교 | 한 GB 축 위에 줄마다 막대가 자라고, 한도는 위험 색 벽. 설명되지 않는 구간은 임시 색 점선 상자로 막대 위에 겹침 | `scene-level-bar`, `scene-level-gap`, `createWall` (`PicnicMemoryLevels`) | `draw` |
+| 쓰기 권한이 다른 코어로 옮겨 갔다 (캐시 라인) | 라인 카드가 쓰려는 코어의 캐시로 호를 그리며 날아가 착지 링. 떠난 캐시에는 점선 "무효" 복사본이 남고 이동 횟수가 튀어 오름. 권한이 이미 있으면 쓰기 패킷만 도착하고 라인은 그대로. 패딩은 빗금 영역 | `scene-cline-*` + `hopLift` + `landRing` (`CacheLineBounce`) | `fly` |
+| 멀리 있는 메모리를 읽는다 (원격 접근) | 읽기 패킷이 노드 사이 interconnect를 건너며 임시 색. 같은 노드 안의 읽기는 흐름 색으로 짧게 감. 경로가 길수록 오래 걸림 | `createPacketLayer` tone `temp`/`flow`, `scene-numa-link` (`NumaPlacement`) | 경로 길이 비례 |
 | 다음에 누를 것 | 칩에 은은한 맥박 | `data-state="next"` | — |
 
 새 의미가 필요하면 먼저 이 표에 한 줄을 추가하고, 그다음 키트에 부품을 만듭니다.
