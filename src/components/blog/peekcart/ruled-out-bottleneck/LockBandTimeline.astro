@@ -1,0 +1,324 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="lock-band-timeline" ariaLabel="락 파사드의 락 구간이 어떤 SQL 을 덮는지 바깥 트랜잭션 유무에 따라 비교하는 시간축" title="락 구간 안에는 어떤 SQL 이 있었을까요?" description="파란 띠가 consumer 1 이 Redis 락을 쥔 구간입니다. 띠 안에 들어간 SQL 과 밖으로 밀려난 SQL 을 보고, 바깥 트랜잭션을 걷어 냈을 때 UPDATE 와 COMMIT 이 어디로 옮겨 가는지 비교해 보세요.">
+  <DemoControls ariaLabel="락 파사드를 부르는 구성">
+    <button type="button" data-tx-mode="0" aria-pressed="true">consumer 의 @Transactional 안에서 호출</button>
+    <button type="button" data-tx-mode="1" aria-pressed="false">바깥 트랜잭션 없이 호출</button>
+  </DemoControls>
+  <div class="scene-chips" role="group" aria-label="실행">
+    <button type="button" class="scene-chip is-plain" data-lbt-run>처음부터 재생</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="세 줄의 시간축입니다. 위 두 줄은 같은 상품의 재고를 예약하는 consumer 1 과 consumer 2 이고, 맨 아래 줄은 DB 에 커밋된 재고입니다. consumer 의 트랜잭션 안에서 파사드를 부르면 consumer 1 의 락 구간은 SELECT 하나만 덮고, UPDATE 와 COMMIT 은 락이 풀린 뒤 바깥 커밋 때 나갑니다. 그사이 락을 얻은 consumer 2 는 차감 전 재고를 읽고, 나중에 UPDATE 에서 version 충돌을 맞습니다. 바깥 트랜잭션 없이 부르면 UPDATE 와 COMMIT 이 락 구간 안으로 옮겨 가고, consumer 2 는 차감된 재고를 읽습니다."></svg>
+  </div>
+  <div class="lbt-readouts" aria-label="클러스터 측정 결과">
+    <span class="lbt-tag">클러스터 측정, 인스턴스 3개</span>
+    <span>락 획득 실패 <b>0</b></span>
+    <span>낙관적 락 충돌 <b class="is-danger">7</b></span>
+    <span>DLQ <b class="is-danger">7</b></span>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">consumer 1 의 SQL 순서와 DB 값은 락 파사드 제거 직전 코드로 한 로컬 재현(Testcontainers MySQL 8.0.46 general_log, 단일 스레드)에서 관찰한 것입니다. 두 구성은 각각 따로 실행해 시작 재고가 다릅니다(바깥 트랜잭션 안: 99 (v1) 에서 98 (v2), 바깥 트랜잭션 없음: 100 에서 99 (v1)). 두 consumer 의 동시 실행은 로컬에서 재현하지 않았고, consumer 2 의 진행은 코드 경로를 따라 그린 도식입니다. 막대의 길이는 실제 시간이 아닙니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, clamp01, createScene, duration, ease, hopLift, lerp, replayClass, setAttrs, svg, watchNarrow } from '@/scripts/blog/scene/core';
+  import { watchDemoPlayback } from '@/scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: 파란 락 띠 안에는 SELECT 하나뿐이고, UPDATE 와 COMMIT 은 띠 밖(락이 풀린 뒤)에 놓인다.
+  // 바깥 트랜잭션을 걷어 내면 UPDATE 와 COMMIT 칩이 호를 그리며 띠 안으로 옮겨 가고, consumer 2 의 읽기가 COMMIT 선 뒤로 밀린다.
+  type State = { t: number; m: number };
+  type Layout = { view: [number, number]; x0: number; x1: number; labelX: number; lanes: [number, number, number]; short: boolean; pillW: number };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: { view: [560, 286], x0: 112, x1: 548, labelX: 14, lanes: [96, 178, 246], short: false, pillW: 50 },
+    narrow: { view: [360, 296], x0: 54, x1: 352, labelX: 8, lanes: [100, 184, 254], short: true, pillW: 32 },
+  };
+  const END = 10;
+  /** m=0: 바깥 트랜잭션 안, m=1: 바깥 트랜잭션 없음 */
+  const at = (m: number) => {
+    const unlock1 = lerp(2.3, 4.6, m);
+    const read2 = unlock1 + 0.6;
+    return {
+      txStart: lerp(0.15, 0.95, m), lock1: 0.4, select1: 1.15, unlock1,
+      update1: lerp(6.4, 2.35, m), commit1: lerp(7.6, 3.6, m),
+      read2, update2: lerp(8.8, read2 + 1.2, m), commit2: read2 + 2.4, unlock2: lerp(read2 + 0.8, read2 + 3.4, m),
+    };
+  };
+  const EVENTS: { at: number; text: string }[][] = [
+    [
+      { at: 0, text: 'consumer 1 의 <code>@Transactional</code> 이 먼저 열리고, 그 안에서 락 파사드가 Redis 락을 얻습니다.' },
+      { at: 1.15, text: '락 안에서 나간 SQL 은 재고 <strong>SELECT</strong> 하나입니다. 필드만 바꾸고 UPDATE 는 아직 보내지 않습니다.' },
+      { at: 2.3, text: '파사드가 돌아오며 <strong>락을 풉니다</strong>. 바깥 트랜잭션은 아직 커밋 전이라 DB 의 재고는 그대로입니다.' },
+      { at: 2.9, text: '락을 얻은 consumer 2 가 <strong>차감 전 재고 99 (v1)</strong> 을 읽습니다.' },
+      { at: 6.4, text: '바깥 트랜잭션이 끝나며 consumer 1 의 UPDATE 와 COMMIT 이 이제야 나갑니다. DB 는 <strong>98 (v2)</strong>.' },
+      { at: 8.8, text: 'consumer 2 가 v1 기준으로 UPDATE 하다 <strong>version 충돌</strong>을 맞습니다.' },
+    ],
+    [
+      { at: 0, text: '바깥 트랜잭션 없이 락 파사드가 먼저 Redis 락을 얻습니다.' },
+      { at: 1.0, text: '파사드가 부른 재고 서비스가 자기 트랜잭션을 열고 SELECT 합니다.' },
+      { at: 2.35, text: '메서드가 끝나며 UPDATE 와 COMMIT 이 <strong>락 안에서</strong> 나갑니다. DB 는 <strong>99 (v1)</strong>.' },
+      { at: 4.6, text: '커밋이 끝난 뒤 파사드가 락을 풉니다.' },
+      { at: 5.2, text: '락을 얻은 consumer 2 는 <strong>차감된 재고</strong>를 읽고, 충돌 없이 반영합니다.' },
+    ],
+  ];
+  const NOTES = [
+    'consumer 의 트랜잭션에 참여하면 락이 덮는 것은 <strong>SELECT 하나</strong>입니다. UPDATE 와 COMMIT 은 락이 풀린 뒤 나가므로, 그 사이 락을 얻은 consumer 2 는 차감 전 값을 읽고 커밋 단계에서 <code>@Version</code> 에 걸립니다. 락 획득 실패는 0 인데 충돌이 나는 이유입니다.',
+    '바깥 트랜잭션이 없으면 UPDATE 와 COMMIT 이 락 구간 안으로 들어옵니다. 기존 동시성 테스트가 시험한 구성이 이쪽이라, 테스트는 통과했지만 실제 호출 위치인 consumer 의 구성은 시험하지 않았습니다.',
+  ];
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="lock-band-timeline"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-tx-mode]')];
+    const runButton = demo.querySelector<HTMLButtonElement>('[data-lbt-run]')!;
+    let layout = LAYOUTS.wide;
+
+    const blue = 'var(--scene-hue-blue)';
+    const violet = 'var(--scene-hue-violet)';
+    const amber = 'var(--scene-hue-amber)';
+    const text = (cls: string, content = '', anchor: 'start' | 'middle' | 'end' = 'middle') => {
+      const t = svg('text', { class: cls, 'text-anchor': anchor }, root);
+      t.textContent = content;
+      return t;
+    };
+    const rect = (cls: string, hue?: string) => {
+      const r = svg('rect', { class: cls, rx: 7 }, root);
+      if (hue) r.style.setProperty('--node-hue', hue);
+      return r;
+    };
+
+    const tracks = [0, 1, 2].map(() => rect('scene-lane-track'));
+    const laneNames = [text('lbt-lane-name', '', 'start'), text('lbt-lane-name', '', 'start'), text('lbt-lane-name', '', 'start')];
+    laneNames[0].style.fill = blue;
+    laneNames[1].style.fill = violet;
+    laneNames[2].style.fill = 'var(--slate)';
+
+    // 트랜잭션 범위(점선 상자)와 락 구간(띠)
+    const tx1 = svg('rect', { class: 'lbt-tx', rx: 9 }, root);
+    const tx1Label = text('scene-label is-sans lbt-tx-label', '트랜잭션', 'start');
+    const band1 = rect('lbt-band', blue);
+    const band1Label = text('scene-label is-sans lbt-band-label', 'Redis 락', 'start');
+    const wait2 = rect('lbt-wait');
+    const wait2Label = text('scene-label is-sans lbt-wait-label', '락 대기');
+    const band2 = rect('lbt-band', violet);
+
+    const pill = (label: string, hue: string) => {
+      const g = svg('g', { class: 'lbt-pill' }, root);
+      g.style.setProperty('--node-hue', hue);
+      const body = svg('g', { class: 'lbt-pill-body' }, g);
+      const card = svg('rect', { class: 'lbt-pill-card', rx: 5, height: 20, y: -10 }, body);
+      const t = svg('text', { class: 'lbt-pill-text', y: 4, 'text-anchor': 'middle' }, body);
+      t.textContent = label;
+      return { g, card, t, full: label };
+    };
+    const p1 = { select: pill('SELECT', blue), update: pill('UPDATE', blue), commit: pill('COMMIT', blue) };
+    const p2 = { select: pill('SELECT', violet), update: pill('UPDATE', violet), commit: pill('COMMIT', violet) };
+
+    const unlockTick = svg('line', { class: 'lbt-tick' }, root);
+    unlockTick.style.stroke = blue;
+    const unlockLabel = text('scene-label is-sans', '');
+    unlockLabel.style.fill = blue;
+    const commitLine = svg('line', { class: 'lbt-commit-line' }, root);
+    const readLine = svg('line', { class: 'lbt-read-line' }, root);
+    const readLabel = text('scene-label is-sans lbt-read-label', '');
+    const conflict = text('scene-label is-sans lbt-conflict', '');
+
+    const dbOld = rect('scene-lane-bar', amber);
+    const dbNew = rect('scene-lane-bar', amber);
+    const dbNext = rect('lbt-db-next', amber);
+    const dbOldText = text('lbt-db-text', '');
+    const dbNewText = text('lbt-db-text', '');
+    const dbNextText = text('scene-label is-sans', '');
+    const cursor = svg('line', { class: 'lbt-cursor' }, root);
+
+    let sweeping = false;
+    let eventIndex = -1;
+    let mode = 0;
+    let conflictShown = false;
+
+    const scene = createScene<State>({ t: END, m: 0 }, (s) => {
+      const l = layout;
+      const x = (time: number) => l.x0 + ((l.x1 - l.x0) * time) / END;
+      const shown = (time: number) => (s.t >= time ? 1 : 0);
+      const e = at(s.m);
+      const [y1, y2, y3] = l.lanes;
+      const mode1 = s.m >= 0.5;
+
+      tracks.forEach((track, i) => setAttrs(track, { x: l.x0, y: l.lanes[i] - 18, width: l.x1 - l.x0, height: 36 }));
+      laneNames[0].textContent = l.short ? 'c1' : 'consumer 1';
+      laneNames[1].textContent = l.short ? 'c2' : 'consumer 2';
+      laneNames[2].textContent = l.short ? 'DB' : 'DB 커밋값';
+      laneNames.forEach((name, i) => setAttrs(name, { x: l.labelX, y: l.lanes[i] + 4 }));
+
+      const span = (r: SVGRectElement, y: number, h: number, from: number, to: number) => {
+        const w = Math.max(0, x(Math.min(to, s.t)) - x(from));
+        setAttrs(r, { x: x(from), y: y - h / 2, width: w, height: h, opacity: s.t > from ? 1 : 0 });
+        return w;
+      };
+
+      // consumer 1: 트랜잭션 상자(바깥)와 락 띠(안)
+      const txW = span(tx1, y1, 58, e.txStart, e.commit1 + 0.25);
+      setAttrs(tx1Label, { x: x(e.txStart) + 4, y: y1 - 35, opacity: txW > 40 ? 1 : 0 });
+      const bandW = span(band1, y1, 34, e.lock1, e.unlock1);
+      setAttrs(band1Label, { x: x(e.lock1) + 2, y: y1 - 21, opacity: bandW > 8 ? 1 : 0 });
+      // consumer 2: 대기 후 락
+      const waitW = span(wait2, y2, 26, 0.5, e.unlock1);
+      setAttrs(wait2Label, { x: (x(0.5) + x(Math.min(e.unlock1, s.t))) / 2, y: y2 + 4, opacity: waitW > 56 ? 1 : 0 });
+      span(band2, y2, 30, e.unlock1, e.unlock2);
+
+      // SQL 칩. UPDATE 와 COMMIT 은 구성이 바뀌면 호를 그리며 옮겨 갑니다.
+      const put = (p: ReturnType<typeof pill>, key: 'select1' | 'update1' | 'commit1' | 'read2' | 'update2' | 'commit2', y: number, on: number) => {
+        const w = l.pillW;
+        setAttrs(p.card, { x: -w / 2, width: w });
+        p.t.textContent = l.short ? p.full.slice(0, 3) : p.full;
+        const a = { x: x(at(0)[key]), y };
+        const b = { x: x(at(1)[key]), y };
+        const moving = Math.abs(a.x - b.x) > 1;
+        const pt = moving ? bowAt(a, b, s.m, -hopLift(s.m, 30)) : a;
+        const time = e[key];
+        setAttrs(p.g, { transform: `translate(${pt.x.toFixed(2)} ${pt.y.toFixed(2)})` });
+        p.g.style.opacity = String(on * shown(time));
+      };
+      put(p1.select, 'select1', y1, 1);
+      put(p1.update, 'update1', y1, 1);
+      put(p1.commit, 'commit1', y1, 1);
+      put(p2.select, 'read2', y2, 1);
+      put(p2.update, 'update2', y2, 1);
+      put(p2.commit, 'commit2', y2, clamp01((s.m - 0.5) * 2));
+      p2.update.g.classList.toggle('is-conflict', !mode1);
+
+      // 락 해제(파사드 반환) 표시
+      setAttrs(unlockTick, { x1: x(e.unlock1), x2: x(e.unlock1), y1: y1 - 20, y2: y1 + 20, opacity: shown(e.unlock1) });
+      unlockLabel.textContent = l.short ? 'unlock' : '파사드 반환, unlock';
+      setAttrs(unlockLabel, { x: x(e.unlock1), y: y1 + 33, opacity: shown(e.unlock1) });
+
+      // COMMIT 선과 consumer 2 의 읽기
+      setAttrs(commitLine, { x1: x(e.commit1), x2: x(e.commit1), y1: y1 + 12, y2: y3 + 16, opacity: shown(e.commit1) });
+      const stale = e.read2 < e.commit1;
+      setAttrs(readLine, { x1: x(e.read2), x2: x(e.read2), y1: y2 + 11, y2: y3 - 12, opacity: shown(e.read2) });
+      readLabel.textContent = stale ? (l.short ? '차감 전' : '읽음: 차감 전 99 (v1)') : (l.short ? '차감 후' : '읽음: 차감 후 99 (v1)');
+      setAttrs(readLabel, { x: x(e.read2) + 6, y: y2 + 32, opacity: shown(e.read2), 'text-anchor': 'start' });
+      readLabel.style.fill = stale ? 'var(--scene-danger)' : 'var(--scene-flow-ink)';
+      readLine.style.stroke = stale ? 'var(--scene-danger)' : violet;
+
+      conflict.textContent = mode1 ? '' : (l.short ? '충돌' : 'version 충돌');
+      setAttrs(conflict, { x: x(e.update2), y: y2 - 18, opacity: !mode1 ? shown(e.update2) : 0 });
+      const hit = !mode1 && s.t >= e.update2;
+      if (hit && !conflictShown) { conflictShown = true; replayClass(p2.update.g, 'is-shaking'); }
+      if (!hit) conflictShown = false;
+
+      // DB 커밋값
+      span(dbOld, y3, 22, 0, e.commit1);
+      span(dbNew, y3, 22, e.commit1, END);
+      dbOldText.textContent = mode1 ? '100' : '99 (v1)';
+      dbNewText.textContent = mode1 ? '99 (v1)' : '98 (v2)';
+      setAttrs(dbOldText, { x: (x(0) + x(Math.min(e.commit1, Math.max(s.t, 0.01)))) / 2, y: y3 + 4, opacity: s.t > 1 ? 1 : 0 });
+      setAttrs(dbNewText, { x: (x(e.commit1) + x(Math.min(mode1 ? e.commit2 : END, END))) / 2, y: y3 + 4, opacity: shown(e.commit1 + 0.4) });
+      const nextOn = clamp01((s.m - 0.5) * 2) * shown(e.commit2);
+      setAttrs(dbNext, { x: x(e.commit2), y: y3 - 11, width: Math.max(0, x(Math.min(END, s.t)) - x(e.commit2)), height: 22, opacity: nextOn });
+      dbNextText.textContent = l.short ? 'c2' : 'c2 반영';
+      setAttrs(dbNextText, { x: (x(e.commit2) + x(END)) / 2, y: y3 + 4, opacity: nextOn });
+
+      setAttrs(cursor, { x1: x(s.t), x2: x(s.t), y1: y1 - 40, y2: y3 + 20, opacity: s.t < END - 0.05 ? 1 : 0 });
+
+      if (sweeping) {
+        const events = EVENTS[mode];
+        let index = 0;
+        events.forEach((event, i) => { if (s.t >= event.at) index = i; });
+        if (index !== eventIndex) { eventIndex = index; say(events[index].text); }
+      }
+    });
+
+    function say(html: string) {
+      note.innerHTML = html;
+      note.classList.remove('is-entering');
+      void note.offsetWidth;
+      note.classList.add('is-entering');
+    }
+
+    const sweep = async () => {
+      const alive = scene.begin();
+      sweeping = true;
+      eventIndex = -1;
+      scene.set({ t: 0, m: mode });
+      await scene.pause(300);
+      if (!alive()) return;
+      const ok = await scene.go({ t: END, m: mode }, 9000, ease.linear);
+      if (!alive()) return;
+      sweeping = false;
+      if (!ok) return;
+      await scene.pause(duration.read);
+      if (!alive()) return;
+      say(NOTES[mode]);
+      if (mode === 0) modeButtons[1].setAttribute('data-state', 'next');
+    };
+
+    modeButtons.forEach((button) => button.addEventListener('click', () => {
+      const next = Number(button.dataset.txMode);
+      modeButtons.forEach((b) => { b.setAttribute('aria-pressed', String(b === button)); b.removeAttribute('data-state'); });
+      if (next === mode) return;
+      mode = next;
+      scene.begin();
+      sweeping = false;
+      if (scene.state.t < END) scene.set({ ...scene.state, t: END });
+      say(NOTES[mode]);
+      void scene.go({ t: END, m: mode }, duration.fly * 2);
+    }));
+    runButton.addEventListener('click', () => { void sweep(); });
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      scene.begin();
+      sweeping = false;
+      scene.set({ t: END, m: mode });
+      say(NOTES[mode]);
+    });
+
+    let played = false;
+    watchDemoPlayback(demo, ({ shouldPlay }) => {
+      if (!shouldPlay || played) return;
+      played = true;
+      window.setTimeout(() => { void sweep(); }, 300);
+    }, { threshold: 0.5 });
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="lock-band-timeline"] .scene-note { min-height: 5.4em; }
+  [data-blog-demo="lock-band-timeline"] .lbt-lane-name { font-size: 12px; font-weight: 800; }
+  [data-blog-demo="lock-band-timeline"] .lbt-tx { fill: none; stroke: var(--scene-hue-blue); stroke-width: 1.2; stroke-dasharray: 5 4; opacity: 0.8; }
+  [data-blog-demo="lock-band-timeline"] .lbt-tx-label { fill: var(--scene-hue-blue); font-weight: 700; }
+  [data-blog-demo="lock-band-timeline"] .lbt-band { fill: color-mix(in srgb, var(--node-hue) 38%, transparent); stroke: var(--node-hue); stroke-width: 2; }
+  [data-blog-demo="lock-band-timeline"] .lbt-band-label { fill: var(--scene-hue-blue); font-weight: 800; font-size: 10.5px; }
+  [data-blog-demo="lock-band-timeline"] .lbt-wait { fill: none; stroke: var(--scene-temp); stroke-width: 1.4; stroke-dasharray: 4 3; }
+  [data-blog-demo="lock-band-timeline"] .lbt-wait-label { fill: var(--scene-temp); font-weight: 800; }
+  [data-blog-demo="lock-band-timeline"] .lbt-pill-body { transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="lock-band-timeline"] .lbt-pill-card { fill: var(--canvas); stroke: var(--node-hue); stroke-width: 1.4; }
+  [data-blog-demo="lock-band-timeline"] .lbt-pill-text { fill: var(--ink); font-family: var(--font-mono); font-size: 10.5px; font-weight: 800; }
+  [data-blog-demo="lock-band-timeline"] .lbt-pill.is-conflict .lbt-pill-card { fill: var(--scene-danger-soft); stroke: var(--scene-danger); stroke-width: 2; }
+  [data-blog-demo="lock-band-timeline"] .lbt-pill.is-conflict .lbt-pill-text { fill: var(--scene-danger); }
+  [data-blog-demo="lock-band-timeline"] .lbt-pill.is-shaking .lbt-pill-body { animation: scene-shake 420ms ease-in-out; }
+  [data-blog-demo="lock-band-timeline"] .lbt-tick { stroke-width: 2.2; }
+  [data-blog-demo="lock-band-timeline"] .lbt-commit-line { stroke: var(--scene-hue-blue); stroke-width: 1.6; stroke-dasharray: 5 4; }
+  [data-blog-demo="lock-band-timeline"] .lbt-read-line { stroke-width: 1.6; stroke-dasharray: 2 3; }
+  [data-blog-demo="lock-band-timeline"] .lbt-read-label, [data-blog-demo="lock-band-timeline"] .lbt-conflict { font-weight: 800; }
+  [data-blog-demo="lock-band-timeline"] .lbt-conflict { fill: var(--scene-danger); }
+  [data-blog-demo="lock-band-timeline"] .lbt-db-text { fill: var(--ink); font-family: var(--font-mono); font-size: 11px; font-weight: 800; }
+  [data-blog-demo="lock-band-timeline"] .lbt-db-next { fill: color-mix(in srgb, var(--node-hue) 22%, transparent); stroke: var(--node-hue); stroke-dasharray: 3 3; }
+  [data-blog-demo="lock-band-timeline"] .lbt-cursor { stroke: var(--ink); stroke-width: 1; stroke-opacity: 0.4; }
+  [data-blog-demo="lock-band-timeline"] .db-demo-controls { margin-bottom: 0; flex-wrap: wrap; }
+  [data-blog-demo="lock-band-timeline"] .scene-chips { margin-top: 10px; }
+  .lbt-readouts { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .lbt-readouts span { display: inline-flex; align-items: baseline; gap: 6px; }
+  .lbt-readouts .lbt-tag { font-weight: 700; color: var(--muted); }
+  .lbt-readouts b { color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .lbt-readouts b.is-danger { color: var(--scene-danger); }
+</style>

@@ -1,0 +1,252 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="limit-round-trip" ariaLabel="MySQL CPU 한도를 500m, 2000m, 다시 500m 로 바꿀 때 처리량과 스로틀이 따라 움직이는지 보는 막대 그래프" title="한도를 되돌리면 천장도 돌아올까요?" description="MySQL CPU 한도를 한 단계씩 바꿔 보세요. 막대는 처리량(rps), 아래 띠는 같은 런의 MySQL 스로틀 누적 시간입니다. 엔드포인트와 캐시를 바꿔 같은 왕복을 다시 볼 수 있습니다.">
+  <div class="scene-chips" role="group" aria-label="MySQL 한도 단계">
+    <span class="scene-chips-label">한도</span>
+    <button type="button" class="scene-chip" data-step="0" data-state="next">500m 에서 재기</button>
+    <button type="button" class="scene-chip" data-step="1">2000m 으로 올리기</button>
+    <button type="button" class="scene-chip" data-step="2">500m 으로 되돌리기</button>
+  </div>
+  <DemoControls ariaLabel="엔드포인트와 캐시">
+    <button type="button" data-ep="detail" aria-pressed="true">상세</button>
+    <button type="button" data-ep="list" aria-pressed="false">목록</button>
+    <button type="button" data-cache="off" aria-pressed="true">캐시 OFF</button>
+    <button type="button" data-cache="on" aria-pressed="false">캐시 ON</button>
+  </DemoControls>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="세 칸의 막대 그래프입니다. 왼쪽부터 MySQL 한도 500m, 2000m, 다시 500m 블록의 처리량 막대가 있고, 각 막대 아래에 MySQL 스로틀 누적 시간 띠가 있습니다. 캐시를 끈 상세 조회는 393.4, 903.8, 392.6 rps 로 올라갔다 돌아오고, 스로틀은 147.6초, 0.1초, 105.0초입니다. 목록은 되돌린 값이 처음과 11.5% 달라 ±10% 기준을 넘었습니다. 캐시를 켠 경우 세 번째 블록은 측정하지 않았습니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">GKE 클러스터에서 잰 셀별 3회 중앙값(400 VU, 60초)입니다. 세 번째 블록(500m 복귀)은 캐시 OFF 두 칸만 쟀습니다. 스로틀은 60초 런당 누적값이며 CPU 마다 스로틀된 시간을 더한 값이라 60초를 넘을 수 있습니다. 500m 과 2000m 사이의 한도는 재지 않았으므로 막대를 선으로 잇지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, clamp01, createScene, duration, setAttrs, svg, watchNarrow } from '@/scripts/blog/scene/core';
+  import { landRing } from '@/scripts/blog/scene/parts';
+
+  // 독자가 볼 변화: 한도를 올리면 막대가 솟고 스로틀 띠가 비며, 되돌리면 막대가 처음 높이의 점선 표시 안으로 내려오고 스로틀 띠가 다시 찬다.
+  type Cell = { rps: (number | null)[]; th: (number | null)[]; runsB?: number[] };
+  const DATA: Record<string, Cell> = {
+    'detail-off': { rps: [393.4, 903.8, 392.6], th: [147.6, 0.1, 105.0] },
+    'detail-on': { rps: [906.6, 1815.0, null], th: [133.2, 0.0, null] },
+    'list-off': { rps: [367.6, 1406.4, 409.9], th: [123.6, 5.1, 113.1], runsB: [782.7, 1406.4, 1408.4] },
+    'list-on': { rps: [894.9, 2249.2, null], th: [103.0, 0.0, null] },
+  };
+  const MAX_RPS = 2400;
+  const MAX_TH = 160;
+  const LIMITS = ['500m', '2000m', '500m 복귀'];
+
+  type State = { h: number[]; v: number[]; th: number[]; band: number; dots: number };
+  type Layout = { view: [number, number]; axisX: number; cx: number[]; barW: number; base: number; top: number; thY: number; thW: number };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: { view: [560, 318], axisX: 64, cx: [170, 320, 470], barW: 72, base: 228, top: 40, thY: 286, thW: 110 },
+    narrow: { view: [360, 318], axisX: 44, cx: [100, 196, 292], barW: 52, base: 228, top: 40, thY: 286, thW: 80 },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="limit-round-trip"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const stepButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-step]')];
+    const epButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-ep]')];
+    const cacheButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-cache]')];
+    let layout = LAYOUTS.wide;
+    let ep = 'detail';
+    let cache = 'off';
+    let reached = 0; // 지금까지 보여 준 단계 (0~2)
+
+    const text = (cls: string, content = '', anchor: 'start' | 'middle' | 'end' = 'middle') => {
+      const t = svg('text', { class: cls, 'text-anchor': anchor }, root);
+      t.textContent = content;
+      return t;
+    };
+    const hue = () => (ep === 'detail' ? 'var(--scene-hue-blue)' : 'var(--scene-hue-cyan)');
+
+    const ticks = [0, 600, 1200, 1800, 2400].map((v) => ({ v, line: svg('line', { class: 'lrt-grid' }, root), label: text('scene-label lrt-tick', String(v), 'end') }));
+    const axisCaption = text('scene-caption', 'rps', 'start');
+    const thCaption = text('scene-label is-sans lrt-th-caption', 'MySQL 스로틀', 'start');
+    const cols = [0, 1, 2].map((i) => {
+      const slot = svg('rect', { class: 'lrt-slot', rx: 8 }, root);
+      const bar = svg('rect', { class: 'scene-level-bar', rx: 6 }, root);
+      const value = text('lrt-value', '');
+      const limit = text('lrt-limit', LIMITS[i]);
+      const thTrack = svg('rect', { class: 'lrt-th-track', rx: 4 }, root);
+      const thBar = svg('rect', { class: 'lrt-th-bar', rx: 4 }, root);
+      const thValue = text('scene-label is-sans lrt-th-value', '', 'start');
+      const missing = text('scene-label is-sans lrt-missing', '측정 안 함');
+      return { slot, bar, value, limit, thTrack, thBar, thValue, missing };
+    });
+    // A 의 높이를 오른쪽 칸까지 이어 주는 점선과 ±10% 띠: 되돌림 기준
+    const bandRect = svg('rect', { class: 'lrt-band' }, root);
+    const refLine = svg('line', { class: 'lrt-ref' }, root);
+    const bandLabel = text('scene-label is-sans lrt-band-label', '', 'start');
+    const runDots = [0, 1, 2].map(() => svg('circle', { class: 'lrt-run', r: 4 }, root));
+    const runLabel = text('scene-label is-sans lrt-run-label', 'B 세 런', 'start');
+
+    const cell = () => DATA[`${ep}-${cache}`];
+    const scene = createScene<State>({ h: [0, 0, 0], v: [0, 0, 0], th: [0, 0, 0], band: 0, dots: 0 }, (s) => {
+      const l = layout;
+      const yOf = (rps: number) => l.base - ((l.base - l.top) * rps) / MAX_RPS;
+      const c = cell();
+      ticks.forEach(({ v, line, label }) => {
+        setAttrs(line, { x1: l.axisX + 4, x2: l.view[0] - 12, y1: yOf(v), y2: yOf(v) });
+        setAttrs(label, { x: l.axisX, y: yOf(v) + 4 });
+      });
+      setAttrs(axisCaption, { x: l.axisX - 30, y: 24 });
+      setAttrs(thCaption, { x: 8, y: l.thY - 16 });
+      cols.forEach((col, i) => {
+        const x = l.cx[i];
+        const measured = c.rps[i] !== null;
+        setAttrs(col.slot, { x: x - l.barW / 2 - 4, y: l.top - 6, width: l.barW + 8, height: l.base - l.top + 6, opacity: measured ? 1 : 0.9 });
+        col.slot.classList.toggle('is-missing', !measured);
+        const rps = s.h[i] * s.v[i];
+        setAttrs(col.bar, { x: x - l.barW / 2, y: yOf(rps), width: l.barW, height: Math.max(0, l.base - yOf(rps)), opacity: s.v[i] > 0.01 ? 1 : 0 });
+        col.bar.style.setProperty('--node-hue', hue());
+        setAttrs(col.value, { x, y: yOf(rps) - 8, opacity: s.v[i] > 0.5 && measured ? 1 : 0 });
+        setAttrs(col.limit, { x, y: l.base + 20 });
+        col.limit.classList.toggle('is-up', i === 1);
+        const thW = (l.thW * Math.min(MAX_TH, s.th[i])) / MAX_TH;
+        setAttrs(col.thTrack, { x: x - l.thW / 2, y: l.thY - 7, width: l.thW, height: 14, opacity: measured ? 1 : 0.4 });
+        setAttrs(col.thBar, { x: x - l.thW / 2, y: l.thY - 7, width: thW * s.v[i], height: 14, opacity: s.v[i] > 0.01 && measured ? 1 : 0 });
+        setAttrs(col.thValue, { x: x - l.thW / 2, y: l.thY + 22, opacity: s.v[i] > 0.5 && measured ? 1 : 0 });
+        setAttrs(col.missing, { x, y: (l.top + l.base) / 2, opacity: measured ? 0 : clamp01(s.v[i] * 2) });
+      });
+
+      // 되돌림 기준: A 높이의 점선 + ±10% 띠
+      const a = c.rps[0];
+      if (a !== null && c.rps[2] !== null) {
+        const yA = yOf(a);
+        const x1 = l.cx[0] - l.barW / 2;
+        const x2 = l.cx[2] + l.barW / 2 + 4;
+        setAttrs(refLine, { x1, x2: x1 + (x2 - x1) * s.band, y1: yA, y2: yA, opacity: s.band > 0.01 ? 1 : 0 });
+        setAttrs(bandRect, { x: l.cx[2] - l.barW / 2 - 6, y: yOf(a * 1.1), width: l.barW + 12, height: yOf(a * 0.9) - yOf(a * 1.1), opacity: clamp01(s.band * 2 - 1) });
+        setAttrs(bandLabel, { x: l.cx[2] + l.barW / 2 + 8, y: yA + 4, opacity: clamp01(s.band * 2 - 1) });
+        bandLabel.textContent = '±10%';
+      } else {
+        [refLine, bandRect, bandLabel].forEach((el) => setAttrs(el, { opacity: 0 }));
+      }
+      // 목록 OFF 의 2000m 블록 세 런
+      const runs = c.runsB;
+      runDots.forEach((dot, k) => {
+        const v = runs?.[k];
+        setAttrs(dot, { cx: l.cx[1] + l.barW / 2 + 12, cy: v ? yOf(v) : 0, opacity: v ? s.dots : 0 });
+      });
+      setAttrs(runLabel, { x: l.cx[1] + l.barW / 2 + 20, y: runs ? yOf(782.7) + 4 : 0, opacity: runs && layout === LAYOUTS.wide ? s.dots : 0 });
+    });
+
+    const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const writeValues = (upto: number) => {
+      const c = cell();
+      cols.forEach((col, i) => {
+        const r = c.rps[i];
+        const t = c.th[i];
+        if (i > upto) return;
+        bumpText(col.value, r === null ? '' : fmt(r));
+        bumpText(col.thValue, t === null ? '' : `${fmt(t)}초`);
+      });
+    };
+    const target = (upto: number): State => {
+      const c = cell();
+      return {
+        h: c.rps.map((r) => r ?? 0),
+        v: [0, 1, 2].map((i) => (i <= upto ? 1 : 0)),
+        th: c.th.map((t) => t ?? 0),
+        band: upto >= 2 ? 1 : 0,
+        dots: upto >= 1 && c.runsB ? 1 : 0,
+      };
+    };
+    const say = (html: string, alert = false) => {
+      note.innerHTML = html;
+      note.classList.toggle('is-alert', alert);
+      note.classList.remove('is-entering');
+      void note.offsetWidth;
+      note.classList.add('is-entering');
+    };
+    const explain = (upto: number) => {
+      const c = cell();
+      const name = `${ep === 'detail' ? '상세' : '목록'}, 캐시 ${cache.toUpperCase()}`;
+      if (upto === 0) return say(`${name}, MySQL 한도 500m: <strong>${fmt(c.rps[0]!)} rps</strong>. 같은 런에서 MySQL 은 60초 동안 <strong>${fmt(c.th[0]!)}초</strong> 스로틀됐습니다. 한도를 4배로 올리면 어떻게 될까요?`);
+      if (upto === 1) return say(`한도 2000m: <strong>${fmt(c.rps[1]!)} rps</strong> (${(c.rps[1]! / c.rps[0]!).toFixed(2)}배). 스로틀은 <strong>${fmt(c.th[1]!)}초</strong>로 거의 사라졌습니다. 다시 500m 으로 되돌리면 처음 높이로 돌아올까요?${c.runsB ? ' 오른쪽 점은 이 블록의 세 런(782.7, 1,406.4, 1,408.4 rps)입니다.' : ''}`);
+      if (c.rps[2] === null) return say(`캐시를 켠 셀은 500m 복귀 블록을 재지 않았습니다. 되돌림은 캐시 OFF 두 칸으로만 확인했습니다.`);
+      const diff = ((c.rps[2]! - c.rps[0]!) / c.rps[0]!) * 100;
+      const pass = Math.abs(diff) <= 10;
+      return say(pass
+        ? `되돌린 값 <strong>${fmt(c.rps[2]!)} rps</strong>, 처음과 <strong>${diff.toFixed(1)}%</strong> 차이로 ±10% 안에 들어왔습니다. 스로틀도 <strong>${fmt(c.th[2]!)}초</strong>로 다시 쌓였습니다. 천장이 한도를 따라 움직였다가 돌아왔습니다.`
+        : `되돌린 값 <strong>${fmt(c.rps[2]!)} rps</strong>, 처음과 <strong>+${diff.toFixed(1)}%</strong> 차이로 ±10% 기준을 넘었습니다. 2000m 블록의 첫 런도 혼자 낮았습니다. 방향은 분명하지만 목록의 배수는 확정값으로 적지 않았습니다.`, !pass);
+    };
+
+    const markSteps = () => stepButtons.forEach((b, i) => {
+      if (i <= reached) b.setAttribute('data-state', 'ok');
+      else if (i === reached + 1) b.setAttribute('data-state', 'next');
+      else b.removeAttribute('data-state');
+    });
+    const goTo = async (upto: number, ms = duration.draw) => {
+      const alive = scene.begin();
+      reached = upto;
+      markSteps();
+      writeValues(upto);
+      explain(upto);
+      const ok = await scene.go(target(upto), ms);
+      if (!ok || !alive()) return;
+      const l = layout;
+      const r = cell().rps[upto];
+      if (r !== null) {
+        const yTop = l.base - ((l.base - l.top) * r) / MAX_RPS;
+        landRing(root, { x: l.cx[upto], y: (yTop + l.base) / 2, w: l.barW + 6, h: l.base - yTop + 6 });
+      }
+    };
+
+    stepButtons.forEach((button) => button.addEventListener('click', () => { void goTo(Number(button.dataset.step)); }));
+    const refresh = () => {
+      epButtons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.ep === ep)));
+      cacheButtons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.cache === cache)));
+      void goTo(reached, duration.move);
+    };
+    epButtons.forEach((b) => b.addEventListener('click', () => { ep = b.dataset.ep!; refresh(); }));
+    cacheButtons.forEach((b) => b.addEventListener('click', () => { cache = b.dataset.cache!; refresh(); }));
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      scene.redraw();
+    });
+    reached = 0;
+    markSteps();
+    writeValues(0);
+    explain(0);
+    scene.set(target(0));
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="limit-round-trip"] .scene-note { min-height: 4.2em; }
+  [data-blog-demo="limit-round-trip"] .scene-chips { margin-bottom: 10px; }
+  [data-blog-demo="limit-round-trip"] .db-demo-controls { flex-wrap: wrap; }
+  [data-blog-demo="limit-round-trip"] .lrt-tick { fill: var(--slate); }
+  [data-blog-demo="limit-round-trip"] .lrt-grid { stroke: var(--hairline); stroke-dasharray: 2 5; }
+  [data-blog-demo="limit-round-trip"] .lrt-slot { fill: color-mix(in srgb, var(--surface) 60%, transparent); stroke: var(--hairline); stroke-dasharray: 3 4; }
+  [data-blog-demo="limit-round-trip"] .lrt-slot.is-missing { stroke: var(--muted); stroke-dasharray: 2 5; fill: none; }
+  [data-blog-demo="limit-round-trip"] .lrt-value { fill: var(--ink); font-family: var(--font-mono); font-size: 12px; font-weight: 800; transform-box: fill-box; transform-origin: center; }
+  [data-blog-demo="limit-round-trip"] .lrt-value.is-bump, [data-blog-demo="limit-round-trip"] .lrt-th-value.is-bump { animation: scene-pop 420ms ease-out; }
+  [data-blog-demo="limit-round-trip"] .lrt-limit { fill: var(--slate); font-family: var(--font-mono); font-size: 12px; font-weight: 800; }
+  [data-blog-demo="limit-round-trip"] .lrt-limit.is-up { fill: var(--scene-flow-ink); }
+  [data-blog-demo="limit-round-trip"] .lrt-th-caption { fill: var(--scene-temp); font-weight: 800; }
+  [data-blog-demo="limit-round-trip"] .lrt-th-track { fill: none; stroke: var(--hairline); stroke-dasharray: 3 3; }
+  [data-blog-demo="limit-round-trip"] .lrt-th-bar { fill: color-mix(in srgb, var(--scene-temp) 55%, var(--surface)); stroke: var(--scene-temp); stroke-width: 1.1; }
+  [data-blog-demo="limit-round-trip"] .lrt-th-value { fill: var(--scene-temp); font-weight: 800; transform-box: fill-box; transform-origin: left center; }
+  [data-blog-demo="limit-round-trip"] .lrt-missing { fill: var(--muted); font-weight: 700; }
+  [data-blog-demo="limit-round-trip"] .lrt-ref { stroke: var(--ink); stroke-opacity: 0.55; stroke-width: 1.4; stroke-dasharray: 5 4; }
+  [data-blog-demo="limit-round-trip"] .lrt-band { fill: color-mix(in srgb, var(--scene-flow) 14%, transparent); stroke: var(--scene-flow); stroke-width: 1; stroke-dasharray: 3 3; }
+  [data-blog-demo="limit-round-trip"] .lrt-band-label { fill: var(--scene-flow-ink); font-weight: 700; }
+  [data-blog-demo="limit-round-trip"] .lrt-run { fill: var(--canvas); stroke: var(--scene-hue-cyan); stroke-width: 2; }
+  [data-blog-demo="limit-round-trip"] .lrt-run-label { fill: var(--slate); font-weight: 700; }
+  @media (prefers-reduced-motion: reduce) {
+    [data-blog-demo="limit-round-trip"] .lrt-value.is-bump, [data-blog-demo="limit-round-trip"] .lrt-th-value.is-bump { animation: none; }
+  }
+</style>

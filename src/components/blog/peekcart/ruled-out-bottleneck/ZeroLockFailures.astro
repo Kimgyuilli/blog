@@ -1,0 +1,222 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="zero-lock-failures" ariaLabel="같은 락 획득 실패 0 이 서로 다른 세 상황에서 나오는 모습을 비교하는 장면" title="&quot;락 획득 실패 0&quot;은 무엇을 말해 줄까요?" description="재고 예약 요청이 consumer 인스턴스에서 Redis 락을 거쳐 재고 행으로 갑니다. 상황을 바꿔 보면서 카운터는 그대로인데 뒤에서 무엇이 달라지는지 보세요.">
+  <div class="scene-chips" role="group" aria-label="상황">
+    <button type="button" class="scene-chip" data-case="0" aria-pressed="true" data-state="ok">(가) 인스턴스 1개, consumer 스레드 1개</button>
+    <button type="button" class="scene-chip" data-case="1" aria-pressed="false">(나) Redis 장애</button>
+    <button type="button" class="scene-chip" data-case="2" aria-pressed="false">(다) 인스턴스 3</button>
+    <button type="button" class="scene-chip" data-case="3" aria-pressed="false">락 제거, @Version 단일화</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="왼쪽의 order.created 이벤트가 product-service 인스턴스로 가고, Redis 락 상자를 지나 오른쪽의 재고 행에 도착합니다. 재고 행 앞에는 @Version 검사가 있습니다. 인스턴스가 하나면 요청이 하나씩 지나가 다툴 상대가 없습니다. Redis 가 죽으면 락 상자는 장애 상태인데도 요청이 그대로 통과합니다. 인스턴스가 셋이면 요청이 락을 바로 얻고 지나가지만, 두 요청이 재고 행에서 부딪혀 하나가 @Version 검사에 튕겨 DLQ 로 갑니다. 락을 제거하면 락 상자가 사라지고 충돌한 요청은 재시도합니다."></svg>
+  </div>
+  <div class="zlf-counters" aria-live="polite">
+    <span class="zlf-tag" data-tag></span>
+    <span class="zlf-main"><i>락 획득 실패</i> <b data-c="fail">0</b></span>
+    <span>낙관적 락 충돌 <b data-c="conflict">0</b></span>
+    <span>DLQ <b data-c="dlq">0</b></span>
+    <span>주문 <b data-c="orders">2,977</b></span>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">카운터 값은 (가)와 (다)만 클러스터 측정값입니다. (나)는 Redis 예외가 나면 tryLock 이 true 를 돌려주는 코드 경로를 그린 것이고, "락 제거" 뒤의 부하 재측정은 하지 않아 값을 적지 않았습니다. 흘러가는 요청 수와 어느 요청이 충돌하는지는 예시이며, (다)에서 두 consumer 가 동시에 진행하는 모습은 로컬에서 재현하지 않은 도식입니다. (다)의 런에서는 락이 없는 재고 복구 경로도 함께 돌았고, 충돌 7건이 어느 경로끼리 부딪힌 것인지는 기록하지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { createScene, duration, lerp, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createNode, createWall } from '@/scripts/blog/scene/parts';
+  import { createPacketLayer } from '@/scripts/blog/scene/packets';
+  import { watchDemoPlayback } from '@/scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: 카운터의 "락 획득 실패 0"은 네 상황 내내 그대로인데, 뒤에서는 (가) 요청이 줄지어 혼자 지나가고,
+  // (나) 장애 난 락을 그냥 통과하고, (다) 락은 통과했지만 재고 행에서 부딪혀 @Version 에 튕겨 DLQ 로 간다.
+  type State = { split: number; lock: number; down: number };
+  type Layout = { view: [number, number]; kafka: Point; inst: number; instY: number[]; lock: Point; db: Point; dlq: Point; wallX: number; nodeW: number; short: boolean };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: { view: [560, 290], kafka: { x: 60, y: 145 }, inst: 198, instY: [78, 145, 212], lock: { x: 322, y: 145 }, db: { x: 488, y: 112 }, dlq: { x: 488, y: 232 }, wallX: 428, nodeW: 96, short: false },
+    narrow: { view: [360, 300], kafka: { x: 34, y: 150 }, inst: 118, instY: [82, 150, 218], lock: { x: 208, y: 150 }, db: { x: 320, y: 112 }, dlq: { x: 320, y: 240 }, wallX: 274, nodeW: 68, short: true },
+  };
+  type Case = { tag: string; fail: string; conflict: string; dlq: string; orders: string; note: string; alert?: boolean };
+  const CASES: Case[] = [
+    { tag: '클러스터 측정', fail: '0', conflict: '0', dlq: '0', orders: '2,977', note: '인스턴스도 consumer 스레드도 하나라 요청이 <strong>한 줄로</strong> 지나갑니다. 락을 두고 다툴 상대가 없으니 부하를 얼마나 올려도 실패는 0 입니다.' },
+    { tag: '실측 없음, 코드 경로', fail: '0', conflict: '미측정', dlq: '미측정', orders: '미측정', note: 'Redis 가 죽으면 락 관리자가 <code>true</code> 를 돌려줘 요청이 <strong>락 없이 통과</strong>합니다. 락 획득 실패는 여전히 0 으로 남습니다.', alert: true },
+    { tag: '클러스터 측정', fail: '0', conflict: '7', dlq: '7', orders: '9,782', note: '인스턴스가 셋이어도 모두 락을 바로 얻었습니다. 락이 커밋 전에 풀려 두 요청이 재고 행에서 부딪혔고, 오버셀링은 <code>@Version</code> 이 막았습니다. 실패 0 옆에서 충돌 7, DLQ 7 이 나왔습니다.', alert: true },
+    { tag: '부하 재측정 없음', fail: '지표 없음', conflict: '미측정', dlq: '미측정', orders: '미측정', note: '락을 걷어 내면 "락 획득 실패"라는 지표 자체가 없어집니다. 충돌은 <code>@Version</code> 에서만 보이고, jitter 를 넣은 재시도가 다시 시도합니다.' },
+  ];
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="zero-lock-failures"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const tag = demo.querySelector<HTMLElement>('[data-tag]')!;
+    const counter = (k: string) => demo.querySelector<HTMLElement>(`[data-c="${k}"]`)!;
+    const caseButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-case]')];
+    let layout = LAYOUTS.wide;
+    let current = 0;
+
+    const lanes = svg('g', {}, root);
+    const routes = [0, 1, 2].map(() => svg('path', { class: 'zlf-route' }, lanes));
+    const kafka = createNode(root, { label: 'Kafka', hue: 'var(--scene-hue-gray)', sub: 'order.created' });
+    const insts = [0, 1, 2].map((i) => createNode(root, { label: `인스턴스 ${i + 1}`, hue: 'var(--scene-hue-violet)' }));
+    const lock = createNode(root, { label: 'Redis 락', hue: 'var(--scene-hue-pink)', sub: '획득 후 해제' });
+    lock.group.classList.add('is-sans-sub');
+    const strike = svg('line', { class: 'zlf-strike' }, root);
+    const db = createNode(root, { label: '재고 행', hue: 'var(--scene-hue-amber)', sub: '@Version' });
+    const dlq = createNode(root, { label: 'DLQ', hue: 'var(--scene-hue-gray)' });
+    const wall = createWall(root, 'version 검사');
+    const packets = createPacketLayer(root);
+
+    const scene = createScene<State>({ split: 0, lock: 1, down: 0 }, (s) => {
+      const l = layout;
+      const w = l.nodeW;
+      kafka.setBox({ ...l.kafka, w: l.short ? 64 : 108, h: 44 });
+      insts.forEach((node, i) => {
+        const y = lerp(l.instY[1], l.instY[i], s.split);
+        node.setBox({ x: l.inst, y, w, h: 36 });
+        node.group.style.opacity = String(i === 1 ? 1 : s.split);
+      });
+      insts[1].group.querySelector('.scene-node-name')!.textContent = l.short ? '인스턴스' : s.split > 0.5 ? '인스턴스 2' : '인스턴스 1';
+      insts[0].group.querySelector('.scene-node-name')!.textContent = l.short ? '인스턴스' : '인스턴스 1';
+      insts[2].group.querySelector('.scene-node-name')!.textContent = l.short ? '인스턴스' : '인스턴스 3';
+      lock.setBox({ ...l.lock, w: l.short ? 80 : 98, h: 54 });
+      lock.group.style.opacity = String(0.15 + 0.85 * s.lock);
+      lock.group.classList.toggle('is-error', s.down > 0.5);
+      setAttrs(strike, { x1: l.lock.x - 40, x2: l.lock.x - 40 + 80 * Math.min(1, (1 - s.lock) * 3), y1: l.lock.y, y2: l.lock.y, opacity: s.lock < 0.98 ? 1 : 0 });
+      db.setBox({ ...l.db, w: l.short ? 70 : 108, h: 50 });
+      dlq.setBox({ ...l.dlq, w: l.short ? 70 : 108, h: 34 });
+      wall.place({ x: l.wallX, y1: l.db.y - 30, y2: l.db.y + 30 }, { show: 1, ghost: 0 }, { x: l.wallX, y: l.db.y + 46 });
+      routes.forEach((route, i) => {
+        const y = lerp(l.instY[1], l.instY[i], s.split);
+        const via = s.lock > 0.5 ? `L ${l.lock.x} ${l.lock.y} ` : '';
+        setAttrs(route, { d: `M ${l.kafka.x} ${l.kafka.y} L ${l.inst} ${y} ${via}L ${l.db.x} ${l.db.y}`, opacity: i === 1 ? 1 : s.split });
+      });
+    });
+
+    const setCounters = (c: Case) => {
+      tag.textContent = c.tag;
+      const write = (k: string, v: string) => {
+        const el = counter(k);
+        if (el.textContent !== v) { el.textContent = v; el.classList.remove('is-bump'); void el.offsetWidth; el.classList.add('is-bump'); }
+      };
+      write('fail', c.fail);
+      write('conflict', c.conflict);
+      write('dlq', c.dlq);
+      write('orders', c.orders);
+      demo.querySelector('.zlf-main')!.classList.toggle('is-struck', c.fail === '지표 없음');
+      counter('conflict').classList.toggle('is-danger', c.conflict === '7');
+      counter('dlq').classList.toggle('is-danger', c.dlq === '7');
+    };
+
+    const sleep = (ms: number) => scene.pause(ms);
+    const flow = async (k: number, alive: () => boolean) => {
+      const l = layout;
+      const lockHalf = (l.short ? 80 : 98) / 2;
+      const instPos = (i: number) => ({ x: l.inst + l.nodeW / 2 + 14, y: k === 0 ? l.instY[1] : l.instY[i] });
+      const lockIn = { x: l.lock.x - lockHalf - 14, y: l.lock.y };
+      const lockOut = { x: l.lock.x + lockHalf + 14, y: l.lock.y };
+      const atWall = { x: l.wallX - 4, y: l.db.y };
+      const dbIn = { x: l.wallX + 2, y: l.db.y };
+      const single = async (i: number, conflictAt: boolean) => {
+        const p = packets.spawn({ label: '예약', tone: 'dep', at: { x: l.kafka.x + (l.short ? 32 : 54), y: l.kafka.y } });
+        const out = instPos(i);
+        if (!(await p.travel([{ x: l.inst - l.nodeW / 2 - 18, y: out.y }], 460))) return;
+        if (!(await p.travel([out], 220))) return;
+        if (k !== 3) {
+          if (!(await p.travel([lockIn], 420))) return;
+          if (k === 1) { lock.flash('is-shaking'); p.relabel('락 없음', 'temp'); }
+          else { lock.flash('is-ok'); }
+          if (!(await p.travel([lockOut], 260))) return;
+        }
+        if (!conflictAt) {
+          if (!(await p.travel([dbIn], 520))) return;
+          db.flash('is-ok');
+          await p.land(false);
+          return;
+        }
+        if (!(await p.bounce(atWall))) return;
+        p.relabel(k === 3 ? '재시도' : '충돌', k === 3 ? 'temp' : 'danger');
+        if (k === 3) {
+          if (!(await sleep(700 + i * 120).then(() => alive()))) return;
+          if (!(await p.travel([dbIn], 520))) return;
+          p.relabel('예약', 'flow');
+          db.flash('is-ok');
+          await p.land(false);
+          return;
+        }
+        if (!(await p.travel([{ x: l.wallX - 20, y: l.dlq.y }, { x: l.dlq.x - (l.short ? 35 : 54) - 14, y: l.dlq.y }], 720))) return;
+        dlq.flash('is-shaking');
+        await p.land(true);
+      };
+      const plan: [number, boolean, number][] = k === 0
+        ? [[1, false, 0], [1, false, 1300], [1, false, 2600]]
+        : k === 1
+          ? [[0, false, 0], [1, false, 300], [2, false, 600]]
+          : [[0, false, 0], [1, false, 120], [2, true, 160]];
+      await Promise.all(plan.map(async ([i, c, delay]) => {
+        await sleep(delay);
+        if (!alive()) return;
+        await single(i, c);
+      }));
+    };
+
+    const select = async (k: number) => {
+      current = k;
+      caseButtons.forEach((b) => {
+        const on = Number(b.dataset.case) === k;
+        b.setAttribute('aria-pressed', String(on));
+        if (on) b.setAttribute('data-state', 'ok'); else b.removeAttribute('data-state');
+      });
+      const alive = scene.begin();
+      packets.clear();
+      const c = CASES[k];
+      setCounters(c);
+      lock.setSub(k === 1 ? (layout.short ? '장애' : '장애, true 반환') : k === 3 ? '' : '획득 후 해제');
+      note.innerHTML = c.note;
+      note.classList.toggle('is-alert', Boolean(c.alert));
+      const next: State = { split: k === 0 ? 0 : 1, lock: k === 3 ? 0 : 1, down: k === 1 ? 1 : 0 };
+      if (!(await scene.go(next, k === 3 || scene.state.lock < 1 ? duration.draw : duration.move)) || !alive()) return;
+      await flow(k, alive);
+    };
+    caseButtons.forEach((b) => b.addEventListener('click', () => { void select(Number(b.dataset.case)); }));
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      packets.clear();
+      kafka.setSub(narrow ? '' : 'order.created');
+      wall.caption.textContent = narrow ? '' : 'version 검사';
+      if (current === 1) lock.setSub(narrow ? '장애' : '장애, true 반환');
+      scene.redraw();
+    });
+    note.innerHTML = CASES[0].note;
+    setCounters(CASES[0]);
+    let played = false;
+    watchDemoPlayback(demo, ({ shouldPlay }) => {
+      if (!shouldPlay || played) return;
+      played = true;
+      void select(current);
+    }, { threshold: 0.5 });
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="zero-lock-failures"] .scene-note { min-height: 4.2em; }
+  [data-blog-demo="zero-lock-failures"] .scene-chips { margin-bottom: 10px; }
+  [data-blog-demo="zero-lock-failures"] .zlf-route { fill: none; stroke: var(--hairline); stroke-width: 1.4; stroke-dasharray: 3 5; }
+  [data-blog-demo="zero-lock-failures"] .zlf-strike { stroke: var(--scene-danger); stroke-width: 2.4; stroke-linecap: round; }
+  .zlf-counters { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .zlf-counters span { display: inline-flex; align-items: baseline; gap: 6px; }
+  .zlf-counters .zlf-tag { font-weight: 700; color: var(--muted); }
+  .zlf-counters .zlf-main { padding: 2px 8px; border: 1px solid var(--hairline); border-radius: 8px; }
+  .zlf-counters b { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .zlf-counters b.is-danger { color: var(--scene-danger); }
+  .zlf-counters i { font-style: normal; }
+  .zlf-counters .zlf-main.is-struck i { text-decoration: line-through; text-decoration-color: var(--scene-danger); }
+  .zlf-counters .zlf-main.is-struck b { color: var(--muted); font-size: 0.85rem; }
+  .zlf-counters b.is-bump { animation: scene-pop 420ms ease-out; }
+  @media (prefers-reduced-motion: reduce) { .zlf-counters b.is-bump { animation: none; } }
+</style>

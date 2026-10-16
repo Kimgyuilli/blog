@@ -1,0 +1,229 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="throttle-average-lens" ariaLabel="같은 40초를 평균 사용량 하나로 볼 때와 100ms period 별로 볼 때를 비교하는 장면" title="평균이 한도 아래면, 한도에 막힌 적이 없을까요?" description="평균 사용량은 한도 0.5코어의 3분의 1 남짓입니다. 이 40초 동안 MySQL 이 한도에 막힌 period 가 있었을지 예상한 뒤, 같은 구간을 period 별로 펼쳐 보세요.">
+  <DemoControls ariaLabel="보는 방법">
+    <button type="button" data-lens="0" aria-pressed="true">kubectl top 처럼 평균만 보기</button>
+    <button type="button" data-lens="1" aria-pressed="false" data-state="next">cpu.stat 처럼 period 별로 보기</button>
+  </DemoControls>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="위쪽은 클러스터에서 kubectl top 으로 10초마다 찍은 MySQL CPU 샘플 다섯 개로, 356m 가 두 번, 207m 가 세 번 같은 값으로 반복됩니다. 아래쪽은 로컬 재현입니다. 평균으로 보면 0.18코어 막대가 한도 0.5코어 선 아래에 있습니다. period 별로 보면 같은 40초가 100ms period 393칸으로 펼쳐지고, 그중 107칸이 quota 를 다 써서 스로틀된 period 로 표시됩니다."></svg>
+  </div>
+  <div class="tal-readouts" aria-label="로컬 재현 수치">
+    <span>평균 사용량 <b>0.18코어</b> / 한도 <b>0.5코어</b></span>
+    <span>스로틀된 period <b data-count>?</b> / 393</span>
+    <span>throttled_usec 합 <b data-usec>?</b></span>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">위쪽 "클러스터 기록"과 아래쪽 "로컬 재현"은 조건이 다른 별개의 측정이라 한 축에 놓지 않았습니다. 로컬 재현은 Docker --cpus 0.5 의 MySQL 8.0.46 에 세션 4개가 조회 3,000회 후 1초씩 쉬는 버스트 부하를 40초 동안 건 결과이며, 측정한 것은 합계 카운터(393 period 중 107 period 스로틀, throttled_usec 합 23.2초)뿐입니다. period 별 칸에서 어느 칸이 스로틀됐는지의 배치는 원리를 보이기 위한 도식이고, 실제 period 별 시계열은 기록하지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, clamp01, createScene, duration, ease, lerp, setAttrs, svg, watchNarrow } from '@/scripts/blog/scene/core';
+  import { createChip, createWall } from '@/scripts/blog/scene/parts';
+
+  // 독자가 볼 변화: 한도선 아래에 있던 평균 막대가 100ms period 393칸으로 갈라져 펼쳐지고, 그중 107칸이 "quota 소진 후 대기"로 칠해진다.
+  const N = 393;
+  const THROTTLED = 107;
+  const SAMPLES = ['356m', '356m', '207m', '207m', '207m'];
+  // 버스트(조회 3,000회 후 1초 휴식)가 반복되는 부하라 스로틀된 period 가 몰려 나타나도록 배치합니다. 개수만 측정값입니다.
+  const throttledOrder: number[] = [];
+  for (let i = 0; i < N && throttledOrder.length < THROTTLED; i += 1) if (i % 11 < 3) throttledOrder.push(i);
+  const rank = new Map(throttledOrder.map((index, k) => [index, k]));
+
+  type State = { lens: number; mark: number };
+  type Layout = {
+    view: [number, number]; x0: number; x1: number; maxCore: number;
+    sampleX: (i: number) => number; chipW: number; clusterCaption: string; localCaption: string;
+    bar: { y: number; h: number }; cols: number; gridTop: number; rowPitch: number; cellH: number; legendY: number;
+  };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 352], x0: 40, x1: 520, maxCore: 0.6,
+      sampleX: (i) => 100 + i * 90, chipW: 54,
+      clusterCaption: '클러스터 기록, kubectl top pod 10초 간격, MySQL (한도 500m)',
+      localCaption: '로컬 재현, docker --cpus 0.5, 40초 버스트 부하',
+      bar: { y: 168, h: 40 }, cols: 30, gridTop: 150, rowPitch: 12.5, cellH: 10, legendY: 340,
+    },
+    narrow: {
+      view: [360, 386], x0: 20, x1: 340, maxCore: 0.6,
+      sampleX: (i) => 52 + i * 64, chipW: 54,
+      clusterCaption: '클러스터 기록, kubectl top 10초 간격',
+      localCaption: '로컬 재현, --cpus 0.5, 40초',
+      bar: { y: 168, h: 40 }, cols: 21, gridTop: 150, rowPitch: 10.5, cellH: 8, legendY: 372,
+    },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="throttle-average-lens"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const countText = demo.querySelector<HTMLElement>('[data-count]')!;
+    const usecText = demo.querySelector<HTMLElement>('[data-usec]')!;
+    const buttons = [...demo.querySelectorAll<HTMLButtonElement>('[data-lens]')];
+    let layout = LAYOUTS.wide;
+
+    const text = (cls: string, content = '', anchor: 'start' | 'middle' | 'end' = 'start') => {
+      const t = svg('text', { class: cls, 'text-anchor': anchor }, root);
+      t.textContent = content;
+      return t;
+    };
+
+    // ── 클러스터 기록: 같은 값이 반복되는 샘플 다섯 개 ──
+    const clusterCaption = text('scene-caption');
+    const chips = SAMPLES.map((label) => {
+      const chip = createChip(root, { label, hue: 'var(--scene-hue-amber)', width: 54 });
+      return chip;
+    });
+    const brackets = [0, 1].map(() => svg('path', { class: 'tal-bracket' }, root));
+    const bracketLabels = [text('scene-label is-sans tal-repeat', '같은 값 2번', 'middle'), text('scene-label is-sans tal-repeat', '같은 값 3번', 'middle')];
+    const divider = svg('line', { class: 'tal-divider' }, root);
+
+    // ── 로컬 재현 ──
+    const localCaption = text('scene-caption');
+    const track = svg('rect', { class: 'tal-track', rx: 8 }, root);
+    const avgBar = svg('rect', { class: 'tal-avg', rx: 8 }, root);
+    const avgLabel = text('scene-label is-sans tal-avg-label', '평균 0.18코어', 'start');
+    const limit = createWall(root, '한도 0.5코어');
+    const cells = Array.from({ length: N }, () => svg('rect', { class: 'tal-cell', rx: 2 }, root));
+    const gridCaption = text('scene-label is-sans tal-grid-caption', '');
+    const legend = {
+      run: svg('rect', { class: 'tal-cell', rx: 2, width: 12, height: 9 }, root),
+      runText: text('scene-label is-sans tal-run-text', '100ms period 하나'),
+      stop: svg('rect', { class: 'tal-cell is-throttled', rx: 2, width: 12, height: 9 }, root),
+      stopText: text('scene-label is-sans tal-stop-text', 'quota 소진 후 남은 시간 대기'),
+    };
+
+    let lastCount = -1;
+    const scene = createScene<State>({ lens: 0, mark: 0 }, (s) => {
+      const l = layout;
+      const xOf = (core: number) => l.x0 + ((l.x1 - l.x0) * core) / l.maxCore;
+
+      // 클러스터 기록
+      setAttrs(clusterCaption, { x: 16, y: 22 });
+      clusterCaption.textContent = l.clusterCaption;
+      chips.forEach((chip, i) => chip.place({ x: l.sampleX(i), y: 50 }));
+      const spans: [number, number][] = [[0, 1], [2, 4]];
+      spans.forEach(([a, b], k) => {
+        const xa = l.sampleX(a) - l.chipW / 2 + 4;
+        const xb = l.sampleX(b) + l.chipW / 2 - 4;
+        setAttrs(brackets[k], { d: `M ${xa} 66 L ${xa} 71 L ${xb} 71 L ${xb} 66` });
+        setAttrs(bracketLabels[k], { x: (xa + xb) / 2, y: 86 });
+      });
+      setAttrs(divider, { x1: 12, x2: l.view[0] - 12, y1: 100, y2: 100 });
+
+      // 평균 보기: 막대와 한도선. period 보기로 갈수록 흐려집니다.
+      setAttrs(localCaption, { x: 16, y: 124 });
+      localCaption.textContent = l.localCaption;
+      const avgOn = clamp01(1 - s.lens * 1.6);
+      setAttrs(track, { x: l.x0, y: l.bar.y, width: l.x1 - l.x0, height: l.bar.h, opacity: avgOn });
+      setAttrs(avgBar, { x: l.x0, y: l.bar.y, width: xOf(0.18) - l.x0, height: l.bar.h, opacity: avgOn });
+      setAttrs(avgLabel, { x: xOf(0.18) + 8, y: l.bar.y + l.bar.h / 2 + 4, opacity: avgOn });
+      limit.place({ x: xOf(0.5), y1: l.bar.y - 12, y2: l.bar.y + l.bar.h + 12 }, { show: avgOn, ghost: 0 }, { x: xOf(0.5), y: l.bar.y + l.bar.h + 30 });
+
+      // period 보기: 평균 막대 안에 겹쳐 있던 칸들이 시간 순서대로 갈라져 나갑니다.
+      const pitch = (l.x1 - l.x0) / l.cols;
+      const cellW = pitch - 2.4;
+      const S = 0.9;
+      cells.forEach((cell, i) => {
+        const p = ease.standard(clamp01(s.lens * (1 + S) - (S * i) / N));
+        const col = i % l.cols;
+        const row = Math.floor(i / l.cols);
+        const home = { x: l.x0 + col * pitch + 1.2, y: l.gridTop + row * l.rowPitch };
+        // 출발점: 평균 막대 안 (막대 길이 안에서 고르게)
+        const seed = (i * 37) % 97;
+        const start = { x: l.x0 + 4 + ((xOf(0.18) - l.x0 - 16) * seed) / 97, y: l.bar.y + 6 + ((i * 13) % 5) * 6 };
+        const k = rank.get(i);
+        const marked = k !== undefined && s.mark * THROTTLED > k + 0.001;
+        setAttrs(cell, {
+          x: lerp(start.x, home.x, p), y: lerp(start.y, home.y, p),
+          width: lerp(8, cellW, p), height: lerp(8, l.cellH, p),
+          opacity: s.lens <= 0.001 ? 0 : clamp01(p * 3),
+        });
+        cell.classList.toggle('is-throttled', marked);
+      });
+      const gridOn = clamp01((s.lens - 0.6) * 2.5);
+      gridCaption.textContent = '같은 40초를 100ms period 393칸으로, 왼쪽 위부터 시간 순';
+      setAttrs(gridCaption, { x: l.x0, y: l.gridTop - 6, opacity: gridOn });
+
+      setAttrs(legend.run, { x: l.x0, y: l.legendY - 9, opacity: gridOn });
+      setAttrs(legend.runText, { x: l.x0 + 18, y: l.legendY, opacity: gridOn });
+      const stopX = l.x0 + (layout === LAYOUTS.wide ? 150 : 120);
+      setAttrs(legend.stop, { x: stopX, y: l.legendY - 9, opacity: gridOn });
+      setAttrs(legend.stopText, { x: stopX + 18, y: l.legendY, opacity: gridOn });
+
+      const count = Math.round(s.mark * THROTTLED);
+      if (s.lens < 0.5) { countText.textContent = '?'; usecText.textContent = '?'; lastCount = -1; }
+      else if (count !== lastCount) {
+        lastCount = count;
+        countText.textContent = String(count);
+        if (count === THROTTLED) { bumpText(usecText, '23.2초'); countText.classList.add('is-temp'); }
+        else { usecText.textContent = '계산 중'; countText.classList.remove('is-temp'); }
+      }
+    });
+
+    const say = (html: string, alert = false) => {
+      note.innerHTML = html;
+      note.classList.toggle('is-alert', alert);
+      note.classList.remove('is-entering');
+      void note.offsetWidth;
+      note.classList.add('is-entering');
+    };
+    const prompt = () => say('<code>kubectl top</code> 처럼 보면 평균 <strong>0.18코어</strong> 막대가 한도선 한참 아래에 있습니다. 위쪽 클러스터 샘플도 10초마다 물었는데 같은 값이 반복됩니다. 이 40초 동안 한도에 막힌 period 가 있었을까요?');
+
+    const show = async (lens: number) => {
+      buttons.forEach((b) => { b.setAttribute('aria-pressed', String(Number(b.dataset.lens) === lens)); b.removeAttribute('data-state'); });
+      const alive = scene.begin();
+      if (lens === 0) {
+        prompt();
+        await scene.go({ lens: 0, mark: 0 }, duration.draw);
+        return;
+      }
+      say('같은 40초를 100ms period 로 펼칩니다.');
+      if (!(await scene.go({ lens: 1, mark: 0 }, 1500)) || !alive()) return;
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      say('quota 를 다 써서 남은 시간을 기다린 period 를 칠합니다.');
+      if (!(await scene.go({ lens: 1, mark: 1 }, 1600, ease.linear)) || !alive()) return;
+      say('평균은 한도의 3분의 1 남짓이었지만, 393개 period 중 <strong>107개(27%)</strong>에서 quota 를 다 쓰고 기다렸습니다. 버스트가 몰린 period 에는 quota 가 초반에 바닥나고, 쉬는 period 가 그 기다림을 평균에서 지웁니다.', true);
+    };
+    buttons.forEach((button) => button.addEventListener('click', () => { void show(Number(button.dataset.lens)); }));
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      scene.redraw();
+    });
+    prompt();
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="throttle-average-lens"] .scene-note { min-height: 4.2em; }
+  [data-blog-demo="throttle-average-lens"] .tal-divider { stroke: var(--hairline); stroke-dasharray: 3 5; }
+  [data-blog-demo="throttle-average-lens"] .tal-bracket { fill: none; stroke: var(--scene-temp); stroke-width: 1.3; }
+  [data-blog-demo="throttle-average-lens"] .tal-repeat { fill: var(--scene-temp); font-weight: 700; }
+  [data-blog-demo="throttle-average-lens"] .tal-track { fill: color-mix(in srgb, var(--surface) 70%, transparent); stroke: var(--hairline); stroke-dasharray: 3 4; }
+  [data-blog-demo="throttle-average-lens"] .tal-avg { fill: color-mix(in srgb, var(--scene-hue-amber) 58%, var(--surface)); stroke: var(--scene-hue-amber); stroke-width: 1.3; }
+  [data-blog-demo="throttle-average-lens"] .tal-avg-label { fill: var(--ink); font-weight: 800; }
+  [data-blog-demo="throttle-average-lens"] .tal-cell { fill: color-mix(in srgb, var(--scene-dep) 10%, var(--surface)); stroke: color-mix(in srgb, var(--scene-dep) 40%, transparent); stroke-width: 0.8; transition: fill 200ms ease, stroke 200ms ease; }
+  [data-blog-demo="throttle-average-lens"] .tal-cell.is-throttled { fill: color-mix(in srgb, var(--scene-temp) 62%, var(--surface)); stroke: var(--scene-temp); stroke-width: 1.2; }
+  [data-blog-demo="throttle-average-lens"] .tal-grid-caption { fill: var(--slate); font-weight: 700; }
+  [data-blog-demo="throttle-average-lens"] .tal-run-text { fill: var(--slate); font-weight: 700; }
+  [data-blog-demo="throttle-average-lens"] .tal-stop-text { fill: var(--scene-temp); font-weight: 700; }
+  [data-blog-demo="throttle-average-lens"] .scene-wall-caption { font-size: 11px; }
+  .tal-readouts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .tal-readouts span { display: inline-flex; align-items: baseline; gap: 6px; }
+  .tal-readouts b { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .tal-readouts b.is-temp { color: var(--scene-temp); }
+  .tal-readouts b.is-bump { animation: scene-pop 420ms ease-out; }
+  @media (prefers-reduced-motion: reduce) {
+    .tal-readouts b.is-bump { animation: none; }
+    [data-blog-demo="throttle-average-lens"] .tal-cell { transition: none; }
+  }
+</style>
