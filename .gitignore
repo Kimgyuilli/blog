@@ -11,3 +11,6 @@ dist/
 .dev.vars*
 !.dev.vars.example
 !.env.example
+
+# humanize-korean work folders
+_workspace/

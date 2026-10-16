@@ -14,6 +14,13 @@
 | `developer-blog-writer` | 글을 쓰거나 고칠 때 (문체, 글 유형, 저장소 규칙) |
 | `publish-from-obsidian` | Obsidian에서 쓴 글과 첨부 이미지를 가져올 때 |
 | `blog-interactive-demo` | 글 속 애니메이션·인터랙티브 데모를 만들거나 고칠 때 |
+| `blog-post-pipeline` | 브리프를 받아 연재 글을 초안부터 게시까지 진행할 때 (humanize-korean 윤문 기본, 승인 게이트 3개, 독립 리뷰 2개) |
+
+## 글 검사와 게시
+
+- `npm run lint:post <글>`: voice.md 의 기계적 규칙(기호, 금지 표현, 원어, 조사 띄어쓰기, 내부 번호)을 글과 글이 import 한 데모 문구에 검사합니다. error 가 있으면 실패합니다.
+- `npm run guard:rewrite -- check <윤문 전> <윤문 후>`: humanize-korean 윤문이 수치, 코드, 표, 헤딩, 캡션, 링크, 추정과 측정 범위 표지를 그대로 두었는지 대조합니다. `extract`, `apply` 로 글 본문을 꺼내고 되돌려 넣습니다.
+- `npm run publish:post -- <글> --image <URL>`: 썸네일을 1600x900 으로 넣고 draft 를 풀고, 검사와 빌드를 통과하면 커밋하고 push 합니다. 사용자가 사진과 push 를 승인한 뒤에만 실행합니다.
 
 ## 글 속 애니메이션·인터랙티브 데모
 

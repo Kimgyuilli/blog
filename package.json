@@ -16,7 +16,10 @@
     "sync:post-images": "node scripts/sync-post-images.mjs",
     "sync:portfolio": "node scripts/sync-portfolio.mjs",
     "sync:skills": "node scripts/sync-skills.mjs",
-    "check:skills": "node scripts/sync-skills.mjs --check"
+    "check:skills": "node scripts/sync-skills.mjs --check",
+    "lint:post": "node scripts/lint-post.mjs",
+    "publish:post": "node scripts/publish-post.mjs",
+    "guard:rewrite": "node scripts/rewrite-guard.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^13.5.3",
