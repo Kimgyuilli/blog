@@ -1,0 +1,253 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="where-is-the-time" ariaLabel="975초 태스크를 JUnit time 합계와 클래스 시작 시각 두 기준으로 나눠 보는 장면" title="리포트에 없는 844초는 어디에 있을까요?" description="위 막대는 JUnit XML 의 time 합계로 나눈 975초입니다. 보이지 않는 844초가 시간축 어디에 몰려 있을지 하나를 고르면, 같은 조각들이 클래스 시작 시각에 맞춰 아래 시간축으로 옮겨집니다.">
+  <div class="scene-chips" role="group" aria-label="예측" data-guess-group>
+    <span class="scene-chips-label">예측</span>
+    <button type="button" class="scene-chip" data-guess="spread" data-state="next">클래스 사이에 고르게</button>
+    <button type="button" class="scene-chip" data-guess="front">맨 앞에 몰려서</button>
+    <button type="button" class="scene-chip" data-guess="tail">맨 뒤에 몰려서</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="위쪽 막대는 테스트 본문 131초와 어디에도 속하지 않은 844초로 나뉩니다. 공개하면 조각들이 아래 시간축으로 옮겨집니다. 테스트 본문 조각은 13시 13분 53초부터 13시 21분 14초 사이에 클래스 간격을 두고 흩어지고, 그 사이 공백은 약 310초입니다. 마지막 클래스 뒤에 약 515초의 빈 구간이 하나로 남습니다. 전환 후 실행으로 바꾸면 막대 전체가 약 223초로 줄고 마지막 구간은 약 5초가 됩니다."></svg>
+  </div>
+  <div class="scene-chips wit-run" role="group" aria-label="실행" data-run-group>
+    <span class="scene-chips-label">CI 실행</span>
+    <button type="button" class="scene-chip" data-run="0" aria-pressed="true" disabled>전환 전</button>
+    <button type="button" class="scene-chip" data-run="1" aria-pressed="false" disabled>컨테이너 공유 후</button>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">구간 길이는 CI 실행 한 번씩의 JUnit XML timestamp 와 Gradle 로그 시각으로 계산했습니다(전환 전 975초, 공유 후 약 223초, 둘 다 태스크 헤더에서 다음 태스크 헤더까지). 첫 구간은 Gradle 태스크 헤더가 늦게 찍혀 근사값이고, 공유 후 첫 구간 45초가 무엇으로 이뤄졌는지는 나눠 재지 않았습니다. 클래스 구간 안에서 테스트 본문 조각을 같은 크기, 같은 간격으로 늘어놓은 것은 단순화이며, 실제로는 가장 느린 클래스 하나가 63.5초였고 Spring 클래스 사이 간격은 대부분 11~13초였습니다. 로컬 재현 값은 이 장면에 넣지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, clamp01, createScene, duration, ease, lerp, setAttrs, svg, watchNarrow } from '@/scripts/blog/scene/core';
+  import { landRing } from '@/scripts/blog/scene/parts';
+  import { watchDemoPlayback } from '@/scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: 위 막대의 "보이지 않는 844초" 덩어리가 갈라져 아래 시간축으로 옮겨지면,
+  // 클래스 사이에는 얇은 공백만 흩어지고 절반 넘는 덩어리가 마지막 클래스 뒤에 통째로 남는다.
+  const N = 24; // 그림에 쓰는 본문 조각 수 (단순화)
+  type Run = { label: string; total: number; pre: number; body: number; gaps: number; tail: number; times: [string, string, string, string] };
+  const RUNS: Run[] = [
+    { label: '975초', total: 975.3, pre: 19.5, body: 131.2, gaps: 310.0, tail: 514.6, times: ['13:13:34', '13:13:53', '13:21:14', '13:29:49'] },
+    { label: '약 223초', total: 222.9, pre: 45.0, body: 138.2, gaps: 35.1, tail: 4.6, times: ['08:44:47', '08:45:32', '08:48:25', '08:48:30'] },
+  ];
+  type Layout = { view: [number, number]; x0: number; x1: number; topY: number; botY: number; h: number; short: boolean };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: { view: [560, 252], x0: 20, x1: 540, topY: 46, botY: 166, h: 26, short: false },
+    narrow: { view: [360, 262], x0: 14, x1: 346, topY: 50, botY: 172, h: 24, short: true },
+  };
+  // 조각 목록: 본문 N개, 첫 구간 1개, 클래스 사이 공백 N-1개, 꼬리 1개.
+  type Piece = { kind: 'body' | 'pre' | 'gap' | 'tail'; i: number };
+  const PIECES: Piece[] = [
+    ...Array.from({ length: N }, (_, i) => ({ kind: 'body' as const, i })),
+    { kind: 'pre', i: 0 },
+    ...Array.from({ length: N - 1 }, (_, i) => ({ kind: 'gap' as const, i })),
+    { kind: 'tail', i: 0 },
+  ];
+  type State = { reveal: number; run: number; marks: number };
+  const NOTES = {
+    idle: '위 막대는 JUnit 리포트가 말해 주는 것입니다. <strong>테스트 본문 131초</strong>와, 어느 테스트에도 붙지 않은 <strong>844초</strong>. 처음 분석은 844초를 클래스 수로 나눠 클래스마다 같은 비용으로 봤습니다.',
+    spread: '처음 분석의 가정과 같은 예측입니다. 시작 시각으로 늘어놓으면 클래스 사이 공백은 다 더해도 약 310초이고, <strong>나머지 약 515초는 마지막 클래스가 끝난 뒤</strong>에 한 덩어리로 있습니다.',
+    front: '첫 클래스 전 구간은 약 20초뿐입니다. 클래스 사이 공백이 약 310초, 그리고 <strong>마지막 클래스가 끝난 뒤 약 515초</strong>가 한 덩어리로 남습니다.',
+    tail: '맞습니다. 클래스 사이 공백은 약 310초이고, <strong>마지막 클래스가 끝난 뒤 약 515초</strong> 동안 테스트 JVM 이 아무 테스트도 돌리지 않은 채 무언가를 하고 있었습니다.',
+    after: '컨테이너를 모듈에 한 벌만 띄운 뒤의 CI 실행입니다. 같은 축척에서 막대 전체가 약 223초로 줄었고, <strong>마지막 클래스 뒤 구간은 약 5초</strong>입니다. 테스트 본문 합은 138초로 거의 그대로입니다.',
+  } as const;
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="where-is-the-time"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const guessButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-guess]')];
+    const runButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-run]')];
+    let layout = LAYOUTS.wide;
+    let guessed = false;
+
+    const topCaption = svg('text', { class: 'scene-caption' }, root);
+    const botCaption = svg('text', { class: 'scene-caption' }, root);
+    const topOutline = svg('rect', { class: 'wit-outline', rx: 4 }, root);
+    const botTrack = svg('rect', { class: 'scene-lane-track', rx: 4 }, root);
+    const topLabels = [svg('text', { class: 'scene-label is-sans wit-in-label' }, root), svg('text', { class: 'scene-label is-sans wit-in-label' }, root)];
+    const pieceEls = PIECES.map((p) => {
+      const el = svg('rect', { class: p.kind === 'body' ? 'scene-level-bar' : 'scene-level-gap', rx: p.kind === 'body' ? 1 : 2 }, root);
+      if (p.kind === 'body') el.style.setProperty('--node-hue', 'var(--scene-hue-amber)');
+      if (p.kind === 'tail') el.classList.add('wit-tail');
+      return el;
+    });
+    const ticks = [0, 1, 2, 3].map(() => ({ line: svg('line', { class: 'wit-tick' }, root), text: svg('text', { class: 'scene-label scene-label-dep wit-tick-text' }, root) }));
+    const marks = [0, 1, 2].map(() => ({
+      path: svg('path', { class: 'wit-brace' }, root),
+      text: svg('text', { class: 'scene-label is-sans wit-brace-text' }, root),
+    }));
+
+    const runAt = (s: State) => {
+      const a = RUNS[0];
+      const b = RUNS[1];
+      const k = clamp01(s.run);
+      return { pre: lerp(a.pre, b.pre, k), body: lerp(a.body, b.body, k), gaps: lerp(a.gaps, b.gaps, k), tail: lerp(a.tail, b.tail, k), total: lerp(a.total, b.total, k) };
+    };
+
+    const scene = createScene<State>({ reveal: 0, run: 0, marks: 0 }, (s) => {
+      const l = layout;
+      const px = (l.x1 - l.x0) / RUNS[0].total;
+      const r = runAt(s);
+      const sliver = r.body / N;
+      const gap = r.gaps / (N - 1);
+      const invisible = r.pre + r.gaps + r.tail;
+      setAttrs(topCaption, { x: l.x0, y: l.topY - 12 });
+      topCaption.textContent = l.short ? 'JUnit time 합계로 나누면' : 'JUnit XML 의 time 합계로 나누면';
+      setAttrs(botCaption, { x: l.x0, y: l.botY - 42, opacity: 0.35 + 0.65 * clamp01(s.reveal * 2) });
+      botCaption.textContent = l.short ? '클래스 시작 시각으로 늘어놓으면' : '같은 시간을 클래스 시작 시각으로 늘어놓으면';
+      setAttrs(topOutline, { x: l.x0, y: l.topY, width: r.total * px, height: l.h, opacity: 0.25 + 0.75 * s.reveal });
+      setAttrs(botTrack, { x: l.x0, y: l.botY, width: l.x1 - l.x0, height: l.h });
+
+      // 위 막대 안 라벨: 본문 / 보이지 않는 시간
+      const fadeTop = 1 - clamp01(s.reveal * 3);
+      setAttrs(topLabels[0], { x: l.x0 + (r.body * px) / 2, y: l.topY + l.h + 16, 'text-anchor': 'middle', opacity: fadeTop });
+      topLabels[0].textContent = `본문 ${r.body.toFixed(0)}초`;
+      setAttrs(topLabels[1], { x: l.x0 + r.body * px + (invisible * px) / 2, y: l.topY + l.h / 2 + 4, 'text-anchor': 'middle', opacity: fadeTop });
+      topLabels[1].textContent = l.short ? `어디에도 없는 ${invisible.toFixed(0)}초` : `어느 테스트에도 붙지 않은 ${invisible.toFixed(0)}초`;
+
+      // 위쪽 자리(시작)와 아래쪽 자리(끝)를 조각마다 구해 보간합니다.
+      let topCursor = l.x0;
+      const topX: number[] = [];
+      PIECES.forEach((p) => {
+        topX.push(topCursor);
+        topCursor += (p.kind === 'body' ? sliver : p.kind === 'pre' ? r.pre : p.kind === 'gap' ? gap : r.tail) * px;
+      });
+      const botX = (p: Piece) => {
+        const start = l.x0 + r.pre * px;
+        if (p.kind === 'pre') return l.x0;
+        if (p.kind === 'body') return start + p.i * (sliver + gap) * px;
+        if (p.kind === 'gap') return start + (p.i * (sliver + gap) + sliver) * px;
+        return start + (N * sliver + (N - 1) * gap) * px;
+      };
+      PIECES.forEach((p, idx) => {
+        const w = (p.kind === 'body' ? sliver : p.kind === 'pre' ? r.pre : p.kind === 'gap' ? gap : r.tail) * px;
+        // 조각마다 조금씩 늦게 출발해 물결처럼 옮겨집니다.
+        const order = p.kind === 'body' ? p.i / N : p.kind === 'gap' ? (p.i + 0.5) / N : p.kind === 'pre' ? 0 : 1;
+        const t = ease.standard(clamp01(s.reveal * 1.6 - order * 0.6));
+        const a = { x: topX[idx] + w / 2, y: l.topY + l.h / 2 };
+        const b = { x: botX(p) + w / 2, y: l.botY + l.h / 2 };
+        const lift = p.kind === 'tail' ? 10 : 18;
+        const pos = bowAt(a, b, t, Math.sin(Math.PI * t) * lift * (p.kind === 'body' ? 1 : -1));
+        setAttrs(pieceEls[idx], { x: pos.x - w / 2, y: pos.y - l.h / 2, width: Math.max(0.6, w), height: l.h, 'stroke-opacity': t });
+      });
+
+      // 시간축 눈금: 태스크 시작, 첫 클래스, 마지막 클래스 종료, 태스크 종료
+      const run = RUNS[s.run > 0.5 ? 1 : 0];
+      const edges = [l.x0, l.x0 + r.pre * px, l.x0 + (r.pre + r.body + r.gaps) * px, l.x0 + r.total * px];
+      ticks.forEach((tk, i) => {
+        const hideMid = l.short && (i === 1);
+        const crowded = s.run > 0.5 && (i === 2);
+        setAttrs(tk.line, { x1: edges[i], x2: edges[i], y1: l.botY - 4, y2: l.botY + l.h + 4, opacity: s.reveal });
+        setAttrs(tk.text, {
+          x: edges[i], y: l.botY + l.h + 18 + (i % 2 === 1 ? 13 : 0),
+          'text-anchor': i === 0 ? 'start' : i === 3 && edges[3] > l.x1 - 40 ? 'end' : 'middle',
+          opacity: hideMid || crowded ? 0 : s.reveal,
+        });
+        tk.text.textContent = run.times[i];
+      });
+
+      // 구간 괄호: 첫 구간 / 클래스 구간 / 꼬리
+      const spans: [number, number, string][] = [
+        [edges[0], edges[1], ''],
+        [edges[1], edges[2], l.short || s.run > 0.5 ? `클래스 ${(r.body + r.gaps).toFixed(0)}초` : `클래스 58개 ${(r.body + r.gaps).toFixed(0)}초`],
+        [edges[2], edges[3], s.run > 0.5 ? `꼬리 약 ${r.tail.toFixed(0)}초` : l.short ? `꼬리 약 ${r.tail.toFixed(0)}초` : `마지막 클래스 뒤 약 ${r.tail.toFixed(0)}초`],
+      ];
+      marks.forEach((m, i) => {
+        const [x1, x2, label] = spans[i];
+        const y = l.botY - 6;
+        const show = clamp01(s.marks) * (x2 - x1 > 6 ? 1 : 0);
+        setAttrs(m.path, { d: `M ${x1 + 1} ${y} L ${x1 + 1} ${y - 6} L ${x2 - 1} ${y - 6} L ${x2 - 1} ${y}`, opacity: show });
+        const mid = (x1 + x2) / 2;
+        const anchor = i === 2 && s.run > 0.5 ? 'start' : 'middle';
+        setAttrs(m.text, { x: anchor === 'start' ? x1 + 4 : mid, y: y - 11, 'text-anchor': anchor, opacity: clamp01(s.marks) * (i === 2 || x2 - x1 > 6 ? 1 : 0) });
+        m.text.textContent = label;
+        m.text.classList.toggle('is-tail', i === 2);
+      });
+    });
+
+    const setNote = (html: string, alert = false) => {
+      note.innerHTML = html;
+      note.classList.toggle('is-alert', alert);
+    };
+
+    const reveal = async (guess: 'spread' | 'front' | 'tail') => {
+      const alive = scene.begin();
+      guessed = true;
+      guessButtons.forEach((b) => {
+        b.removeAttribute('data-state');
+        b.setAttribute('aria-pressed', String(b.dataset.guess === guess));
+      });
+      guessButtons.find((b) => b.dataset.guess === guess)!.setAttribute('data-state', guess === 'tail' ? 'ok' : 'fail');
+      if (guess !== 'tail') guessButtons.find((b) => b.dataset.guess === 'tail')!.setAttribute('data-state', 'ok');
+      setNote('조각들을 클래스 시작 시각에 맞춰 옮기는 중입니다.');
+      if (!(await scene.go({ ...scene.state, reveal: 1, marks: 0 }, scene.ms(duration.draw * 2.2), ease.linear)) || !alive()) return;
+      const l = layout;
+      const px = (l.x1 - l.x0) / RUNS[0].total;
+      const r = RUNS[0];
+      landRing(root, { x: l.x0 + (r.total - r.tail / 2) * px, y: l.botY + l.h / 2, w: r.tail * px, h: l.h });
+      if (!(await scene.go({ ...scene.state, marks: 1 }, duration.move)) || !alive()) return;
+      setNote(NOTES[guess], guess !== 'tail');
+      runButtons.forEach((b) => { b.disabled = false; });
+      runButtons[0].setAttribute('data-state', 'ok');
+    };
+
+    const showRun = async (k: number) => {
+      runButtons.forEach((b) => {
+        const on = Number(b.dataset.run) === k;
+        b.setAttribute('aria-pressed', String(on));
+        if (on) b.setAttribute('data-state', 'ok'); else b.removeAttribute('data-state');
+      });
+      const alive = scene.begin();
+      if (!(await scene.go({ ...scene.state, marks: 0 }, duration.snap)) || !alive()) return;
+      if (!(await scene.go({ ...scene.state, run: k }, duration.draw)) || !alive()) return;
+      if (!(await scene.go({ ...scene.state, marks: 1 }, duration.move)) || !alive()) return;
+      setNote(k === 1 ? NOTES.after : NOTES.tail, false);
+    };
+
+    guessButtons.forEach((b) => b.addEventListener('click', () => {
+      if (guessed && scene.state.reveal >= 1) return;
+      void reveal(b.dataset.guess as 'spread' | 'front' | 'tail');
+    }));
+    runButtons.forEach((b) => b.addEventListener('click', () => { void showRun(Number(b.dataset.run)); }));
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      scene.redraw();
+    });
+    setNote(NOTES.idle);
+    // 움직임 줄이기 설정이면 공개된 완성 상태를 보여 줍니다.
+    watchDemoPlayback(demo, ({ reducedMotion }) => {
+      if (!reducedMotion || guessed) return;
+      guessed = true;
+      scene.set({ reveal: 1, run: 0, marks: 1 });
+      guessButtons.forEach((b) => b.removeAttribute('data-state'));
+      guessButtons.find((b) => b.dataset.guess === 'tail')!.setAttribute('data-state', 'ok');
+      setNote(NOTES.tail);
+      runButtons.forEach((b) => { b.disabled = false; });
+      runButtons[0].setAttribute('data-state', 'ok');
+    });
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="where-is-the-time"] .scene-chips { margin-bottom: 10px; }
+  [data-blog-demo="where-is-the-time"] .wit-run { margin: 10px 0 0; }
+  [data-blog-demo="where-is-the-time"] .scene-note { min-height: 4.4em; }
+  [data-blog-demo="where-is-the-time"] .wit-outline { fill: none; stroke: var(--hairline); stroke-width: 1.2; stroke-dasharray: 3 4; }
+  [data-blog-demo="where-is-the-time"] .wit-tail { stroke-width: 2; }
+  [data-blog-demo="where-is-the-time"] .wit-in-label { fill: var(--scene-temp); }
+  [data-blog-demo="where-is-the-time"] .wit-tick { stroke: var(--slate); stroke-width: 1; }
+  [data-blog-demo="where-is-the-time"] .wit-tick-text { font-size: 10.5px; }
+  [data-blog-demo="where-is-the-time"] .wit-brace { fill: none; stroke: var(--slate); stroke-width: 1.2; }
+  [data-blog-demo="where-is-the-time"] .wit-brace-text { fill: var(--slate); }
+  [data-blog-demo="where-is-the-time"] .wit-brace-text.is-tail { fill: var(--scene-temp); }
+</style>

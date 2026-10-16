@@ -1,0 +1,257 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="context-outlives-container" ariaLabel="클래스마다 뜬 컨테이너는 사라지고 Spring context 만 캐시에 쌓였다가, 마지막 클래스 뒤 종료 훅이 하나씩 정지시키는 장면" title="컨테이너는 사라졌는데 context 는 남아 있다면" description="클래스 25개가 차례로 돌며 컨테이너를 띄우고 내립니다. 그 클래스가 만든 context 는 오른쪽 캐시에 남고, 자기 컨테이너가 내려가면 점선 테두리가 됩니다. 모든 클래스가 끝난 뒤 종료 훅이 context 를 하나씩 정지시키는 동안 꼬리 막대가 자랍니다. 정지 대기 상한을 바꿔 다시 보세요.">
+  <div class="scene-chips" role="group" aria-label="종료 단계 설정">
+    <span class="scene-chips-label">정지 대기 상한</span>
+    <button type="button" class="scene-chip" data-mode="0" aria-pressed="true" data-state="ok">기본값 30초</button>
+    <button type="button" class="scene-chip" data-mode="1" aria-pressed="false">timeout-per-shutdown-phase=1s</button>
+    <button type="button" class="scene-chip is-plain" data-replay>처음부터</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="왼쪽 위의 테스트 클래스가 하나씩 돌 때마다 MySQL, Redis, Kafka 컨테이너가 나타났다가 클래스가 끝나면 사라집니다. 클래스가 만든 context 카드는 오른쪽 캐시 격자로 옮겨져 쌓이고, 자기 컨테이너가 사라진 뒤에도 점선 테두리로 남습니다. 마지막 클래스가 끝나면 컨테이너는 0개인데 context 는 25개 남아 있고, 종료 훅이 하나씩 정지 대기하며 지웁니다. 기본값에서는 꼬리가 479.5초, 정지 대기 상한 1초에서는 92.3초입니다."></svg>
+  </div>
+  <div class="coc-metrics" aria-live="polite">
+    <span>이 실행의 컨테이너 <b data-m="containers">0</b></span>
+    <span>캐시된 context <b data-m="contexts">0</b></span>
+    <span>JVM 스레드 <b data-m="threads">미측정</b></span>
+    <span class="coc-tail">마지막 클래스 뒤 <b data-m="tail">0초</b></span>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">꼬리 길이(479.5초, 92.3초)는 전환 전 커밋을 로컬에서 각각 한 번 돌린 재현 값이고, CI 값과 섞지 않았습니다. 장면은 꼬리를 context 25개에 똑같이 나눠 그렸지만 실제 context 마다의 정지 시간은 재지 않았습니다. 스레드 수는 마지막 클래스 직후 2324개와 꼬리 끝 95개만 jstack 으로 센 값이고, 그 사이와 클래스 구간의 값은 직선으로 이은 모형입니다. 상한 1초 실행에서 남은 92초 가운데 무엇이 시간을 썼는지는 나눠 보지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, bumpText, clamp01, createScene, duration, ease, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createChip, createNode } from '@/scripts/blog/scene/parts';
+  import { watchDemoPlayback } from '@/scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: 클래스가 지나갈 때마다 컨테이너는 사라지는데 context 카드는 캐시에 쌓여 남고,
+  // 마지막 클래스 뒤 컨테이너 0개인 상태에서 종료 훅이 카드를 하나씩 기다렸다 지우는 만큼 꼬리 막대가 자란다.
+  // 정지 대기 상한을 1초로 낮추면 같은 카드 25개가 훨씬 빨리 지워지고 꼬리가 짧아진다.
+  const COUNT = 25;
+  const TAILS = [479.5, 92.3];
+  const THREADS = { peak: 2324, end: 95 };
+  type Layout = {
+    view: [number, number]; cls: Point; clsW: number; chips: Point[]; chipW: number; chipCap: Point;
+    grid: Point; cell: { w: number; h: number; dx: number; dy: number }; gridCap: Point;
+    bar: { x: number; y: number; w: number }; short: boolean;
+  };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 306], cls: { x: 106, y: 52 }, clsW: 170, chipCap: { x: 22, y: 102 },
+      chips: [{ x: 106, y: 124 }, { x: 106, y: 150 }, { x: 106, y: 176 }], chipW: 104,
+      grid: { x: 252, y: 72 }, cell: { w: 58, h: 30, dx: 66, dy: 38 }, gridCap: { x: 222, y: 26 },
+      bar: { x: 222, y: 276, w: 324 }, short: false,
+    },
+    narrow: {
+      view: [360, 420], cls: { x: 180, y: 40 }, clsW: 200, chipCap: { x: 16, y: 84 },
+      chips: [{ x: 64, y: 104 }, { x: 180, y: 104 }, { x: 296, y: 104 }], chipW: 104,
+      grid: { x: 48, y: 184 }, cell: { w: 58, h: 28, dx: 66, dy: 36 }, gridCap: { x: 16, y: 146 },
+      bar: { x: 16, y: 390, w: 328 }, short: true,
+    },
+  };
+  type State = { k: number; closed: number; mode: number };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="context-outlives-container"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-mode]')];
+    const replay = demo.querySelector<HTMLButtonElement>('[data-replay]')!;
+    const metric = (k: string) => demo.querySelector<HTMLElement>(`[data-m="${k}"]`)!;
+    let layout = LAYOUTS.wide;
+    const seen = new Set<number>();
+
+    const gridCap = svg('text', { class: 'scene-caption' }, root);
+    const chipCap = svg('text', { class: 'scene-caption' }, root);
+    const chipGone = svg('text', { class: 'scene-label is-sans coc-gone' }, root);
+    const cls = createNode(root, { label: '테스트 클래스', hue: 'var(--scene-hue-amber)', sub: '' });
+    cls.group.classList.add('is-sans-sub');
+    const chips = [
+      createChip(root, { label: 'mysql:8.0', hue: 'var(--scene-hue-blue)', width: 104 }),
+      createChip(root, { label: 'redis:7', hue: 'var(--scene-hue-pink)', width: 104 }),
+      createChip(root, { label: 'kafka', hue: 'var(--scene-hue-gray)', width: 104 }),
+    ];
+    const cards = Array.from({ length: COUNT }, (_, i) => createNode(root, { label: `ctx ${i + 1}`, hue: 'var(--scene-hue-violet)' }));
+    const hook = svg('g', { class: 'coc-hook' }, root);
+    const hookRect = svg('rect', { class: 'coc-hook-pill', rx: 8, height: 18, width: 58 }, hook);
+    const hookText = svg('text', { class: 'coc-hook-text', 'text-anchor': 'middle' }, hook);
+    hookText.textContent = '종료 훅';
+    const barCap = svg('text', { class: 'scene-caption' }, root);
+    const barTrack = svg('rect', { class: 'scene-lane-track', rx: 4, height: 14 }, root);
+    const barGhost = svg('rect', { class: 'coc-ghost', rx: 4, height: 14 }, root);
+    const barFill = svg('rect', { class: 'scene-level-gap', rx: 4, height: 14 }, root);
+    const barText = svg('text', { class: 'scene-label is-sans coc-bar-text' }, root);
+    const ghostText = svg('text', { class: 'scene-label is-sans coc-ghost-text' }, root);
+
+    const cellAt = (i: number): Point => {
+      const l = layout;
+      return { x: l.grid.x + (i % 5) * l.cell.dx, y: l.grid.y + Math.floor(i / 5) * l.cell.dy };
+    };
+    const scale = () => layout.bar.w / 500;
+
+    const scene = createScene<State>({ k: 0, closed: 0, mode: 0 }, (s) => {
+      const l = layout;
+      const running = s.k < COUNT;
+      const idx = Math.min(COUNT - 1, Math.floor(s.k));
+      const frac = s.k - Math.floor(s.k);
+      setAttrs(gridCap, { x: l.gridCap.x, y: l.gridCap.y });
+      gridCap.textContent = l.short ? 'TestContext 캐시' : 'TestContext 캐시: 재사용도 종료도 되지 않은 context';
+      setAttrs(chipCap, { x: l.chipCap.x, y: l.chipCap.y });
+      chipCap.textContent = l.short ? '이 클래스의 컨테이너' : '이 클래스의 @Container';
+      cls.setBox({ ...l.cls, w: l.clsW, h: 46 });
+      cls.setSub(s.k <= 0 ? '시작 전' : running ? `클래스 ${idx + 1} / ${COUNT}` : '모든 클래스 끝');
+      cls.group.classList.toggle('is-done', !running);
+
+      // 컨테이너: 클래스가 도는 동안만 떠 있다가 클래스가 끝나면 사라집니다.
+      const up = running && s.k > 0 ? (frac < 0.12 ? frac / 0.12 : frac > 0.8 ? (1 - frac) / 0.2 : 1) : 0;
+      setAttrs(chipGone, { x: l.chips[1].x, y: l.chips[1].y + 4, 'text-anchor': 'middle', opacity: running ? 0 : 1 });
+      chipGone.textContent = '컨테이너 0개, 브로커 없음';
+      chips.forEach((chip, i) => {
+        const p = l.chips[i];
+        chip.place({ x: p.x, y: p.y + (1 - up) * 6 }, up);
+      });
+
+      // context 카드: 클래스가 만들면 캐시로 옮겨지고, 자기 클래스가 끝나도 남습니다.
+      cards.forEach((card, i) => {
+        const born = clamp01((s.k - i - 0.1) / 0.35);
+        const gone = clamp01((s.closed - i - 0.75) / 0.25);
+        const t = ease.standard(born);
+        const from = { x: l.cls.x, y: l.cls.y };
+        const to = cellAt(i);
+        const pos = bowAt(from, to, t, Math.sin(Math.PI * t) * 26);
+        const shrink = 1 - 0.4 * gone;
+        card.setBox({ x: pos.x, y: pos.y, w: l.cell.w * shrink, h: l.cell.h * shrink });
+        card.group.style.opacity = String(born <= 0 ? 0 : (1 - gone) * (0.4 + 0.6 * born));
+        const orphan = s.k >= i + 1;
+        const waiting = !running && Math.floor(s.closed) === i && s.closed < COUNT;
+        card.group.classList.toggle('coc-orphan', orphan && !waiting);
+        card.group.classList.toggle('is-waiting', waiting);
+      });
+
+      // 종료 훅: 지금 기다리는 카드 위에 놓입니다.
+      const hookOn = !running && s.closed < COUNT ? 1 : 0;
+      const hc = cellAt(Math.min(COUNT - 1, Math.floor(s.closed)));
+      const next = cellAt(Math.min(COUNT - 1, Math.floor(s.closed) + 1));
+      const hf = clamp01(((s.closed % 1) - 0.75) / 0.25);
+      const hx = hc.x + (next.x - hc.x) * hf;
+      const hy = hc.y + (next.y - hc.y) * hf - l.cell.h / 2 - 8;
+      setAttrs(hookRect, { x: hx - 29, y: hy - 12 });
+      setAttrs(hookText, { x: hx, y: hy + 1 });
+      hook.style.opacity = String(hookOn);
+
+      // 꼬리 막대: 종료 훅이 지운 만큼 자랍니다.
+      const total = TAILS[s.mode > 0.5 ? 1 : 0];
+      const tail = (clamp01(s.closed / COUNT)) * total;
+      setAttrs(barCap, { x: l.bar.x, y: l.bar.y - 8 });
+      barCap.textContent = '마지막 클래스 뒤 꼬리 (로컬 재현)';
+      setAttrs(barTrack, { x: l.bar.x, y: l.bar.y, width: l.bar.w });
+      setAttrs(barFill, { x: l.bar.x, y: l.bar.y, width: Math.max(0, tail * scale()), opacity: tail > 0 ? 1 : 0 });
+      const other = s.mode > 0.5 ? 0 : 1;
+      const ghostOn = seen.has(other) && tail >= 0;
+      setAttrs(barGhost, { x: l.bar.x, y: l.bar.y, width: TAILS[other] * scale(), opacity: ghostOn ? 1 : 0 });
+      const textX = l.bar.x + tail * scale() + 6;
+      setAttrs(barText, { x: Math.min(textX, l.bar.x + l.bar.w - 60), y: l.bar.y + 11.5, opacity: tail > 0 ? 1 : 0 });
+      barText.textContent = `${tail.toFixed(1)}초`;
+      setAttrs(ghostText, { x: l.bar.x + TAILS[other] * scale() - 4, y: l.bar.y + 28, 'text-anchor': 'end', opacity: ghostOn ? 1 : 0 });
+      ghostText.textContent = other === 0 ? '기본값 479.5초' : '상한 1초 92.3초';
+
+      // 지표
+      const contexts = Math.min(COUNT, Math.floor(s.k + 0.6)) - Math.floor(s.closed);
+      bumpText(metric('containers'), up > 0.5 ? '3' : '0');
+      bumpText(metric('contexts'), String(Math.max(0, contexts)));
+      const threads = running
+        ? Math.round(THREADS.end + (THREADS.peak - THREADS.end) * (s.k / COUNT))
+        : Math.round(THREADS.peak - (THREADS.peak - THREADS.end) * clamp01(s.closed / COUNT));
+      metric('threads').textContent = s.k <= 0 ? '미측정' : String(threads);
+      metric('tail').textContent = `${tail.toFixed(1)}초`;
+    });
+
+    const setNote = (html: string, alert = false) => {
+      note.innerHTML = html;
+      note.classList.toggle('is-alert', alert);
+    };
+    const pressMode = (m: number) => modeButtons.forEach((b) => {
+      const on = Number(b.dataset.mode) === m;
+      b.setAttribute('aria-pressed', String(on));
+      if (on) b.setAttribute('data-state', 'ok'); else b.removeAttribute('data-state');
+    });
+
+    const runTail = async (mode: number, alive: () => boolean) => {
+      setNote('모든 클래스가 끝났고 이 실행의 컨테이너는 0개입니다. 종료 훅이 남은 context 를 <strong>하나씩</strong> 정지시키며, 각 context 의 Kafka 리스너가 이미 없는 브로커에서 멈출 때까지 기다립니다.', true);
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      const ms = TAILS[mode] * 20;
+      if (!(await scene.go({ k: COUNT, closed: COUNT, mode }, scene.ms(ms), ease.linear)) || !alive()) return;
+      seen.add(mode);
+      scene.redraw();
+      setNote(mode === 0
+        ? '기본값에서 꼬리는 <strong>479.5초</strong>였습니다. context 25개로 나누면 하나에 약 19초입니다. 정지 대기 상한을 1초로 바꿔 같은 꼬리가 어떻게 되는지 보세요.'
+        : '상한을 1초로 낮추자 꼬리는 <strong>92.3초</strong>로 줄었습니다. 이 로컬 실행 한 번에서는 꼬리의 대부분이 수명주기 정지 대기였습니다. 남은 시간은 context 하나에 약 3.7초꼴입니다.');
+    };
+
+    const play = async (mode: number, fromStart: boolean) => {
+      const alive = scene.begin();
+      pressMode(mode);
+      if (fromStart || scene.state.k < COUNT) {
+        scene.set({ k: 0, closed: 0, mode });
+        setNote('클래스가 하나 돌 때마다 컨테이너 세 개가 떴다가 사라집니다. 그 클래스의 context 는 재사용되지 않고, <strong>종료되지도 않은 채</strong> 캐시에 남습니다.');
+        if (!(await scene.go({ k: COUNT, closed: 0, mode }, scene.ms(COUNT * 240), ease.linear)) || !alive()) return;
+      } else {
+        scene.set({ k: COUNT, closed: 0, mode });
+      }
+      await runTail(mode, alive);
+    };
+
+    modeButtons.forEach((b) => b.addEventListener('click', () => { void play(Number(b.dataset.mode), false); }));
+    replay.addEventListener('click', () => { void play(scene.state.mode > 0.5 ? 1 : 0, true); });
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      scene.redraw();
+    });
+    setNote('클래스 25개가 차례로 돌며 각자 컨테이너를 띄웁니다. 화면에 들어오면 재생됩니다.');
+    let started = false;
+    watchDemoPlayback(demo, ({ shouldPlay, reducedMotion }) => {
+      if (started) return;
+      if (reducedMotion) {
+        started = true;
+        seen.add(1);
+        scene.set({ k: COUNT, closed: COUNT, mode: 0 });
+        seen.add(0);
+        scene.redraw();
+        setNote('기본값에서 꼬리는 <strong>479.5초</strong>, 정지 대기 상한 1초에서는 <strong>92.3초</strong>였습니다. 꼬리 동안 컨테이너는 0개였고, 종료 훅이 남은 context 를 하나씩 정지시키고 있었습니다.');
+        return;
+      }
+      if (!shouldPlay) return;
+      started = true;
+      void play(0, true);
+    }, { threshold: 0.5 });
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="context-outlives-container"] .scene-chips { margin-bottom: 10px; }
+  [data-blog-demo="context-outlives-container"] .scene-note { min-height: 4.4em; }
+  [data-blog-demo="context-outlives-container"] .scene-node-name { font-size: 12px; }
+  [data-blog-demo="context-outlives-container"] .scene-node.coc-orphan .scene-node-card { stroke: var(--scene-temp); stroke-dasharray: 4 3; }
+  [data-blog-demo="context-outlives-container"] .scene-node.is-waiting .scene-node-card { fill: var(--scene-temp-soft); stroke-width: 2.4; }
+  [data-blog-demo="context-outlives-container"] .coc-gone { fill: var(--scene-temp); }
+  [data-blog-demo="context-outlives-container"] .coc-hook-pill { fill: var(--scene-temp-soft); stroke: var(--scene-temp); stroke-width: 1.3; }
+  [data-blog-demo="context-outlives-container"] .coc-hook-text { fill: var(--scene-temp); font-size: 11px; font-weight: 700; }
+  [data-blog-demo="context-outlives-container"] .coc-ghost { fill: none; stroke: var(--slate); stroke-width: 1.2; stroke-dasharray: 3 3; }
+  [data-blog-demo="context-outlives-container"] .coc-bar-text { fill: var(--scene-temp); }
+  [data-blog-demo="context-outlives-container"] .coc-ghost-text { fill: var(--slate); font-size: 10.5px; }
+  .coc-metrics { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .coc-metrics span { display: inline-flex; align-items: baseline; gap: 6px; }
+  .coc-metrics b { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .coc-metrics .coc-tail b { color: var(--scene-temp); }
+  .coc-metrics b.is-bump { animation: scene-pop 420ms ease-out; }
+  @media (prefers-reduced-motion: reduce) { .coc-metrics b.is-bump { animation: none; } }
+</style>

@@ -1,0 +1,213 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="consumer-group-handoff" ariaLabel="지금 테스트의 리스너를 멈춘 뒤 발행한 fixture 를 누가 소비하는지, 캐시된 다른 context 의 상태별로 비교하는 장면" title="자기 리스너를 멈추면 fixture 는 안전할까요?" description="지금 테스트 B 는 자기 context 의 리스너를 stop() 한 뒤 fixture 를 발행합니다. 공유 브로커에 캐시된 다른 context A 가 어떤 상태인지 고르고 실행해 보세요.">
+  <div class="scene-chips" role="group" aria-label="캐시된 context A 의 상태">
+    <span class="scene-chips-label">캐시된 A</span>
+    <button type="button" class="scene-chip" data-case="0" aria-pressed="true" data-state="ok">같은 groupId 로 살아 있음</button>
+    <button type="button" class="scene-chip" data-case="1" aria-pressed="false">다른 groupId 로 살아 있음</button>
+    <button type="button" class="scene-chip" data-case="2" aria-pressed="false">없음 (B 만)</button>
+  </div>
+  <div class="scene-chips" role="group" aria-label="진행">
+    <button type="button" class="scene-chip" data-run data-state="next">B 리스너 stop 후 fixture 발행</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="왼쪽에 테스트 B 의 fixture 발행 지점과 Kafka 파티션 0 이 있고, 오른쪽에 consumer group 상자 안의 B 와 A 가 있습니다. 아래에는 공유 DB 의 주문 상태가 있습니다. 같은 groupId 인 경우 B 를 멈추면 리밸런스로 파티션 할당선이 A 로 옮겨지고, fixture 가 A 로 흘러가 주문이 예약 확정으로 바뀝니다. 다른 groupId 인 경우 A 는 자기 그룹으로 이미 파티션을 받고 있어 fixture 가 역시 A 로 갑니다. A 가 없으면 fixture 는 파티션에 남고 주문은 미확정 그대로입니다."></svg>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">세 경우의 결과는 Spring context 대신 리스너 컨테이너 두 개로 만든 로컬 재현에서 나온 것입니다(파티션 1개, earliest). 재현에서는 B 를 멈출 때 B 와 A 모두 아직 할당 전(리밸런스 중)이었고, 장면처럼 B 가 쥐고 있던 파티션이 A 로 넘어간 증거는 아래 세 클래스 로그입니다. 같은 groupId 에서 파티션이 다른 context 의 consumer 로 넘어가는 동작은 order-service 의 세 클래스 실행 로그(generation 4)로도 확인했지만, 그 실행 자체는 통과했습니다. 실제 사건에서 A 의 리스너가 주문을 바꾼 경로와 공유 DB 는 단순화해 그렸습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { clamp01, createScene, duration, lerp, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createBoundary, createNode } from '@/scripts/blog/scene/parts';
+  import { createPacketLayer } from '@/scripts/blog/scene/packets';
+
+  // 독자가 볼 변화: B 가 자기 리스너를 멈춰도 같은 groupId 의 A 가 리밸런스로 파티션을 넘겨받아 fixture 를 소비하고 주문 상태가 바뀐다.
+  // groupId 를 다르게 해도 A 는 자기 그룹으로 소비한다. A 가 없을 때만 fixture 가 파티션에 남는다.
+  type State = { a: number; split: number; bStop: number; assign: number; own: number; status: number };
+  type Layout = { view: [number, number]; prod: Point; part: Point; partW: number; b: Point; aPos: Point; cW: number; order: Point; orderW: number; group: { x: number; w: number; top: number; bottom: number }; short: boolean };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: { view: [560, 300], prod: { x: 104, y: 46 }, part: { x: 104, y: 150 }, partW: 172, b: { x: 444, y: 100 }, aPos: { x: 444, y: 196 }, cW: 150, order: { x: 270, y: 268 }, orderW: 176, group: { x: 352, w: 186, top: 40, bottom: 236 }, short: false },
+    narrow: { view: [360, 330], prod: { x: 82, y: 42 }, part: { x: 82, y: 150 }, partW: 140, b: { x: 272, y: 104 }, aPos: { x: 272, y: 206 }, cW: 132, order: { x: 180, y: 298 }, orderW: 170, group: { x: 196, w: 158, top: 44, bottom: 250 }, short: true },
+  };
+  const CASES = [
+    { a: 1, split: 0, own: 0 },
+    { a: 1, split: 1, own: 1 },
+    { a: 0, split: 0, own: 0 },
+  ];
+  const IDLE = [
+    '<strong>같은 그룹</strong>에 B 와 A 가 함께 있습니다. 한 그룹 안에서 파티션 하나는 consumer 하나에게만 할당되고, 지금은 B 가 받고 있습니다.',
+    'A 는 <strong>다른 groupId</strong> 로 같은 토픽을 듣습니다. 그룹마다 파티션을 따로 할당받으므로 A 도 자기 그룹으로 파티션 0 을 받고 있습니다.',
+    'A 가 없고 B 만 그룹에 있습니다. 클래스마다 브로커가 따로였던 전환 전 구조와 같은 상황입니다.',
+  ];
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="consumer-group-handoff"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const caseButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-case]')];
+    const runButton = demo.querySelector<HTMLButtonElement>('[data-run]')!;
+    let layout = LAYOUTS.wide;
+    let current = 0;
+
+    const groupB = createBoundary(root, 'order-svc-stock-result-group', 'zone');
+    const groupA = createBoundary(root, '다른 groupId', 'zone');
+    const prodLine = svg('path', { class: 'scene-line cgh-pub' }, root);
+    const lineMain = svg('path', { class: 'scene-line scene-flow cgh-assign' }, root);
+    const lineOwn = svg('path', { class: 'scene-line scene-flow cgh-assign' }, root);
+    const lineA = svg('path', { class: 'scene-line cgh-write' }, root);
+    const mainLabel = svg('text', { class: 'scene-label is-sans scene-label-flow' }, root);
+    const rebalance = svg('text', { class: 'scene-label is-sans cgh-rebalance' }, root);
+    const prod = createNode(root, { label: '테스트 B', hue: 'var(--scene-hue-amber)', sub: 'fixture 발행' });
+    const part = createNode(root, { label: '파티션 0', hue: 'var(--scene-hue-gray)', sub: 'stock.reservation.result' });
+    const nodeB = createNode(root, { label: 'B 의 consumer', hue: 'var(--scene-hue-violet)', sub: '지금 테스트' });
+    const nodeA = createNode(root, { label: 'A 의 consumer', hue: 'var(--scene-hue-violet)', sub: '캐시된 context' });
+    const order = createNode(root, { label: '주문 orderId=1', hue: 'var(--scene-hue-blue)', sub: '예약 미확정' });
+    [prod, nodeB, nodeA, order].forEach((n) => n.group.classList.add('is-sans-sub'));
+    const strike = svg('line', { class: 'scene-strike' }, root);
+    const packets = createPacketLayer(root);
+
+    const pathD = (pts: Point[]) => `M ${pts.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L ')}`;
+    const partOut = () => ({ x: layout.part.x + layout.partW / 2 + 4, y: layout.part.y });
+    const inOf = (p: Point) => ({ x: p.x - layout.cW / 2 - 4, y: p.y });
+
+    const scene = createScene<State>({ a: 1, split: 0, bStop: 0, assign: 0, own: 0, status: 0 }, (s) => {
+      const l = layout;
+      prod.setBox({ ...l.prod, w: l.short ? 120 : 140, h: 44 });
+      part.setBox({ ...l.part, w: l.partW, h: 50 });
+      part.setSub(l.short ? 'stock.reservation' : 'stock.reservation.result');
+      nodeB.setBox({ ...l.b, w: l.cW, h: 46 });
+      nodeA.setBox({ ...l.aPos, w: l.cW, h: 46 });
+      nodeA.group.style.opacity = String(s.a);
+      nodeB.group.style.opacity = String(1 - 0.45 * s.bStop);
+      nodeB.setSub(s.bStop > 0.5 ? 'stop() 됨' : '지금 테스트');
+      order.setBox({ ...l.order, w: l.orderW, h: 46 });
+      order.setSub(s.status > 0.5 ? '예약 확정' : '예약 미확정');
+      order.group.classList.toggle('is-error', s.status > 0.5);
+      setAttrs(strike, { x1: l.b.x - l.cW / 2 + 10, y1: l.b.y - 6, x2: l.b.x - l.cW / 2 + 10 + (l.cW - 20) * s.bStop, y2: l.b.y - 6, opacity: s.bStop > 0.02 ? 1 : 0 });
+
+      // 그룹 상자: 같은 그룹이면 하나, 다른 groupId 면 둘로 갈라집니다.
+      const g = l.group;
+      const mid = (l.b.y + l.aPos.y) / 2;
+      const bBottom = lerp(s.a > 0.5 ? g.bottom : mid + 4, mid - 2, s.split);
+      groupB.place({ x: g.x, y: g.top, w: g.w, h: bBottom - g.top, o: 1 }, { x: g.x + 10, y: g.top + 15 });
+      groupB.caption.textContent = l.short ? 'stock-result-group' : 'order-svc-stock-result-group';
+      groupA.place({ x: g.x, y: mid + 6, w: g.w, h: g.bottom - mid - 6, o: s.split }, { x: g.x + 10, y: mid + 21 });
+
+      // 할당선: B 에서 A 로 옮겨 가거나(같은 그룹), 거둬집니다(B 만, 다른 그룹).
+      const out = partOut();
+      const target = { x: lerp(inOf(l.b).x, inOf(l.aPos).x, s.assign), y: lerp(l.b.y, l.aPos.y, s.assign) };
+      const sameGroup = s.split < 0.5 && s.a > 0.5;
+      const mainShow = sameGroup ? 1 : 1 - s.bStop;
+      const cut = sameGroup ? 1 : 1 - s.bStop;
+      const end = { x: lerp(out.x, target.x, cut), y: lerp(out.y, target.y, cut) };
+      setAttrs(lineMain, { d: pathD([out, end]), opacity: mainShow > 0.02 ? 1 : 0 });
+      setAttrs(mainLabel, { x: (out.x + target.x) / 2, y: (out.y + target.y) / 2 - 8, 'text-anchor': 'middle', opacity: mainShow > 0.5 ? 1 : 0 });
+      mainLabel.textContent = '할당';
+      setAttrs(lineOwn, { d: pathD([out, inOf(l.aPos)]), opacity: s.own });
+      setAttrs(rebalance, { x: g.x + g.w / 2, y: mid + 4, 'text-anchor': 'middle', opacity: sameGroup ? clamp01((s.assign - 0.3) / 0.7) : 0 });
+      rebalance.textContent = '리밸런스, generation 4';
+      setAttrs(prodLine, { d: pathD([{ x: l.prod.x, y: l.prod.y + 26 }, { x: l.part.x, y: l.part.y - 29 }]) });
+      setAttrs(lineA, { d: pathD([{ x: l.aPos.x, y: l.aPos.y + 27 }, { x: l.aPos.x, y: l.order.y }, { x: l.order.x + l.orderW / 2 + 4, y: l.order.y }]), opacity: s.a * 0.9 });
+    });
+
+    const setNote = (html: string, alert = false) => {
+      note.innerHTML = html;
+      note.classList.toggle('is-alert', alert);
+    };
+
+    const select = (k: number) => {
+      current = k;
+      scene.begin();
+      packets.clear();
+      caseButtons.forEach((b) => {
+        const on = Number(b.dataset.case) === k;
+        b.setAttribute('aria-pressed', String(on));
+        if (on) b.setAttribute('data-state', 'ok'); else b.removeAttribute('data-state');
+      });
+      runButton.disabled = false;
+      runButton.setAttribute('data-state', 'next');
+      void scene.go({ ...CASES[k], bStop: 0, assign: 0, status: 0 }, duration.move);
+      setNote(IDLE[k]);
+    };
+
+    const run = async () => {
+      const alive = scene.begin();
+      const k = current;
+      packets.clear();
+      runButton.disabled = true;
+      runButton.removeAttribute('data-state');
+      scene.set({ ...CASES[k], bStop: 0, assign: 0, status: 0 });
+      const l = layout;
+      // 1. B 의 리스너를 멈춥니다.
+      setNote('B 가 <code>@BeforeEach</code> 에서 자기 context 의 리스너 컨테이너를 <code>stop()</code> 합니다.');
+      if (!(await scene.go({ ...scene.state, bStop: 1 }, duration.cut)) || !alive()) return;
+      if (k === 0) {
+        // 2. 같은 그룹: 리밸런스로 파티션이 A 에게 옮겨집니다.
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        if (!(await scene.go({ ...scene.state, assign: 1 }, duration.fly)) || !alive()) return;
+        nodeA.flash('is-ok');
+      }
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      // 3. fixture 를 발행합니다.
+      const p = packets.spawn({ label: 'fixture', tone: 'dep', at: { x: l.prod.x, y: l.prod.y + 30 } });
+      if (!(await p.travel([{ x: l.part.x, y: l.part.y - 34 }], 520)) || !alive()) return;
+      if (!(await p.travel([{ x: l.part.x, y: l.part.y - 26 }, { x: partOut().x + 24, y: l.part.y - 26 }], 420)) || !alive()) return;
+      part.flash('is-ok');
+      if (k === 2) {
+        p.relabel('대기 중', 'temp');
+        setNote('fixture 는 파티션에 남았고 아무도 소비하지 않았습니다. 주문은 <strong>예약 미확정</strong> 그대로라 테스트가 기대한 대로 replay 를 허용합니다.');
+        order.flash('is-done');
+        runButton.disabled = false;
+        runButton.textContent = '다시 실행';
+        return;
+      }
+      // 4. A 가 소비하고 공유 DB 의 주문을 바꿉니다.
+      const out = partOut();
+      if (!(await p.travel([{ x: out.x + 24, y: l.part.y - 4 }, inOf(l.aPos)], 620)) || !alive()) return;
+      p.relabel('A 가 소비', 'danger');
+      nodeA.flash('is-shaking');
+      if (!(await p.travel([{ x: l.aPos.x, y: l.aPos.y + 30 }, { x: l.aPos.x, y: l.order.y }, { x: l.order.x + l.orderW / 2 + 12, y: l.order.y }], 620)) || !alive()) return;
+      await p.land(false);
+      if (!alive()) return;
+      await scene.go({ ...scene.state, status: 1 }, duration.snap);
+      order.flash('is-shaking');
+      setNote(k === 0
+        ? 'B 가 그룹을 떠나자 <strong>리밸런스로 파티션이 A 에게 넘어갔고</strong>, A 의 리스너가 fixture 를 소비해 주문을 예약 확정으로 바꿨습니다. 테스트는 "이미 예약이 확정됐다"로 실패합니다.'
+        : 'groupId 를 다르게 해도 A 는 <strong>자기 그룹으로 파티션을 받고 있어</strong> fixture 를 소비합니다. 그룹 안의 파티션 이동은 없어졌지만 주문은 여전히 예약 확정으로 바뀝니다.', true);
+      runButton.disabled = false;
+      runButton.textContent = '다시 실행';
+      runButton.setAttribute('data-state', 'next');
+    };
+
+    caseButtons.forEach((b) => b.addEventListener('click', () => { runButton.textContent = 'B 리스너 stop 후 fixture 발행'; select(Number(b.dataset.case)); }));
+    runButton.addEventListener('click', () => { void run(); });
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      packets.clear();
+      scene.redraw();
+    });
+    scene.set({ ...CASES[0], bStop: 0, assign: 0, status: 0 });
+    setNote(IDLE[0]);
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="consumer-group-handoff"] .scene-chips { margin-bottom: 10px; }
+  [data-blog-demo="consumer-group-handoff"] .scene-note { min-height: 4.4em; }
+  [data-blog-demo="consumer-group-handoff"] .scene-node-name { font-size: 13px; }
+  [data-blog-demo="consumer-group-handoff"] .cgh-pub { stroke: var(--scene-dep); stroke-width: 1.6; stroke-dasharray: 3 4; }
+  [data-blog-demo="consumer-group-handoff"] .cgh-assign { stroke-width: 2.4; }
+  [data-blog-demo="consumer-group-handoff"] .cgh-write { fill: none; stroke: var(--hairline); stroke-width: 1.6; stroke-dasharray: 3 4; }
+  [data-blog-demo="consumer-group-handoff"] .cgh-rebalance { fill: var(--scene-temp); }
+  [data-blog-demo="consumer-group-handoff"] .scene-zone + .scene-caption { font-size: 11px; }
+</style>

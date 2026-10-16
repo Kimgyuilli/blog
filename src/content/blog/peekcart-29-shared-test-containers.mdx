@@ -1,0 +1,594 @@
+---
+title: 'PeekCart 학습 기록 29: JUnit 리포트는 131초였는데, 테스트 태스크는 왜 975초였을까?'
+description: 'Testcontainers 컨테이너를 테스트 클래스마다 띄우던 Spring Boot 모듈에서, JUnit XML 의 time 합계는 131초인데 Gradle test 태스크는 975초였습니다. 보이지 않던 844초가 어디에 있었는지 클래스 시작 시각과 스레드 덤프로 다시 나누고, 자기 컨테이너보다 오래 산 Spring context 가 그 시간에 어떻게 얽혀 있었는지 따라갑니다. 컨테이너를 모듈에 한 벌만 띄우도록 바꾼 뒤 드러난 공유 상태와, 클래스 경계가 해 주던 격리를 cleanup, 자율 writer 기본 off, @DirtiesContext, ConnectionDetails, 할당 대기로 되사고 셔플과 lint 로 지키게 한 과정을 정리합니다.'
+image: "/images/blog/peekcart-shared-test-containers/thumbnail.jpg"
+pubDate: 2026-10-17
+category: backend
+slug: peekcart-shared-test-containers
+tags: [testcontainers, spring-boot-test, junit5, kafka, gradle, integration-test, flaky-test]
+draft: false
+---
+
+import WhereIsTheTime from '@/components/blog/peekcart/shared-test-containers/WhereIsTheTime.astro';
+import ContextOutlivesContainer from '@/components/blog/peekcart/shared-test-containers/ContextOutlivesContainer.astro';
+import ContainerBeanLifecycle from '@/components/blog/peekcart/shared-test-containers/ContainerBeanLifecycle.astro';
+import ConsumerGroupHandoff from '@/components/blog/peekcart/shared-test-containers/ConsumerGroupHandoff.astro';
+
+{/*
+독자: Spring Boot 에서 Testcontainers(MySQL, Redis, Kafka)로 통합 테스트를 쓰고, 테스트가 느려지거나 순서에 따라 깨지는 경험을 한 백엔드 개발자. @SpringBootTest, @Testcontainers/@Container, @KafkaListener 를 써 봤으면 충분하다.
+핵심 주장: JUnit XML 의 time 합계와 태스크 시간이 크게 다르면 클래스 시작 시각으로 늘어놓아야 시간이 어디 있는지 보인다. 클래스마다 컨테이너를 띄우면 @ServiceConnection 의 context 캐시 키가 갈려 context 가 재사용되지도 종료되지도 않고, 마지막 테스트 뒤 종료 꼬리를 만든다. 컨테이너를 공유하면 이 비용은 없어지지만 클래스 경계가 해 주던 격리를 테스트가 규약으로 되사야 하고, 그 규약은 셔플과 lint 로 확인해야 지켜진다.
+유형: experiment 주, decision 보조. CI 값과 로컬 재현 값은 한 표나 한 축에 섞지 않는다.
+*/}
+
+## 리포트에 없는 844초
+
+PR 을 올리면 GitHub Actions 에서 서비스별 테스트 잡이 병렬로 돕니다. 테스트 잡 중 가장 느린 것은 주문 서비스 잡이었고 그 안의 Gradle `:order-service:test` 태스크가 975초를 썼습니다. 같은 잡이 올린 JUnit XML 리포트 58개에서 `<testsuite>` 의 `time` 을 모두 더하면 131.2초, 그중 테스트 메서드 본문의 합이 130.9초입니다.
+
+```text
+:order-service:test          975s   (Gradle 로그 13:13:34.0 에서 13:29:49.3)
+TEST-*.xml 58개의 time 합계   131.2s
+  그중 testcase 본문 합계     130.9s
+```
+
+(CI 잡 로그와 JUnit XML artifact 에서 발췌해 합산)
+
+나머지 844초, 전체의 87%는 어느 테스트에도 붙어 있지 않았습니다. 가장 느린 클래스 하나가 63.5초였고 나머지 57개를 다 더해도 약 68초입니다.
+
+이 서비스는 Spring Boot 3.5, MySQL 8.0, Redis 7, Kafka(`apache/kafka:3.8.1`)를 씁니다. 통합 테스트는 Testcontainers 로 세 저장소를 실제 컨테이너로 띄웠습니다. 테스트 클래스 하나는 대략 이렇게 생겼습니다.
+
+```java
+@SpringBootTest
+@Testcontainers
+@TestPropertySource(properties = {
+        "spring.flyway.enabled=true",
+        "spring.flyway.locations=classpath:db/migration"
+})
+@Import(IntegrationTestConfig.class)
+class OrderApplicationTests {
+
+    @Container @ServiceConnection
+    static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0").withDatabaseName("peekcart_test");
+
+    @Container @ServiceConnection(name = "redis")
+    static GenericContainer<?> redis = new GenericContainer<>("redis:7").withExposedPorts(6379);
+
+    @Container @ServiceConnection
+    static KafkaContainer kafka = new KafkaContainer("apache/kafka:3.8.1");
+    ...
+}
+```
+
+`@Testcontainers` 는 JUnit 5 extension 이고 `static` 으로 선언한 `@Container` 필드는 그 클래스의 첫 테스트 전에 시작해 마지막 테스트 뒤에 멈춥니다([Testcontainers JUnit 5 문서](https://java.testcontainers.org/test_framework_integration/junit_5/)). 컨테이너의 수명이 테스트 클래스 하나입니다. 주문 서비스 테스트 코드에는 이런 선언이 77개 있었습니다. `KafkaContainer` 26개, `MySQLContainer("mysql:8.0")` 25개, `redis:7` 25개였고 실행 계획을 고정하려고 `mysql:8.0.46` 을 쓰는 클래스 하나만 달랐습니다. 컨테이너를 쓰는 클래스 26개 남짓이 저마다 같은 세 컨테이너를 다시 띄우고 Flyway 마이그레이션을 다시 돌리고 Spring context 를 다시 만들었습니다.
+
+처음 분석은 844초를 통째로 "컨테이너 기동, Flyway, context 기동" 비용으로 보고 컨테이너를 쓰는 클래스 수로 나눠, 클래스 하나에 30초 남짓이 든다고 계산했습니다(처음 분석의 값). 그 나눗셈에는 보이지 않는 시간이 클래스 사이에 고르게 퍼져 있다는 전제가 들어 있습니다. 844초가 어디에 있을지 먼저 골라 보세요.
+
+<WhereIsTheTime />
+
+## 클래스 시작 시각으로 늘어놓으면
+
+JUnit XML 의 `<testsuite>` 에는 `time` 말고 `timestamp`, 곧 그 클래스가 시작한 시각도 있습니다. 같은 artifact 의 58개 클래스를 시작 시각 순으로 늘어놓으면 이렇게 됩니다.
+
+```text
+13:13:53  order-service 컨텍스트 부팅 스모크       0.596s
+13:13:55  DeadLetterEndpointReplayAuthTest        0.182s
+13:14:09  DLQ 원장 incident 집계 회귀              1.784s
+13:14:25  DLQ 원장 적재 통합 테스트                 1.423s
+...
+13:20:58  order-service 보안 통합 테스트           1.283s
+13:21:00  CartController 슬라이스 테스트           0.247s
+13:21:13  주문 API OpenAPI 계약                    0.519s
+13:21:14  OrderController 슬라이스 테스트          0.220s
+```
+
+(전환 전 CI 실행의 JUnit XML artifact 에서 발췌)
+
+Spring 통합 테스트 클래스 사이의 간격은 대부분 11~13초입니다. 첫 클래스가 13:13:53 에 시작했고 마지막 클래스는 13:21:14 에 시작해 0.2초 만에 끝났습니다. Gradle 이 다음 태스크 `:order-service:check` 로 넘어간 시각은 13:29:49 입니다. 975초는 대략 이렇게 나뉩니다.
+
+| 구간 (CI) | 시간 |
+|---|---|
+| 태스크 시작에서 첫 클래스까지 | 약 20초 |
+| 첫 클래스에서 마지막 클래스 종료까지 | 441.2초 (테스트 본문 131.2초, 클래스 사이 약 310초) |
+| 마지막 클래스 종료에서 태스크 종료까지 | **약 515초** |
+
+Gradle 의 `> Task :order-service:test` 헤더는 첫 출력이 나올 때 찍혀 태스크 시작 시각보다 늦을 수 있습니다. 실제로 다른 서비스 잡에서는 첫 클래스의 `timestamp` 가 이 헤더보다 앞서 있었습니다. 그래서 첫 구간은 근사값이고 이 헤더에서 잰 975초도 실제 태스크 시간보다 조금 짧을 수 있습니다. 마지막 구간은 마지막 클래스의 `timestamp + time` 과 다음 태스크 헤더 사이라 이 오차와 상관이 없습니다.
+
+마지막 테스트가 끝난 뒤 8분 넘게 테스트 JVM 이 무언가를 하고 있었습니다. 같은 실행의 다른 서비스 잡도 같은 구조였습니다.
+
+| 서비스 (CI, 같은 실행) | `@SpringBootTest` 클래스 수 | 마지막 클래스 뒤 꼬리 | 클래스 수로 나눈 값 |
+|---|---|---|---|
+| order | 25 | 약 515초 | 약 20.6초 |
+| product | 21 | 약 359초 | 약 17.1초 |
+| payment | 14 | 약 243초 | 약 17.3초 |
+| notification | 8 | 약 139초 | 약 17.4초 |
+| user (Kafka 미사용) | 4 | 약 1초 | |
+
+(전환 전 CI 실행의 잡 로그와 JUnit XML 에서 계산)
+
+Kafka 를 쓰지 않는 서비스만 꼬리가 없었습니다. 컨테이너를 모듈에 한 벌만 띄우도록 바꾼 뒤의 CI 실행에서는 order 의 꼬리가 약 5초였습니다.
+
+자기 프로젝트에서 같은 확인을 하려면 XML 을 시작 시각으로 정렬해 클래스 사이 공백과 마지막 클래스의 종료 시각을 보면 됩니다. 아래는 그 정도만 하는 예시입니다. 마지막 클래스 종료 시각을 Gradle 로그의 다음 태스크 시각과 비교하면 꼬리가 나옵니다.
+
+```python
+import glob, sys, xml.etree.ElementTree as ET
+from datetime import datetime, timedelta
+
+rows = []
+for path in glob.glob(sys.argv[1] + "/TEST-*.xml"):
+    s = ET.parse(path).getroot()
+    start = datetime.fromisoformat(s.get("timestamp").removesuffix("Z"))
+    rows.append((start, float(s.get("time")), s.get("name")))
+
+rows.sort()
+prev_end = None
+for start, sec, name in rows:
+    gap = (start - prev_end).total_seconds() if prev_end else 0.0
+    print(f"{start:%H:%M:%S}  +{gap:6.1f}s 공백  {sec:7.3f}s  {name}")
+    prev_end = start + timedelta(seconds=sec)
+
+print(f"time 합계 {sum(r[1] for r in rows):.1f}s, 마지막 클래스 종료 {prev_end:%H:%M:%S}")
+```
+
+(`python3 suites.py build/test-results/test` 처럼 실행합니다. 테스트 클래스를 병렬로 돌리는 구성이라면 공백 계산이 맞지 않습니다)
+
+## 마지막 테스트 뒤에서 JVM 은 무엇을 기다렸을까요?
+
+CI 러너에서는 스레드 덤프를 뜰 수 없어서 로컬에서 같은 상황을 다시 만들었습니다. 이 글을 위해 따로 돌린 재현이고 조건은 이렇습니다. 전환 직전 커밋을 별도 작업 트리에 체크아웃하고 `:order-service:test --rerun` 을 돌리면서 15초마다 테스트 JVM 의 `jstack` 을 떴습니다(macOS, Docker, Java 17.0.11, Gradle 8.14.4 `--no-daemon`, CI 와 같은 테스트 프로필). 로컬 값은 CI 값과 머신이 다르므로 아래에서도 따로 적습니다.
+
+| 구간 (로컬 재현) | 시간 |
+|---|---|
+| 태스크 전체 | 1108.2초 |
+| 첫 클래스 전 | 31.3초 |
+| 클래스 구간 | 597.5초 (테스트 본문 153.1초, 3초 넘는 공백 26곳 430.7초, 공백 중앙값 16.5초) |
+| **마지막 클래스 뒤 꼬리** | **479.5초** |
+
+(420개 테스트, 실패 0. 이 실행도 꼬리 구간 중 약 10초 동안 다른 프로젝트의 컨테이너가 함께 떠 있었습니다. 같은 조건으로 먼저 돌린 실행은 다른 프로젝트의 테스트가 동시에 돌아 클래스 구간이 961.6초로 늘었지만 꼬리는 478.8초로 같았습니다)
+
+꼬리 구간의 스레드 덤프에서 실제로 일하던 스레드는 하나였습니다.
+
+```text
+"SpringApplicationShutdownHook" #36 ... waiting on condition
+   at java.util.concurrent.CountDownLatch.await(CountDownLatch.java:276)
+   at org.springframework.context.support.DefaultLifecycleProcessor$LifecycleGroup.stop(DefaultLifecycleProcessor.java:627)
+   at org.springframework.context.support.DefaultLifecycleProcessor.stopBeans(DefaultLifecycleProcessor.java:432)
+   at org.springframework.context.support.DefaultLifecycleProcessor.onClose(DefaultLifecycleProcessor.java:323)
+   at org.springframework.context.support.AbstractApplicationContext.doClose(AbstractApplicationContext.java:1196)
+   at org.springframework.context.support.AbstractApplicationContext.close(AbstractApplicationContext.java:1150)
+   at org.springframework.boot.SpringApplicationShutdownHook.closeAndWait(SpringApplicationShutdownHook.java:147)
+   at java.lang.Iterable.forEach(Iterable.java:75)
+   at org.springframework.boot.SpringApplicationShutdownHook.run(SpringApplicationShutdownHook.java:116)
+```
+
+(로컬 재현의 jstack 에서 발췌, 마지막 클래스 종료 후 약 3분 시점)
+
+Spring Boot 의 종료 훅이 JVM 안에 남은 context 들을 `forEach` 로 하나씩 `close()` 하고 있었습니다. 각 context 는 수명주기 정지 단계에서 비동기로 멈추는 컴포넌트를 기다렸고 그 대상은 Kafka 리스너 컨테이너였습니다. 같은 덤프에 리스너 consumer 스레드가 96개 있었는데 모두 `KafkaConsumer.poll` 안에서 group coordinator 를 찾고 있었습니다.
+
+```text
+"org.springframework.kafka.KafkaListenerEndpointContainer#2-0-C-1" ... runnable
+   at org.apache.kafka.clients.consumer.internals.ConsumerNetworkClient.awaitMetadataUpdate(ConsumerNetworkClient.java:166)
+   at org.apache.kafka.clients.consumer.internals.AbstractCoordinator.ensureCoordinatorReady(AbstractCoordinator.java:303)
+   at org.apache.kafka.clients.consumer.internals.ConsumerCoordinator.poll(ConsumerCoordinator.java:483)
+   at org.apache.kafka.clients.consumer.KafkaConsumer.poll(KafkaConsumer.java:874)
+   at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.pollAndInvoke(KafkaMessageListenerContainer.java:1472)
+```
+
+(같은 jstack 에서 발췌)
+
+그 consumer 들이 찾는 브로커는 이미 없었습니다. 같은 시각 `docker ps` 에는 이 실행의 컨테이너가 하나도 없었고 Testcontainers 의 정리용 컨테이너(Ryuk)만 있었습니다. `@Container` 컨테이너는 자기 클래스가 끝날 때 멈춥니다. 하지만 그 클래스가 만든 Spring context 는 TestContext 프레임워크의 캐시에 남습니다. 캐시에 남은 context 는 JVM 이 끝날 때 종료 훅이 정리합니다([Spring 문서: Context Caching](https://docs.spring.io/spring-framework/reference/testing/testcontext-framework/ctx-management/caching.html)). 클래스가 25개 지나가면 이미 내려간 컨테이너를 가리키는 context 25개가 JVM 안에 살아 있게 됩니다.
+
+덤프로 세어 보면 마지막 클래스 직후 테스트 JVM 의 스레드는 2324개였고 그중 consumer group heartbeat 스레드가 194개였습니다. 종료 훅이 context 를 하나 끝낼 때마다 heartbeat 스레드가 8개 단위로 줄었고 전체 스레드가 95개로 내려가기까지 8분 가까이 걸렸습니다. 479.5초를 context 25개로 나누면 하나에 약 19초입니다.
+
+Spring Boot 는 수명주기 단계마다 정지를 기다리는 상한을 `spring.lifecycle.timeout-per-shutdown-phase` 로 둡니다([Spring Boot 문서: Graceful Shutdown](https://docs.spring.io/spring-boot/reference/web/graceful-shutdown.html)). Spring Boot 3.5.12 의 `LifecycleProperties` 에서 기본값은 30초입니다. 꼬리가 이 대기 때문이라면 상한을 낮추면 꼬리도 줄어야 합니다. 같은 코드에서 이 값만 1초로 바꿔 다시 돌렸습니다. 결과를 보기 전에 아래 장면에서 직접 바꿔 보세요.
+
+<ContextOutlivesContainer />
+
+꼬리는 479.5초에서 **92.3초**로 줄었습니다. 테스트 JVM 의 명령줄에 이 프로퍼티가 들어간 것을 확인했습니다. 이 실행은 도중에 다른 프로젝트 테스트가 함께 돌아 클래스 구간이 늘었기 때문에 꼬리만 비교에 썼습니다. 남은 92초도 context 하나에 약 3.7초꼴이라 다른 정리 비용이 더 있다는 것까지는 알 수 있습니다. context 하나의 약 19초가 Boot 의 30초 상한, spring-kafka 리스너 컨테이너의 정지 대기(기본 10초), poll 주기 가운데 무엇으로 이뤄졌는지는 더 나눠 보지 않았습니다.
+
+처음 분석은 보이지 않던 시간을 모두 다시 띄우는 비용으로 봤습니다. 그중 절반 이상은 **자기 컨테이너보다 오래 사는 context** 를 마지막에 정리하는 비용이었습니다. 이 구조는 로컬 재현의 스레드 덤프와 타임아웃 변경으로 확인했고 CI 의 515초도 같은 구조로 봅니다. Kafka 를 쓰지 않는 서비스만 꼬리가 없었다는 점이 그 근거입니다. 이 구조에서 테스트 클래스 하나를 추가하면 기동 십몇 초에 더해 종료 때 몇 초에서 이십 초 가까이를 더 냅니다. 그 크기는 리스너 수와 브로커 상태에 따라 달라질 것으로 보지만 따로 재지 않았습니다. 시간이 "기동"이라고만 믿었다면 더 빨리 뜨는 브로커나 이미지 최적화가 먼저 떠올랐을 것입니다.
+
+## 캐시가 한 번도 hit 하지 않은 이유
+
+context 가 25개나 쌓인 것도 이상합니다. Spring TestContext 는 같은 구성으로 만든 `ApplicationContext` 를 캐시에 넣어 두고 같은 키를 가진 다음 테스트 클래스가 재사용하게 합니다. 키에는 설정 클래스, 활성 프로필, `@TestPropertySource` 프로퍼티와 함께 `ContextCustomizer` 목록이 들어갑니다. `@DynamicPropertySource`, `@MockitoBean` 같은 빈 오버라이드, Spring Boot 의 테스트 지원 기능이 여기에 해당합니다. 캐시는 기본 최대 32개이고 넘치면 가장 오래 쓰지 않은 것부터 종료합니다([Spring 문서: Context Caching](https://docs.spring.io/spring-framework/reference/testing/testcontext-framework/ctx-management/caching.html)).
+
+주문 서비스의 `@SpringBootTest` 파일 26개 중 17개가 프로퍼티까지 완전히 같았습니다(꼬리 계산에 쓴 25는 jstack 에서 센 context 수입니다). 그런데도 cache hit 은 한 번도 없었습니다. 처음에는 컨테이너 포트가 매번 달라서라고 봤습니다. 하지만 Spring Boot 3.5.12 의 jar 를 `javap` 로 열어 보니 이유가 따로 있었습니다. `@ServiceConnection` 이 붙은 필드는 `ServiceConnectionContextCustomizer` 를 만들고 그 동등성 키에 **컨테이너 객체 자체**가 들어갑니다.
+
+```text
+ServiceConnectionContextCustomizer
+  keys: Set<CacheKey>
+CacheKey (record)
+  String connectionName
+  Set<Class<?>> connectionDetailsTypes
+  Container<?> container          <- 컨테이너 인스턴스
+  SslBundleSource sslBundleSource
+GenericContainer.equals(Object) = (this == other)
+```
+
+(spring-boot-testcontainers 3.5.12, testcontainers 1.21.4 jar 를 `javap` 로 열어 필드와 `equals` 를 요약해 발췌)
+
+Testcontainers 1.21.4 의 `GenericContainer.equals` 는 같은 객체인지만 봅니다. 클래스마다 `static` 컨테이너가 따로 있으면 설정이 한 글자도 다르지 않아도 캐시 키가 다릅니다. 그래서 context 는 재사용되지 않았습니다. 캐시 상한 32개에 이르지 않으니 테스트 도중 종료되지도 않았습니다. 앞에서 본 꼬리는 이 두 가지가 겹친 결과입니다.
+
+`@ServiceConnection` 대신 `@DynamicPropertySource` 로 접속 정보를 넘겼어도 그 메서드가 캐시 키에 들어가므로 클래스마다 컨테이너를 선언하는 구조라면 어느 연결 방식이든 캐시가 갈릴 것으로 봅니다. `@DynamicPropertySource` 쪽은 따로 실험하지 않았습니다.
+
+## 컨테이너를 모듈에 한 벌만
+
+시간이 어디서 나는지 알았으니 줄이는 방법을 골라야 했습니다. 떠올린 길은 네 가지였습니다.
+
+| 방법 | 이 상황에서의 문제 |
+|---|---|
+| JUnit 5 병렬 실행 | Testcontainers JUnit 5 extension 은 순차 실행에서만 검증됐고 병렬은 지원하지 않는다고 밝힙니다([문서](https://java.testcontainers.org/test_framework_integration/junit_5/)). 동시에 떠 있는 컨테이너 수가 늘어 줄이려는 방향과 반대입니다 |
+| 더 빨리 뜨는 브로커(Redpanda) | 기동 시간 비교값으로 2.7초 대 5.1초였습니다(측정 출처는 따로 남기지 않았습니다). 26번 띄우면 1분쯤 아끼지만, 종료 꼬리는 그대로입니다 |
+| `withReuse(true)` | 로컬 반복 실행은 빨라지지만 매번 새 러너가 뜨는 CI 에서는 효과가 없고, 로컬에 남은 컨테이너가 "내 머신에서만 통과"를 만들 수 있습니다 |
+| 모듈에 한 벌만 띄우기 | 공유 설정 클래스의 `static` 필드로 컨테이너를 두고 한 번만 시작합니다. Gradle 은 모듈마다 테스트 JVM 을 따로 띄우므로 모듈당 한 벌이 됩니다 |
+
+마지막 방법을 골랐습니다. 클래스마다 반복되던 비용이 컨테이너를 띄우고 내리는 일, 곧 컨테이너 수명에서 나왔기 때문입니다. 컨테이너 객체가 하나가 되면 캐시 키가 같아져 context 도 재사용되고 꼬리도 없어집니다. 흔히 "싱글톤 컨테이너" 라고 부르는 방식입니다.
+
+다만 클래스마다 컨테이너를 띄우던 구조는 그 자체로 격리 장치이기도 했습니다. 클래스가 끝나면 DB, 브로커, Redis 가 통째로 사라졌으니 앞 클래스가 남긴 행이나 레코드나 consumer 가 뒤 클래스에 영향을 줄 수 없었습니다. 컨테이너를 합치면 그 격리를 테스트가 직접 되사야 합니다. 그래서 컨테이너 공유와 함께 두 가지를 같이 하기로 했습니다.
+
+- **셔플.** 공유한 상태로 순차 실행이 한 번 통과한 것은 "격리가 필요 없었다"와 "이번 순서가 운 좋았다"를 구별하지 못합니다. JUnit 5 의 `ClassOrderer$Random` 을 기본값으로 걸고 시드를 로그에 찍기로 했습니다.
+- **lint.** 새 통합 테스트가 습관대로 `@Container` 를 선언하면 그 클래스만 조용히 컨테이너를 다시 띄우고 테스트는 통과하고 시간은 다시 늘어납니다. 직접 선언을 CI 에서 막기로 했습니다.
+
+## 컨테이너를 합치자 드러난 공유 상태
+
+공유 설정 클래스 하나로 세 컨테이너를 합치고 26개 클래스에서 `@Testcontainers`, `@Container` 를 지웠습니다. 첫 전체 실행에서 420개 중 3개가 실패했고 하나를 고칠 때마다 실패하는 테스트가 바뀌었습니다. 아래 두 절이 표의 각 행을 설명합니다.
+
+| 실행 (로컬) | 조치 | 실패 | 소요 |
+|---|---|---|---|
+| 1 | 컨테이너 공유만 | 3 | 6분 17초 |
+| 2 | 고정 이름 토픽 정리 2곳 추가 | 1 | 6분 46초 |
+| 3 | outbox 테스트에도 토픽 정리 적용 | 2 (대상이 바뀜) | 6분 34초 |
+| 4 | 스케줄링을 테스트에서 기본 off | 3 (타이머 검증 테스트로 이동) | 6분 22초 |
+| 5 | 그 테스트 클래스(2개)만 스케줄링을 다시 켬 | 1 | 4분 4초 |
+| 6 | 켠 클래스에 `@DirtiesContext` | 0 | 5분 35초 |
+
+### 이름이 고정된 토픽
+
+테스트 헬퍼가 만드는 토픽은 UUID 이름이라 부딪힐 일이 없었습니다. 하지만 애플리케이션이 쓰는 `order.created`, `order.cancelled` 같은 토픽은 이름이 고정입니다. 브로커를 공유하면 앞 클래스가 발행한 레코드가 뒤 클래스의 `seekToBeginning` 에 그대로 읽힙니다. 실행 1 의 실패 하나가 이것이었습니다. 테스트마다 부르던 `cleanDatabase()` 는 MySQL 만 비웠습니다.
+
+토픽을 지우고 다시 만드는 방식은 피했습니다. `deleteTopics` 는 비동기라 메타데이터가 전파되기 전에 다음 발행이 나갈 수 있습니다. 이 프로젝트의 CI 에서도 비슷한 일이 있었습니다. `createOrModifyTopics` 가 돌아온 직후의 `describeConfigs` 가 토픽을 찾지 못해, 그 시점의 테스트 418개 중 2개가 `UnknownTopicOrPartitionException` 으로 실패했습니다. 로컬 Kafka 컨테이너(`apache/kafka:3.8.1`)에서 "토픽 생성 직후 config 조회"를 300번 반복하는 재현을 따로 돌려 보니 한 번은 0번, 다른 한 번은 20번 같은 예외가 났습니다. 생성 API 가 돌아왔다고 바로 모든 조회에 보이지는 않습니다.
+
+그래서 토픽은 그대로 두고 `Admin.deleteRecords` 로 각 파티션의 로그를 현재 end offset 까지 잘랐습니다.
+
+```java
+protected void cleanKafkaTopics(String bootstrapServers, String... topics) {
+    try (Admin admin = Admin.create(Map.of("bootstrap.servers", bootstrapServers))) {
+        // 토픽별 파티션을 찾고(없는 토픽은 건너뜀) 각 파티션의 latest offset 을 조회한 뒤
+        admin.deleteRecords(cut).all().get();   // 로그를 그 지점까지 자른다
+    }
+}
+```
+
+(테스트 공통 부모 클래스의 정리 메서드를 줄여 옮김)
+
+### 아무도 요청하지 않았는데 상태를 고치는 주체
+
+실패 대상이 계속 바뀐 것은 서비스 진입점에 `@EnableScheduling` 이 무조건 붙어 있어서였습니다. 그래서 outbox 폴러(DB 에 쌓아 두고 아직 발행하지 않은 이벤트를 주기적으로 Kafka 로 보내는 잡), 주문 타임아웃 스케줄러 같은 `@Scheduled` 잡이 테스트에서도 돌았습니다. 테스트가 이벤트 상태를 직접 바꾸고 확인하는 사이에 폴러가 같은 이벤트를 먼저 처리하거나, 테스트가 기대한 상태로 바뀌기 전에 다른 상태로 돌려놓는 식입니다. 실행 3 의 실패가 `expected: PUBLISH_FAILED but was: REQUESTED` 처럼 테스트마다 달랐던 이유입니다. 이 글에서는 이렇게 테스트가 요청하지 않았는데 공유 상태를 바꾸는 스케줄러와 리스너를 **자율 writer** 라고 부르겠습니다.
+
+이 문제는 컨테이너를 합치기 전부터 있었습니다. 각 테스트는 `app.outbox.polling.delay=1h` 같은 프로퍼티로 타이머를 하나씩 늦춰 왔습니다. 그런데 `@TestPropertySource` 프로퍼티는 context 캐시 키입니다. 타이머를 끄려고 넣은 프로퍼티가 context 를 쪼개고 있었고 프로퍼티를 빠뜨린 테스트는 배경 잡과 경쟁했습니다. 비결정성과 캐시 파편화가 같은 곳에서 나왔습니다. 클래스마다 DB 가 따로였을 때는 그 경쟁이 자기 클래스 안에서만 일어났을 뿐입니다.
+
+스케줄링을 테스트에서 기본으로 끄자(실행 4) 데이터가 섞여서 나던 실패는 모두 사라지고 타이머 실행 자체를 검증하는 테스트만 실패로 남았습니다. 그 두 클래스만 스케줄링을 다시 켜자(실행 5) 실패는 1개로 줄었는데, 남은 하나는 타이머와 다른 테스트였습니다("다시 한다면"에서 다룹니다). 그와 별개로 스케줄링을 켠 클래스의 context 가 캐시에 남으면 그 타이머는 클래스가 끝난 뒤에도 200ms 주기로 계속 돌면서 이후 클래스들이 쓰는 공유 DB 를 고칠 수 있습니다. 앞에서 본 "자기 컨테이너보다 오래 사는 context" 가 이번에는 살아 있는 공유 DB 에 붙어 있게 됩니다. 그래서 켠 클래스에 `@DirtiesContext(classMode = AFTER_CLASS)` 를 붙여 클래스가 끝나면 그 context 를 캐시에서 내리고 종료하게 했습니다. 실행 6 은 420개가 모두 통과했지만 남아 있던 실패가 왜 사라졌는지는 확인하지 못했습니다.
+
+## 셔플이 드러낸 것
+
+순차 실행 420개 통과 다음에는 클래스 순서를 섞었습니다. 첫 시도부터 실패가 나왔습니다.
+
+### end offset 을 세는 테스트
+
+`deleteRecords` 는 읽을 수 있는 첫 offset(low watermark)만 올리고 end offset 은 그대로 둡니다. `seekToBeginning` 으로 읽는 테스트는 이것으로 해결됩니다. 하지만 "end offset 이 몇인가"를 절대값으로 세는 assert 는 앞 클래스가 발행한 몫까지 셉니다. 순서가 바뀌자 그런 assert 하나가 실패했습니다. drain 하나는 절대 end offset 을 기다렸는데 잘린 로그에서는 그 값에 도달할 수 없어 매번 15초씩 타임아웃을 냈고 한 회차가 2424초까지 늘었습니다. 두 곳 모두 `end - beginning` 상대값으로 바꿨습니다.
+
+### `@DirtiesContext` 가 공유 컨테이너를 멈췄습니다
+
+더 큰 실패는 공유 설정 자체에서 나왔습니다. 처음 만든 공유 설정은 [SivaLabs 의 글](https://www.sivalabs.in/blog/run-spring-boot-testcontainers-tests-at-jet-speed/)처럼 `static` 컨테이너를 `@Bean @ServiceConnection` 메서드로 돌려주는 형태였습니다. 순서를 섞은 실행에서 `@DirtiesContext` 가 붙은 클래스가 끝나자 이후 클래스들이 줄줄이 `ConnectException` 으로 실패했습니다. 5초마다 `docker ps` 를 찍어 보니 MySQL 컨테이너 수가 1에서 0으로, 다시 1로 바뀌었고 그 시각이 context 종료와 맞았습니다.
+
+<ContainerBeanLifecycle />
+
+Spring Boot 는 컨테이너 빈의 수명을 관리하는 `TestcontainersLifecycleBeanPostProcessor` 를 등록합니다. 이것은 빈이 파괴될 때 컨테이너를 멈추는 `DestructionAwareBeanPostProcessor` 입니다. [Spring Boot 문서](https://docs.spring.io/spring-boot/reference/testing/testcontainers.html)에 따르면 빈으로 관리되는 컨테이너는 TestContext 프레임워크의 context 종료 과정에서 함께 멈춥니다. 컨테이너를 빈으로 노출하면 **컨테이너의 수명이 그 빈을 가진 context 의 수명에 묶입니다.** context 하나가 종료되면 공유 컨테이너가 멈춥니다. 컨테이너 빈은 context 가 만들어질 때 다른 빈보다 먼저 시작되므로(같은 문서), 다음 context 가 뜰 때 컨테이너가 새 포트로 다시 시작됩니다. 이미 캐시된 다른 context 들은 옛 포트를 들고 남습니다.
+
+이 관계만 따로 확인하는 재현을 만들어 봤습니다. `SpringApplicationBuilder` 로 같은 컨테이너를 쓰는 context 두 개를 띄우고 하나를 종료한 뒤 나머지에서 `select 1` 을 실행했습니다.
+
+```text
+ContainerAsBean           캐시된 ctx: OK  port 54295
+                          다른 ctx close 후 컨테이너 running=false
+                          캐시된 ctx: FAIL ConnectException
+                          다음 ctx: OK  port 54417 (새 컨테이너)
+@Bean(destroyMethod = "") 다른 ctx close 후 running=false, 캐시된 ctx: FAIL ConnectException
+ConnectionDetails 만 노출 다른 ctx close 후 running=true,  캐시된 ctx: OK  port 54762 그대로
+```
+
+(로컬 재현 출력에서 발췌해 정리. Spring Boot 3.5.12, Testcontainers 1.21.4)
+
+`@Bean(destroyMethod = "")` 로도 막히지 않습니다. 컨테이너를 멈추는 주체는 빈의 destroy 메서드와 별개로 동작하는 post-processor 입니다. 컨테이너는 빈으로 넘기지 않고 접속 정보만 담은 `JdbcConnectionDetails`, `RedisConnectionDetails`, `KafkaConnectionDetails` 빈을 노출하도록 바꿨습니다. 이 객체들은 `Startable` 을 구현하지 않아 post-processor 가 멈출 대상이 없습니다. 컨테이너 수명은 static initializer 와 Testcontainers 의 Ryuk 이 맡습니다. `@DynamicPropertySource` 로 접속 정보만 넘기는 방법도 시도했습니다. 하지만 그 메서드가 `@Import` 로 들어온 설정 클래스에 있으면 TestContext 프레임워크가 읽지 않아 datasource URL 이 빈 채 부팅이 실패했습니다.
+
+### 자기 리스너를 멈췄는데도 메시지가 사라졌습니다
+
+설정을 고치고 섞은 순서로 다시 돌리자 시드 4개에서 같은 테스트 하나가 매번 실패했습니다. DLQ(dead letter queue, 처리에 실패한 메시지를 모아 두는 토픽)에 쌓인 메시지를 다시 처리(replay)하기 전의 사전 조건을 검증하는 테스트였습니다. 이 테스트는 `stock.reservation.result` 토픽에 fixture 레코드를 발행하고 주문이 아직 "예약 미확정"이라 replay 를 허용해야 한다고 assert 합니다. 결과는 "이미 예약이 확정됐다"였습니다.
+
+```text
+java.lang.AssertionError: [PENDING·미확정 주문은 통과해야 한다 — adapter 가 없으면 fail-closed 로 거부된다]
+Expecting empty but was: ["[축5] 사전조건 불충족 — 이미 예약이 확정됐다 — 재적용이 확정 시각을 되돌린다. orderId=1"]
+```
+
+(테스트 실패 메시지 발췌)
+
+실제 `@KafkaListener` 가 fixture 를 먼저 소비해 예약을 확정했습니다. 이 테스트에는 대비책이 이미 있었습니다. `@BeforeEach` 에서 `KafkaListenerEndpointRegistry` 를 훑어 자기 context 의 애플리케이션 리스너 컨테이너를 `stop()` 해 두었습니다. 그런데도 누군가 소비하고 있었습니다. 누가 소비했을지 장면에서 먼저 확인해 보세요.
+
+<ConsumerGroupHandoff />
+
+`@KafkaListener` 의 `groupId` 는 코드에 상수로 박혀 있습니다(`order-svc-stock-result-group` 등). 컨테이너를 공유하면 리스너가 켜진 채 캐시된 모든 context 가 같은 그룹 이름으로 같은 브로커에 붙습니다. Kafka 는 한 consumer group 안에서 파티션 하나를 consumer 하나에게만 할당합니다. 자기 context 의 consumer 를 멈추면 그룹이 리밸런스되고 파티션이 다른 context 의 consumer 에게 넘어갑니다. 세 클래스만 골라 돌린 실행의 로그에 그 과정이 남아 있습니다.
+
+```text
+consumer-order-svc-stock-result-group-36
+consumer-order-svc-stock-result-group-44
+...
+Request joining group due to: consumer pro-actively leaving the group
+Successfully joined group with generation Generation{generationId=4, memberId='consumer-order-svc-stock-result-group-44-aa5ccce9-...', protocol='range'}
+Adding newly assigned partitions: stock.reservation.result-0
+```
+
+(테스트 로그에서 발췌. `-36`, `-44` 는 서로 다른 context 가 만든 consumer 의 client id. 이 실행 자체는 통과했으므로 실패의 재현으로 보지 않고 파티션이 넘어가는 동작의 증거로만 씁니다)
+
+이 상황만 따로 떼어 Spring context 없이 리스너 컨테이너 두 개로 재현했습니다. 파티션이 1개인 토픽에 "캐시된 A" 와 "지금 테스트의 B" 를 붙이고 B 를 `stop()` 한 뒤 fixture 를 발행했습니다.
+
+| A 의 상태 | B 를 stop 한 뒤 발행한 fixture 를 소비한 쪽 |
+|---|---|
+| A 없음 (B 만) | 없음 |
+| 같은 `groupId` 로 살아 있음 | A |
+| 다른 `groupId` 로 살아 있음 | A (자기 그룹으로 따로 소비) |
+
+(로컬 재현. spring-kafka 3.3.14, kafka-clients 3.9.2, `apache/kafka:3.8.1`. 첫 시도는 B 의 할당만 기다리게 짠 재현 코드의 실수로 무효 처리하고 다시 돌렸습니다)
+
+세 번째 줄에서 보듯 `groupId` 를 context 마다 무작위로 바꾸면 그룹 안의 파티션 이동은 사라집니다. 그래도 살아 있는 리스너는 자기 그룹으로 여전히 fixture 를 소비합니다. 앞의 스케줄러와 같은 문제였습니다. 테스트가 요청하지 않은 소비가 공유 DB 의 도메인 상태를 바꿉니다. 테스트 하나가 자기 context 안에서 무엇을 하든 다른 context 의 리스너는 막을 수 없습니다.
+
+### 실패가 원인 없는 타임아웃으로만 보일 때
+
+리스너를 기본으로 끄고 필요한 클래스만 켜자(다음 절) 이 실패는 사라졌습니다. 그 뒤 문서만 고친 PR 의 CI 에서 결제 서비스의 DLQ 통합 테스트 하나가 20초 대기 끝에 실패했습니다. 메시지는 `AssertionError` 하나뿐이었고 같은 클래스의 나머지 두 케이스는 각각 1.6초에 통과했습니다. 이 클래스는 그 JVM 에서 처음 실행된 Kafka 통합 테스트 클래스였고 재시도한 실행은 통과했습니다.
+
+이 테스트는 리스너를 켜고 곧바로 `kafkaTemplate.send(record)` 를 호출한 뒤, DLT(Spring Kafka 가 실패한 레코드를 보내는 dead letter topic)에 레코드가 도착할 때까지 `await().atMost(20, SECONDS)` 로 기다립니다. 원인 후보는 둘이었습니다.
+
+- **할당 전 발행.** 리스너가 그룹에 가입해 파티션을 받기 전에 발행하면 첫 group join 과 `__consumer_offsets` 생성, 토픽 자동 생성 시간이 테스트의 20초 대기 안에서 함께 쓰입니다. 다만 이 서비스는 `auto-offset-reset: earliest` 라 할당이 늦어도 레코드가 사라지지는 않습니다. 로컬 재현에서 할당 목록이 빈 상태로 발행한 레코드도 81ms 뒤에 읽혔습니다. 이 후보라면 예산을 넘긴 것이고 유실은 아닙니다.
+- **버려진 발행 future.** `send()` 가 돌려준 future 를 아무도 보지 않으면 첫 발행이 실패해도 테스트에는 아무 신호가 없습니다. 이 서비스의 producer 는 `max.block.ms` 3초, `delivery.timeout.ms` 5초였습니다. 브로커가 거절할 만큼 큰 레코드(토픽 `max.message.bytes=100` 에 500바이트)를 보내는 로컬 재현에서, future 를 버린 호출은 아무 예외 없이 지나갔고 같은 호출을 `join()` 하면 발행 지점에서 예외로 끝났습니다. 다만 재현의 producer 는 기본 설정이어서 그 예외는 `orTimeout` 초과(`TimeoutException`)였고 브로커의 거절까지는 보지 못했습니다.
+
+두 경우 모두 테스트가 보여 주는 것은 "20초 동안 아무것도 오지 않았다"뿐입니다. 로컬에서 같은 클래스를 단독으로 돌려 할당 시간을 재 보니 0.1초 남짓이었고 실패는 재현되지 않았습니다. CI 리포트에는 애플리케이션 로그가 남지 않아 할당 시각도 볼 수 없었습니다. 그래서 원인을 확정하는 대신 **다음 실패가 원인 지점에서 나도록** 바꿨습니다.
+
+```java
+@BeforeEach
+void setUp() {
+    awaitListenerAssignment(listenerRegistry);   // 발행 전에 모든 리스너가 파티션을 받을 때까지
+}
+
+kafkaTemplate.send(record).orTimeout(10, TimeUnit.SECONDS).join();   // 발행 실패는 여기서 예외로
+```
+
+```java
+protected void awaitListenerAssignment(KafkaListenerEndpointRegistry registry) {
+    await().atMost(Duration.ofSeconds(30))
+            .alias("리스너 파티션 할당")
+            .until(() -> unassignedListenerIds(registry), empty());   // 실패 메시지에 미할당 리스너 id 가 남는다
+}
+```
+
+(테스트 공통 부모 클래스와 테스트 코드에서 발췌)
+
+할당이 끝났다면 토픽이 있고 그룹 가입이 끝났고 브로커 메타데이터도 준비된 상태입니다. 그래도 실패하면 이제 어느 리스너인지가 적힌 "리스너 파티션 할당" 타임아웃이나 발행 지점의 예외로 드러납니다. checked 예외가 테스트 메서드 시그니처로 번지지 않게 하려고 `.get(10, SECONDS)` 대신 `orTimeout().join()` 을 썼습니다. 리스너를 켜는 클래스가 네 서비스에 12개 있었고 future 를 버리던 `send` 는 22곳이었습니다. 이 실패의 근본 원인은 확정하지 못했고 그 뒤 재발 기록은 없습니다.
+
+## 클래스 경계가 하던 격리를 무엇으로 되샀나
+
+컨테이너를 합친 뒤의 실패를 모아 보면 한 가지입니다. 클래스마다 컨테이너가 따로일 때는 클래스 경계가 공유 자원을 통째로 버려 주었습니다. 공유한 뒤에는 그 일을 테스트가 자원별 규약으로 해야 합니다.
+
+### 컨테이너는 static 으로, Spring 에는 접속 정보만
+
+```java
+@TestConfiguration(proxyBeanMethods = false)
+public class SharedContainers {
+
+    public static final MySQLContainer<?> MYSQL =
+            new MySQLContainer<>("mysql:8.0").withDatabaseName("peekcart_test");
+    public static final GenericContainer<?> REDIS =
+            new GenericContainer<>("redis:7").withExposedPorts(6379);
+    public static final KafkaContainer KAFKA = new KafkaContainer("apache/kafka:3.8.1");
+
+    static {
+        Startables.deepStart(MYSQL, REDIS, KAFKA).join();   // 셋을 병렬로 띄우고 모두 준비될 때까지 대기
+    }
+
+    @Bean
+    JdbcConnectionDetails sharedJdbcConnectionDetails() { ... MYSQL.getJdbcUrl() ... }
+
+    @Bean
+    RedisConnectionDetails sharedRedisConnectionDetails() { ... }
+
+    @Bean
+    KafkaConnectionDetails sharedKafkaConnectionDetails() {
+        return () -> List.of(KAFKA.getBootstrapServers());
+    }
+}
+```
+
+(공유 테스트 설정 클래스에서 발췌)
+
+테스트 클래스는 `@SpringBootTest` 에 `@Import(SharedContainers.class)` 만 붙이고 `@Testcontainers`, `@Container` 는 쓰지 않습니다. 모든 클래스가 같은 설정 클래스를 import 하므로 캐시 키도 같아집니다. Spring context 가 없는 테스트(raw `Admin` 클라이언트만 쓰는 토픽 설정 테스트)는 `SharedContainers.KAFKA` 같은 static 필드를 직접 읽습니다. 필드에 접근하는 것만으로 static initializer 가 돌아 기동이 보장됩니다. 이 클래스는 여러 서비스 모듈이 함께 쓰는 Gradle `testFixtures` 에 하나만 둡니다.
+
+`ConnectionDetails` 빈을 직접 내놓으면 Spring Boot 의 프로퍼티 기반 `ConnectionDetails` 는 `@ConditionalOnMissingBean` 이라 만들어지지 않습니다. 상품 서비스에는 Redis 를 장애 주입 프록시(Toxiproxy) 뒤에 두고 `spring.data.redis.*` 프로퍼티로 프록시 주소를 넘기는 테스트가 있었습니다. 공유 빈이 생기자 그 프로퍼티가 무시됐습니다. 그 테스트만 프록시를 가리키는 `@Primary` `RedisConnectionDetails` 빈으로 덮었고 이 빈을 빼면 7개 중 5개가 실패하는 것을 확인했습니다.
+
+### 자율 writer 는 테스트에서 기본 off, 켜는 테스트가 수명을 가둔다
+
+스케줄러와 리스너를 같은 규칙으로 다뤘습니다.
+
+| 대상 | 끄는 프로퍼티 | 거는 지점 |
+|---|---|---|
+| `@Scheduled` | `app.scheduling.enabled` | 공통 `SchedulingConfig` 의 `@ConditionalOnProperty(matchIfMissing = true)` 아래로 `@EnableScheduling` 을 옮김 |
+| `@KafkaListener` | `app.kafka.listener.enabled` | 모든 리스너 container factory 의 `setAutoStartup(false)` |
+
+- 운영 기본값은 켜짐(`matchIfMissing = true`)이라 운영 동작은 바뀌지 않습니다. 끄는 것은 Gradle `test` 태스크의 시스템 프로퍼티뿐입니다.
+- 그 동작을 검증하는 테스트만 `@TestPropertySource(properties = "app.kafka.listener.enabled=true")` 처럼 인라인으로 켭니다. 인라인 프로퍼티가 시스템 프로퍼티보다 우선합니다.
+- 켠 테스트는 `@DirtiesContext(classMode = AFTER_CLASS)` 로 자기 클래스가 끝나면 context 를 종료합니다. 컨테이너는 static 이라 영향을 받지 않습니다.
+
+리스너는 Spring Boot 의 `spring.kafka.listener.auto-startup` 으로 끄지 않았습니다. 이 프로젝트의 서비스들은 `ConcurrentKafkaListenerContainerFactory` 를 직접 `@Bean` 으로 만들어 씁니다. 이 Boot 속성은 Boot 가 자동 구성하는 factory 에만 적용됩니다. 대신 `AbstractKafkaListenerContainerFactory` 타입의 빈을 찾아 `autoStartup` 을 끄는 `BeanPostProcessor` 를 공통 모듈에 두었습니다. 이름 대신 타입으로 찾아야 서비스마다 다른 factory 이름이나 새로 생기는 factory 도 빠지지 않습니다.
+
+```java
+@Bean
+@ConditionalOnProperty(name = "app.kafka.listener.enabled", havingValue = "false")
+static BeanPostProcessor kafkaListenerAutoStartupDisabler() {
+    return new BeanPostProcessor() {
+        @Override
+        public Object postProcessAfterInitialization(Object bean, String beanName) {
+            if (bean instanceof AbstractKafkaListenerContainerFactory<?, ?, ?> factory) {
+                factory.setAutoStartup(false);
+            }
+            return bean;
+        }
+    };
+}
+```
+
+(공통 모듈의 리스너 기동 설정에서 발췌)
+
+검토했다가 쓰지 않은 방법은 다음과 같습니다.
+
+| 방법 | 쓰지 않은 이유 |
+|---|---|
+| 각 테스트가 자기 리스너를 `stop()` | 자기 context 만 멈춥니다. 상수 `groupId` 로 다른 캐시된 context 가 파티션을 넘겨받습니다 |
+| `spring.kafka.listener.auto-startup=false` | factory 를 직접 만드는 서비스에는 적용되지 않습니다. 일부만 꺼지면 "껐는데 일부가 돈다"가 되어 원인 찾기가 더 어렵습니다 |
+| context 마다 `groupId` 무작위화 | 리스너는 여전히 fixture 를 소비합니다. 이 프로젝트의 DLQ replay 는 실패한 consumer group 이름을 기록해 두고 그 그룹을 기준으로 다시 보내므로, 테스트에서만 `groupId` 를 바꾸면 그 검증이 의미를 잃습니다 |
+| 스케줄러, 리스너 빈을 `@MockitoBean` 으로 대체 | 빈 오버라이드는 context 캐시 키입니다. 타이머를 끄려던 프로퍼티와 같은 이유로 캐시를 쪼갭니다 |
+
+각 테스트가 끄는 opt-out 대신 각 테스트가 켜는 opt-in 을 고른 이유는 둘이었습니다. 하나는 끄기를 빠뜨리면 곧바로 데이터가 섞인다는 점입니다. 다른 하나는 켜야 하는 클래스가 훨씬 적다는 점입니다(주문 서비스 기준 스케줄러 2개, 리스너 3개 클래스, 리스너를 직접 `start()` 하는 클래스 1개). 대신 opt-in 에는 반대 방향의 위험이 있습니다. 리스너 소비를 검증해야 하는 테스트가 켜기를 빠뜨리면 "아무 일도 일어나지 않았다"를 보고 **조용히 통과**할 수 있습니다. 그래서 notification, payment, product 를 전환할 때는 opt-in 을 다시 끄고 돌려 그 테스트가 실제로 실패하는지 확인했습니다. 주문 서비스에는 이 확인을 한 기록이 없습니다.
+
+### 공유 자원마다 cleanup 규약
+
+| 공유 자원 | 앞 클래스가 남기는 것 | 규약 |
+|---|---|---|
+| MySQL | 행 | 데이터에 의존하는 테스트는 `@BeforeEach` 에서 `cleanDatabase()`. `information_schema` 로 테이블을 찾아 `FOREIGN_KEY_CHECKS=0` 아래에서 전부 DELETE (Flyway 이력과 ShedLock 테이블 제외. ShedLock 은 스케줄 작업을 한 인스턴스에서만 돌게 하는 DB 락입니다) |
+| Kafka | 고정 이름 토픽의 레코드 | 그 토픽을 읽는 테스트는 `cleanKafkaTopics(...)`. 토픽은 지우지 않고 `deleteRecords` 로 자르며, end offset 절대값을 세지 않음 |
+| Kafka | consumer group 할당 | 리스너를 켠 테스트는 `@BeforeEach` 에서 `awaitListenerAssignment(registry)`, `send` 는 `join()` |
+| Redis | 캐시 엔트리 | 캐시를 검증하는 테스트는 `cleanCaches(cacheManager)` |
+| JVM 안의 context | 살아 있는 타이머, 리스너 | 자율 writer 를 켠 클래스는 `@DirtiesContext(AFTER_CLASS)` |
+
+서비스를 하나씩 전환하면서 이 표에 맞지 않는 공유 상태가 하나씩 더 나왔습니다. 결제 서비스에서는 DLQ 원장 테스트가 `*.dlq` 토픽에 보낸 레코드가, 다음 클래스 DLQ 테스트 리스너(earliest)의 `@BeforeEach` 정리 **뒤에** 도착했습니다. 리스너는 context 가 뜰 때부터 읽으므로 토픽 정리로는 순서를 보장할 수 없었습니다. 그래서 레코드마다 고유 key 로 거르게 바꿨습니다. 클래스 순서만 고정한 첫 재현은 통과했습니다. 먼저 돈 메서드가 마침 key 로 거르는 케이스였기 때문입니다. 메서드 순서까지 고정해야 실패가 재현됐습니다.
+
+상품 서비스의 실행 계획(EXPLAIN) 테스트는 공유 DB 에 남은 행 30개 때문에 실행 계획이 풀스캔으로 바뀌어 매 테스트 전에 DB 를 비우게 했습니다.
+
+### 규약이 지켜지는지 확인하는 장치
+
+규약은 지키지 않아도 테스트가 통과하는 경우가 많아서 사람이 기억하는 것만으로는 유지되지 않습니다. 두 장치를 CI 에 두었습니다.
+
+**셔플과 시드.** 모든 서비스의 `test` 태스크가 클래스 순서를 `ClassOrderer$Random` 으로 섞고 시드를 로그에 찍습니다. 실패한 순서는 `-PtestSeed=<시드>` 로 다시 낼 수 있습니다.
+
+```text
+test class order seed = 1790654636691 (재현: ./gradlew :payment-service:test -PtestSeed=1790654636691)
+```
+
+(CI 로그 발췌, 앞의 접두 생략)
+
+시드를 넣는 방식에서 한 번 실수가 있었습니다. 처음에는 시드 기본값을 `System.currentTimeMillis()` 로 정해 구성 단계에서 `systemProperty` 로 넘겼습니다. 그런데 Gradle 은 test 태스크의 `systemProperty` 를 태스크 **입력**으로 스냅샷합니다. 값이 매번 다르니 아무것도 바꾸지 않고 `./gradlew test` 를 다시 돌려도 다섯 서비스의 테스트가 전부 다시 돌았습니다(로컬 568초).
+
+```groovy
+def seed = (project.findProperty('testSeed') ?: System.getenv('TEST_SEED'))?.toString()
+
+tasks.named('test') {
+    systemProperty 'junit.jupiter.testclass.order.default', 'org.junit.jupiter.api.ClassOrderer$Random'
+    if (seed) {
+        systemProperty 'junit.jupiter.execution.order.random.seed', seed   // 명시 시드만 입력
+    }
+    doFirst {
+        def s = seed ?: System.currentTimeMillis().toString()
+        systemProperty 'junit.jupiter.execution.order.random.seed', s      // 입력 스냅샷 뒤라 입력이 아니다
+        logger.lifecycle("test class order seed = ${s} (재현: -PtestSeed=${s})")
+    }
+}
+```
+
+(서비스 모듈의 `build.gradle` 을 줄여 옮김)
+
+무작위 시드는 `doFirst` 에서 넣어 입력에서 빼고 재현용 명시 시드만 입력으로 남겼습니다. 사용자 서비스에서 변경 없는 재실행이 1분 5초에서 `UP-TO-DATE` 4초가 됐습니다. 테스트 클래스 3개짜리 빈 Gradle 프로젝트로도 따로 확인했습니다. 구성 단계 `systemProperty` 는 두 번째 실행도 돌았고 `doFirst` 는 두 번째가 `UP-TO-DATE` 였습니다. 그 대가로 변경 없는 재실행은 새 순서로 다시 섞이지 않으니 필요하면 `--rerun` 을 씁니다. CI 는 매번 새 러너에서 이전 출력 없이 돌고 Gradle 빌드 캐시도 쓰지 않아 매번 테스트를 돌리므로 영향이 없습니다.
+
+**lint.** CI 의 lint 스크립트가 다음을 막습니다.
+
+- 서비스 모듈 테스트의 `@Container`, `@Testcontainers` 직접 선언. `@org.testcontainers.junit.jupiter.Testcontainers` 같은 전체 이름 표기도 같은 선언으로 셉니다.
+- 사유가 없는 예외. 예외 목록은 스크립트 안에 사유와 함께 두고(현재 버전 고정 MySQL 클래스 1건) 사유가 빈 항목과 실제 파일이 없는 항목은 위반입니다.
+- 검사 대상의 누락. 대상 모듈이 사라지거나 `settings.gradle` 에 있는데 목록에 없으면 위반입니다. 검사 대상이 줄어들어 통과하는 것을 막습니다.
+- `app.kafka.listener.enabled=true` 를 가진 테스트 파일이 `awaitListenerAssignment` 를 부르지 않는 경우.
+
+lint 가 보지 않는 규약도 남아 있습니다. 자율 writer 를 켠 클래스의 `@DirtiesContext`, 프로퍼티 대신 `start()` 로 리스너를 직접 켜는 테스트의 할당 대기는 아직 사람이 확인합니다.
+
+## 결과
+
+### 주문 서비스 (CI)
+
+| | 전환 전 | 전환 후 |
+|---|---|---|
+| `:order-service:test` | 975초 | 약 223초 |
+| `test (order-service)` 잡 | 17.5분 | 5.2분 |
+| 마지막 클래스 뒤 꼬리 | 약 515초 | 약 5초 |
+| 컨테이너 기동 | 클래스마다 | MySQL, Redis, Kafka 각 1회 (버전 고정 MySQL 1회 별도) |
+
+(전환 전후 CI 실행 각 1회. 전환 후 실행도 셔플이 켜진 상태입니다)
+
+같은 두 커밋을 로컬에서 나란히 돌린 값은 따로 둡니다.
+
+| 로컬 재현 | 태스크 | 클래스 사이 공백(3초 초과) | 마지막 클래스 뒤 꼬리 |
+|---|---|---|---|
+| 전환 전 | 1108.2초 | 26곳, 430.7초 | 479.5초 |
+| 전환 전, 종료 단계 타임아웃 1초 | 1095.8초 | 28곳, 752.3초 (외부 부하 섞임) | 92.3초 |
+| 전환 후 | 219.4초 | 3곳, 45.3초 | 2.2초 |
+
+(이 글을 위해 따로 돌린 로컬 재현, 각 1회. 전환 후는 시드 555000777. 전환 전 런과 전환 후 런에도 다른 프로젝트 컨테이너가 각각 약 10초, 약 35초 겹쳤습니다)
+
+리스너 게이트를 넣은 뒤 로컬에서 시드 6개로 돌린 셔플 실행은 모두 420개 통과였고 221~277초가 걸렸습니다.
+
+`@SpringBootTest` 클래스 25개의 context 는 25번에서 15번 뜨는 것으로 줄었습니다(로컬 시드 555000777 에서 계측). 17개 클래스의 설정이 같았으니 한두 번을 기대할 수도 있습니다. 하지만 자율 writer 를 켠 클래스가 `@DirtiesContext` 로 끝날 때마다 context 를 종료하므로 다음 클래스는 새로 만들어야 합니다. 격리를 얻으려고 cache hit 일부를 포기했고 opt-in 클래스가 늘면 이 비용도 늘어납니다.
+
+### 나머지 서비스 (로컬)
+
+같은 전환을 나머지 서비스에 하나씩 적용했습니다. 서비스마다 `@EnableScheduling` 을 게이트 뒤로 옮기고 리스너와 타이머를 정말 검증하는 클래스만 골라 켜고, 켠 클래스를 하나씩 다시 꺼서 실패하는지 확인했습니다.
+
+| 서비스 | 전환 클래스 | 자율 writer opt-in | `test --rerun` (로컬) |
+|---|---|---|---|
+| user | 4 | 0 | 176초에서 58초 |
+| notification | 7 | 리스너 2 | 342초에서 69초 |
+| payment | 13 | 리스너 5, 스케줄러 1 | 1919초에서 55초 |
+| product | 20 | 리스너 2, 스케줄러 1 | 1098초에서 156초 |
+
+(서비스별 전환 때의 로컬 측정. 시드와 머신 상태가 서비스마다 달라 서비스끼리 비교하는 값으로는 쓰지 않습니다)
+
+브로커를 공유하면 테스트 헬퍼가 만드는 UUID 토픽이 한 모듈 실행 동안 쌓여 메타데이터 지연이 나빠질 수 있다는 우려도 있었습니다. notification, payment, product 에서 실행 중 토픽 수를 세어 보니 마지막에 고정 이름 토픽 12~20개였고 메타데이터 타임아웃은 한 번도 나지 않았습니다. 다만 UUID 토픽을 만드는 테스트는 주문 서비스에만 있고, 주문 서비스의 토픽 수는 세지 않았습니다.
+
+다섯 서비스를 모두 바꾼 뒤 로컬 `./gradlew test --rerun` 은 706초, 8개 모듈 1253개 테스트가 모두 통과했습니다. 전환 전에는 로컬 전체 실행이 자원 경합으로 자주 깨져 모듈별로 나눠 돌려야 했는데 동시에 뜨는 컨테이너 수가 줄어서 해소된 것으로 보입니다. 두 상태를 직접 대조하는 실험은 하지 않았습니다.
+
+CI 전체 시간은 이 전환으로 줄지 않았습니다. 테스트 잡이 이미 CI 의 가장 긴 경로가 아니었기 때문입니다.
+
+## 다시 한다면
+
+**타임스탬프부터 봤을 것입니다.** 844초를 클래스 수로 나눈 것은 보이지 않는 시간이 고르게 퍼져 있다는 가정이었습니다. JUnit XML 에는 클래스 시작 시각이 이미 있었고 정렬만 했으면 맨 뒤의 빈 구간이 보였습니다. 이번에는 결론이 같았습니다. 컨테이너를 하나로 합치면 기동과 꼬리가 함께 없어지기 때문입니다. 하지만 꼬리가 있다는 것을 알았다면 컨테이너 공유 전에도 다른 처방이 보였을 것입니다. 로컬 재현에서는 수명주기 정지 타임아웃 하나로 꼬리가 387초 줄었습니다. 처음 분석에서 나온 "클래스 하나를 추가하면 몇십 초가 든다"는 산식도 맞지 않았습니다.
+
+**셔플을 전환보다 먼저 켰을 것입니다.** 자율 writer 문제는 컨테이너 공유가 만든 것이 아니었습니다. 작업 로그를 다시 보면 리스너 사전 조건 테스트는 셔플을 켜기 전 순차 실행 1, 3, 5회차에서도 이미 실패했습니다. 실행 6 이 통과한 이유는 확인하지 못했습니다. 그 사이에 바뀐 것은 스케줄러를 켠 두 클래스에 `@DirtiesContext` 를 붙인 것뿐이라, 그 context 들이 종료되며 같은 그룹의 consumer 가 줄어 순서상 운이 좋았을 가능성이 있습니다. 클래스 순서 셔플과 시드 출력을 따로 먼저 켰다면 컨테이너 전환과 자율 writer 정리가 한 작업에 섞이지 않았을 수 있습니다. 다만 전환 전에는 클래스마다 브로커가 달라 상수 `groupId` 문제가 드러나지 않았을 테니, 셔플만으로 무엇이 먼저 나왔을지는 알 수 없습니다.
+
+**"누가 컨테이너를 멈출 수 있나"를 먼저 물었을 것입니다.** 컨테이너를 `@Bean` 으로 노출하는 예시는 `@DirtiesContext` 를 쓰지 않는 테스트 묶음에서는 문제없이 동작합니다. 일부 클래스가 context 를 종료하는 순간 그 형태는 공유를 깨뜨립니다. 처음부터 `ConnectionDetails` 로 시작했다면 셔플 첫 시도의 연쇄 실패는 피했을 것입니다.
+
+**원인 없는 타임아웃 앞에서는 로그 보존을 먼저 열었을 것입니다.** 할당 대기와 발행 동기화는 다음 실패가 원인 지점에서 나도록 바꾼 것이고 원인은 그대로 남아 있습니다. CI 에 테스트 JVM 의 애플리케이션 로그를 남기는 장치가 있었다면 첫 실패에서 할당 시각을 볼 수 있었습니다. 재발하면 로그 보존을 추가하기로 했고 아직 재발 기록은 없습니다.
+
+## 처음 질문으로 돌아가면
+
+JUnit 리포트는 131초였는데 테스트 태스크가 975초였던 이유를 구간별로 적으면 이렇습니다.
+
+| 구간 (CI) | 시간 | 원인 |
+|---|---|---|
+| 첫 클래스 전 | 약 20초 | JVM 기동과 첫 클래스 준비 (헤더가 늦게 찍혀 근사값) |
+| 테스트 본문 | 131초 | JUnit 리포트에 보이는 유일한 시간 |
+| 클래스 사이 | 약 310초 | 클래스마다 컨테이너 세 개를 띄우고 Flyway 와 Spring context 를 다시 만드는 비용 (구성은 나눠 재지 않음) |
+| 마지막 클래스 뒤 | 약 515초 | 재사용되지도 종료되지도 않은 context 25개가, 이미 내려간 Kafka 브로커를 기다리는 리스너를 하나씩 정지시키는 시간 (구조는 로컬 재현으로 확인) |
+
+`@ServiceConnection` 의 캐시 키에 컨테이너 객체가 들어가므로 클래스마다 컨테이너를 선언하면 설정이 같아도 context 가 재사용되지 않습니다. 재사용되지 않은 context 는 자기 컨테이너보다 오래 살며 리스너와 스케줄러를 계속 돌립니다. 컨테이너를 모듈에 한 벌만 띄우자 975초가 약 223초가 됐습니다. 그 대신 클래스 경계가 해 주던 격리를 테스트가 직접 맡게 됐습니다. 고정 토픽은 `deleteRecords` 와 상대 offset 으로, 스케줄러와 리스너는 기본 off 와 `@DirtiesContext` 로, 컨테이너 수명은 `ConnectionDetails` 노출로, Kafka 대기는 할당 대기와 `send().join()` 으로 되샀습니다. 그 규약이 지켜지는지는 셔플과 lint 가 확인합니다.
+
+남은 일은 다음과 같습니다.
+
+| 항목 | 상태 |
+|---|---|
+| "보이지 않는 시간은 모두 기동 비용" 이라는 처음 분석의 서술이 설계 문서와 코드 주석에 남아 있다 | 고칠 예정 |
+| 리스너를 `start()` 로 직접 켜는 테스트가 할당 대기 lint 밖에 있다 | 미처리 |
+| 자율 writer 를 켠 클래스의 `@DirtiesContext` 를 lint 가 보지 않는다 | 미처리 (현재 opt-in 16개 클래스는 모두 붙어 있음) |
+| `cleanKafkaTopics` 가 토픽 조회의 모든 실패를 "토픽 없음"으로 건너뛴다 | 미처리 |
+| 결제 DLQ 테스트 20초 무응답 실패의 근본 원인 | 미확정. 재발하면 할당 대기 타임아웃이나 발행 지점 예외로 좁혀진다 |
+| 셔플 검증 중 한 번 나온 로컬 이상치(7018초, 27개 실패) | 원인 미확인. CI 에서는 재현되지 않음 |
+| 공유 DB 정리가 ShedLock 테이블을 비우지 않는다 | 받아들임. 같은 락 메서드를 두 클래스가 직접 부르면 뒤 클래스가 조용히 건너뛰어질 수 있다 |
+| `@DirtiesContext` 때문에 context 기동이 15회 남는다 | 받아들임. opt-in 클래스가 늘면 다시 본다 |
+
+참고: [Testcontainers JUnit 5 통합](https://java.testcontainers.org/test_framework_integration/junit_5/), [Spring TestContext Context Caching](https://docs.spring.io/spring-framework/reference/testing/testcontext-framework/ctx-management/caching.html), [Spring Boot Testcontainers 지원](https://docs.spring.io/spring-boot/reference/testing/testcontainers.html).

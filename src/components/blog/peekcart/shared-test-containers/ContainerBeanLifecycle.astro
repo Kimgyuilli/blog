@@ -1,0 +1,244 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="container-bean-lifecycle" ariaLabel="공유 MySQL 컨테이너를 빈으로 노출했을 때와 접속 정보만 노출했을 때, @DirtiesContext 로 context 하나가 종료되면 무엇이 달라지는지 비교하는 장면" title="context 하나를 종료하면 공유 컨테이너는 어떻게 될까요?" description="캐시된 context A, B 와 @DirtiesContext 가 붙은 C 가 공유 MySQL 하나를 씁니다. 각 context 에 무엇을 빈으로 등록했는지 고른 뒤 C 클래스를 끝내 보세요.">
+  <div class="scene-chips" role="group" aria-label="공유 설정">
+    <span class="scene-chips-label">빈으로 등록한 것</span>
+    <button type="button" class="scene-chip" data-mode="0" aria-pressed="true" data-state="ok">컨테이너 (@Bean @ServiceConnection)</button>
+    <button type="button" class="scene-chip" data-mode="1" aria-pressed="false">ConnectionDetails 만</button>
+  </div>
+  <div class="scene-chips" role="group" aria-label="진행">
+    <button type="button" class="scene-chip" data-act="close" data-state="next">C 클래스 종료</button>
+    <button type="button" class="scene-chip" data-act="next" disabled>다음 클래스 D 시작</button>
+    <button type="button" class="scene-chip is-plain" data-act="reset">처음으로</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="위에 context A, B, C 가 있고 아래 공유 MySQL 컨테이너에 선으로 이어져 있습니다. 컨테이너를 빈으로 등록한 경우 C 가 종료되면 MySQL 이 멈추고, A 와 B 의 연결이 끊어지며 ConnectException 이 납니다. 다음 클래스 D 는 새 포트의 새 컨테이너에 붙고, A 와 B 는 옛 포트를 든 채 남습니다. 접속 정보만 등록한 경우 C 만 사라지고 MySQL 은 static 필드가 계속 들고 있어 A 와 B 의 연결이 그대로입니다."></svg>
+  </div>
+  <ol class="scene-console" data-console aria-live="polite"></ol>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">포트 번호와 성공, 실패 결과는 로컬 재현에서 나온 값입니다. 재현은 TestContext 캐시 대신 SpringApplicationBuilder 로 만든 context 두 개로 같은 수명 관계를 확인했고, 장면은 이해를 돕기 위해 캐시된 context 를 둘로 그렸습니다. 원래 사건은 셔플 실행 중 5초마다 찍은 docker ps 에서 MySQL 컨테이너 수가 1에서 0으로, 다시 1로 바뀐 것입니다. Redis 와 Kafka 컨테이너는 그리지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { createScene, duration, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createChip, createNode, landRing } from '@/scripts/blog/scene/parts';
+  import { createConsole } from '@/scripts/blog/scene/console';
+
+  // 독자가 볼 변화: 컨테이너를 빈으로 등록했다면 C 하나를 종료할 때 공유 MySQL 이 멈추고 A, B 의 연결이 끊긴다.
+  // 접속 정보만 등록했다면 같은 조작에서 C 만 사라지고 MySQL 과 A, B 의 연결은 그대로다.
+  type State = { gone: number; stop: number; brk: number; d: number; mode: number };
+  type Layout = { view: [number, number]; ctx: Point[]; ctxW: number; chipDy: number; chipW: number; old: Point; fresh: Point; boxW: number; short: boolean };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: { view: [560, 262], ctx: [{ x: 82, y: 50 }, { x: 224, y: 50 }, { x: 420, y: 50 }], ctxW: 128, chipDy: 44, chipW: 104, old: { x: 154, y: 212 }, fresh: { x: 420, y: 212 }, boxW: 176, short: false },
+    narrow: { view: [360, 282], ctx: [{ x: 62, y: 46 }, { x: 180, y: 46 }, { x: 298, y: 46 }], ctxW: 108, chipDy: 42, chipW: 100, old: { x: 84, y: 232 }, fresh: { x: 276, y: 232 }, boxW: 130, short: true },
+  };
+  const INITIAL: State = { gone: 0, stop: 0, brk: 0, d: 0, mode: 0 };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="container-bean-lifecycle"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const log = createConsole(demo.querySelector<HTMLOListElement>('[data-console]')!, '버튼을 누르면 각 context 에서 select 1 을 실행한 결과가 찍힙니다.');
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-mode]')];
+    const closeButton = demo.querySelector<HTMLButtonElement>('[data-act="close"]')!;
+    const nextButton = demo.querySelector<HTMLButtonElement>('[data-act="next"]')!;
+    const resetButton = demo.querySelector<HTMLButtonElement>('[data-act="reset"]')!;
+    let layout = LAYOUTS.wide;
+
+    const links = [0, 1, 2, 3].map(() => ({
+      a: svg('path', { class: 'scene-line cbl-link' }, root),
+      b: svg('path', { class: 'scene-line cbl-link' }, root),
+      x: svg('text', { class: 'scene-break' }, root),
+      label: svg('text', { class: 'scene-label scene-label-danger' }, root),
+    }));
+    links.forEach((k) => { k.x.textContent = '✕'; k.label.textContent = '연결 실패'; k.label.classList.add('is-sans'); });
+    const tether = svg('path', { class: 'cbl-tether' }, root);
+    const tetherText = svg('text', { class: 'scene-label is-sans scene-label-dep' }, root);
+    tetherText.textContent = '수명';
+    const oldBox = createNode(root, { label: 'MySQL', hue: 'var(--scene-hue-blue)', sub: 'port 54295' });
+    const freshBox = createNode(root, { label: 'MySQL', hue: 'var(--scene-hue-blue)', sub: 'port 54417, 새 컨테이너' });
+    const owner = createNode(root, { label: 'static 필드', hue: 'var(--scene-hue-gray)', sub: 'Ryuk 이 정리' });
+    owner.group.classList.add('is-sans-sub');
+    freshBox.group.classList.add('is-sans-sub');
+    const names = ['캐시된 A', '캐시된 B', 'C', 'D'];
+    const subs = ['', '', '@DirtiesContext', '다음 클래스'];
+    const ctxs = names.map((n, i) => createNode(root, { label: n, hue: 'var(--scene-hue-violet)', sub: subs[i] }));
+    ctxs[3].group.classList.add('is-sans-sub');
+    const chips = names.map(() => createChip(root, { label: '컨테이너 빈', hue: 'var(--scene-hue-blue)', width: 104 }));
+    chips.forEach((c) => c.group.classList.add('is-sans'));
+    const strike = svg('line', { class: 'scene-strike' }, root);
+
+    const segment = (path: SVGPathElement, from: Point, to: Point) => setAttrs(path, { d: `M ${from.x.toFixed(1)} ${from.y.toFixed(1)} L ${to.x.toFixed(1)} ${to.y.toFixed(1)}` });
+
+    const scene = createScene<State>({ ...INITIAL }, (s) => {
+      const l = layout;
+      const bean = s.mode < 0.5;
+      const boxH = 48;
+      // context 카드와 그 안에 등록한 빈
+      ctxs.forEach((node, i) => {
+        const slot = l.ctx[Math.min(i, 2)];
+        const visible = i < 2 ? 1 : i === 2 ? 1 - s.gone : s.d;
+        node.setBox({ x: slot.x, y: slot.y - (i === 3 ? (1 - s.d) * 14 : 0), w: l.ctxW, h: 44 });
+        node.group.style.opacity = String(visible);
+        node.group.classList.toggle('is-error', i < 2 && s.brk > 0.5);
+        chips[i].place({ x: slot.x, y: slot.y + l.chipDy - (i === 3 ? (1 - s.d) * 14 : 0) }, visible);
+        chips[i].setLabel(bean ? '컨테이너 빈' : '접속 정보 빈', bean ? 'var(--scene-hue-blue)' : 'var(--scene-hue-gray)');
+      });
+      const c = l.ctx[2];
+      setAttrs(strike, { x1: c.x - l.ctxW / 2 + 10, y1: c.y, x2: c.x - l.ctxW / 2 + 10 + (l.ctxW - 20) * Math.min(1, s.gone * 2.2), y2: c.y, opacity: s.gone > 0 && s.gone < 0.98 && s.d < 0.05 ? 1 : 0 });
+
+      // 컨테이너
+      oldBox.setBox({ ...l.old, w: l.boxW, h: boxH });
+      oldBox.group.classList.toggle('is-error', bean && s.stop > 0.5);
+      oldBox.setSub(bean ? (s.stop > 0.5 ? 'running=false' : 'port 54295') : 'port 54762');
+      freshBox.setBox({ ...l.fresh, w: l.boxW, h: boxH });
+      freshBox.group.style.opacity = String(bean ? s.d : 0);
+      freshBox.setSub(l.short ? 'port 54417' : 'port 54417, 새 컨테이너');
+      owner.setBox({ ...l.fresh, w: l.boxW, h: boxH });
+      owner.group.style.opacity = String(bean ? 0 : 1);
+      owner.setSub(l.short ? 'Ryuk 정리' : 'Ryuk 이 정리');
+      const tFrom = { x: l.fresh.x - l.boxW / 2 - 4, y: l.fresh.y };
+      const tTo = { x: l.old.x + l.boxW / 2 + 4, y: l.old.y };
+      segment(tether, tFrom, tTo);
+      tether.style.opacity = String(bean ? 0 : 1);
+      setAttrs(tetherText, { x: (tFrom.x + tTo.x) / 2, y: l.old.y - 8, 'text-anchor': 'middle', opacity: bean ? 0 : 1 });
+
+      // 연결선: A, B, C 는 옛 컨테이너로, D 는 빈 등록이면 새 컨테이너로
+      const mids: Point[] = [];
+      links.forEach((k, i) => {
+        const slot = l.ctx[Math.min(i, 2)];
+        const target = i === 3 && bean ? l.fresh : l.old;
+        const from = { x: slot.x, y: slot.y + l.chipDy + 12 };
+        const to = { x: target.x + (i === 3 && bean ? 0 : (i - 1) * 26), y: target.y - boxH / 2 - 4 };
+        const visible = i < 2 ? 1 : i === 2 ? 1 - s.gone : s.d;
+        const broken = i < 2 && bean ? s.brk : 0;
+        const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+        const len = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+        const ux = (to.x - from.x) / len;
+        const uy = (to.y - from.y) / len;
+        const gap = broken * 14;
+        segment(k.a, from, { x: mid.x - ux * gap, y: mid.y - uy * gap });
+        segment(k.b, { x: mid.x + ux * gap, y: mid.y + uy * gap }, to);
+        [k.a, k.b].forEach((p) => {
+          p.style.opacity = String(visible);
+          p.classList.toggle('is-flowing', broken < 0.5);
+          p.classList.toggle('cbl-broken', broken >= 0.5);
+        });
+        setAttrs(k.x, { x: mid.x, y: mid.y, opacity: broken > 0.5 ? 1 : 0 });
+        mids[i] = mid;
+        setAttrs(k.label, { opacity: 0 });
+      });
+      const brokenNow = bean && s.brk > 0.5;
+      setAttrs(links[0].label, { x: (mids[0].x + mids[1].x) / 2, y: mids[0].y + 4, 'text-anchor': 'middle', opacity: brokenNow ? 1 : 0 });
+    });
+
+    const setNote = (html: string, alert = false) => {
+      note.innerHTML = html;
+      note.classList.toggle('is-alert', alert);
+    };
+    const idleNote = () => setNote(scene.state.mode < 0.5
+      ? '세 context 가 같은 MySQL 컨테이너를 쓰고, 컨테이너 객체가 각 context 에 <strong>빈으로</strong> 등록돼 있습니다. C 클래스를 끝내 보세요.'
+      : '세 context 에는 접속 정보(<code>JdbcConnectionDetails</code>)만 빈으로 있고, 컨테이너는 <strong>static 필드</strong>가 들고 있습니다. C 클래스를 끝내 보세요.');
+    const setButtons = (phase: 'start' | 'closed' | 'done') => {
+      closeButton.disabled = phase !== 'start';
+      nextButton.disabled = phase !== 'closed';
+      if (phase === 'start') closeButton.setAttribute('data-state', 'next'); else closeButton.removeAttribute('data-state');
+      if (phase === 'closed') nextButton.setAttribute('data-state', 'next'); else nextButton.removeAttribute('data-state');
+    };
+
+    const reset = (mode: number) => {
+      scene.begin();
+      modeButtons.forEach((b) => {
+        const on = Number(b.dataset.mode) === mode;
+        b.setAttribute('aria-pressed', String(on));
+        if (on) b.setAttribute('data-state', 'ok'); else b.removeAttribute('data-state');
+      });
+      scene.set({ ...INITIAL, mode });
+      log.reset();
+      setButtons('start');
+      idleNote();
+    };
+
+    const closeC = async () => {
+      const alive = scene.begin();
+      const bean = scene.state.mode < 0.5;
+      setButtons('done');
+      log.clear();
+      log.log('C 클래스 끝: @DirtiesContext 로 context C 종료', 'step');
+      if (!(await scene.go({ ...scene.state, gone: 1 }, duration.cut)) || !alive()) return;
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      if (bean) {
+        log.log('컨테이너 빈 파괴: TestcontainersLifecycleBeanPostProcessor 가 MySQL stop', 'warn');
+        oldBox.flash('is-shaking');
+        if (!(await scene.go({ ...scene.state, stop: 1 }, duration.snap)) || !alive()) return;
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        const a = log.log('A: select 1', 'pending');
+        const b = log.log('B: select 1', 'pending');
+        if (!(await scene.go({ ...scene.state, brk: 1 }, duration.snap)) || !alive()) return;
+        ctxs[0].flash('is-shaking');
+        ctxs[1].flash('is-shaking');
+        a('A: select 1 실패, ConnectException (port 54295)', 'fail');
+        b('B: select 1 실패, ConnectException (port 54295)', 'fail');
+        setNote('C 가 종료되자 그 context 의 <strong>컨테이너 빈과 함께 공유 MySQL 이 멈췄습니다</strong>. A 와 B 는 같은 컨테이너의 옛 포트를 들고 있어 연결이 끊겼습니다. 다음 클래스를 시작해 보세요.', true);
+        setButtons('closed');
+      } else {
+        const a = log.log('A: select 1', 'pending');
+        const b = log.log('B: select 1', 'pending');
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        a('A: select 1 OK (port 54762 그대로)', 'ok');
+        b('B: select 1 OK (port 54762 그대로)', 'ok');
+        setNote('C 의 context 만 사라졌습니다. 접속 정보 빈은 멈출 것이 없고, 컨테이너는 <strong>static 필드</strong>가 계속 들고 있어 A 와 B 의 연결이 그대로입니다.');
+        setButtons('closed');
+      }
+    };
+
+    const startD = async () => {
+      const alive = scene.begin();
+      const bean = scene.state.mode < 0.5;
+      setButtons('done');
+      if (bean) log.log('D 시작: 컨테이너 빈이 새로 시작됨', 'step');
+      else log.log('D 시작: 같은 static 컨테이너의 접속 정보로 context 생성', 'step');
+      if (!(await scene.go({ ...scene.state, d: 1 }, duration.draw)) || !alive()) return;
+      const l = layout;
+      landRing(root, { ...(bean ? l.fresh : l.ctx[2]), w: bean ? l.boxW : l.ctxW, h: bean ? 48 : 44 });
+      if (bean) {
+        log.log('D: select 1 OK (port 54417)', 'ok');
+        log.log('A, B: 여전히 port 54295 를 가리킴', 'fail');
+        setNote('D 는 <strong>새 포트의 새 컨테이너</strong>에 붙었습니다. 캐시된 A 와 B 는 옛 포트를 든 채 남아, 이후 그 context 를 쓰는 클래스가 줄줄이 실패합니다.', true);
+      } else {
+        log.log('D: select 1 OK (port 54762)', 'ok');
+        setNote('D 도 같은 컨테이너에 붙었습니다. 컨테이너 수명이 어떤 context 에도 묶여 있지 않으니 <code>@DirtiesContext</code> 가 공유를 깨지 않습니다.');
+      }
+    };
+
+    modeButtons.forEach((b) => b.addEventListener('click', () => reset(Number(b.dataset.mode))));
+    closeButton.addEventListener('click', () => { void closeC(); });
+    nextButton.addEventListener('click', () => { void startD(); });
+    resetButton.addEventListener('click', () => reset(scene.state.mode < 0.5 ? 0 : 1));
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      scene.redraw();
+    });
+    reset(0);
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="container-bean-lifecycle"] .scene-chips { margin-bottom: 10px; }
+  [data-blog-demo="container-bean-lifecycle"] .scene-console { margin-top: 10px; min-height: 9.6em; }
+  [data-blog-demo="container-bean-lifecycle"] .scene-note { min-height: 4.4em; }
+  [data-blog-demo="container-bean-lifecycle"] .scene-node-name { font-size: 13px; }
+  [data-blog-demo="container-bean-lifecycle"] .cbl-link { stroke: var(--scene-dep); stroke-width: 2; }
+  [data-blog-demo="container-bean-lifecycle"] .cbl-link.cbl-broken { stroke: var(--scene-danger); }
+  [data-blog-demo="container-bean-lifecycle"] .cbl-tether { fill: none; stroke: var(--slate); stroke-width: 1.4; stroke-dasharray: 4 4; }
+</style>
