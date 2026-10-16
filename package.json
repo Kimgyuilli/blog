@@ -19,7 +19,8 @@
     "check:skills": "node scripts/sync-skills.mjs --check",
     "lint:post": "node scripts/lint-post.mjs",
     "publish:post": "node scripts/publish-post.mjs",
-    "guard:rewrite": "node scripts/rewrite-guard.mjs"
+    "guard:rewrite": "node scripts/rewrite-guard.mjs",
+    "check:seo": "node scripts/check-seo.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^13.5.3",

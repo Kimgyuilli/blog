@@ -6,7 +6,7 @@ const posts = await getPublishedPosts();
 const suggestions = posts.filter((post) => !post.data.pinned).slice(0, 3);
 ---
 
-<BaseLayout title="페이지를 찾을 수 없습니다" description="요청한 페이지를 찾을 수 없습니다.">
+<BaseLayout title="페이지를 찾을 수 없습니다" description="요청한 페이지를 찾을 수 없습니다." noindex>
   <section class="hero not-found-hero">
     <p class="eyebrow">404</p>
     <h1>이 글은 어딘가로 떠났습니다</h1>

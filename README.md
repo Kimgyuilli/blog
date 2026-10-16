@@ -15,6 +15,17 @@ npm run dev
 npm run build
 ```
 
+## SEO 확인
+
+`SITE` 빌드 환경 변수를 기준으로 canonical, 사이트맵, `robots.txt`의 주소를 생성합니다. 실제 운영 도메인이 바뀌면 `SITE`를 변경하고 다시 빌드합니다.
+
+- 공개 글에는 `BlogPosting`·`BreadcrumbList` JSON-LD와 article 공유 메타 태그를 출력합니다. 홈에는 `WebSite` JSON-LD를 출력합니다.
+- 글을 실질적으로 수정했을 때만 frontmatter에 `updatedDate: 2026-10-17`처럼 수정일을 추가합니다. 화면과 메타데이터에 함께 반영되며, 빌드 날짜로 자동 갱신하지 않습니다.
+- 404·개발 도구·미리보기 페이지는 `noindex`로 표시합니다. 개발 도구와 미리보기는 운영 빌드에 생성하지 않습니다.
+- 태그 주소는 소문자로 통일하며 대소문자가 다른 태그도 같은 목록에 모읍니다. 기존 대문자 주소의 301 리디렉션은 `public/_redirects`에서 관리합니다.
+- 빌드 후 `npm run check:seo`로 공개 페이지의 canonical, 메타 태그, JSON-LD, 사이트맵 일치 여부를 검사합니다. 별도로 빌드한 `/portfolio/` 앱은 검사 대상이 아닙니다.
+- 배포 후 Google Search Console에 `/sitemap-index.xml`을 제출하고 대표 글을 URL 검사와 [리치 결과 테스트](https://search.google.com/test/rich-results)로 확인합니다. 로컬 검사는 실제 색인 여부나 검색 순위를 확인하지 않습니다.
+
 ## Google Analytics 4
 
 기본 측정 ID는 `G-9NKWCXKYVV`이며, 저장소를 빌드하면 자동으로 포함됩니다.

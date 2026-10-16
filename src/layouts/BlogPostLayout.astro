@@ -1,11 +1,14 @@
 ---
 import BaseLayout from './BaseLayout.astro';
 import PostCard from '@/components/PostCard.astro';
+import { canonicalUrl } from '@/utils/seo';
 import {
   formatDate,
   getCategoryMeta,
   getCategoryUrl,
   getPublishedPosts,
+  getTagUrl,
+  getPostUrl,
   getRelatedPosts,
 } from '@/utils/blog';
 import type { BlogPost } from '@/utils/blog';
@@ -28,9 +31,37 @@ const coverImage = post.data.image && /\/thumbnail\.(?:jpe?g|png|webp|svg)$/i.te
   ? post.data.image
   : undefined;
 const vectorCover = coverImage?.endsWith('.svg');
+const postUrl = canonicalUrl(getPostUrl(post), Astro.site!);
+const structuredData = [{
+  '@context': 'https://schema.org',
+  '@type': 'BlogPosting',
+  '@id': `${postUrl}#article`,
+  url: postUrl,
+  mainEntityOfPage: { '@type': 'WebPage', '@id': postUrl },
+  headline: post.data.title,
+  description: post.data.description,
+  datePublished: post.data.pubDate.toISOString(),
+  dateModified: post.data.updatedDate?.toISOString(),
+  ...(post.data.image ? { image: [new URL(post.data.image, Astro.site).href] } : {}),
+  articleSection: category.label,
+  keywords: post.data.tags,
+  inLanguage: 'ko-KR',
+}, {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: '홈', item: new URL('/', Astro.site).href },
+    { '@type': 'ListItem', position: 2, name: category.label, item: new URL(getCategoryUrl(category.slug), Astro.site).href },
+    { '@type': 'ListItem', position: 3, name: post.data.title, item: postUrl },
+  ],
+}];
 ---
 
-<BaseLayout title={post.data.title} description={post.data.description} image={post.data.image}>
+<BaseLayout title={post.data.title} description={post.data.description} image={post.data.image}
+  noindex={post.data.draft}
+  article={{ publishedTime: post.data.pubDate.toISOString(), modifiedTime: post.data.updatedDate?.toISOString(), section: category.label, tags: post.data.tags }}
+  structuredData={structuredData}
+>
   <div class="reading-progress" aria-hidden="true">
     <div class="reading-progress-bar"></div>
   </div>
@@ -40,6 +71,7 @@ const vectorCover = coverImage?.endsWith('.svg');
         <div class="meta">
           <a class="category-badge" href={getCategoryUrl(category.slug)}>{category.label}</a>
           <time datetime={post.data.pubDate.toISOString()}>{formatDate(post.data.pubDate)}</time>
+          {post.data.updatedDate && <span>수정 <time datetime={post.data.updatedDate.toISOString()}>{formatDate(post.data.updatedDate)}</time></span>}
         </div>
         <h1>{post.data.title}</h1>
       </header>
@@ -74,7 +106,7 @@ const vectorCover = coverImage?.endsWith('.svg');
             <ul class="tag-list" aria-label="태그">
               {post.data.tags.map((tag) => (
                 <li>
-                  <a class="tag" href={`/blog/tag/${tag}/`}>
+                  <a class="tag" href={getTagUrl(tag)}>
                     #{tag}
                   </a>
                 </li>

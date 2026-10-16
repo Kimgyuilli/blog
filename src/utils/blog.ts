@@ -21,13 +21,21 @@ export function formatDate(date: Date) {
 }
 
 export function getAllTags(posts: BlogPost[]) {
-  return Array.from(new Set(posts.flatMap((post) => post.data.tags))).sort((a, b) =>
+  return Array.from(new Set(posts.flatMap((post) => post.data.tags.map(normalizeTag)))).sort((a, b) =>
     a.localeCompare(b, 'ko-KR'),
   );
 }
 
 export function getPostsByTag(posts: BlogPost[], tag: string) {
-  return posts.filter((post) => post.data.tags.includes(tag));
+  return posts.filter((post) => post.data.tags.some((value) => normalizeTag(value) === normalizeTag(tag)));
+}
+
+export function normalizeTag(tag: string) {
+  return tag.toLowerCase();
+}
+
+export function getTagUrl(tag: string) {
+  return `/blog/tag/${encodeURIComponent(normalizeTag(tag))}/`;
 }
 
 export function getPostUrl(post: BlogPost) {
@@ -60,11 +68,11 @@ export function getCategoryUrl(slug: CategorySlug) {
 }
 
 export function getRelatedPosts(target: BlogPost, all: BlogPost[], limit = 3) {
-  const targetTags = new Set(target.data.tags);
+  const targetTags = new Set(target.data.tags.map(normalizeTag));
   const candidates = all
     .filter((post) => post.data.slug !== target.data.slug)
     .map((post) => {
-      const sharedTags = post.data.tags.filter((tag) => targetTags.has(tag)).length;
+      const sharedTags = post.data.tags.filter((tag) => targetTags.has(normalizeTag(tag))).length;
       const sameCategory = post.data.category === target.data.category ? 1 : 0;
       const score = sharedTags * 2 + sameCategory;
       return { post, score };

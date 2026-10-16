@@ -10,6 +10,7 @@ import {
   getPostsByCategory,
   getPostsByTag,
   getPublishedPosts,
+  getTagUrl,
 } from '@/utils/blog';
 
 const posts = await getPublishedPosts();
@@ -105,7 +106,7 @@ const tagsByCount = getAllTags(posts)
             <ul class="widget-tag-cloud">
               {tagsByCount.map(({ tag, count }) => (
                 <li>
-                  <a href={`/blog/tag/${tag}/`}>
+                  <a href={getTagUrl(tag)}>
                     #{tag}
                     <span class="count">{count}</span>
                   </a>

@@ -1,18 +1,30 @@
 ---
 import '../styles/global.css';
+import { canonicalUrl, DEFAULT_IMAGE, serializeJsonLd, SITE_DESCRIPTION, SITE_TITLE } from '@/utils/seo';
 
 type Props = {
   title?: string;
   description?: string;
   image?: string;
+  noindex?: boolean;
+  article?: { publishedTime: string; modifiedTime?: string; section: string; tags: string[] };
+  structuredData?: Record<string, unknown>[];
 };
 
-const siteTitle = '개발 노트';
-const defaultDescription = '코드, 운영, 배포 경험을 정리하는 한국어 개발자 블로그';
-const { title, description = defaultDescription, image = '/images/blog/og-default.svg' } = Astro.props;
+const siteTitle = SITE_TITLE;
+const { title, description = SITE_DESCRIPTION, image = DEFAULT_IMAGE, article, structuredData = [] } = Astro.props;
+const noindex = Astro.props.noindex || /^\/(?:preview|dev)(?:\/|$)/.test(Astro.url.pathname);
 const pageTitle = title ? `${title} | ${siteTitle}` : siteTitle;
-const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://blog.rlarbdlf222.workers.dev');
+const canonical = canonicalUrl(Astro.url.pathname, Astro.site!);
 const imageUrl = new URL(image, canonical);
+const schemas = Astro.url.pathname === '/' ? [{
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: siteTitle,
+  url: canonical,
+  description,
+  inLanguage: 'ko-KR',
+}, ...structuredData] : structuredData;
 const gaMeasurementId = (import.meta.env.PUBLIC_GA_MEASUREMENT_ID ?? 'G-9NKWCXKYVV').trim();
 const analyticsEnabled = import.meta.env.PROD && gaMeasurementId && /^G-[A-Z0-9]+$/.test(gaMeasurementId);
 ---
@@ -40,9 +52,13 @@ const analyticsEnabled = import.meta.env.PROD && gaMeasurementId && /^G-[A-Z0-9]
     )}
     <title>{pageTitle}</title>
     <meta name="description" content={description} />
-    <link rel="canonical" href={canonical} />
+    <meta name="robots" content={noindex ? 'noindex, follow' : 'index, follow, max-image-preview:large'} />
+    {!noindex && <link rel="canonical" href={canonical} />}
+    <link rel="sitemap" type="application/xml" href="/sitemap-index.xml" />
     <link rel="alternate" type="application/rss+xml" title={siteTitle} href="/rss.xml" />
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content={article ? 'article' : 'website'} />
+    <meta property="og:site_name" content={siteTitle} />
+    <meta property="og:locale" content="ko_KR" />
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
@@ -51,6 +67,13 @@ const analyticsEnabled = import.meta.env.PROD && gaMeasurementId && /^G-[A-Z0-9]
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={imageUrl} />
+    {article && <>
+      <meta property="article:published_time" content={article.publishedTime} />
+      {article.modifiedTime && <meta property="article:modified_time" content={article.modifiedTime} />}
+      <meta property="article:section" content={article.section} />
+      {article.tags.map((tag) => <meta property="article:tag" content={tag} />)}
+    </>}
+    {!noindex && schemas.map((schema) => <script is:inline type="application/ld+json" set:html={serializeJsonLd(schema)} />)}
     <script is:inline>
       const storedTheme = localStorage.getItem('theme');
       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;

@@ -8,8 +8,11 @@ const site = process.env.SITE ?? 'https://blog.rlarbdlf222.workers.dev';
 
 export default defineConfig({
   site,
+  trailingSlash: 'always',
   output: 'static',
-  integrations: [mdx(), sitemap()],
+  integrations: [mdx(), sitemap({
+    filter: (page) => !/^\/(?:preview|dev)(?:\/|$)/.test(new URL(page).pathname),
+  })],
   vite: {
     optimizeDeps: {
       exclude: ['@astrojs/cloudflare/entrypoints/server'],

@@ -1,5 +1,5 @@
 ---
-import { formatDate, getPostUrl } from '@/utils/blog';
+import { formatDate, getPostUrl, getTagUrl } from '@/utils/blog';
 import type { BlogPost } from '@/utils/blog';
 
 type Props = {
@@ -41,7 +41,7 @@ const image = post.data.image;
         <ul class="tag-list" aria-label={`${post.data.title} 태그`}>
           {post.data.tags.map((tag) => (
             <li>
-              <a class="tag" href={`/blog/tag/${tag}/`}>
+              <a class="tag" href={getTagUrl(tag)}>
                 #{tag}
               </a>
             </li>
