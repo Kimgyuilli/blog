@@ -33,6 +33,10 @@ async function htmlFiles(directory = '') {
 const canonicalUrls = new Set();
 let articles = 0;
 for (const file of await htmlFiles()) {
+  if (/^google[a-f0-9]+\.html$/.test(file)) {
+    assert.equal((await read(file)).trim(), `google-site-verification: ${file}`);
+    continue;
+  }
   assert(!/^(preview|dev)\//.test(file), `Development page in production: ${file}`);
   const $ = load(await read(file));
   assert.equal($('html').attr('lang'), 'ko', file);
