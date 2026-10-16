@@ -4,7 +4,7 @@ import DemoControls from '@/components/blog/shared/DemoControls.astro';
 import '@/styles/scene.css';
 ---
 
-<InteractiveDemoFrame demoId="limit-round-trip" ariaLabel="MySQL CPU 한도를 500m, 2000m, 다시 500m 로 바꿀 때 처리량과 스로틀이 따라 움직이는지 보는 막대 그래프" title="한도를 되돌리면 천장도 돌아올까요?" description="MySQL CPU 한도를 한 단계씩 바꿔 보세요. 막대는 처리량(rps), 아래 띠는 같은 런의 MySQL 스로틀 누적 시간입니다. 엔드포인트와 캐시를 바꿔 같은 왕복을 다시 볼 수 있습니다.">
+<InteractiveDemoFrame demoId="limit-round-trip" ariaLabel="MySQL CPU 한도를 500m, 2000m, 다시 500m 로 바꿀 때 처리량과 스로틀이 따라 움직이는지 보는 막대 그래프" title="한도를 되돌리면 천장도 돌아올까요?" description="MySQL CPU 한도를 한 단계씩 바꿔 보세요. 막대는 처리량(rps), 아래 띠는 같은 셀 3회 런의 MySQL 스로틀 누적 시간 중앙값입니다. 엔드포인트와 캐시를 바꿔 같은 왕복을 다시 볼 수 있습니다.">
   <div class="scene-chips" role="group" aria-label="MySQL 한도 단계">
     <span class="scene-chips-label">한도</span>
     <button type="button" class="scene-chip" data-step="0" data-state="next">500m 에서 재기</button>
@@ -171,7 +171,7 @@ import '@/styles/scene.css';
     const explain = (upto: number) => {
       const c = cell();
       const name = `${ep === 'detail' ? '상세' : '목록'}, 캐시 ${cache.toUpperCase()}`;
-      if (upto === 0) return say(`${name}, MySQL 한도 500m: <strong>${fmt(c.rps[0]!)} rps</strong>. 같은 런에서 MySQL 은 60초 동안 <strong>${fmt(c.th[0]!)}초</strong> 스로틀됐습니다. 한도를 4배로 올리면 어떻게 될까요?`);
+      if (upto === 0) return say(`${name}, MySQL 한도 500m: <strong>${fmt(c.rps[0]!)} rps</strong>. 같은 셀에서 MySQL 은 60초 런마다 <strong>${fmt(c.th[0]!)}초</strong>(3회 중앙값) 스로틀됐습니다. 한도를 4배로 올리면 어떻게 될까요?`);
       if (upto === 1) return say(`한도 2000m: <strong>${fmt(c.rps[1]!)} rps</strong> (${(c.rps[1]! / c.rps[0]!).toFixed(2)}배). 스로틀은 <strong>${fmt(c.th[1]!)}초</strong>로 거의 사라졌습니다. 다시 500m 으로 되돌리면 처음 높이로 돌아올까요?${c.runsB ? ' 오른쪽 점은 이 블록의 세 런(782.7, 1,406.4, 1,408.4 rps)입니다.' : ''}`);
       if (c.rps[2] === null) return say(`캐시를 켠 셀은 500m 복귀 블록을 재지 않았습니다. 되돌림은 캐시 OFF 두 칸으로만 확인했습니다.`);
       const diff = ((c.rps[2]! - c.rps[0]!) / c.rps[0]!) * 100;
