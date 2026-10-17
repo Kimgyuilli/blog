@@ -1,0 +1,17 @@
+/* CI 잡 막대 장면 공통 스타일. 요소는 gantt.ts 가 JS 로 만들므로 전역 클래스입니다. */
+.cp-grid { stroke: var(--hairline); stroke-width: 1; stroke-dasharray: 2 4; }
+.cp-tick { font-size: 10px; }
+.cp-lane-label { font-size: 11.5px; fill: var(--charcoal); }
+.cp-unknown { font-size: 10.5px; fill: var(--slate); }
+.cp-bar { transition: stroke 240ms ease; }
+.cp-bar.is-crit { stroke: var(--ink); }
+.cp-sub { fill: color-mix(in srgb, var(--node-hue) 30%, var(--surface)); stroke-dasharray: 3 2; }
+.cp-bar-text { font-size: 10.5px; fill: var(--charcoal); }
+.cp-bar-text.is-inside { fill: var(--ink); }
+.cp-edge { fill: none; stroke: var(--scene-dep); stroke-width: 1.3; stroke-linejoin: round; }
+.cp-edge.is-changing { stroke: var(--scene-temp); stroke-width: 1.8; }
+.cp-total { stroke: var(--scene-danger); stroke-width: 2; }
+.cp-total-text { font-size: 12px; font-weight: 700; fill: var(--scene-danger); }
+.cp-slack { stroke: var(--scene-temp); stroke-width: 1.6; stroke-dasharray: 3 3; }
+.cp-slack-text { font-size: 10.5px; fill: var(--scene-temp); font-weight: 650; }
+.cp-edge-text { font-size: 10.5px; fill: var(--scene-temp); font-weight: 650; }

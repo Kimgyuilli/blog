@@ -1,0 +1,137 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import SceneTimeline from '@/components/blog/shared/SceneTimeline.astro';
+import '@/styles/scene.css';
+import './gantt.css';
+
+const steps = [
+  { name: '기준', detail: '36분 51초' },
+  { name: '이미지 분리', detail: '21분 51초' },
+  { name: '문서 PR', detail: '19분 03초' },
+  { name: '컨테이너 공유', detail: '20분 49초' },
+  { name: 'e2e 두 잡', detail: '14분 10초' },
+  { name: '게이트, 셋업 정리', detail: '11분 46초' },
+];
+---
+
+<InteractiveDemoFrame demoId="critical-path-steps" ariaLabel="여섯 단계의 PR 실행에서 임계경로가 테스트 쪽과 e2e 쪽을 오가는 과정" title="경로는 테스트 쪽과 e2e 쪽을 오갔습니다" description="단계마다 PR 실행 하나의 잡 막대를 같은 축에 그렸습니다. 진한 막대가 그 실행의 임계경로이고, 주황 점선이 경로 밖 잡의 여유(마지막 잡 종료까지)입니다. 단계를 누르면 그 단계에서 멈춥니다.">
+  <SceneTimeline ariaLabel="CI 변경 단계" steps={steps} />
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="다섯 줄의 잡 막대가 단계마다 바뀝니다. 기준 실행에서는 테스트, gate, 이미지 빌드, e2e 가 한 줄로 이어져 36분 51초입니다. 이미지 빌드가 gate 를 기다리던 간선을 끊자 경로가 lint, 이미지 빌드, e2e 로 옮겨 21분 51초가 됩니다. 문서만 바꾼 PR 에서는 테스트 쪽이 경로이고 e2e 쪽 여유가 6초입니다. 테스트 컨테이너를 공유한 PR 에서는 e2e 쪽이 경로가 되어 20분 49초입니다. e2e 를 두 잡으로 나누자 테스트 쪽이 다시 경로가 되고 음성 대조군의 여유는 14초입니다. 마지막으로 gate 가 다섯 잡을 모두 기다리게 되자 경로는 lint, 이미지 빌드, 음성 대조군, gate 이고 11분 46초입니다."></svg>
+  </div>
+  <ul class="cps-key" aria-hidden="true">
+    <li><i class="is-crit"></i>임계경로 위의 잡</li>
+    <li><i class="is-edge"></i>이 단계에서 바뀌는 needs 간선</li>
+    <li><i class="is-slack"></i>여유</li>
+  </ul>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">단계마다 다른 커밋의 PR 실행 하나씩이고 러너 변동이 섞여 있습니다. 막대는 jobs API 의 잡 시작, 종료 시각을 각 실행의 생성 시각 기준 초로 옮긴 것입니다. 여유는 마지막 잡 종료 기준이라, 실행 생성부터 갱신까지로 잰 전체 종료선과 1~2초 다릅니다. 테스트 줄은 가장 늦게 끝난 샤드, 이미지 줄은 e2e 직전에 끝난 서비스 하나만 그렸고 guards 와 publish(PR 이라 skip)는 생략했습니다. 문서 PR 단계는 코드 변경이 없어 이미지 빌드가 거의 캐시로 끝난 실행이고, 마지막 단계는 게이트 변경 뒤 e2e 셋업까지 정리한 실행입니다. 기준 단계의 36분 51초는 실행 생성부터 종료까지이고, 마지막 잡 종료 기준으로는 36분 49초입니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { createScene, duration, watchNarrow } from '@/scripts/blog/scene/core';
+  import { createStepPlayer } from '@/scripts/blog/scene/step-player';
+  import { bar, createGantt, none, type GanttLayout, type GanttState, type Lane } from './gantt';
+
+  // 독자가 볼 변화: 간선 하나를 끊거나 테스트를 줄일 때마다 진한 막대(임계경로)가 테스트 쪽과 e2e 쪽을 오가고,
+  // 경로 밖 잡의 여유가 6초, 14초처럼 아주 작을 때가 있다.
+  const crit = (on: Lane[]) => ({ test: 0, gate: 0, lint: 0, images: 0, e2e: 0, ...Object.fromEntries(on.map((l) => [l, 1])) }) as Record<Lane, number>;
+  const known = (missing: Lane[] = []) => ({ test: 0, gate: 0, lint: 0, images: 0, e2e: 0, ...Object.fromEntries(missing.map((l) => [l, 1])) }) as Record<Lane, number>;
+  // 값은 jobs API 의 잡 시작, 종료 시각을 실행 생성 시각 기준 초로 옮긴 것입니다.
+  const STEPS: GanttState[] = [
+    {
+      bars: { test: bar(75, 1126), gate: bar(1130, 1145), lint: bar(76, 120), images: bar(1175, 1348), e2e: bar(1353, 2209) },
+      order: none(), scen: none(1353), crit: crit(['test', 'gate', 'images', 'e2e']), unknown: known(),
+      total: 2211, edgeGI: 1, edgeEG: 0, slackLane: 0, slackShow: 0, slackSec: 0,
+    },
+    {
+      bars: { test: bar(53, 1054), gate: bar(1062, 1076), lint: bar(53, 104), images: bar(116, 358), e2e: bar(361, 1310) },
+      order: none(), scen: none(361), crit: crit(['lint', 'images', 'e2e']), unknown: known(),
+      total: 1311, edgeGI: 0, edgeEG: 0, slackLane: 0, slackShow: 1, slackSec: 256,
+    },
+    {
+      bars: { test: bar(4, 1120), gate: bar(1124, 1141), lint: bar(4, 54), images: bar(57, 199), e2e: bar(202, 1135) },
+      order: none(), scen: none(202), crit: crit(['test', 'gate']), unknown: known(),
+      total: 1143, edgeGI: 0, edgeEG: 0, slackLane: 4, slackShow: 1, slackSec: 6,
+    },
+    {
+      bars: { test: bar(4, 803), gate: bar(807, 822), lint: bar(4, 56), images: bar(62, 281), e2e: bar(284, 1248) },
+      order: none(), scen: none(284), crit: crit(['lint', 'images', 'e2e']), unknown: known(),
+      total: 1249, edgeGI: 0, edgeEG: 0, slackLane: 0, slackShow: 1, slackSec: 445,
+    },
+    {
+      bars: { test: bar(3, 827), gate: bar(830, 850), lint: bar(3, 57), images: bar(61, 180), e2e: bar(182, 836) },
+      order: none(), scen: bar(182, 495), crit: crit(['test', 'gate']), unknown: known(),
+      total: 850, edgeGI: 0, edgeEG: 0, slackLane: 4, slackShow: 1, slackSec: 14,
+    },
+    {
+      bars: { test: bar(62, 347), gate: bar(691, 705), lint: bar(61, 111), images: bar(115, 241), e2e: bar(245, 688) },
+      order: none(), scen: none(245), crit: crit(['lint', 'images', 'e2e', 'gate']), unknown: known(),
+      total: 706, edgeGI: 0, edgeEG: 1, slackLane: 0, slackShow: 1, slackSec: 358,
+    },
+  ];
+  const NOTES = [
+    '기준 실행입니다. 테스트, gate, 이미지 빌드, e2e 가 한 줄로 이어져 있고(진한 막대), 주황 선이 이미지 빌드가 gate 를 기다리게 만든 needs 간선입니다. 전체 <strong>36분 51초</strong>.',
+    '이미지 빌드가 gate 를 기다리던 간선을 끊었습니다. 경로는 lint, 이미지 빌드, e2e 로 옮겨 갔고 테스트 쪽 여유는 4분 16초입니다. 전체 <strong>21분 51초</strong>.',
+    '문서만 바꾼 PR 입니다. 이미지 빌드가 캐시로 짧게 끝나 e2e 쪽이 당겨졌고, 가장 긴 테스트 샤드는 1001초에서 1116초로 길어져 테스트 쪽이 다시 경로가 됐습니다. <strong>e2e 쪽 여유는 6초</strong>뿐입니다.',
+    '테스트 컨테이너를 공유하도록 바꾼 PR 입니다. 테스트 막대가 크게 줄면서 경로는 e2e 쪽으로 넘어갔고, 이미지 빌드와 e2e 가 함께 길어져 전체 <strong>20분 49초</strong>입니다.',
+    'e2e 를 시나리오(위의 얇은 막대)와 음성 대조군 두 잡으로 나눴습니다. 경로가 다시 테스트 쪽으로 넘어갔고 <strong>음성 대조군의 여유는 14초</strong>입니다. 전체 14분 10초.',
+    'gate 가 다섯 잡을 모두 기다리게 했고(주황 선), e2e 셋업도 정리한 뒤의 실행입니다. 테스트 샤드가 짧아진 뒤라 경로는 lint, 이미지 빌드, 음성 대조군, gate 이고 테스트 쪽 여유는 5분 58초입니다. 전체 <strong>11분 46초</strong>.',
+  ];
+  const LAYOUTS: Record<'wide' | 'narrow', GanttLayout> = {
+    wide: { view: [560, 236], labelX: 8, x0: 128, x1: 548, top: 46, rowH: 34, barH: 18, axisMax: 2220, ticks: [0, 600, 1200, 1800], short: false },
+    narrow: { view: [360, 236], labelX: 6, x0: 58, x1: 352, top: 46, rowH: 34, barH: 18, axisMax: 2220, ticks: [0, 600, 1200, 1800], short: true },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="critical-path-steps"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const gantt = createGantt(root);
+    let index = 0;
+
+    const scene = createScene<GanttState>(STEPS[0], (s) => {
+      const split = index >= 4;
+      gantt.draw(s, {
+        barLabel: (lane: Lane, b) => `${lane === 'e2e' && split ? '음성 대조군 ' : ''}${Math.round(b.e - b.s)}초`,
+        scenLabel: `시나리오 ${Math.round(s.scen.e - s.scen.s)}초`,
+      });
+    });
+
+    const show = async (next: number, instant: boolean) => {
+      index = next;
+      const goal = STEPS[next];
+      note.innerHTML = NOTES[next];
+      if (instant) { scene.set(goal); return; }
+      const alive = scene.begin();
+      const cur = scene.state;
+      // 끊어 낸 간선과 여유 표시를 먼저 거두고, 막대를 옮긴 뒤, 새 간선과 강조를 그립니다.
+      const edgeGI = Math.min(cur.edgeGI, goal.edgeGI);
+      const edgeEG = Math.min(cur.edgeEG, goal.edgeEG);
+      if (!(await scene.go({ ...cur, edgeGI, edgeEG, slackShow: 0 }, duration.cut)) || !alive()) return;
+      if (!(await scene.go({ ...goal, edgeGI, edgeEG, slackShow: 0, slackLane: goal.slackLane }, duration.draw)) || !alive()) return;
+      await scene.go(goal, duration.move);
+    };
+
+    watchNarrow(stage, (narrow) => {
+      gantt.setLayout(LAYOUTS[narrow ? 'narrow' : 'wide']);
+      scene.redraw();
+    });
+    createStepPlayer(demo, {
+      dwell: (step) => (step === STEPS.length - 1 ? duration.dwellLast : duration.dwell + 1600),
+      onStep: (step, instant) => { void show(step, instant); },
+    });
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="critical-path-steps"] .scene-note { min-height: 4.4em; }
+  [data-blog-demo="critical-path-steps"] .cps-key { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 0 0; padding: 0; list-style: none; color: var(--slate); font-size: 0.8rem; }
+  [data-blog-demo="critical-path-steps"] .cps-key li { display: inline-flex; align-items: center; gap: 7px; margin: 0; }
+  [data-blog-demo="critical-path-steps"] .cps-key i { display: inline-block; width: 22px; }
+  [data-blog-demo="critical-path-steps"] .cps-key .is-crit { height: 10px; border: 2.4px solid var(--ink); border-radius: 3px; background: color-mix(in srgb, var(--scene-hue-cyan) 62%, transparent); }
+  [data-blog-demo="critical-path-steps"] .cps-key .is-edge { height: 0; border-top: 2px solid var(--scene-temp); }
+  [data-blog-demo="critical-path-steps"] .cps-key .is-slack { height: 0; border-top: 2px dashed var(--scene-temp); }
+</style>

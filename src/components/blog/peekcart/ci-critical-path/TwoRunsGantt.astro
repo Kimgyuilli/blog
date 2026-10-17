@@ -1,0 +1,139 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import '@/styles/scene.css';
+import './gantt.css';
+---
+
+<InteractiveDemoFrame demoId="two-runs-gantt" ariaLabel="문서만 바꾼 PR 과 테스트 컨테이너를 공유하도록 바꾼 PR 의 CI 잡 막대를 같은 축에 놓고 비교하는 장면" title="주문 테스트를 줄인 실행에서는 무엇이 움직였을까요?" description="직전 PR 실행의 잡 막대입니다. 전환 PR 실행으로 바꾸면 같은 막대들이 그 실행의 값으로 옮겨 갑니다. 주문 테스트 막대와 빨간 전체 종료선이 각각 어느 쪽으로 움직이는지 보세요.">
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="다섯 줄의 잡 막대입니다. 직전 실행에서는 주문 서비스 테스트 1116초와 gate 가 19분 03초에 끝나고, e2e 는 그보다 6초 먼저 끝납니다. 전환 실행에서는 주문 샤드가 313초로 줄지만 상품 샤드 799초가 테스트 쪽의 끝이 되고, 이미지 빌드가 219초, e2e 가 964초로 길어져 전체 종료선이 20분 49초로 오른쪽에 밀립니다."></svg>
+  </div>
+  <div class="scene-chips" role="group" aria-label="CI 실행" data-run-group>
+    <span class="scene-chips-label">CI 실행</span>
+    <button type="button" class="scene-chip" data-run="0" aria-pressed="true">직전 PR (문서만 변경)</button>
+    <button type="button" class="scene-chip" data-run="1" aria-pressed="false" data-state="next">전환 PR</button>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">막대는 PR 실행 하나씩의 jobs API 잡 시작, 종료 시각을 그 실행의 생성 시각 기준 초로 옮긴 것입니다. 두 실행은 커밋도 러너도 다르고, 직전 PR 은 문서만 바꿔 이미지 빌드가 거의 캐시로 끝났습니다. 테스트 줄에는 가장 늦게 끝난 샤드와 주문 서비스 샤드(점선 띠)만, 이미지 줄에는 e2e 직전에 끝난 서비스 하나만 그렸습니다(전환 실행에서 가장 오래 걸린 이미지는 221초). 상품 샤드 799초는 전환 실행의 값이고, 직전 실행의 다른 샤드는 그리지 않았습니다. guards 와 나머지 샤드는 생략했습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { createScene, duration, watchNarrow } from '@/scripts/blog/scene/core';
+  import { landRing } from '@/scripts/blog/scene/parts';
+  import { watchDemoPlayback } from '@/scripts/blog/watch-demo-playback';
+  import { bar, createGantt, none, type GanttLayout, type GanttState, type Lane } from './gantt';
+
+  // 독자가 볼 변화: 주문 테스트 막대가 크게 줄어드는데, 전체 종료선은 왼쪽으로 가지 않고 오른쪽으로 밀린다.
+  // 임계경로 강조는 넣지 않는다. 원인은 본문 뒤에서 밝힌다. 예측 고르기는 첫머리 표가 답을 말하므로 두지 않는다.
+  const C = 0.5;
+  const flat = { test: C, gate: C, lint: C, images: C, e2e: C };
+  const known = { test: 0, gate: 0, lint: 0, images: 0, e2e: 0 };
+  // jobs API 시각을 실행 생성 시각 기준 초로 옮긴 값.
+  const RUN_A: GanttState = {
+    bars: { test: bar(4, 1120), gate: bar(1124, 1141), lint: bar(4, 54), images: bar(57, 199), e2e: bar(202, 1135) },
+    // 직전 실행에서는 주문 샤드가 곧 가장 긴 샤드라 점선 띠를 따로 그리지 않습니다.
+    order: { s: 4, e: 1120, show: 0 }, scen: none(), crit: { ...flat }, unknown: { ...known },
+    total: 1143, edgeGI: 0, edgeEG: 0, slackLane: 0, slackShow: 0, slackSec: 0,
+  };
+  const RUN_B: GanttState = {
+    bars: { test: bar(4, 803), gate: bar(807, 822), lint: bar(4, 56), images: bar(62, 281), e2e: bar(284, 1248) },
+    order: bar(5, 318), scen: none(), crit: { ...flat }, unknown: { ...known },
+    total: 1249, edgeGI: 0, edgeEG: 0, slackLane: 0, slackShow: 0, slackSec: 0,
+  };
+  // 첫 단계: 테스트 쪽만 전환 실행 값으로 바꾼 중간 상태.
+  const HALF: GanttState = { ...RUN_A, bars: { ...RUN_A.bars, test: RUN_B.bars.test }, order: RUN_B.order };
+
+  const LAYOUTS: Record<'wide' | 'narrow', GanttLayout> = {
+    wide: { view: [560, 236], labelX: 8, x0: 128, x1: 548, top: 46, rowH: 34, barH: 18, axisMax: 1260, ticks: [0, 300, 600, 900, 1200], short: false },
+    narrow: { view: [360, 236], labelX: 6, x0: 58, x1: 352, top: 46, rowH: 34, barH: 18, axisMax: 1260, ticks: [0, 300, 600, 900, 1200], short: true },
+  };
+  const NOTES = {
+    idle: '문서만 바꾼 직전 PR 의 실행입니다. 가장 긴 테스트 샤드는 <strong>주문 서비스 1116초</strong>이고, 빨간 선이 전체 종료 19분 03초입니다. 전환 PR 을 눌러 이 샤드가 313초로 줄어든 실행으로 바꿔 보세요.',
+    half: '주문 샤드가 313초로 줄자, 테스트 줄의 끝은 전환 실행에서 다음으로 긴 <strong>상품 샤드 799초</strong>가 됩니다. 이제 나머지 잡을 전환 PR 의 값으로 바꿉니다.',
+    runB: '테스트 막대가 13분 넘게 줄었는데 전체 종료선은 <strong>오른쪽으로 1분 46초</strong> 밀려 20분 49초가 됐습니다. 마지막에 끝난 것은 e2e 막대이고, 그 앞의 이미지 빌드 막대도 길어졌습니다.',
+    runA: '직전 PR 실행입니다. 주문 샤드와 gate 가 19분 03초에 끝나고, e2e 막대는 그 바로 앞에서 끝납니다.',
+  } as const;
+  const SERVICE: Record<string, string> = { a: '주문', b: '상품' };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="two-runs-gantt"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const runButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-run]')];
+    const gantt = createGantt(root);
+    let layout = LAYOUTS.wide;
+    let shown = false;
+
+    const scene = createScene<GanttState>(RUN_A, (s) => {
+      // 테스트 막대가 상품 샤드 길이 근처까지 줄었으면 상품 샤드로 읽습니다.
+      const productNow = s.bars.test.e - s.bars.test.s < 900;
+      gantt.draw(s, {
+        barLabel: (lane: Lane, b) => {
+          const sec = Math.round(b.e - b.s);
+          if (lane === 'test') return `${productNow ? SERVICE.b : SERVICE.a} ${sec}초`;
+          return `${sec}초`;
+        },
+        orderLabel: productNow ? `주문 샤드 ${Math.round(s.order.e - s.order.s)}초` : '',
+      });
+    });
+
+    const setNote = (html: string, alert = false) => {
+      note.innerHTML = html;
+      note.classList.toggle('is-alert', alert);
+    };
+    const markRun = (k: number) => runButtons.forEach((b) => {
+      const on = Number(b.dataset.run) === k;
+      b.setAttribute('aria-pressed', String(on));
+      if (on) b.setAttribute('data-state', 'ok'); else b.removeAttribute('data-state');
+    });
+    const ringTotal = () => {
+      const l = layout;
+      const x = l.x0 + (RUN_B.total / l.axisMax) * (l.x1 - l.x0);
+      landRing(root, { x, y: l.top + l.rowH * 2, w: 14, h: l.rowH * 4 + 20 });
+    };
+
+    const showRun = async (k: number) => {
+      markRun(k);
+      const alive = scene.begin();
+      if (k === 1 && !shown) {
+        // 처음에는 테스트 쪽부터 바꾸고, 잠시 뒤 나머지를 바꿉니다.
+        shown = true;
+        if (!(await scene.go(HALF, duration.draw * 1.2)) || !alive()) return;
+        setNote(NOTES.half);
+        await scene.pause(duration.read);
+        if (!alive()) return;
+        if (!(await scene.go(RUN_B, duration.draw * 1.4))) return;
+        if (!alive()) return;
+        ringTotal();
+        setNote(NOTES.runB, true);
+        return;
+      }
+      if (!(await scene.go(k ? RUN_B : RUN_A, duration.draw)) || !alive()) return;
+      setNote(k ? NOTES.runB : NOTES.runA, k === 1);
+    };
+
+    runButtons.forEach((b) => b.addEventListener('click', () => { void showRun(Number(b.dataset.run)); }));
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      gantt.setLayout(layout);
+      scene.redraw();
+    });
+    setNote(NOTES.idle);
+    // 움직임 줄이기 설정이면 전환 실행까지 보인 완성 상태로 둡니다.
+    watchDemoPlayback(demo, ({ reducedMotion }) => {
+      if (!reducedMotion || shown) return;
+      shown = true;
+      scene.set(RUN_B);
+      setNote(NOTES.runB, true);
+      markRun(1);
+    });
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="two-runs-gantt"] .scene-chips { margin: 10px 0 0; }
+  [data-blog-demo="two-runs-gantt"] .scene-note { min-height: 4.4em; }
+</style>

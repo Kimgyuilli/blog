@@ -1,0 +1,290 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="gate-verdict" ariaLabel="집계 잡 설정과 선행 잡 결과에 따라 필수 체크와 main 게시가 어떻게 바뀌는지 직접 해 보는 장면" title="test 가 실패했는데 병합 버튼이 열릴까요?" description="글 뒤에서 다룰 최종 구성처럼 gate 가 다섯 잡(lint, test, guards, images, e2e)을 기다리는 집계 잡이고, 브랜치 보호의 필수 체크라고 놓았습니다. 실패시킬 잡과 gate 설정을 골라 보세요. 결과가 gate 로 모이고, 그 판정이 PR 병합과 main 게시로 갑니다.">
+  <div class="scene-chips" role="group" aria-label="실패시킬 잡">
+    <span class="scene-chips-label">실패시킬 잡</span>
+    <button type="button" class="scene-chip is-plain" data-fail="lint" aria-pressed="false">lint</button>
+    <button type="button" class="scene-chip is-plain" data-fail="test" aria-pressed="true">test</button>
+    <button type="button" class="scene-chip is-plain" data-fail="guards" aria-pressed="false">guards</button>
+    <button type="button" class="scene-chip is-plain" data-fail="images" aria-pressed="false">images</button>
+    <button type="button" class="scene-chip is-plain" data-fail="e2e" aria-pressed="false">e2e</button>
+  </div>
+  <div class="scene-chips" role="group" aria-label="gate 설정">
+    <span class="scene-chips-label">gate 설정</span>
+    <button type="button" class="scene-chip" data-mode="0" aria-pressed="true">1. if 없음</button>
+    <button type="button" class="scene-chip" data-mode="1" aria-pressed="false" data-state="next">2. !cancelled() 만</button>
+    <button type="button" class="scene-chip" data-mode="2" aria-pressed="false">3. 전파 스텝 (||)</button>
+    <button type="button" class="scene-chip" data-mode="3" aria-pressed="false">4. 전파 조건을 &&</button>
+    <button type="button" class="scene-chip" data-mode="4" aria-pressed="false">5. 전파 스텝에 continue-on-error</button>
+  </div>
+  <pre class="gvd-code" data-code aria-live="polite"></pre>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="왼쪽에 lint, test, guards, images, e2e 다섯 잡이 있고, 결과가 가운데 gate 로 모입니다. gate 의 판정은 오른쪽의 필수 체크와 main 게시로 갑니다. 필수 체크 앞의 벽은 gate 가 실패하면 병합을 막고, skip 이나 성공이면 열립니다. gate 가 성공해야만 main 게시가 진행됩니다."></svg>
+  </div>
+  <div class="scene-metrics gvd-readout" aria-label="판정 결과" role="status">
+    <span class="scene-metric" data-out="gate"><span>gate 결과</span><b>미측정</b></span>
+    <span class="scene-metric" data-out="check"><span>필수 체크</span><b>미측정</b></span>
+    <span class="scene-metric" data-out="publish"><span>main 게시</span><b>미측정</b></span>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">잡 그래프는 현재 구성(images 는 lint 를, e2e 는 images 를 기다림)으로 고정했고, 앞 잡이 실패하면 뒤 잡은 실행되지 않고 skip 으로 표시됩니다. 판정은 GitHub 문서 규칙(needs 가 성공하지 않으면 if 없는 잡은 skip, 필수 체크는 success, skipped, neutral 을 통과로 봄, 스텝 수준 continue-on-error 는 잡을 통과시킴)으로 계산했습니다. 실제 CI 실행으로 확인한 것은 3번 설정에서 images 가 실패한 main 실행 하나와 test 가 실패한 main 실행 둘(gate 실패, publish skip)뿐이고, 1, 2, 4, 5번은 문서 규칙과 로컬 검사 스크립트 실험으로만 확인했습니다. 4, 5번은 지금의 게시 게이트 검사 스크립트를 통과합니다. 병합 버튼은 관리자 우회가 꺼진 상태를 가정합니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, clamp01, createScene, duration, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createNode, createWall, type NodeView } from '@/scripts/blog/scene/parts';
+  import { createPacketLayer } from '@/scripts/blog/scene/packets';
+
+  // 독자가 볼 변화: test 를 실패시켜도 1, 2, 4, 5번 설정에서는 판정 패킷이 필수 체크의 벽을 그대로 통과하고(유령 벽),
+  // 3번에서만 벽이 세워져 튕겨 나온다. 2, 4, 5번에서는 main 게시까지 진행된다.
+  type Job = 'lint' | 'test' | 'guards' | 'images' | 'e2e';
+  type Result = 'success' | 'failure' | 'skipped';
+  type GateResult = Result;
+  const JOBS: Job[] = ['lint', 'test', 'guards', 'images', 'e2e'];
+  const HUES: Record<Job, string> = {
+    lint: 'var(--scene-hue-gray)', test: 'var(--scene-hue-amber)', guards: 'var(--scene-hue-pink)',
+    images: 'var(--scene-hue-blue)', e2e: 'var(--scene-hue-cyan)',
+  };
+  const RESULT_KO: Record<Result, string> = { success: '성공', failure: '실패', skipped: 'skip' };
+  const CODE = [
+    'gate:\n  needs: [lint, test, guards, images, e2e]\n  # if 없음',
+    'gate:\n  needs: [lint, test, guards, images, e2e]\n  if: ${{ !cancelled() }}\n  # 전파 스텝 없음',
+    "gate:\n  if: ${{ !cancelled() }}\n  steps:\n    - if: ${{ !cancelled() && (needs.lint.result != 'success' || ... || needs.e2e.result != 'success') }}\n      run: exit 1",
+    "gate:\n  if: ${{ !cancelled() }}\n  steps:\n    - if: ${{ !cancelled() && (needs.lint.result != 'success' && ... && needs.e2e.result != 'success') }}\n      run: exit 1",
+    "gate:\n  if: ${{ !cancelled() }}\n  steps:\n    - if: ${{ !cancelled() && (needs.lint.result != 'success' || ... || needs.e2e.result != 'success') }}\n      continue-on-error: true\n      run: exit 1",
+  ];
+
+  /** 앞 잡이 실패하면 뒤 잡은 skip. */
+  const resolve = (failing: Set<Job>): Record<Job, Result> => {
+    const r = {} as Record<Job, Result>;
+    r.lint = failing.has('lint') ? 'failure' : 'success';
+    r.test = failing.has('test') ? 'failure' : 'success';
+    r.guards = failing.has('guards') ? 'failure' : 'success';
+    r.images = r.lint !== 'success' ? 'skipped' : failing.has('images') ? 'failure' : 'success';
+    r.e2e = r.images !== 'success' ? 'skipped' : failing.has('e2e') ? 'failure' : 'success';
+    return r;
+  };
+  const judge = (mode: number, r: Record<Job, Result>): GateResult => {
+    const bad = JOBS.filter((j) => r[j] !== 'success').length;
+    if (mode === 0) return bad ? 'skipped' : 'success';
+    if (mode === 2) return bad ? 'failure' : 'success';
+    if (mode === 3) return bad === JOBS.length ? 'failure' : 'success';
+    return 'success'; // 2번(전파 없음), 5번(continue-on-error)
+  };
+
+  type Layout = {
+    view: [number, number]; node: { w: number; h: number }; jobs: Record<Job, Point>; gate: Point; gateSize: { w: number; h: number };
+    check: Point; publish: Point; outSize: { w: number; h: number }; wallX: number; short: boolean;
+  };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 272], node: { w: 108, h: 36 }, gateSize: { w: 112, h: 52 }, outSize: { w: 132, h: 46 }, short: false,
+      jobs: { lint: { x: 66, y: 36 }, test: { x: 66, y: 86 }, guards: { x: 66, y: 136 }, images: { x: 66, y: 186 }, e2e: { x: 66, y: 236 } },
+      gate: { x: 272, y: 136 }, check: { x: 482, y: 74 }, publish: { x: 482, y: 200 }, wallX: 400,
+    },
+    narrow: {
+      view: [360, 272], node: { w: 84, h: 36 }, gateSize: { w: 76, h: 52 }, outSize: { w: 92, h: 46 }, short: true,
+      jobs: { lint: { x: 46, y: 36 }, test: { x: 46, y: 86 }, guards: { x: 46, y: 136 }, images: { x: 46, y: 186 }, e2e: { x: 46, y: 236 } },
+      gate: { x: 170, y: 136 }, check: { x: 308, y: 74 }, publish: { x: 308, y: 200 }, wallX: 254,
+    },
+  };
+  type State = { wall: number; ghost: number };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="gate-verdict"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const code = demo.querySelector<HTMLElement>('[data-code]')!;
+    const failButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-fail]')];
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-mode]')];
+    const out = (key: string) => demo.querySelector<HTMLElement>(`[data-out="${key}"]`)!;
+    let layout = LAYOUTS.wide;
+    const failing = new Set<Job>(['test']);
+    let mode = 0;
+    const tried = new Set<number>([0]);
+
+    const lines = svg('g', {}, root);
+    const jobLines = JOBS.map(() => svg('path', { class: 'scene-line gvd-line' }, lines));
+    const checkLine = svg('path', { class: 'scene-line gvd-line' }, lines);
+    const publishLine = svg('path', { class: 'scene-line gvd-line' }, lines);
+    const nodes = {} as Record<Job, NodeView>;
+    JOBS.forEach((j) => { nodes[j] = createNode(root, { label: j, hue: HUES[j] }); });
+    const gate = createNode(root, { label: 'gate', hue: 'var(--scene-hue-violet)' });
+    const check = createNode(root, { label: '필수 체크', hue: 'var(--scene-hue-violet)' });
+    const publish = createNode(root, { label: 'publish', hue: 'var(--scene-hue-blue)' });
+    [gate, check, publish].forEach((n) => n.group.classList.add('is-sans-sub'));
+    JOBS.forEach((j) => nodes[j].group.classList.add('is-sans-sub'));
+    const wall = createWall(root, '병합 조건');
+    const packets = createPacketLayer(root);
+
+    const path = (a: Point, b: Point) => {
+      const mx = (a.x + b.x) / 2;
+      return `M ${a.x} ${a.y} C ${mx} ${a.y}, ${mx} ${b.y}, ${b.x} ${b.y}`;
+    };
+    const jobOut = (j: Job): Point => ({ x: layout.jobs[j].x + layout.node.w / 2 + 4, y: layout.jobs[j].y });
+    const gateIn = (j: Job): Point => ({ x: layout.gate.x - layout.gateSize.w / 2 - 4, y: layout.gate.y - 16 + JOBS.indexOf(j) * 8 });
+    const gateOut = (to: Point): Point => ({ x: layout.gate.x + layout.gateSize.w / 2 + 4, y: layout.gate.y + (to.y < layout.gate.y ? -10 : 10) });
+    const outIn = (p: Point): Point => ({ x: p.x - layout.outSize.w / 2 - 4, y: p.y });
+
+    const scene = createScene<State>({ wall: 1, ghost: 1 }, (s) => {
+      const l = layout;
+      JOBS.forEach((j, i) => {
+        nodes[j].setBox({ ...l.jobs[j], ...l.node });
+        setAttrs(jobLines[i], { d: path(jobOut(j), gateIn(j)) });
+      });
+      gate.setBox({ ...l.gate, ...l.gateSize });
+      check.setBox({ ...l.check, ...l.outSize });
+      publish.setBox({ ...l.publish, ...l.outSize });
+      setAttrs(checkLine, { d: path(gateOut(l.check), outIn(l.check)) });
+      setAttrs(publishLine, { d: path(gateOut(l.publish), outIn(l.publish)) });
+      wall.place({ x: l.wallX, y1: l.check.y - 26, y2: l.check.y + 26 }, { show: clamp01(s.wall), ghost: clamp01(s.ghost) }, { x: l.wallX, y: l.check.y - 32 });
+    });
+
+    const setSub = (n: NodeView, text: string, tone: 'ok' | 'error' | 'temp' | 'none') => {
+      n.setSub(text);
+      n.group.classList.toggle('is-done', tone === 'ok');
+      n.group.classList.toggle('is-error', tone === 'error');
+      n.group.classList.toggle('is-temp', tone === 'temp');
+      n.group.classList.toggle('is-waiting', tone === 'temp');
+    };
+    const setOut = (key: string, text: string, tone: 'flow' | 'danger' | '') => {
+      const el = out(key);
+      el.classList.toggle('is-flow', tone === 'flow');
+      el.classList.toggle('is-danger', tone === 'danger');
+      bumpText(el.querySelector('b')!, text);
+    };
+
+    const noteFor = (r: Record<Job, Result>, g: GateResult) => {
+      const anyBad = JOBS.some((j) => r[j] !== 'success');
+      const skipped = JOBS.filter((j) => r[j] === 'skipped');
+      const skipText = skipped.length ? ` 앞 잡이 실패해 ${skipped.join(', ')} 는 skip 됐습니다.` : '';
+      if (!anyBad) return { html: `다섯 잡이 모두 성공했습니다. gate 는 성공하고 병합과 main 게시가 진행됩니다. 실패시킬 잡을 하나 골라 보세요.`, alert: false };
+      if (g === 'failure') return { html: `gate 가 <strong>실패</strong>로 끝나 필수 체크가 병합을 막고, main 게시도 skip 됩니다.${skipText}`, alert: false };
+      const why = [
+        'needs 가 모두 성공하지 않으면 if 없는 잡은 실행되지 않고 <strong>skip</strong> 됩니다. 필수 체크는 skip 을 통과로 봅니다. main 게시는 gate 가 성공하지 않아 skip 되지만 병합 버튼은 열립니다.',
+        '!cancelled() 덕분에 gate 는 끝까지 돌지만 실패를 결과로 옮기는 스텝이 없어 <strong>성공</strong>으로 끝납니다. 병합도 main 게시도 진행됩니다.',
+        '',
+        '조건을 && 로 묶으면 다섯 잡이 <strong>모두</strong> 성공하지 못했을 때만 전파 스텝이 돕니다. 하나만 실패하면 gate 는 성공이고 병합도 게시도 진행됩니다.',
+        '전파 스텝은 실패하지만 스텝 수준 continue-on-error 가 잡을 통과시켜 gate 는 <strong>성공</strong>입니다. 병합도 게시도 진행됩니다.',
+      ][mode];
+      return { html: why + skipText, alert: true };
+    };
+
+    const run = async (instant: boolean) => {
+      const alive = scene.begin();
+      packets.clear();
+      const r = resolve(failing);
+      const g = judge(mode, r);
+      const anyBad = JOBS.some((j) => r[j] !== 'success');
+      const passes = g !== 'failure';
+      const published = g === 'success';
+      code.textContent = CODE[mode];
+      JOBS.forEach((j) => setSub(nodes[j], RESULT_KO[r[j]], r[j] === 'success' ? 'ok' : r[j] === 'failure' ? 'error' : 'temp'));
+      const finish = () => {
+        setSub(gate, RESULT_KO[g], g === 'success' ? (anyBad ? 'none' : 'ok') : g === 'failure' ? 'error' : 'temp');
+        setSub(check, passes ? (anyBad ? '통과(실패 포함)' : '통과') : '병합 막힘', passes ? (anyBad ? 'error' : 'ok') : 'none');
+        setSub(publish, published ? (anyBad ? '게시됨' : '게시') : 'skip', published ? (anyBad ? 'error' : 'ok') : 'temp');
+        setOut('gate', RESULT_KO[g], g === 'failure' ? 'flow' : anyBad ? 'danger' : 'flow');
+        setOut('check', passes ? '통과' : '차단', passes ? (anyBad ? 'danger' : 'flow') : 'flow');
+        setOut('publish', published ? '진행' : 'skip', published ? (anyBad ? 'danger' : 'flow') : '');
+        const n = noteFor(r, g);
+        note.innerHTML = n.html;
+        note.classList.toggle('is-alert', n.alert);
+        if (g === 'success' && anyBad) gate.flash('is-shaking');
+      };
+      const wallGoal: State = { wall: anyBad ? 1 : 0, ghost: passes ? 1 : 0 };
+      if (instant || scene.reduced) { scene.set(wallGoal); finish(); return; }
+      setSub(gate, '판정 중', 'temp');
+      setSub(check, '', 'none');
+      setSub(publish, '', 'none');
+      ['gate', 'check', 'publish'].forEach((k) => setOut(k, '판정 중', ''));
+      note.innerHTML = '다섯 잡의 결과가 gate 로 모입니다.';
+      note.classList.remove('is-alert');
+      // 다섯 잡의 결과가 gate 로 모입니다.
+      const flights = JOBS.map(async (j, i) => {
+        const p = packets.spawn({ label: RESULT_KO[r[j]], tone: r[j] === 'success' ? 'flow' : r[j] === 'failure' ? 'danger' : 'temp', at: jobOut(j) });
+        await scene.pause(i * 70);
+        const a = jobOut(j);
+        const b = gateIn(j);
+        const mx = (a.x + b.x) / 2;
+        const pts: Point[] = Array.from({ length: 13 }, (_, k) => {
+          const t = k / 12;
+          const u = 1 - t;
+          return { x: u ** 3 * a.x + 3 * u * u * t * mx + 3 * u * t * t * mx + t ** 3 * b.x, y: u ** 3 * a.y + 3 * u * u * t * a.y + 3 * u * t * t * b.y + t ** 3 * b.y };
+        });
+        const ok = await p.travel(pts, duration.draw);
+        if (ok) p.remove();
+        return ok;
+      });
+      if ((await Promise.all(flights)).some((ok) => !ok) || !alive()) return;
+      await scene.go(wallGoal, duration.draw);
+      if (!alive()) return;
+      setSub(gate, RESULT_KO[g], g === 'success' ? (anyBad ? 'none' : 'ok') : g === 'failure' ? 'error' : 'temp');
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      // gate 판정이 필수 체크와 main 게시로 갑니다.
+      const l = layout;
+      const toCheck = packets.spawn({ label: RESULT_KO[g], tone: g === 'failure' ? 'danger' : anyBad ? 'temp' : 'flow', at: gateOut(l.check) });
+      const checkGo = (async () => {
+        const wallPt = { x: l.wallX - 6, y: l.check.y };
+        if (!passes) return toCheck.bounce(wallPt, 30);
+        if (!(await toCheck.travel([{ x: l.wallX - 30, y: l.check.y }, wallPt], duration.move * 0.6))) return false;
+        if (anyBad) wall.pierce();
+        if (!(await toCheck.travel([outIn(l.check)], duration.move * 0.5))) return false;
+        return toCheck.land(false);
+      })();
+      const pubGo = (async () => {
+        if (!published) return true;
+        const p = packets.spawn({ label: '게시', tone: anyBad ? 'danger' : 'flow', at: gateOut(l.publish) });
+        if (!(await p.travel([{ x: (gateOut(l.publish).x + outIn(l.publish).x) / 2, y: l.publish.y }, outIn(l.publish)], duration.move))) return false;
+        return p.land(false);
+      })();
+      const done = await Promise.all([checkGo, pubGo]);
+      if (done.some((ok) => !ok) || !alive()) return;
+      finish();
+    };
+
+    failButtons.forEach((b) => b.addEventListener('click', () => {
+      const j = b.dataset.fail as Job;
+      if (failing.has(j)) failing.delete(j); else failing.add(j);
+      b.setAttribute('aria-pressed', String(failing.has(j)));
+      void run(false);
+    }));
+    modeButtons.forEach((b) => b.addEventListener('click', () => {
+      mode = Number(b.dataset.mode);
+      tried.add(mode);
+      modeButtons.forEach((m) => {
+        m.setAttribute('aria-pressed', String(m === b));
+        m.removeAttribute('data-state');
+      });
+      const next = modeButtons.find((m) => !tried.has(Number(m.dataset.mode)));
+      if (next) next.setAttribute('data-state', 'next');
+      void run(false);
+    }));
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      packets.clear();
+      scene.redraw();
+      void run(true);
+    });
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="gate-verdict"] .scene-chips { margin-bottom: 10px; }
+  [data-blog-demo="gate-verdict"] .scene-chip[data-mode][aria-pressed="true"] { border-color: var(--scene-flow); color: var(--scene-flow-ink); background: var(--scene-flow-soft); }
+  [data-blog-demo="gate-verdict"] .scene-chip[data-fail][aria-pressed="true"] { border-color: var(--scene-danger); color: var(--scene-danger); background: var(--scene-danger-soft); }
+  [data-blog-demo="gate-verdict"] .gvd-code { margin: 4px 0 12px; padding: 10px 12px; min-height: 12.4em; border-radius: 8px; background: var(--surface); color: var(--charcoal); font-size: 0.74rem; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+  [data-blog-demo="gate-verdict"] .gvd-line { stroke: var(--scene-dep); opacity: 0.55; }
+  [data-blog-demo="gate-verdict"] .gvd-readout { position: static; display: flex; flex-wrap: wrap; gap: 10px 26px; justify-content: flex-start; margin-top: 10px; padding: 0; }
+  [data-blog-demo="gate-verdict"] .gvd-readout .scene-metric { justify-items: start; }
+  [data-blog-demo="gate-verdict"] .gvd-readout .scene-metric b { font-size: 1.15rem; }
+  [data-blog-demo="gate-verdict"] .scene-note { min-height: 4.4em; }
+</style>
