@@ -23,6 +23,7 @@ Answer these before gate A and again before handing the reviewed draft back. The
 `lint:post` cannot see these, and humanize must not be the only check for them. Each was found in this author's posts.
 - Does a paragraph end on a sentence that restates it ("~라는 뜻입니다", "~인 것입니다", a one-line verdict)? Cut it or fold the content into the paragraph.
 - Is a list announced by its count ("한계가 셋입니다", "접근은 두 가지", 첫째/둘째)? State the items directly.
+- Does a sentence only announce what comes next or point at emphasis ("달라진 점은 이것입니다", "세 번째 줄이 중요합니다", "이유는 따로 있었습니다")? Fold it into the sentence that carries the content.
 - Are two clauses or sentences built as a mirrored pair, or is a finding framed as a denial ("X 는 오기가 아닙니다", "~대신")? Say what happened.
 - Is the subject an abstraction doing a generic verb ("카운터가 구별을 해 줍니다")? Make the person or the system the subject.
 - Do several sentences in a row share the same length and ending? Vary them inside the formal "-습니다" style.
