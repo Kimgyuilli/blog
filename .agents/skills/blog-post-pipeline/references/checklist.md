@@ -29,6 +29,10 @@ Answer these before gate A and again before handing the reviewed draft back. The
 - Do several sentences in a row share the same length and ending? Vary them inside the formal "-습니다" style.
 - Are commas placed after every connective ending ("~했고,", "~해서,")? Keep them only where the subject changes in a long sentence.
 - Does a metaphor verb that is not in `voice.md` yet carry the meaning? Use a concrete verb.
+- Are findings framed as cleft sentences ("~한 것은 X입니다", "~한 곳은 X입니다", "이유는 X에 있습니다") more than once or twice? Put the subject first and state it.
+- Does a noun carry three or more stacked modifier clauses ("A 를 읽어 B 에서 C 까지 이어지는지 확인하는 검사 스크립트")? Name the thing first, then describe it in its own sentence.
+- Is one verb, often "확인했습니다", doing most of the work? Use the specific action (대조했습니다, 다시 받았습니다, 실패했습니다). Leave scope markers such as "확인하지 않았습니다" as they are.
+- Is a plan or prediction cited as a document ("계획에는 ~가 있었다", "주석에 남은 이유는")? Make the author or the team the subject: "~하기로 계획했습니다", "~라고 추정했습니다".
 
 ## Visuals
 - Does each demo show a change the prose describes, built per `blog-interactive-demo`? Is a discovery scene placed before the prose reveals its answer?
