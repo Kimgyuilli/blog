@@ -29,7 +29,7 @@ The author has corrected these patterns in post after post. Apply them while dra
 - Narrative time anchors: specific dates, `당시에는`, `지금 돌아보며`, `글을 쓰면서 확인했다`, `이 글을 쓰기 전까지`. Durations that are configuration or behavior (TTL 5초, 15일 유효) are fine. `당시 분석은` may refer to an earlier analysis by content.
 
 **Words**
-- Metaphor verbs: 닫다, 접다, 삼키다, 새다, 넘나들다, 끼어들다, 닿다, 집다, 잡다(fence 를 잡다), 꺼내다, 줄을 세우다, 약속한 순서, 테스트를 뒤집다. Use concrete verbs: 해결하다, 확정하다, 합치다, 막다, 순서대로 처리하다, 보장하려던.
+- Metaphor verbs: 닫다, 접다, 삼키다, 새다, 넘나들다, 끼어들다, 닿다, 집다, 잡다(fence 를 잡다), 꺼내다, 줄을 세우다, 약속한 순서, 테스트를 뒤집다, 결함을 거두다, 지연을 흡수하다. Use concrete verbs: 해결하다, 확정하다, 합치다, 막다, 순서대로 처리하다, 보장하려던.
 - Translationese nouns: 판단, 관측, 성립, 수렴, 모양, 좌표, 표적, 선점, 표면, 표식, 단언, 판독, 처분, 결부, 공허한, 빈틈, 구멍, 이음매. Prefer the plain verb or the English term (claim, sentinel, assert, window).
 - Keep the English term when developers say it in English: cache hit/miss/hit rate, period (CFS), quota, buffer pool, wait event, row lock wait, jitter, backoff, saga, side effect, contract test, starvation, wall-clock, task, millicore, load generator, consumer, `concurrency`, TTL, clock skew, replay, canary, fingerprint, opaque token, size class, off-heap, threshold, RSS, anonymous memory.
 - Put a space between an English word or code span and the following particle, matching the rest of the post: `hit 이어도`, `miss 는`, `contract test 가`.

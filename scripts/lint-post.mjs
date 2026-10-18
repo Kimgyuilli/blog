@@ -43,7 +43,7 @@ const RULES = [
   { id: 'contrast', level: 'warn', re: /[가이] 아니라(?![는면고])|[가이] 아니고(?![는요])|라기보다|라기 보다/g, msg: '"A가 아니라 B" 대조 구문입니다. 발견한 사실을 바로 씁니다' },
 
   // 비유 동사, 번역투
-  { id: 'metaphor-verb', level: 'warn', re: /닫(았|혔|히|는다|고 )|접(어 |었|히|는다)|삼키|넘나들|끼어들|이음매|줄을 세|약속한 순서|테스트(를|도) 뒤집|현상을 고정/g, msg: '비유 동사입니다. 해결하다, 확정하다, 합치다, 막다, 순서대로 처리하다 같은 구체 동사를 씁니다' },
+  { id: 'metaphor-verb', level: 'warn', re: /닫(았|혔|히|는다|고 )|접(어 |었|히|는다)|삼키|넘나들|끼어들|이음매|줄을 세|약속한 순서|테스트(를|도) 뒤집|현상을 고정|(결함|주입)을 거두|(지연|잡음)을 흡수/g, msg: '비유 동사입니다. 해결하다, 확정하다, 합치다, 막다, 순서대로 처리하다 같은 구체 동사를 씁니다' },
   { id: 'translationese', level: 'warn', re: /판단|관측|성립|수렴|모양|좌표|표적|선점|표식|단언|판독|처분|결부|공허한|빈틈|구멍/g, msg: '번역투 명사입니다. 평이한 동사나 원어로 바꿀 수 있는지 봅니다' },
   { id: 'translated-term', level: 'warn', re: /적중|캐시 미스|무작위 편차|기아 상태|부수 효과|계약 테스트|벽시계 시간|부하 생성기|버퍼 풀|대기 이벤트|행 락 대기|밀리코어|실행 단위|대역폭 제어/g, msg: '원어를 쓰기로 한 용어입니다 (hit, miss, jitter, starvation, side effect, contract test, wall-clock, load generator, buffer pool, wait event, row lock wait, millicore, task, bandwidth control)' },
   { id: 'time-anchor', level: 'warn', re: /당시에는|당시에|지금 돌아보|글을 쓰면서|이 글을 쓰기 전|\d{4}년 \d{1,2}월 \d{1,2}일/g, msg: '서술 시점 표지입니다. "당시 분석은"처럼 내용으로 가리킵니다' },
