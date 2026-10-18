@@ -1,0 +1,410 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="same-result-two-checks" ariaLabel="같은 결제 실패 메시지에 결함을 넣고, 실제 스택 e2e 와 알림 서비스의 JVM 단위 테스트가 각각 그 결함을 검출하는지 비교하는 장면" title="같은 알림을 확인하는 두 검사는 같은 결함을 검출할까요?" description="위쪽은 결제 실패 메시지가 실제 Kafka 를 거쳐 알림 DB 까지 가는 e2e 경로이고, 아래쪽은 소비 함수를 직접 부르는 JVM 단위 테스트입니다. 넣을 결함과 JVM 검사의 보강 여부를 골라 보세요.">
+  <div class="scene-chips" role="group" aria-label="넣을 결함">
+    <span class="scene-chips-label">넣을 결함</span>
+    <button type="button" class="scene-chip is-plain" data-fault="none" aria-pressed="true">없음</button>
+    <button type="button" class="scene-chip is-plain" data-fault="type" aria-pressed="false" data-state="next">알림 타입 오류</button>
+    <button type="button" class="scene-chip is-plain" data-fault="wire" aria-pressed="false">구독 설정 오류 (예시)</button>
+  </div>
+  <div class="scene-chips" role="group" aria-label="JVM 검사">
+    <span class="scene-chips-label">JVM 검사</span>
+    <button type="button" class="scene-chip" data-jvm="before" aria-pressed="true">보강 전</button>
+    <button type="button" class="scene-chip" data-jvm="after" aria-pressed="false">보강 후</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="위 줄에 결제 서비스, Kafka 토픽, 알림 서비스의 소비 함수, 알림 DB 가 차례로 이어집니다. 아래 줄의 테스트 코드는 Kafka 를 거치지 않고 소비 함수를 직접 부르고, 소비 함수가 만든 알림 생성 호출을 호출 검사가 확인합니다. 구독 설정 오류를 고르면 Kafka 와 소비 함수 사이에 벽이 서서 메시지가 도착하지 못합니다."></svg>
+  </div>
+  <div class="scene-metrics srtc-readout" role="status" aria-label="검사 결과">
+    <span class="scene-metric" data-out="e2e"><span>e2e 결제 실패 시나리오</span><b>미측정</b></span>
+    <span class="scene-metric" data-out="jvm"><span>notification 모듈 JVM 테스트 전체</span><b>미측정</b></span>
+    <span class="scene-metric" data-out="caught"><span>결함을 검출한 검사</span><b>미측정</b></span>
+  </div>
+  <ol class="scene-console" data-console aria-live="polite" aria-label="e2e 시나리오 로그"></ol>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">알림 타입 오류의 결과는 로컬에서 실행한 값입니다. e2e 는 결함을 넣은 알림 서비스 이미지로 결제 실패 시나리오를 돌린 한 번의 실행이고, JVM 수치는 notification 모듈 전체 테스트의 JUnit 결과(보강 전 47건, 보강 후 49건)이며, 이 모듈에는 실제 Kafka 를 쓰는 통합 테스트도 있지만 payment.failed 는 다루지 않습니다. CI 수치가 아닙니다. 구독 설정 오류는 알림 서비스의 payment.failed 구독 토픽만 틀린 경우를 코드 경로로 따라간 예시이며 실행하지 않았습니다. 이 스택의 e2e 스크립트는 기동 전에 listener 의 토픽과 group 을 선언 목록과 대조하므로 그 검사에서 실패할 것으로 예상하고, 장면의 메시지 흐름은 스택이 떴다고 가정한 그림입니다. JVM 결과도 예상입니다. 결제 서비스의 outbox poller, 다른 서비스의 consumer group, 재시도와 DLQ 는 그리지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, clamp01, createScene, duration, exitPoint, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createNode, createWall, type NodeView } from '@/scripts/blog/scene/parts';
+  import { createPacketLayer, type Packet } from '@/scripts/blog/scene/packets';
+  import { createConsole } from '@/scripts/blog/scene/console';
+
+  // 독자가 볼 변화: 알림 타입 오류는 메시지가 실제로 도착한 뒤 소비 함수에서 다른 타입으로 바뀌어 e2e 만 검출한다(보강 전).
+  // 보강 후에는 아래 줄의 직접 호출 검사도 같은 오류를 검출한다. 구독 설정 오류에서는 위 줄에 벽이 서서 e2e 만 실패하고,
+  // 보강한 JVM 검사도 벽을 지나지 않으므로 그대로 통과한다.
+  type Fault = 'none' | 'type' | 'wire';
+  type Jvm = 'before' | 'after';
+  type Tone = 'ok' | 'error' | 'temp' | 'none';
+
+  type Key = 'pay' | 'kafka' | 'consumer' | 'db' | 'test' | 'check';
+  type Layout = {
+    view: [number, number]; node: { w: number; h: number }; jvmNode: { w: number; h: number };
+    pay: Point; kafka: Point; consumer: Point; db: Point; test: Point; check: Point;
+    /** 구독 설정 오류의 벽. 넓은 배치는 세로 벽, 좁은 배치는 가로 벽. */
+    wall: { horizontal: boolean; at: number; from: number; to: number; caption: Point; hit: Point };
+    topCaption: Point; jvmCaption: Point; bypassLabel: Point & { text: string; anchor: string };
+    labels: Record<Key, string>;
+    /** 직접 호출과 호출 확인 곡선의 [시작, 제어점1, 제어점2, 끝]. */
+    bypass: (l: Layout) => Point[]; verify: (l: Layout) => Point[];
+  };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 236], node: { w: 104, h: 46 }, jvmNode: { w: 104, h: 46 },
+      pay: { x: 64, y: 64 }, kafka: { x: 200, y: 64 }, consumer: { x: 352, y: 64 }, db: { x: 490, y: 64 },
+      test: { x: 200, y: 196 }, check: { x: 490, y: 196 },
+      wall: { horizontal: false, at: 276, from: 34, to: 94, caption: { x: 276, y: 110 }, hit: { x: 268, y: 64 } },
+      topCaption: { x: 12, y: 24 }, jvmCaption: { x: 12, y: 156 }, bypassLabel: { x: 318, y: 146, text: 'Kafka 없이 직접 호출', anchor: 'end' },
+      labels: { pay: '결제 서비스', kafka: 'Kafka 토픽', consumer: '소비 함수', db: '알림 DB', test: '테스트 코드', check: '호출 검사' },
+      bypass: (l) => {
+        const a = { x: l.test.x + l.jvmNode.w / 2 + 4, y: l.test.y };
+        const b = { x: l.consumer.x - 14, y: l.consumer.y + l.node.h / 2 + 4 };
+        return [a, { x: b.x, y: a.y }, { x: b.x, y: a.y }, b];
+      },
+      verify: (l) => {
+        const a = { x: l.consumer.x + 14, y: l.consumer.y + l.node.h / 2 + 4 };
+        const b = { x: l.check.x - l.jvmNode.w / 2 - 4, y: l.check.y };
+        return [a, { x: a.x, y: b.y }, { x: a.x, y: b.y }, b];
+      },
+    },
+    narrow: {
+      view: [360, 350], node: { w: 150, h: 44 }, jvmNode: { w: 124, h: 44 },
+      pay: { x: 96, y: 48 }, kafka: { x: 96, y: 126 }, consumer: { x: 96, y: 232 }, db: { x: 96, y: 310 },
+      test: { x: 284, y: 232 }, check: { x: 284, y: 310 },
+      wall: { horizontal: true, at: 179, from: 26, to: 166, caption: { x: 180, y: 176 }, hit: { x: 96, y: 171 } },
+      topCaption: { x: 21, y: 16 }, jvmCaption: { x: 222, y: 200 }, bypassLabel: { x: 197, y: 222, text: '직접 호출', anchor: 'middle' },
+      labels: { pay: '결제 서비스', kafka: 'Kafka 토픽', consumer: '소비 함수', db: '알림 DB', test: '테스트 코드', check: '호출 검사' },
+      bypass: (l) => {
+        const a = { x: l.test.x - l.jvmNode.w / 2 - 4, y: l.test.y };
+        const b = { x: l.consumer.x + l.node.w / 2 + 4, y: l.consumer.y };
+        return [a, a, b, b];
+      },
+      verify: (l) => {
+        const a = { x: l.consumer.x + l.node.w / 2 + 4, y: l.consumer.y + 12 };
+        const b = { x: l.check.x - l.jvmNode.w / 2 - 4, y: l.check.y };
+        return [a, { x: a.x + 26, y: a.y }, { x: b.x - 26, y: b.y }, b];
+      },
+    },
+  };
+  type State = { wall: number; jvm: number };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="same-result-two-checks"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const log = createConsole(demo.querySelector<HTMLOListElement>('[data-console]')!, '결함을 고르면 e2e 시나리오의 확인 순서가 여기에 찍힙니다.');
+    const faultButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-fault]')];
+    const jvmButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-jvm]')];
+    const out = (key: string) => demo.querySelector<HTMLElement>(`[data-out="${key}"]`)!;
+    let layout = LAYOUTS.wide;
+    let fault: Fault = 'none';
+    let jvm: Jvm = 'before';
+    const tried = new Set<string>(['none']);
+
+    const topCaption = svg('text', { class: 'scene-caption' }, root);
+    topCaption.textContent = '실제 스택 e2e';
+    const jvmCaption = svg('text', { class: 'scene-caption' }, root);
+    jvmCaption.textContent = 'JVM 단위 테스트';
+    const lines = svg('g', {}, root);
+    const payKafka = svg('path', { class: 'scene-line srtc-line' }, lines);
+    const kafkaConsumer = svg('path', { class: 'scene-line srtc-line' }, lines);
+    const consumerDb = svg('path', { class: 'scene-line srtc-line' }, lines);
+    const bypass = svg('path', { class: 'scene-line srtc-bypass' }, lines);
+    const verify = svg('path', { class: 'scene-line srtc-bypass' }, lines);
+    const bypassLabel = svg('text', { class: 'scene-label is-sans srtc-bypass-label' }, root);
+    const make = (key: Key, hue: string) => {
+      const n = createNode(root, { label: layout.labels[key], hue });
+      n.group.classList.add('is-sans-sub');
+      return n;
+    };
+    const nodes: Record<Key, NodeView> = {
+      pay: make('pay', 'var(--scene-hue-amber)'),
+      kafka: make('kafka', 'var(--scene-hue-gray)'),
+      consumer: make('consumer', 'var(--scene-hue-violet)'),
+      db: make('db', 'var(--scene-hue-blue)'),
+      test: make('test', 'var(--scene-hue-cyan)'),
+      check: make('check', 'var(--scene-hue-cyan)'),
+    };
+    const KEYS = Object.keys(nodes) as Key[];
+    // 좁은 배치의 가로 벽은 세로 벽을 대각선으로 뒤집어 그리고, 캡션은 따로 둡니다.
+    const wallV = createWall(root, '구독 토픽 불일치');
+    const wallH = createWall(root, '');
+    setAttrs(wallH.group, { transform: 'matrix(0 1 1 0 0 0)' });
+    const wallHCaption = svg('text', { class: 'scene-caption srtc-wall-caption' }, root);
+    wallHCaption.textContent = '구독 토픽 불일치';
+    const packets = createPacketLayer(root);
+
+    const box = (k: Key) => ({ ...layout[k], ...(k === 'test' || k === 'check' ? layout.jvmNode : layout.node) });
+    /** from 상자에서 to 쪽으로 나가는 점. */
+    const edge = (from: Key, to: Key) => exitPoint(box(from), layout[to], 4);
+    const cubicPoints = ([a, c1, c2, b]: Point[]): Point[] => Array.from({ length: 15 }, (_, k) => {
+      const t = k / 14;
+      const u = 1 - t;
+      return { x: u ** 3 * a.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t ** 3 * b.x, y: u ** 3 * a.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t ** 3 * b.y };
+    });
+    const cubicPath = ([a, c1, c2, b]: Point[]) => `M ${a.x} ${a.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${b.x} ${b.y}`;
+    const straight = (a: Key, b: Key) => {
+      const p = edge(a, b);
+      const q = edge(b, a);
+      return `M ${p.x} ${p.y} L ${q.x} ${q.y}`;
+    };
+
+    const scene = createScene<State>({ wall: 0, jvm: 0 }, (s) => {
+      const l = layout;
+      KEYS.forEach((k) => nodes[k].setBox(box(k)));
+      setAttrs(topCaption, { x: l.topCaption.x, y: l.topCaption.y });
+      setAttrs(jvmCaption, { x: l.jvmCaption.x, y: l.jvmCaption.y });
+      setAttrs(payKafka, { d: straight('pay', 'kafka') });
+      setAttrs(kafkaConsumer, { d: straight('kafka', 'consumer') });
+      setAttrs(consumerDb, { d: straight('consumer', 'db') });
+      setAttrs(bypass, { d: cubicPath(l.bypass(l)) });
+      setAttrs(verify, { d: cubicPath(l.verify(l)) });
+      bypassLabel.textContent = l.bypassLabel.text;
+      setAttrs(bypassLabel, { x: l.bypassLabel.x, y: l.bypassLabel.y, 'text-anchor': l.bypassLabel.anchor });
+      const j = clamp01(s.jvm);
+      [bypass, verify].forEach((p) => { p.style.opacity = String(0.22 + 0.6 * j); });
+      bypassLabel.style.opacity = String(0.35 + 0.65 * j);
+      nodes.check.group.style.opacity = String(0.45 + 0.55 * j);
+      const w = clamp01(s.wall);
+      const { horizontal, at, from, to, caption } = l.wall;
+      wallV.place({ x: at, y1: from, y2: to }, { show: horizontal ? 0 : w, ghost: 0 }, caption);
+      wallH.place({ x: at, y1: from, y2: to }, { show: horizontal ? w : 0, ghost: 0 });
+      setAttrs(wallHCaption, { x: caption.x, y: caption.y, opacity: horizontal ? clamp01(w * 2 - 1) : 0 });
+    });
+
+    const setSub = (n: NodeView, text: string, tone: Tone) => {
+      n.setSub(text);
+      n.group.classList.toggle('is-done', tone === 'ok');
+      n.group.classList.toggle('is-error', tone === 'error');
+      n.group.classList.toggle('is-temp', tone === 'temp');
+    };
+    const setOut = (key: string, text: string, tone: 'flow' | 'danger' | '') => {
+      const el = out(key);
+      el.classList.toggle('is-flow', tone === 'flow');
+      el.classList.toggle('is-danger', tone === 'danger');
+      bumpText(el.querySelector('b')!, text);
+    };
+
+    /** 각 조건의 최종 결과. 타입 오류는 로컬 실측, 구독 설정 오류는 코드 경로 기반 예시. */
+    const outcome = () => {
+      const e2eFails = fault !== 'none';
+      const jvmFails = fault === 'type' && jvm === 'after';
+      const jvmText = fault === 'wire' ? '통과 예상' : jvm === 'before' ? '47건 통과' : jvmFails ? '49건 중 1건 실패' : '49건 통과';
+      const e2eText = fault === 'none' ? '통과' : fault === 'type' ? '실패' : '실패 예상';
+      const caught = fault === 'none' ? '해당 없음' : jvmFails ? 'e2e 와 JVM' : fault === 'wire' ? 'e2e 만 (예상)' : 'e2e 만';
+      return { e2eFails, jvmFails, jvmText, e2eText, caught };
+    };
+
+    const noteFor = () => {
+      if (fault === 'none') {
+        return jvm === 'before'
+          ? { html: '정상 코드에서는 결제 실패 메시지가 Kafka 를 거쳐 도착하고 <strong>PAYMENT_FAILED</strong> 알림이 남습니다. 보강 전 JVM 테스트에는 결제 실패 소비 함수가 만드는 알림 타입을 확인하는 검사가 없습니다. 결함을 하나 넣어 보세요.', alert: false }
+          : { html: '보강 후에는 테스트 코드가 결제 실패 입력을 소비 함수에 직접 넣고, 알림 생성 호출의 타입이 <strong>PAYMENT_FAILED</strong> 인지 확인합니다. 정상 코드에서는 49건이 모두 통과합니다.', alert: false };
+      }
+      if (fault === 'type') {
+        return jvm === 'before'
+          ? { html: '메시지는 실제로 도착했고 소비 기록도 남았지만 소비 함수가 <strong>PAYMENT_COMPLETED</strong> 알림을 만들었습니다. e2e 는 마지막 알림 대기에서 실패합니다. notification 모듈의 JVM 테스트 47건은 모두 통과합니다. JVM 검사를 보강해 보세요.', alert: true }
+          : { html: '보강한 검사는 Kafka 없이도 같은 오류를 검출합니다. 49건 중 새 검사 1건이 실패합니다. 이 결함은 메시지가 도착한 뒤의 로직에 있었기 때문입니다. 이번에는 구독 설정 오류를 넣어 보세요.', alert: false };
+      }
+      return { html: '구독이 틀리면 메시지가 소비 함수까지 오지 못합니다. 이 스택의 e2e 스크립트는 기동 전에 listener 의 토픽과 group 을 대조하므로 시나리오 전에 그 검사에서 실패할 것으로 예상합니다. 단위 테스트는 소비 함수를 직접 부르고, 모듈의 Kafka 통합 테스트는 payment.failed 를 다루지 않아 보강 전이든 후든 <strong>통과</strong>할 것으로 예상합니다. 실행하지 않은 예시입니다.', alert: true };
+    };
+
+    const finish = () => {
+      const o = outcome();
+      setSub(nodes.pay, 'FAILED 발행', 'ok');
+      setSub(nodes.kafka, '', 'none');
+      if (fault === 'wire') {
+        setSub(nodes.consumer, '메시지 없음', 'temp');
+        setSub(nodes.db, '행 없음', 'error');
+      } else {
+        setSub(nodes.consumer, fault === 'type' ? 'COMPLETED' : 'FAILED', fault === 'type' ? 'error' : 'ok');
+        setSub(nodes.db, fault === 'type' ? 'COMPLETED' : 'FAILED', fault === 'type' ? 'error' : 'ok');
+      }
+      if (jvm === 'before') {
+        setSub(nodes.test, '해당 검사 없음', 'temp');
+        setSub(nodes.check, '', 'none');
+      } else {
+        setSub(nodes.test, '입력 직접 주입', 'none');
+        setSub(nodes.check, o.jvmFails ? '타입 불일치' : 'FAILED 확인', o.jvmFails ? 'error' : 'ok');
+      }
+      setOut('e2e', o.e2eText, 'flow');
+      setOut('jvm', o.jvmText, fault !== 'none' && !o.jvmFails ? 'danger' : 'flow');
+      setOut('caught', o.caught, fault === 'none' ? '' : o.jvmFails ? 'flow' : 'danger');
+      const n = noteFor();
+      note.innerHTML = n.html;
+      note.classList.toggle('is-alert', n.alert);
+    };
+
+    const fillConsole = () => {
+      log.clear();
+      if (fault === 'wire') {
+        log.log('기동 전 구독 계약 검사: payment.failed 구독 불일치 (예상)', 'fail');
+        log.log('스택이 떴다고 가정하면 메시지는 소비 함수까지 오지 못함 (예시)', 'trace');
+        return;
+      }
+      log.log('결제 FAILED, 주문 CANCELLED, 재고 복구', 'ok');
+      log.log('notification 소비 기록 1건', 'ok');
+      if (fault === 'type') {
+        log.log('타임아웃(180s): PAYMENT_FAILED 알림 user=100', 'fail');
+        log.log('같은 사용자의 알림: ORDER_CREATED 1건, PAYMENT_COMPLETED 1건', 'trace');
+      } else {
+        log.log('PAYMENT_FAILED 알림 1건', 'ok');
+      }
+    };
+
+    const fly = async (p: Packet, pts: Point[], ms = duration.move) => p.travel(pts, ms);
+
+    const run = async (instant: boolean) => {
+      const alive = scene.begin();
+      packets.clear();
+      const goal: State = { wall: fault === 'wire' ? 1 : 0, jvm: jvm === 'after' ? 1 : 0 };
+      if (instant || scene.reduced) { scene.set(goal); fillConsole(); finish(); return; }
+      const l = layout;
+      Object.values(nodes).forEach((n) => setSub(n, '', 'none'));
+      ['e2e', 'jvm', 'caught'].forEach((k) => setOut(k, '확인 중', ''));
+      note.innerHTML = '결제 실패 메시지가 실제 스택을 지나갑니다.';
+      note.classList.remove('is-alert');
+      log.clear();
+      await scene.go(goal, duration.draw);
+      if (!alive()) return;
+
+      // 위 줄: 실제 스택 e2e
+      if (fault === 'wire') {
+        const check = log.log('기동 전 구독 계약 검사', 'pending');
+        await scene.pause(duration.beat * 2);
+        if (!alive()) return;
+        check('기동 전 구독 계약 검사: payment.failed 구독 불일치 (예상)', 'fail');
+        log.log('스택이 떴다고 가정하면 메시지는 소비 함수까지 오지 못함 (예시)', 'trace');
+      }
+      setSub(nodes.pay, 'FAILED 발행', 'ok');
+      const msg = packets.spawn({ label: 'payment.failed', tone: 'dep', at: edge('pay', 'kafka') });
+      if (!(await fly(msg, [edge('kafka', 'pay')])) || !alive()) return;
+      if (!(await fly(msg, [edge('kafka', 'consumer')], 260)) || !alive()) return;
+      if (fault === 'wire') {
+        if (!(await msg.bounce(l.wall.hit, 26)) || !alive()) return;
+        setSub(nodes.consumer, '메시지 없음', 'temp');
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+        setSub(nodes.db, '행 없음', 'error');
+        nodes.db.flash('is-shaking');
+        void msg.fade(520);
+      } else {
+        log.log('결제 FAILED, 주문 CANCELLED, 재고 복구', 'ok');
+        if (!(await fly(msg, [edge('consumer', 'kafka')])) || !alive()) return;
+        await msg.land(false);
+        if (!alive()) return;
+        setSub(nodes.consumer, '수신', 'none');
+        log.log('notification 소비 기록 1건', 'ok');
+        const made = packets.spawn({ label: 'PAYMENT_FAILED', tone: 'flow', at: edge('consumer', 'db') });
+        if (fault === 'type') {
+          await scene.pause(duration.beat);
+          if (!alive()) return;
+          made.relabel('PAYMENT_COMPLETED', 'danger');
+          setSub(nodes.consumer, 'COMPLETED', 'error');
+        } else {
+          setSub(nodes.consumer, 'FAILED', 'ok');
+        }
+        if (!(await fly(made, [edge('db', 'consumer')])) || !alive()) return;
+        await made.land(false);
+        if (!alive()) return;
+        setSub(nodes.db, fault === 'type' ? 'COMPLETED' : 'FAILED', fault === 'type' ? 'error' : 'ok');
+        const done = log.log('PAYMENT_FAILED 알림 대기', 'pending');
+        await scene.pause(fault === 'type' ? duration.read * 0.6 : duration.beat);
+        if (!alive()) return;
+        if (fault === 'type') {
+          done('타임아웃(180s): PAYMENT_FAILED 알림 user=100', 'fail');
+          log.log('같은 사용자의 알림: ORDER_CREATED 1건, PAYMENT_COMPLETED 1건', 'trace');
+          nodes.db.flash('is-shaking');
+        } else {
+          done('PAYMENT_FAILED 알림 1건', 'ok');
+          nodes.db.flash('is-ok');
+        }
+      }
+      const o = outcome();
+      setOut('e2e', o.e2eText, 'flow');
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+
+      // 아래 줄: JVM 단위 테스트
+      if (jvm === 'before') {
+        setSub(nodes.test, '해당 검사 없음', 'temp');
+        nodes.test.flash('is-shaking');
+      } else {
+        setSub(nodes.test, '입력 직접 주입', 'none');
+        const route = l.bypass(l);
+        const input = packets.spawn({ label: '결제 실패 입력', tone: 'dep', at: route[0] });
+        if (!(await fly(input, cubicPoints(route), duration.draw)) || !alive()) return;
+        input.remove();
+        const call = packets.spawn({ label: fault === 'type' ? 'PAYMENT_COMPLETED' : 'PAYMENT_FAILED', tone: fault === 'type' ? 'danger' : 'flow', at: l.verify(l)[0] });
+        if (!(await fly(call, cubicPoints(l.verify(l)), duration.draw)) || !alive()) return;
+        await call.land(false);
+        if (!alive()) return;
+        nodes.check.flash(o.jvmFails ? 'is-shaking' : 'is-ok');
+      }
+      finish();
+    };
+
+    let played = false;
+    const playOnce = () => { if (!played) { played = true; void run(false); } };
+    faultButtons.forEach((b) => b.addEventListener('click', () => {
+      fault = b.dataset.fault as Fault;
+      tried.add(fault);
+      faultButtons.forEach((m) => { m.setAttribute('aria-pressed', String(m === b)); m.removeAttribute('data-state'); });
+      jvmButtons.forEach((m) => m.removeAttribute('data-state'));
+      if (fault === 'type' && jvm === 'before') jvmButtons[1].setAttribute('data-state', 'next');
+      else if (fault === 'type' && !tried.has('wire')) faultButtons[2].setAttribute('data-state', 'next');
+      played = true;
+      void run(false);
+    }));
+    jvmButtons.forEach((b) => b.addEventListener('click', () => {
+      jvm = b.dataset.jvm as Jvm;
+      jvmButtons.forEach((m) => { m.setAttribute('aria-pressed', String(m === b)); m.removeAttribute('data-state'); });
+      faultButtons.forEach((m) => m.removeAttribute('data-state'));
+      if (!tried.has('type')) faultButtons[1].setAttribute('data-state', 'next');
+      else if (!tried.has('wire')) faultButtons[2].setAttribute('data-state', 'next');
+      played = true;
+      void run(false);
+    }));
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      KEYS.forEach((k) => {
+        const name = nodes[k].group.querySelector('.scene-node-name');
+        if (name) name.textContent = layout.labels[k];
+      });
+      packets.clear();
+      scene.redraw();
+      void run(true);
+    });
+
+    if ('IntersectionObserver' in window) {
+      const io = new IntersectionObserver((entries) => {
+        if (entries.some((e) => e.isIntersecting)) { io.disconnect(); playOnce(); }
+      }, { threshold: 0.45 });
+      io.observe(stage);
+    }
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="same-result-two-checks"] .scene-chips { margin-bottom: 10px; }
+  [data-blog-demo="same-result-two-checks"] .scene-chip[data-jvm][aria-pressed="true"] { border-color: var(--scene-flow); color: var(--scene-flow-ink); background: var(--scene-flow-soft); }
+  [data-blog-demo="same-result-two-checks"] .scene-chip[data-fault="none"][aria-pressed="true"] { border-color: var(--scene-flow); color: var(--scene-flow-ink); background: var(--scene-flow-soft); }
+  [data-blog-demo="same-result-two-checks"] .scene-chip[data-fault]:not([data-fault="none"])[aria-pressed="true"] { border-color: var(--scene-danger); color: var(--scene-danger); background: var(--scene-danger-soft); }
+  [data-blog-demo="same-result-two-checks"] .srtc-line { stroke: var(--scene-dep); opacity: 0.6; }
+  [data-blog-demo="same-result-two-checks"] .srtc-bypass { stroke: var(--scene-hue-cyan); stroke-dasharray: 5 5; }
+  [data-blog-demo="same-result-two-checks"] .srtc-bypass-label { fill: var(--slate); }
+  [data-blog-demo="same-result-two-checks"] .srtc-wall-caption { fill: var(--scene-danger); }
+  [data-blog-demo="same-result-two-checks"] .srtc-readout { position: static; display: flex; flex-wrap: wrap; gap: 10px 26px; justify-content: flex-start; margin-top: 10px; padding: 0; }
+  [data-blog-demo="same-result-two-checks"] .srtc-readout .scene-metric { justify-items: start; }
+  [data-blog-demo="same-result-two-checks"] .srtc-readout .scene-metric b { font-size: 1.15rem; }
+  [data-blog-demo="same-result-two-checks"] .scene-console { min-height: 7.4em; }
+  [data-blog-demo="same-result-two-checks"] .scene-note { min-height: 5.4em; }
+</style>
