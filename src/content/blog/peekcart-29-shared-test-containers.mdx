@@ -1,6 +1,6 @@
 ---
 title: 'PeekCart 학습 기록 29: JUnit 리포트는 131초였는데, 테스트 태스크는 왜 975초였을까?'
-description: 'Testcontainers 컨테이너를 테스트 클래스마다 띄우던 Spring Boot 모듈에서, JUnit XML 의 time 합계는 131초인데 Gradle test 태스크는 975초였습니다. 보이지 않던 844초가 어디에 있었는지 클래스 시작 시각과 스레드 덤프로 다시 나누고, 자기 컨테이너보다 오래 산 Spring context 가 그 시간에 어떻게 얽혀 있었는지 따라갑니다. 컨테이너를 모듈에 한 벌만 띄우도록 바꾼 뒤 드러난 공유 상태와, 클래스 경계가 해 주던 격리를 cleanup, 자율 writer 기본 off, @DirtiesContext, ConnectionDetails, 할당 대기로 되사고 셔플과 lint 로 지키게 한 과정을 정리합니다.'
+description: 'JUnit 리포트에 빠진 테스트 지연을 추적하고, 컨테이너 공유로 줄인 실행 시간과 추가로 필요한 격리를 정리합니다.'
 image: "/images/blog/peekcart-shared-test-containers/thumbnail.jpg"
 pubDate: 2026-10-17
 category: backend

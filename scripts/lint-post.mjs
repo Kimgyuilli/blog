@@ -15,8 +15,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { load } from 'js-yaml';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const DESCRIPTION_MAX_LENGTH = 80;
 
 /** @typedef {{ id: string, level: 'error' | 'warn', re: RegExp, msg: string }} Rule */
 /** @type {Rule[]} */
@@ -118,6 +120,21 @@ function lintFile(path) {
     for (const m of text.matchAll(rule.re)) push(rule, m.index, m[0]);
   }
   if (!isAstro) {
+    const frontmatter = src.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+    if (frontmatter) {
+      const metadata = load(frontmatter[1]);
+      if (typeof metadata?.description === 'string') {
+        const length = [...metadata.description.trim()].length;
+        if (length > DESCRIPTION_MAX_LENGTH) {
+          const field = /^description\s*:/m.exec(frontmatter[0]);
+          push({
+            id: 'description-length',
+            level: 'warn',
+            msg: `카드 소개는 공백 포함 ${DESCRIPTION_MAX_LENGTH}자 이내의 짧은 문장을 권장합니다. 현재 ${length}자입니다.`,
+          }, field?.index ?? 0, `${length}자`);
+        }
+      }
+    }
     const outside = src
       .replace(/^---\n[\s\S]*?\n---\n/, blank)
       .replace(/^(```|~~~)[\s\S]*?^\1[^\n]*$/gm, blank)

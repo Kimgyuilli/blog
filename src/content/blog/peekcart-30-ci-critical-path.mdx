@@ -1,6 +1,6 @@
 ---
 title: 'PeekCart 학습 기록 30: 테스트 잡을 13분 줄였는데, CI 는 왜 2분 늘었을까?'
-description: 'GitHub Actions 에서 36분 걸리던 CI 를 잡 시각과 needs 그래프로 임계경로를 계산하며 줄인 기록입니다. 가장 긴 테스트 잡을 13분 줄였는데 전체가 늘어난 이유와, 직렬 사슬을 끊을 때 드러난 게시 게이트, skip 을 통과로 보는 필수 체크, buildx 캐시 문제를 실제 실행 기록으로 따라갑니다.'
+description: '테스트 잡을 줄여도 전체 CI 가 느려진 원인을 임계경로로 분석하고, 실행 순서와 게시 게이트를 개선합니다.'
 image: "/images/blog/peekcart-ci-critical-path/thumbnail.jpg"
 pubDate: 2026-10-17
 category: infra
