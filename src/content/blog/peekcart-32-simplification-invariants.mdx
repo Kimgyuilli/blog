@@ -411,7 +411,7 @@ subprojects.findAll { it.name.endsWith('-service') }.each { svc ->
 | 회원 서비스에 메시징 모듈의 `OutboxRecordKind` 사본 | 회원 서비스의 `runtimeClasspath` 에 메시징 모듈 없음 | 실패 (실제 중복이 아닌데 보고) |
 | gateway 에 observability 모듈의 `CommitAwareMetrics` 사본 | gateway 는 observability 모듈에 의존 | 통과 (실제 중복을 놓침) |
 
-회원 서비스의 결과는 검사 범위가 실제 의존보다 넓어서 생긴 오탐이고 gateway 의 결과는 검사해야 할 앱이 빠져서 생긴 누락입니다. 이 검사는 `com/peekcart/global` 아래의 클래스만 보므로 외부 JAR 나 다른 패키지의 중복도 검사하지 않습니다. 검사 코드는 아직 고치지 않았습니다.
+회원 서비스의 결과는 검사 범위가 실제 의존보다 넓어서 생긴 오탐이고 gateway 의 결과는 검사해야 할 앱이 빠져서 생긴 누락입니다. 이 검사는 `com/peekcart/global` 아래의 클래스만 보므로 외부 JAR 나 다른 패키지의 중복도 검사하지 않습니다.
 
 ### 보존을 확인한 뒤의 커밋이 아카이브를 덮어썼습니다
 
