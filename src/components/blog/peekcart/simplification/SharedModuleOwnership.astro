@@ -1,0 +1,239 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="shared-module-ownership" ariaLabel="네 서비스에 복제된 메시징 실행 코드가 공유 모듈로 옮겨지고, 서비스별 consumer, 소유자 설정, DB 와 마이그레이션은 각 서비스에 남는 장면" title="실행 코드는 한 곳에, 소유자는 서비스마다" description="서비스 카드 안의 회색 칩은 네 서비스에 복제된 실행 코드이고, 서비스 색 칩은 서비스마다 다른 구성입니다. 합치기 전과 후를 바꿔 보세요.">
+  <div class="scene-chips" role="group" aria-label="상태">
+    <span class="scene-chips-label">상태</span>
+    <button type="button" class="scene-chip is-plain" data-merge="0" aria-pressed="true">합치기 전</button>
+    <button type="button" class="scene-chip is-plain" data-merge="1" aria-pressed="false" data-state="next">합친 뒤</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="아래쪽에 주문, 결제, 상품, 알림 서비스 카드가 있고, 카드마다 실행 코드 칩 다섯 개와 서비스별 구성 칩이 있습니다. 합치면 주문 서비스의 실행 코드 칩이 위쪽 공유 모듈로 옮겨지고 나머지 세 서비스의 사본은 사라집니다. 서비스별 구성 칩은 각 카드에 남고, 네 서비스에서 공유 모듈로 의존 선이 그려집니다. 회원 서비스는 공유 모듈에 의존하지 않습니다."></svg>
+  </div>
+  <div class="scene-metrics smo-readout" role="status" aria-label="파일 수">
+    <span class="scene-metric" data-out="svc"><span>서비스 안의 실행 코드 파일</span><b>128</b></span>
+    <span class="scene-metric" data-out="shared"><span>공유 모듈의 실행 코드 파일</span><b>0</b></span>
+    <span class="scene-metric" data-out="deleted"><span>삭제한 사본</span><b>0</b></span>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">소스 파일의 위치와 소유를 그린 도식입니다. 칩 하나는 파일 묶음이며, 숫자는 합칠 대상 32개 파일의 구성(Outbox 8, 상태 enum 1, 멱등성 처리 6, 실패 원장 16, ShedLock 설정 1)입니다. 상태 enum 은 주문과 상품 서비스 판에 BACKFILL 값이 있어 값이 4개, 결제와 알림 판은 3개였습니다. 서비스별 구성 칩은 DLQ consumer, 원장 소유자 설정, 식별할 수 없는 실패를 맡는 quarantine consumer, 자기 DB 와 Flyway 마이그레이션이고, 알림 서비스에는 quarantine consumer 가 없습니다. 내용이 같은 사본 가운데 어느 서비스 것을 옮겼는지는 결과에 영향이 없어서, 장면에서는 주문 서비스 칩을 옮겼습니다. 실행 중인 JVM 의 메모리나 DB 가 하나로 합쳐진다는 뜻이 아니며, 배포나 성능 측정값이 아닙니다. common 모듈과 observability 모듈, gateway 는 그리지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, bumpText, clamp01, createScene, duration, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createBoundary, createChip, createCurve, createNode, landRing } from '@/scripts/blog/scene/parts';
+
+  // 독자가 볼 변화: 주문 서비스의 실행 코드 칩이 공유 모듈로 날아가고 나머지 세 사본은 사라진다.
+  // 서비스 색 칩(consumer, 소유자, quarantine, DB)은 그 자리에 남아 카드 위쪽으로 자리만 메운다.
+  type Svc = 'order' | 'payment' | 'product' | 'notification';
+  const SVCS: Svc[] = ['order', 'payment', 'product', 'notification'];
+  const NAME: Record<Svc, string> = { order: '주문 서비스', payment: '결제 서비스', product: '상품 서비스', notification: '알림 서비스' };
+  const SHORT: Record<Svc, string> = { order: '주문', payment: '결제', product: '상품', notification: '알림' };
+  const HUE: Record<Svc, string> = { order: 'var(--scene-hue-blue)', payment: 'var(--scene-hue-amber)', product: 'var(--scene-hue-violet)', notification: 'var(--scene-hue-pink)' };
+  const EXEC = 5;
+  const execLabel = (k: number, svc: Svc, merged: boolean, narrow: boolean) => {
+    const enumValues = merged ? '4' : svc === 'order' || svc === 'product' ? '4' : '3';
+    const wide = ['Outbox 8', merged ? 'enum 합집합 4값' : `enum ${enumValues}값`, '멱등성 6', '원장 16', '락 설정 1'];
+    const thin = ['Outbox 8', merged ? 'enum 합집합' : `enum ${enumValues}값`, '멱등성 6', '원장 16', '락 1'];
+    return (narrow ? thin : wide)[k];
+  };
+  const OWN_WIDE = ['DLQ consumer', '원장 소유자', 'quarantine', '자기 DB, Flyway'];
+  const OWN_THIN = ['consumer', '소유자', 'quarantine', 'DB, Flyway'];
+  const ownKeys = (svc: Svc) => (svc === 'notification' ? [0, 1, 3] : [0, 1, 2, 3]);
+
+  type Layout = {
+    view: [number, number]; narrow: boolean;
+    box: { x: number; y: number; w: number; h: number };
+    slots: Point[]; chipW: number; userNode: { x: number; y: number; w: number; h: number };
+    cardX: number[]; cardW: number; cardTop: number; rowH: number; firstRow: number; ownGap: number;
+  };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 412], narrow: false,
+      box: { x: 12, y: 12, w: 414, h: 108 },
+      slots: [{ x: 80, y: 60 }, { x: 212, y: 60 }, { x: 344, y: 60 }, { x: 80, y: 92 }, { x: 212, y: 92 }], chipW: 116,
+      userNode: { x: 494, y: 66, w: 120, h: 54 },
+      cardX: [76, 208, 340, 472], cardW: 124, cardTop: 156, rowH: 22, firstRow: 44, ownGap: 10,
+    },
+    narrow: {
+      view: [360, 470], narrow: true,
+      box: { x: 4, y: 10, w: 352, h: 108 },
+      slots: [{ x: 64, y: 56 }, { x: 180, y: 56 }, { x: 296, y: 56 }, { x: 64, y: 88 }, { x: 180, y: 88 }], chipW: 104,
+      userNode: { x: 180, y: 438, w: 220, h: 46 },
+      cardX: [45, 135, 225, 315], cardW: 86, cardTop: 154, rowH: 22, firstRow: 42, ownGap: 10,
+    },
+  };
+
+  type State = { box: number; cut: number; fly: number; m: number; dep: number };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="shared-module-ownership"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const buttons = [...demo.querySelectorAll<HTMLButtonElement>('[data-merge]')];
+    const out = (key: string) => demo.querySelector<HTMLElement>(`[data-out="${key}"]`)!;
+    let layout = LAYOUTS.wide;
+    let merged = false;
+
+    const boundary = createBoundary(root, 'peekcart-common-messaging');
+    const curves = SVCS.map((_, i) => createCurve(root, i === 0 ? '의존' : ''));
+    const cards = SVCS.map((svc) => {
+      const frame = svg('rect', { class: 'scene-code-frame smo-card', rx: 12 }, root);
+      frame.style.setProperty('--node-hue', HUE[svc]);
+      const accent = svg('rect', { class: 'scene-node-accent', rx: 2, width: 4, height: 14 }, root);
+      accent.style.setProperty('--node-hue', HUE[svc]);
+      const title = svg('text', { class: 'scene-caption smo-card-title' }, root);
+      return { frame, accent, title };
+    });
+    const user = createNode(root, { label: '회원 서비스', hue: 'var(--scene-hue-gray)' });
+    user.group.classList.add('is-sans-sub', 'smo-user');
+    const exec = SVCS.map(() => Array.from({ length: EXEC }, () => {
+      const c = createChip(root, { label: '', hue: 'var(--scene-hue-gray)', width: 116 });
+      c.group.classList.add('is-sans');
+      return c;
+    }));
+    const own = SVCS.map((svc) => ownKeys(svc).map(() => {
+      const c = createChip(root, { label: '', hue: HUE[svc], width: 116 });
+      c.group.classList.add('is-sans');
+      return c;
+    }));
+
+    /** 칩 너비는 배치마다 다릅니다. 좁은 배치는 카드 폭에 맞춥니다. */
+    const resizeChips = () => {
+      const width = layout.narrow ? layout.cardW - 8 : 116;
+      [...exec.flat(), ...own.flat()].forEach((c) => {
+        setAttrs(c.group.querySelector('rect')!, { x: -width / 2, width });
+        setAttrs(c.group.querySelector('circle')!, { cx: -width / 2 + 9 });
+        setAttrs(c.group.querySelector('text')!, { x: -width / 2 + 17 });
+      });
+    };
+    const setLabels = (instant: boolean) => {
+      SVCS.forEach((svc, i) => {
+        cards[i].title.textContent = layout.narrow ? SHORT[svc] : NAME[svc];
+        exec[i].forEach((c, k) => {
+          const label = execLabel(k, svc, merged && i === 0 && k === 1, layout.narrow);
+          if (instant) c.group.querySelector('text')!.textContent = label;
+          else c.setLabel(label);
+        });
+        own[i].forEach((c, k) => { c.group.querySelector('text')!.textContent = (layout.narrow ? OWN_THIN : OWN_WIDE)[ownKeys(svc)[k]]; });
+      });
+      user.setSub(merged ? '의존하지 않음' : '메시징 의존 없음');
+    };
+
+    const execHome = (i: number, k: number): Point => ({ x: layout.cardX[i], y: layout.cardTop + layout.firstRow + k * layout.rowH });
+    const ownAt = (i: number, k: number, m: number): Point => {
+      const before = layout.cardTop + layout.firstRow + EXEC * layout.rowH + layout.ownGap;
+      const after = layout.cardTop + layout.firstRow;
+      return { x: layout.cardX[i], y: before + (after - before) * m + k * layout.rowH };
+    };
+
+    const scene = createScene<State>({ box: 0, cut: 0, fly: 0, m: 0, dep: 0 }, (s) => {
+      const l = layout;
+      const b = l.box;
+      boundary.place({ ...b, o: clamp01(s.box) });
+      user.setBox(l.userNode);
+      SVCS.forEach((svc, i) => {
+        const top = l.cardTop;
+        // 카드 높이는 남은 칩에 맞춰 줄어듭니다. 알림 서비스도 다른 카드와 같은 높이로 둡니다.
+        const bottom = ownAt(i, 3, s.m).y + 18;
+        setAttrs(cards[i].frame, { x: l.cardX[i] - l.cardW / 2, y: top, width: l.cardW, height: bottom - top });
+        setAttrs(cards[i].accent, { x: l.cardX[i] - l.cardW / 2 + 10, y: top + 12 });
+        setAttrs(cards[i].title, { x: l.cardX[i] - l.cardW / 2 + 20, y: top + 24 });
+        // 실행 코드: 주문 서비스 판은 공유 모듈로 날아가고, 나머지 세 판은 사라집니다.
+        exec[i].forEach((c, k) => {
+          const home = execHome(i, k);
+          if (i === 0) {
+            const t = clamp01(s.fly * 1.6 - k * 0.15);
+            const p = bowAt(home, l.slots[k], t, 36 * Math.sin(Math.PI * t));
+            c.place(p, 1);
+          } else {
+            const t = clamp01(s.cut);
+            c.place({ x: home.x, y: home.y + 6 * t }, 1 - t);
+          }
+        });
+        own[i].forEach((c, k) => c.place(ownAt(i, k, s.m), 1));
+        // 의존 선: 카드 위에서 공유 모듈 아래로
+        const from = { x: l.cardX[i], y: top - 4 };
+        const to = { x: Math.min(Math.max(l.cardX[i], b.x + 30), b.x + b.w - 20), y: b.y + b.h + 4 };
+        const ctrl = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+        curves[i].draw(from, ctrl, to, clamp01(s.dep * 1.3 - i * 0.1), { x: from.x + 6, y: (from.y + to.y) / 2 + 4, anchor: 'start' });
+      });
+    });
+
+    const setOut = (key: string, value: number) => bumpText(out(key).querySelector('b')!, String(value));
+    const NOTE = {
+      before: '네 서비스가 같은 실행 코드를 각자 복제해 가지고 있습니다. 32개 중 31개는 네 서비스의 사본이 바이트까지 같았고, 상태 enum 만 서비스에 따라 값이 4개 또는 3개였습니다.',
+      after: '실행 코드 32개가 공유 모듈 하나로 옮겨지고 나머지 사본 96개는 지워졌습니다. enum 은 값의 합집합으로 통일했습니다. 서비스 색 칩은 <strong>그대로</strong> 남았습니다. 어떤 실패를 기록할지, 어느 DB 에 어떤 마이그레이션을 적용할지는 여전히 각 서비스가 정합니다.',
+    };
+    const finish = () => {
+      setLabels(true);
+      setOut('svc', merged ? 0 : 128);
+      setOut('shared', merged ? 32 : 0);
+      setOut('deleted', merged ? 96 : 0);
+      note.innerHTML = merged ? NOTE.after : NOTE.before;
+    };
+
+    const run = async (instant: boolean) => {
+      const alive = scene.begin();
+      const goal: State = merged ? { box: 1, cut: 1, fly: 1, m: 1, dep: 1 } : { box: 0, cut: 0, fly: 0, m: 0, dep: 0 };
+      if (instant || scene.reduced) { scene.set(goal); finish(); return; }
+      if (!merged) {
+        setLabels(false);
+        await scene.go(goal, duration.move);
+        if (!alive()) return;
+        finish();
+        return;
+      }
+      note.textContent = '공유 모듈을 만들고 실행 코드를 옮깁니다.';
+      await scene.go({ ...scene.state, box: 1 }, duration.draw);
+      if (!alive()) return;
+      await scene.go({ ...scene.state, cut: 1 }, duration.cut);
+      if (!alive()) return;
+      setOut('deleted', 96);
+      await scene.go({ ...scene.state, fly: 1 }, duration.fly * 1.6);
+      if (!alive()) return;
+      layout.slots.forEach((p) => landRing(root, { ...p, w: layout.chipW, h: 20 }));
+      exec[0][1].setLabel(execLabel(1, 'order', true, layout.narrow));
+      setOut('svc', 0);
+      setOut('shared', 32);
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      await scene.go({ ...scene.state, m: 1 }, duration.reflow * 1.5);
+      if (!alive()) return;
+      await scene.go({ ...scene.state, dep: 1 }, duration.draw);
+      if (!alive()) return;
+      finish();
+    };
+
+    buttons.forEach((b) => b.addEventListener('click', () => {
+      merged = b.dataset.merge === '1';
+      buttons.forEach((m) => { m.setAttribute('aria-pressed', String(m === b)); m.removeAttribute('data-state'); });
+      void run(false);
+    }));
+
+    watchNarrow(stage, (narrow) => {
+      layout = LAYOUTS[narrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      root.classList.toggle('smo-narrow', narrow);
+      resizeChips();
+      setLabels(true);
+      void run(true);
+    });
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="shared-module-ownership"] .scene-chips { margin-bottom: 10px; }
+  [data-blog-demo="shared-module-ownership"] .scene-chip[aria-pressed="true"] { border-color: var(--scene-flow); color: var(--scene-flow-ink); background: var(--scene-flow-soft); }
+  [data-blog-demo="shared-module-ownership"] .smo-card { stroke: color-mix(in srgb, var(--node-hue) 45%, var(--hairline)); }
+  [data-blog-demo="shared-module-ownership"] .smo-card-title { font-size: 12px; }
+  [data-blog-demo="shared-module-ownership"] .smo-readout { position: static; display: flex; flex-wrap: wrap; gap: 10px 26px; justify-content: flex-start; margin-top: 10px; padding: 0; }
+  [data-blog-demo="shared-module-ownership"] .smo-readout .scene-metric { justify-items: start; }
+  [data-blog-demo="shared-module-ownership"] .smo-readout .scene-metric b { font-size: 1.15rem; }
+  [data-blog-demo="shared-module-ownership"] .scene-note { min-height: 5.4em; }
+  [data-blog-demo="shared-module-ownership"] .smo-narrow .scene-table-chip-text { font-size: 10px; }
+</style>

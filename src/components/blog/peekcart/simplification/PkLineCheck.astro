@@ -1,0 +1,380 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import '@/styles/scene.css';
+
+type Props = { mode: 'intro' | 'all' };
+const { mode } = Astro.props;
+const intro = mode === 'intro';
+const demoId = intro ? 'pk-line-check-intro' : 'pk-line-check-all';
+const title = intro ? '한 줄을 지우면 보존 검사는 실패할까요?' : '출현 횟수가 같으면 문서가 그대로일까요?';
+const description = intro
+  ? '옮긴 아카이브 문서의 ERD 일부입니다. 줄 집합 검사는 옮기기 전의 각 줄이 옮긴 뒤 문서 어딘가에 있는지만 보고, 출현 횟수 검사는 각 줄이 몇 번 나왔는지까지 셉니다. 처음 만든 것은 줄 집합 검사입니다. 지울 줄을 골라 보세요.'
+  : '이번에는 users 의 기본 키 줄을 지우는 대신 바꾸거나, 순서를 바꾸거나, 다른 문서로 옮겨 보세요.';
+---
+
+<InteractiveDemoFrame demoId={demoId} ariaLabel="옮긴 문서의 ERD 줄에 변이를 넣고, 줄 집합 검사와 출현 횟수 검사가 각각 그 변이를 검출하는지 보는 장면" title={title} description={description}>
+  <div class="scene-chips" role="group" aria-label="넣을 변이">
+    <span class="scene-chips-label">넣을 변이</span>
+    <button type="button" class="scene-chip is-plain" data-mut="base" aria-pressed="true">원래대로</button>
+    {intro && <button type="button" class="scene-chip is-plain" data-mut="delHead" aria-pressed="false" data-state="next">절 제목 지우기</button>}
+    <button type="button" class="scene-chip is-plain" data-mut="delPk" aria-pressed="false">users 의 bigint id PK 지우기</button>
+    {!intro && <button type="button" class="scene-chip is-plain" data-mut="replace" aria-pressed="false" data-state="next">그 줄을 다른 내용으로 바꾸기</button>}
+    {!intro && <button type="button" class="scene-chip is-plain" data-mut="reorder" aria-pressed="false">다음 줄과 순서 바꾸기</button>}
+    {!intro && <button type="button" class="scene-chip is-plain" data-mut="move" aria-pressed="false">현재 문서로 옮기기</button>}
+  </div>
+  <div class="scene-stage" data-stage data-mode={mode}>
+    <svg data-graphic role="img" aria-label="왼쪽은 옮긴 아카이브 문서로, 절 제목과 users, orders 두 테이블의 줄이 보입니다. 두 테이블 모두 bigint id PK 줄이 있습니다. 오른쪽에는 줄 집합 검사와 출현 횟수 검사가 있고, 변이를 넣으면 각 검사의 결과가 바뀝니다."></svg>
+  </div>
+  <div class="scene-metrics plc-readout" role="status" aria-label="검사 결과">
+    <span class="scene-metric" data-out="count"><span>옮긴 뒤 세 문서의 bigint id PK 합계</span><b>38</b></span>
+    <span class="scene-metric" data-out="set"><span>줄 집합 검사의 누락</span><b>0</b></span>
+    <span class="scene-metric" data-out="counter"><span>출현 횟수 검사의 부족</span><b>0</b></span>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">실제 아카이브 문서에서 users 와 orders 두 테이블만 확대한 축소 예시입니다. 다른 테이블과 나머지 절은 생략했습니다. 실제 아카이브에서 users 다음 테이블은 orders 가 아니고, 맨 위 절 제목은 이 ERD 절이 아닌 다른 절(시스템 다이어그램)의 제목이며 기호를 빼고 적었습니다. 38은 옮긴 뒤 데이터 설계 문서 23개와 아카이브 15개를 합친 값입니다. 38과 37, 누락과 부족 수치, 각 검사의 통과와 실패는 정리 작업에 쓴 검사 코드를 실제 문서에 다시 적용한 로컬 재현 결과입니다. 원래 작업에서는 기본 키 줄 삭제를 다른 변이와 함께 넣었고, 절 제목 삭제를 따로 넣어 본 것은 이 재현입니다{intro ? '' : '. 교체는 같은 줄을 다른 컬럼 선언으로 바꾼 것이고, 옮기기는 그 줄을 아카이브에서 현재 아키텍처 문서 끝으로 옮긴 것입니다'}. DB 스키마의 적용이나 ERD 렌더링은 검증하지 않습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, bumpText, clamp01, createScene, duration, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createCurve, createNode, landRing, type NodeView } from '@/scripts/blog/scene/parts';
+
+  // 독자가 볼 변화: users 의 기본 키 줄을 지워도 orders 에 같은 문자열이 남아 있어 줄 집합 검사는 통과하고,
+  // 출현 횟수 검사만 38 에서 37 로 줄어든 것을 보고 실패한다. 순서를 바꾸거나 다른 문서로 옮기면 두 검사 모두 통과한다.
+  type Mut = 'base' | 'delHead' | 'delPk' | 'replace' | 'reorder' | 'move';
+
+  type Line = { text: string; indent: number; hue?: 'users' | 'orders' };
+  const LINES: Line[] = [
+    { text: '### Phase 1 모놀리식', indent: 0 },
+    { text: 'erDiagram', indent: 0 },
+    { text: 'users {', indent: 1, hue: 'users' },
+    { text: 'bigint id PK', indent: 2, hue: 'users' },
+    { text: 'string email UK', indent: 2, hue: 'users' },
+    { text: '}', indent: 1, hue: 'users' },
+    { text: 'orders {', indent: 1, hue: 'orders' },
+    { text: 'bigint id PK', indent: 2, hue: 'orders' },
+    { text: 'bigint user_id FK', indent: 2, hue: 'orders' },
+    { text: '}', indent: 1, hue: 'orders' },
+  ];
+  const HEAD = 0;
+  const PK = 3;
+  const ORDERS_PK = 7;
+
+  type Layout = {
+    view: [number, number];
+    doc: { x: number; y: number; w: number; h: number };
+    rowTop: number; rowH: number; indentW: number;
+    arch: { x: number; y: number; w: number; h: number } | null;
+    archSlot: Point;
+    setNode: Point; countNode: Point; node: { w: number; h: number };
+    ctxLabel: Point;
+  };
+  const layoutFor = (narrow: boolean, all: boolean): Layout => {
+    if (!narrow) {
+      return {
+        view: [560, 292],
+        doc: { x: 10, y: 10, w: 284, h: 272 },
+        rowTop: 50, rowH: 20.5, indentW: 16,
+        arch: all ? { x: 314, y: 10, w: 236, h: 84 } : null,
+        archSlot: { x: 330, y: 74 },
+        setNode: { x: 432, y: all ? 146 : 92 }, countNode: { x: 432, y: all ? 236 : 196 }, node: { w: 200, h: 52 },
+        ctxLabel: { x: 286, y: 0 },
+      };
+    }
+    return {
+      view: [360, all ? 460 : 376],
+      doc: { x: 8, y: 8, w: 344, h: 272 },
+      rowTop: 48, rowH: 20.5, indentW: 16,
+      arch: all ? { x: 8, y: 292, w: 344, h: 74 } : null,
+      archSlot: { x: 24, y: 348 },
+      setNode: { x: 92, y: all ? 424 : 340 }, countNode: { x: 268, y: all ? 424 : 340 }, node: { w: 164, h: 52 },
+      ctxLabel: { x: 344, y: 0 },
+    };
+  };
+
+  /** 변이별 결과. 로컬 재현 값(원래 검사 코드를 실제 문서에 적용). */
+  const RESULT: Record<Mut, { count: number; setMiss: number; short: number }> = {
+    base: { count: 38, setMiss: 0, short: 0 },
+    delHead: { count: 38, setMiss: 1, short: 1 },
+    delPk: { count: 37, setMiss: 0, short: 1 },
+    replace: { count: 37, setMiss: 0, short: 1 },
+    reorder: { count: 38, setMiss: 0, short: 0 },
+    move: { count: 38, setMiss: 0, short: 0 },
+  };
+
+  type State = { p: number[]; o: number[]; s: number[]; curve: number; ctx: number };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo^="pk-line-check-"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const all = stage.dataset.mode === 'all';
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const buttons = [...demo.querySelectorAll<HTMLButtonElement>('[data-mut]')];
+    const out = (key: string) => demo.querySelector<HTMLElement>(`[data-out="${key}"]`)!;
+    let layout = layoutFor(false, all);
+    let mut: Mut = 'base';
+    const tried = new Set<Mut>(['base']);
+
+    const docFrame = svg('rect', { class: 'scene-code-frame', rx: 12 }, root);
+    const docTitle = svg('text', { class: 'scene-caption' }, root);
+    docTitle.textContent = '아카이브 문서 (옮긴 뒤)';
+    const archFrame = svg('rect', { class: 'scene-code-frame', rx: 12 }, root);
+    const archTitle = svg('text', { class: 'scene-caption' }, root);
+    archTitle.textContent = '현재 아키텍처 문서';
+    const archLine = svg('text', { class: 'scene-code-line' }, root);
+    archLine.textContent = '## 12. 패키지 구조';
+    const bands = { users: svg('rect', { class: 'plc-band is-users', rx: 6 }, root), orders: svg('rect', { class: 'plc-band is-orders', rx: 6 }, root) };
+    const more = svg('text', { class: 'scene-label is-sans plc-more' }, root);
+    more.textContent = '다른 테이블 생략';
+    const texts = LINES.map((line) => {
+      const t = svg('text', { class: `scene-code-line is-mono${line.hue ? ` plc-${line.hue}` : ''}` }, root);
+      t.textContent = line.text;
+      return t;
+    });
+    const strikes = LINES.map(() => svg('line', { class: 'plc-strike' }, root));
+    const ctxLabel = svg('text', { class: 'scene-label is-sans plc-ctx' }, root);
+    const curve = createCurve(root, '같은 줄이 여기 있음');
+    curve.group.querySelector('text')?.classList.add('is-sans');
+    const setNode = createNode(root, { label: '줄 집합 검사', hue: 'var(--scene-hue-cyan)' });
+    const countNode = createNode(root, { label: '출현 횟수 검사', hue: 'var(--scene-hue-cyan)' });
+    [setNode, countNode].forEach((n) => n.group.classList.add('is-sans-sub'));
+
+    /** 행 번호(slot)의 왼쪽 위치. */
+    const rowPos = (slot: number, indent: number): Point => ({ x: layout.doc.x + 18 + indent * layout.indentW, y: layout.doc.y + layout.rowTop + slot * layout.rowH });
+    /** 변이 뒤 각 줄이 놓일 자리. */
+    const targets = (m: Mut): Point[] => {
+      const gone = m === 'delHead' ? HEAD : m === 'delPk' || m === 'move' ? PK : -1;
+      return LINES.map((line, i) => {
+        if (m === 'move' && i === PK) return { ...layout.archSlot };
+        let slot = i;
+        if (gone >= 0 && i > gone) slot = i - 1;
+        if (m === 'reorder' && i === PK) slot = PK + 1;
+        if (m === 'reorder' && i === PK + 1) slot = PK;
+        return rowPos(slot, line.indent);
+      });
+    };
+    let from: Point[] = targets('base');
+    let to: Point[] = targets('base');
+    const lift: number[] = LINES.map(() => 0);
+    const pos = (s: State, i: number) => bowAt(from[i], to[i], s.p[i], lift[i] * Math.sin(Math.PI * clamp01(s.p[i])));
+
+    const baseState = (): State => ({ p: LINES.map(() => 1), o: LINES.map(() => 1), s: LINES.map(() => 0), curve: 0, ctx: 0 });
+
+    const scene = createScene<State>(baseState(), (s) => {
+      const l = layout;
+      setAttrs(docFrame, { x: l.doc.x, y: l.doc.y, width: l.doc.w, height: l.doc.h });
+      setAttrs(docTitle, { x: l.doc.x + 16, y: l.doc.y + 24 });
+      const a = l.arch;
+      [archFrame, archTitle, archLine].forEach((el) => { (el as SVGElement).style.display = a ? '' : 'none'; });
+      if (a) {
+        setAttrs(archFrame, { x: a.x, y: a.y, width: a.w, height: a.h });
+        setAttrs(archTitle, { x: a.x + 16, y: a.y + 24 });
+        setAttrs(archLine, { x: a.x + 16, y: a.y + 46 });
+      }
+      const pts = LINES.map((_, i) => pos(s, i));
+      const inDoc = (q: Point) => q.x < l.doc.x + l.doc.w && q.y < l.doc.y + l.doc.h && q.x > l.doc.x && q.y > l.doc.y;
+      texts.forEach((t, i) => {
+        setAttrs(t, { x: pts[i].x, y: pts[i].y + 4 });
+        t.style.opacity = String(s.o[i]);
+        const w = (t.getComputedTextLength?.() || LINES[i].text.length * 7) + 4;
+        const sw = clamp01(s.s[i]);
+        setAttrs(strikes[i], { x1: pts[i].x - 2, y1: pts[i].y, x2: pts[i].x - 2 + w * sw, y2: pts[i].y });
+        strikes[i].style.opacity = String(sw > 0 ? s.o[i] : 0);
+      });
+      const band = (first: number, last: number, el: SVGRectElement) => {
+        const ys = LINES.map((_, i) => i).filter((i) => i >= first && i <= last && s.o[i] > 0.5 && inDoc(pts[i]))
+          .map((i) => pts[i].y);
+        const top = Math.min(...ys) - 12;
+        const bottom = Math.max(...ys) + 9;
+        setAttrs(el, { x: l.doc.x + 10, y: top, width: l.doc.w - 20, height: bottom - top });
+      };
+      band(2, 5, bands.users);
+      band(6, 9, bands.orders);
+      const lastY = Math.max(...LINES.map((_, i) => (inDoc(pts[i]) ? pts[i].y : 0)));
+      setAttrs(more, { x: l.doc.x + 18, y: lastY + 24 });
+      setNode.setBox({ ...l.setNode, ...l.node });
+      countNode.setBox({ ...l.countNode, ...l.node });
+      // 집합 검사가 "있다"고 본 줄: orders 의 같은 문자열.
+      const target = pts[ORDERS_PK];
+      const tw = (texts[ORDERS_PK].getComputedTextLength?.() || 84);
+      const end = { x: target.x + tw + 8, y: target.y };
+      const narrow = l.view[0] < 560;
+      const a0 = narrow ? { x: l.setNode.x, y: l.setNode.y - l.node.h / 2 - 4 } : { x: l.setNode.x - l.node.w / 2 - 4, y: l.setNode.y };
+      const ctrl = narrow ? { x: end.x + 40, y: a0.y - 10 } : { x: end.x + 30, y: a0.y };
+      curve.draw(a0, ctrl, end, clamp01(s.curve), narrow ? { x: end.x + 4, y: end.y - 10, anchor: 'start' } : { x: l.setNode.x, y: l.setNode.y + l.node.h / 2 + 17, anchor: 'middle' });
+      // 문맥이 바뀐 users 블록 옆의 표시
+      const usersTop = pts[2];
+      const uw = texts[2].getComputedTextLength?.() || 50;
+      setAttrs(ctxLabel, { x: usersTop.x + uw + 12, y: usersTop.y + 4, 'text-anchor': 'start' });
+      ctxLabel.style.opacity = String(clamp01(s.ctx));
+    });
+
+    const setVerdict = (n: NodeView, text: string, tone: 'ok' | 'error' | 'temp' | 'none') => {
+      n.setSub(text);
+      n.group.classList.toggle('is-done', tone === 'ok');
+      n.group.classList.toggle('is-error', tone === 'error');
+      n.group.classList.toggle('is-temp', tone === 'temp');
+    };
+    const setOut = (key: string, value: number, bad: boolean) => {
+      const el = out(key);
+      el.classList.toggle('is-danger', bad);
+      bumpText(el.querySelector('b')!, String(value));
+    };
+
+    const NOTES: Record<Mut, { html: string; alert: boolean }> = {
+      base: { html: '옮긴 뒤 문서에서 두 검사는 모두 통과합니다. 줄을 하나 골라 지워 보세요.', alert: false },
+      delHead: { html: '절 제목은 문서에 <strong>한 번만</strong> 나오는 줄이라, 지우면 집합에서도 사라집니다. 두 검사가 모두 누락을 보고합니다. 이번에는 users 의 기본 키 줄을 지워 보세요.', alert: false },
+      delPk: { html: 'users 의 기본 키가 사라졌는데 줄 집합 검사는 <strong>통과</strong>합니다. 같은 문자열이 orders 에 남아 있어 집합에는 그 줄이 그대로 들어 있습니다. 출현 횟수 검사만 38번이던 줄이 37번이 된 것을 보고 실패합니다.', alert: true },
+      replace: { html: '줄을 다른 내용으로 바꿔도 이전 문자열이 orders 에 남아 있어 줄 집합 검사는 <strong>통과</strong>합니다. 출현 횟수 검사는 bigint id PK 가 하나 부족하다고 보고합니다.', alert: true },
+      reorder: { html: '기본 키 줄이 email 아래로 내려갔지만 두 검사 모두 <strong>통과</strong>합니다. 출현 횟수는 줄이 몇 번 나왔는지만 세고, 어느 순서로 나왔는지는 보지 않습니다.', alert: true },
+      move: { html: 'users 블록에서 기본 키가 빠졌는데 두 검사 모두 <strong>통과</strong>합니다. 출현 횟수 검사는 세 문서를 합쳐 세기 때문에, 줄이 다른 문서로 옮겨 가도 합계는 38 그대로입니다. 어느 테이블, 어느 문서에 속하는지는 보지 않습니다.', alert: true },
+    };
+    const CTX: Partial<Record<Mut, string>> = { delPk: 'id PK 없음', replace: 'id PK 없음', reorder: '순서 바뀜', move: 'id PK 없음' };
+
+    const finish = () => {
+      const r = RESULT[mut];
+      const mutated = mut !== 'base';
+      setVerdict(setNode, r.setMiss ? `실패: 누락 ${r.setMiss}` : '통과', r.setMiss ? 'error' : mutated ? 'temp' : 'ok');
+      setVerdict(countNode, r.short ? `실패: 부족 ${r.short}` : '통과', r.short ? 'error' : mutated ? 'temp' : 'ok');
+      setOut('count', r.count, r.count !== 38);
+      setOut('set', r.setMiss, r.setMiss > 0);
+      setOut('counter', r.short, r.short > 0);
+      note.innerHTML = NOTES[mut].html;
+      note.classList.toggle('is-alert', NOTES[mut].alert);
+      ctxLabel.textContent = CTX[mut] ?? '';
+      texts[PK].textContent = mut === 'replace' ? 'bigint changed_id PK' : 'bigint id PK';
+      texts[PK].classList.toggle('plc-changed', mut === 'replace');
+    };
+
+    const goalFor = (m: Mut): State => {
+      const s = baseState();
+      if (m === 'delHead') { s.o[HEAD] = 0; s.s[HEAD] = 1; }
+      if (m === 'delPk') { s.o[PK] = 0; s.s[PK] = 1; }
+      if (m === 'delPk' || m === 'replace') s.curve = 1;
+      if (CTX[m]) s.ctx = 1;
+      return s;
+    };
+
+    /** 지금 보이는 자리에서 새 목표로 출발하도록 경로를 다시 잡습니다. */
+    const retarget = (m: Mut) => {
+      const now = scene.state;
+      from = LINES.map((_, i) => pos(now, i));
+      to = targets(m);
+      LINES.forEach((_, i) => { lift[i] = 0; });
+      if (m === 'reorder') { lift[PK] = -26; lift[PK + 1] = 26; }
+      if (m === 'move') lift[PK] = 40;
+      return { ...now, p: LINES.map(() => 0) };
+    };
+
+    const instant = () => {
+      to = targets(mut);
+      from = to.map((p) => ({ ...p }));
+      scene.set(goalFor(mut));
+      finish();
+    };
+
+    const run = async () => {
+      const alive = scene.begin();
+      if (scene.reduced) { instant(); return; }
+      setVerdict(setNode, '확인 중', 'none');
+      setVerdict(countNode, '확인 중', 'none');
+      note.classList.remove('is-alert');
+      note.textContent = mut === 'base' ? '원래 문서로 되돌립니다.' : '변이를 넣는 중입니다.';
+      ctxLabel.textContent = '';
+      // 1. 이전 변이를 되돌려 원래 자리로
+      texts[PK].textContent = 'bigint id PK';
+      texts[PK].classList.remove('plc-changed');
+      const back = retarget('base');
+      scene.set({ ...back, curve: 0, ctx: 0 });
+      await scene.go({ ...baseState(), p: LINES.map(() => 1) }, duration.reflow);
+      if (!alive()) return;
+      if (mut === 'base') { finish(); return; }
+      await scene.pause(duration.beat / 2);
+      if (!alive()) return;
+
+      // 2. 변이 넣기
+      const goal = goalFor(mut);
+      if (mut === 'delHead' || mut === 'delPk') {
+        const i = mut === 'delHead' ? HEAD : PK;
+        const st = scene.state;
+        const s1 = { ...st, s: st.s.map((v, k) => (k === i ? 1 : v)) };
+        await scene.go(s1, duration.cut);
+        if (!alive()) return;
+        const moved = retarget(mut);
+        scene.set(moved);
+        await scene.go({ ...goal, curve: 0, ctx: 0 }, duration.draw);
+      } else if (mut === 'replace') {
+        texts[PK].textContent = 'bigint changed_id PK';
+        texts[PK].classList.add('plc-changed');
+        await scene.pause(duration.beat);
+      } else {
+        scene.set(retarget(mut));
+        await scene.go({ ...goal, curve: 0, ctx: 0 }, duration.fly);
+        if (!alive()) return;
+        const p = to[PK];
+        landRing(root, { x: p.x + 50, y: p.y, w: 112, h: 20 });
+      }
+      if (!alive()) return;
+      setOut('count', RESULT[mut].count, RESULT[mut].count !== 38);
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+
+      // 3. 줄 집합 검사
+      const r = RESULT[mut];
+      if (goal.curve) {
+        await scene.go({ ...scene.state, curve: 1 }, duration.draw);
+        if (!alive()) return;
+      }
+      setVerdict(setNode, r.setMiss ? `실패: 누락 ${r.setMiss}` : '통과', r.setMiss ? 'error' : 'temp');
+      setNode.flash(r.setMiss ? 'is-shaking' : 'is-ok');
+      setOut('set', r.setMiss, r.setMiss > 0);
+      await scene.pause(duration.beat * 1.5);
+      if (!alive()) return;
+
+      // 4. 출현 횟수 검사
+      setVerdict(countNode, r.short ? `실패: 부족 ${r.short}` : '통과', r.short ? 'error' : 'temp');
+      countNode.flash(r.short ? 'is-shaking' : 'is-ok');
+      setOut('counter', r.short, r.short > 0);
+      await scene.go({ ...scene.state, ctx: goal.ctx }, duration.reflow);
+      if (!alive()) return;
+      finish();
+    };
+
+    const order: Mut[] = buttons.map((b) => b.dataset.mut as Mut).filter((m) => m !== 'base');
+    buttons.forEach((b) => b.addEventListener('click', () => {
+      mut = b.dataset.mut as Mut;
+      tried.add(mut);
+      buttons.forEach((m) => { m.setAttribute('aria-pressed', String(m === b)); m.removeAttribute('data-state'); });
+      const next = order.find((m) => !tried.has(m));
+      if (next) buttons.find((m) => m.dataset.mut === next)?.setAttribute('data-state', 'next');
+      void run();
+    }));
+
+    watchNarrow(stage, (narrow) => {
+      layout = layoutFor(narrow, all);
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      instant();
+    });
+    finish();
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo^="pk-line-check-"] .scene-chips { margin-bottom: 10px; }
+  [data-blog-demo^="pk-line-check-"] .scene-chip[data-mut="base"][aria-pressed="true"] { border-color: var(--scene-flow); color: var(--scene-flow-ink); background: var(--scene-flow-soft); }
+  [data-blog-demo^="pk-line-check-"] .scene-chip[data-mut]:not([data-mut="base"])[aria-pressed="true"] { border-color: var(--scene-danger); color: var(--scene-danger); background: var(--scene-danger-soft); }
+  [data-blog-demo^="pk-line-check-"] .plc-band { stroke: none; }
+  [data-blog-demo^="pk-line-check-"] .plc-band.is-users { fill: color-mix(in srgb, var(--scene-hue-blue) 9%, transparent); }
+  [data-blog-demo^="pk-line-check-"] .plc-band.is-orders { fill: color-mix(in srgb, var(--scene-hue-amber) 11%, transparent); }
+  [data-blog-demo^="pk-line-check-"] .scene-code-line.plc-users { fill: color-mix(in srgb, var(--scene-hue-blue) 70%, var(--ink)); }
+  [data-blog-demo^="pk-line-check-"] .scene-code-line.plc-orders { fill: color-mix(in srgb, var(--scene-hue-amber) 62%, var(--ink)); }
+  [data-blog-demo^="pk-line-check-"] .scene-code-line.plc-changed { fill: var(--scene-temp); font-weight: 800; }
+  [data-blog-demo^="pk-line-check-"] .plc-strike { stroke: var(--scene-danger); stroke-width: 2; stroke-linecap: round; }
+  [data-blog-demo^="pk-line-check-"] .plc-more { fill: var(--muted); font-weight: 600; }
+  [data-blog-demo^="pk-line-check-"] .plc-ctx { fill: var(--scene-temp); }
+  [data-blog-demo^="pk-line-check-"] .plc-readout { position: static; display: flex; flex-wrap: wrap; gap: 10px 26px; justify-content: flex-start; margin-top: 10px; padding: 0; }
+  [data-blog-demo^="pk-line-check-"] .plc-readout .scene-metric { justify-items: start; }
+  [data-blog-demo^="pk-line-check-"] .plc-readout .scene-metric b { font-size: 1.15rem; }
+  [data-blog-demo^="pk-line-check-"] .scene-note { min-height: 5.4em; }
+</style>
