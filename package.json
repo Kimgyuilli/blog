@@ -19,6 +19,7 @@
     "check:skills": "node scripts/sync-skills.mjs --check",
     "lint:post": "node scripts/lint-post.mjs",
     "publish:post": "node scripts/publish-post.mjs",
+    "pipeline:record": "node scripts/pipeline-record.mjs",
     "guard:rewrite": "node scripts/rewrite-guard.mjs",
     "check:seo": "node scripts/check-seo.mjs"
   },

@@ -23,11 +23,11 @@ Run it after demos are built and before the independent reviews, so both reviewe
    cd <scratchpad> && node <repo>/scripts/rewrite-guard.mjs extract <repo>/<post> _workspace/<run_id>/01_input.txt
    ```
 
-   Then follow the `humanize-korean` SKILL.md from Phase 1 on with that `01_input.txt` and `--genre blog`. Follow its `route_hint`. Its shim may split a long post into many chunks by heading; prefer the single-call path, which the skill allows, since chunk seams change the voice.
+   Then follow the `humanize-korean` SKILL.md from Phase 1 on with that `01_input.txt` and `--genre blog`. A series post is long enough that `route_hint` is almost always `heavy`. Run the diagnosis, then a single monolith call on `01_input_with_metrics.txt`: do not pass `--chunk`, because the shim splits a post into dozens of chunks by heading and the seams change the voice. Later passes after edits use the light route on the whole post.
 
 2. Pass the author conditions below, verbatim, in every subagent prompt: diagnostician, monolith, and finalizer. Without them humanize treats English terms as "excessive English quotation" and suggests translating them, and may change the formal ending.
 
-3. Run the plugin's own gates (`restore_modality.py`, `strip_injected_commas.py`, `verify_gates.py`). Then run the guard:
+3. Run the plugin's own gates (`restore_modality.py`, `strip_injected_commas.py`, `verify_gates.py`). Do not pass `--all` to `strip_injected_commas.py`, even when the diagnosis names C-11: it also strips commas inside table cells, and the guard then rejects every changed table row. Then run the guard:
 
    ```bash
    node <repo>/scripts/rewrite-guard.mjs check _workspace/<run_id>/01_input.txt _workspace/<run_id>/final.md
@@ -35,7 +35,7 @@ Run it after demos are built and before the independent reviews, so both reviewe
 
    An error means a number, code span, protected line, or explicit range marker changed. Restore that span from `01_input.txt` in `final.md`, or send it to the finalizer as a named issue. A warn needs a look: a number repeated after a sentence split can also mean a claim got stronger (on PeekCart 28, a split sentence turned "the two measurements pointed to the same place" into "the ceiling was the MySQL CPU limit in both").
 
-4. Read the diff paragraph by paragraph. Reject changes that alter a claim's strength or scope, or that conflict with an earlier decision by the user. Keep a list of rejected changes with a reason for the report.
+4. Read the diff paragraph by paragraph. Reject changes that alter a claim's strength or scope, or that conflict with an earlier decision by the user. Keep a list of rejected changes with a reason for the report. Changes seen on earlier posts that need rejecting: a connective made causal ("찾는데" to "찾으므로"), a deleted sentence that carried a scope or a distinction, an inline code span dropped while merging sentences, a phrase that no longer parses ("기록에는 V5 로 썼지만"). The guard catches the dropped code span; the others need reading.
 
 5. Apply. The command refuses if the post changed since extraction or the guard still fails:
 
@@ -60,4 +60,5 @@ If the plugin is not installed (for example, in Codex), say so at gate B and con
 5. "A가 아니라 B" 대비, "문서/주석/기록에 ~라고 적혀 있었다"류 인용투, 번역투 조어(판단, 관측, 성립, 수렴, 모양 등), 비유 동사(닫다, 접다, 틈, 삼키다 등), "당시에" 같은 서술 시점 표지를 새로 만들지 않습니다. 원문에 남아 있다면 지배 패턴으로 지목합니다.
 6. 측정 범위와 확신 정도의 표지("(로컬 재현)", "(추정)", "재지 않았습니다", "확인하지 않았습니다", "~했을 것입니다")는 내용입니다. 지우거나, 덮는 범위를 바꾸거나, 단정으로 바꾸지 않습니다.
 7. 문장을 나누거나 합칠 때 주장의 강도를 바꾸지 않습니다. "같은 곳을 가리켰다"를 "원인은 X였다"로 바꾸는 식의 변경은 하지 않습니다.
+8. 연결어미를 바꿀 때 인과나 확신을 더 강하게 만들지 않습니다("-는데"를 "-으므로"로 바꾸지 않음). 문장을 지우지 않습니다. 문단마다 인라인 코드의 개수와 내용을 그대로 둡니다.
 ```

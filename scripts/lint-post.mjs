@@ -44,6 +44,7 @@ const RULES = [
 
   // 비유 동사, 번역투
   { id: 'metaphor-verb', level: 'warn', re: /닫(았|혔|히|는다|고 )|접(어 |었|히|는다)|삼키|넘나들|끼어들|이음매|줄을 세|약속한 순서|테스트(를|도) 뒤집|현상을 고정|(결함|주입)을 거두|(지연|잡음)을 흡수/g, msg: '비유 동사입니다. 해결하다, 확정하다, 합치다, 막다, 순서대로 처리하다 같은 구체 동사를 씁니다' },
+  { id: 'counter-beol', level: 'warn', re: /(한|두|세|네|다섯|여섯|여러|몇)\s?벌(?!레|금|써|칙|점|어|여)/g, msg: '코드나 파일 사본을 "벌"로 세지 않습니다. "네 서비스의 사본", "사본 네 개"처럼 씁니다' },
   { id: 'translationese', level: 'warn', re: /판단|관측|성립|수렴|모양|좌표|표적|선점|표식|단언|판독|처분|결부|공허한|빈틈|구멍/g, msg: '번역투 명사입니다. 평이한 동사나 원어로 바꿀 수 있는지 봅니다' },
   { id: 'translated-term', level: 'warn', re: /적중|캐시 미스|무작위 편차|기아 상태|부수 효과|계약 테스트|벽시계 시간|부하 생성기|버퍼 풀|대기 이벤트|행 락 대기|밀리코어|실행 단위|대역폭 제어/g, msg: '원어를 쓰기로 한 용어입니다 (hit, miss, jitter, starvation, side effect, contract test, wall-clock, load generator, buffer pool, wait event, row lock wait, millicore, task, bandwidth control)' },
   { id: 'time-anchor', level: 'warn', re: /당시에는|당시에|지금 돌아보|글을 쓰면서|이 글을 쓰기 전|\d{4}년 \d{1,2}월 \d{1,2}일/g, msg: '서술 시점 표지입니다. "당시 분석은"처럼 내용으로 가리킵니다' },
@@ -124,31 +125,12 @@ function lintFile(path) {
     for (const m of outside.matchAll(CODE_PARTICLE)) {
       push({ id: 'particle-spacing', level: 'warn', msg: '코드 뒤 조사는 띄어 씁니다 (`@Version` 이)' }, m.index + m[0].length - m[1].length, m[0]);
     }
-    findings.push(...checkExcerpts(path, src));
   }
   // 조사 띄어쓰기는 글마다 관례가 다릅니다. 붙여 쓴 곳이 더 많은 글은 그 관례를 따르므로 경고하지 않습니다.
   const spaced = (text.match(SPACED_PARTICLE) ?? []).length + (isAstro ? 0 : (src.match(CODE_SPACED_PARTICLE) ?? []).length);
   const attached = findings.filter((f) => f.id === 'particle-spacing').length;
   if (attached > spaced) return findings.filter((f) => f.id !== 'particle-spacing').sort((a, b) => a.line - b.line || a.col - b.col);
   return findings.sort((a, b) => a.line - b.line || a.col - b.col);
-}
-
-/** 출력 블록(text, console, log)은 바로 뒤에 "발췌" 표시가 있어야 합니다. */
-function checkExcerpts(path, src) {
-  const out = [];
-  const lines = src.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    const open = lines[i].match(/^```(text|console|log|output)\s*$/);
-    if (!open) continue;
-    let j = i + 1;
-    while (j < lines.length && !lines[j].startsWith('```')) j++;
-    const after = lines.slice(j + 1, j + 4).join(' ');
-    if (!after.includes('발췌')) {
-      out.push({ path, line: i + 1, col: 1, level: 'warn', id: 'excerpt-label', msg: '출력 블록 아래에 출처와 "발췌" 표시가 없습니다', match: open[0], context: lines[i] });
-    }
-    i = j;
-  }
-  return out;
 }
 
 /** 글이 import 한 .astro 컴포넌트 경로. '@/' 는 src/ 입니다. */

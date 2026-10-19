@@ -10,6 +10,11 @@
  *
  *   --focus-y/x  자를 때 남길 중심 위치(0~1). 세로 사진에서 피사체가 가운데보다 위에 있으면 --focus-y 0.4 처럼 줍니다.
  *   --no-git     썸네일, frontmatter, 검사, 빌드까지만 하고 커밋과 push 는 하지 않습니다.
+ *   --skip-pipeline-check
+ *                파이프라인 단계 기록 검사를 건너뜁니다. 사용자가 명시적으로 요청했을 때만 씁니다.
+ *
+ * 시작하기 전에 scripts/pipeline-record.mjs 의 검사를 돌립니다. 단계 기록이 빠졌거나, 순서가 어긋났거나,
+ * 마지막 윤문 뒤에 본문이 바뀌었으면 아무것도 바꾸지 않고 멈춥니다.
  *
  * Unsplash 사진 페이지는 봇 차단 때문에 바로 받을 수 없습니다. 페이지에서 images.unsplash.com/photo-... 주소를 찾아
  * `?fm=jpg&q=90&w=2400` 을 붙여 넘기세요.
@@ -19,6 +24,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+import { checkPipeline } from './pipeline-record.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -36,6 +42,7 @@ const post = resolve(postArg);
 const focusY = Number(option('--focus-y') ?? 0.5);
 const focusX = Number(option('--focus-x') ?? 0.5);
 const noGit = args.includes('--no-git');
+const skipPipelineCheck = args.includes('--skip-pipeline-check');
 
 const run = (cmd, cmdArgs, opts = {}) => {
   console.log(`$ ${cmd} ${cmdArgs.join(' ')}`);
@@ -48,6 +55,19 @@ const front = source.match(/^---\n([\s\S]*?)\n---\n/);
 if (!front) throw new Error('frontmatter 가 없습니다');
 const slug = front[1].match(/^slug:\s*['"]?([^'"\n]+)['"]?\s*$/m)?.[1];
 if (!slug) throw new Error('frontmatter 에 slug 가 없습니다');
+
+// 파이프라인 단계를 모두 거쳤는지 봅니다. 실패하면 썸네일과 frontmatter 를 건드리기 전에 멈춥니다.
+if (skipPipelineCheck) {
+  console.warn('경고: 파이프라인 단계 기록 검사를 건너뜁니다 (--skip-pipeline-check)');
+} else {
+  const { problems } = checkPipeline(post);
+  if (problems.length) {
+    console.error(`파이프라인 검사 실패 (${slug}). 게시하지 않았습니다:\n  ${problems.join('\n  ')}`);
+    console.error('기록 상태: node scripts/pipeline-record.mjs <post> --status');
+    process.exit(1);
+  }
+  console.log(`파이프라인 검사 통과 (${slug})`);
+}
 
 // 2. 썸네일을 받아 16:9 로 잘라 1600x900 으로 저장합니다.
 const input = /^https?:\/\//.test(image)

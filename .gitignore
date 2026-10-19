@@ -14,3 +14,6 @@ dist/
 
 # humanize-korean work folders
 _workspace/
+
+# blog-post-pipeline step records
+.pipeline/

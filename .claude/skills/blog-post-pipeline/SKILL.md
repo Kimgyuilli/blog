@@ -28,11 +28,28 @@ The prose check is layered. The `humanize-korean` plugin is the base: every post
 
 Keep the post in `draft: true` until phase 8. Never commit or push before gate C.
 
+### Step records
+
+Record each step's output when it is done, so `publish:post` can check that no step was skipped:
+
+```bash
+npm run pipeline:record -- <post> <step> --file <artifact>   # steps: coverage, gate-a, humanize, fact-audit, cold-read, gate-b, final-pass
+npm run pipeline:record -- <post> --status
+```
+
+- `coverage`: the coverage table. `gate-a`: the outline and the user's decision, or the user's waiver and your own gate A review. `humanize` and `final-pass`: the humanize summary with the `guard:rewrite check` output (must contain `0 error`). `fact-audit`, `cold-read`: the reviewers' reports. `gate-b`: the triage table and the rows the user chose.
+- `final-pass` is the whole-post light pass after all edits, right before gate C. Its record holds the body hash; any later prose edit makes `publish:post` refuse until the pass is run and recorded again.
+- `publish:post` stops before touching anything if a record is missing or out of order. Pass `--skip-pipeline-check` only when the user explicitly asks for it.
+
+### Questions are not edit requests
+
+When the user asks why something is the way it is, asks for a list, a review, a summary, or candidates, answer or report only. Do not edit files until the user says to apply. This holds even when earlier rounds were approved in bulk, and after the post is published. If a fix seems obvious, propose it in one line and wait.
+
 ### 1. Draft
 
 - Read the brief fully. `references/brief-template.md` lists its fields and the defaults for missing ones. Ask only for a missing fact the conclusion depends on, once, at the start.
 - Read `developer-blog-writer`'s SKILL.md, `references/voice.md` (all of it, including "Prose the author has rejected"), the matching type guides, and `references/repository.md`.
-- Read the source draft. Build a coverage table: every [핵심] item, every number with its condition, every limit, every demo spec. Keep it in the scratchpad; it is a working aid, not part of the post.
+- Read the source draft. Build a coverage table: every [핵심] item, every number with its condition, every limit, every demo spec. Give each number and each event a provenance column: where it happened (the original work, a later reproduction, CI) and what it counts (which files, which documents are summed). Scenes in the post must come from one provenance; do not narrate a reproduction result as part of the original event. Keep the table in the scratchpad; it is a working aid, not part of the post.
 - Write the post following the voice rules from the first sentence. Humanize runs later as a check, not as a cleanup for rules you already know.
 
 ### 2. Self-check, then gate A
@@ -40,6 +57,7 @@ Keep the post in `draft: true` until phase 8. Never commit or push before gate C
 - Run `npm run lint:post <post>`. Fix every error. For each warn, either fix it or leave it on purpose (a quoted term, a legitimate contrast). The script also lints the demo components the post imports, and lists the external links to compare with the brief's allowlist.
 - Answer `references/checklist.md`. Compare the post with the coverage table; restore any missing [핵심] item.
 - **Gate A.** Show the user, in one message: the outline (part and section headings with one line each), which demo specs you will build or skip and why, any visual you propose beyond the specs, and any departure from the brief. Wait for approval. Restructuring after demos exist costs far more than here.
+- If the user has waived step approvals, do not skip this gate's work. Write the same outline for yourself, read the headings in order and the post's first screen as the named reader would, and fix what fails before building demos. Put the outline in the final report so the user can still see it.
 
 ### 3. Demos
 
@@ -62,7 +80,7 @@ Do not give the cold reader the brief or the repository: its value is not knowin
 
 ### 6. Triage, then gate B
 
-Merge both reports into one table, deduplicated, each row with the post location and a one-line fix:
+Merge both reports into one table, deduplicated, each row with the post location and a one-line fix. Keep the table short enough to decide on: put first the rows that change a claim or block a reader from following later sections, and group the rest in one line each. For missing context, propose only what later sections depend on (for example the repository's documents, the project's phase history, a workflow tool that several sections use); leave out what the reader can infer from the paragraph.
 
 1. **Needs a fact** the reviewers could not settle. Check the source repository and session logs yourself first; ask the user only what remains.
 2. **Will fix**: inside the evidence and the brief.
@@ -72,7 +90,9 @@ Merge both reports into one table, deduplicated, each row with the post location
 
 ### 7. Apply
 
-Apply the approved rows. Re-run `npm run lint:post` and `npm run build`. If a fix changed a demo, re-verify that demo in the browser. If the fixes rewrote several paragraphs, run phase 4 again on the post with the light route ("가볍게"), fenced by the same guard.
+Apply the approved rows. Re-run `npm run lint:post` and `npm run build`. If a fix changed a demo, re-verify that demo in the browser.
+
+Do not re-run humanize after every round of edits. Collect the user's later corrections (wording, structure, context) and run one light pass ("가볍게") over the whole post before gate C, fenced by the same guard. Run it again only if prose changes after that pass.
 
 ### 8. Publish, then gate C
 

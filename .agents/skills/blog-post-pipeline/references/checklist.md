@@ -5,17 +5,24 @@ Answer these before gate A and again before handing the reviewed draft back. The
 ## Universality
 - Could a reader who has never heard of this project apply the central trap to their own system? Is the trap named in a heading, not only in the conclusion?
 - Are project-specific mechanics (lint rules, planning or review procedures, cluster session operations, debt numbers) cut to what the conclusion needs?
+- Does each section built on the project's own tooling open with the situation in which any reader would meet the same trap, before the project's details? Are sizes and counts supporting evidence (a small table or a clause), not the claim of the paragraph?
 - Does every generalization stay inside what the evidence covers? Is the ending a result, decision, or remaining limit, not a lesson or flourish?
 
 ## Structure
 - Does each part answer one question, in an order where nothing is explained after it is used? Look for: a result table that appears before the section explaining its condition; a term or class name used before it is defined; context placed far before the part that needs it.
-- Is any explanation repeated in two places? Keep the fuller one and point to it.
+- Is any explanation repeated in two places? Keep the fuller one and point to it. After adding a paragraph late (an opening, a context note), check the paragraphs it now repeats.
+- Is every named concept (a check, a mechanism, a coined label such as "줄 집합 검사") explained in plain words where it first appears? A demo placed before the prose counts as the first appearance, so its title and description must not use a term the prose has not explained yet.
+- What project context does a reader without the repository lack? Keep only what later sections depend on: which documents the repository has, what the project's phases were, which workflow tool several sections refer to. Leave out what the paragraph itself makes clear.
+- Do the conclusion and the remaining-limits paragraph introduce items the body never mentioned? Explain each in a clause or move it into the body.
 - Does every section end on its content, not on a restating aphorism?
 
 ## Evidence and honesty
 - Is every number traceable to the brief, with its condition (load, duration, limit, version, instance count) stated where it is used?
 - Are measurements from different environments (cluster and local reproduction, earlier and later sessions) kept out of one table or chart, and is each local value labeled?
-- Is each output block one the brief marks as an excerpt, labeled with its source?
+- Is each output block one the brief marks as an excerpt? Do not add "출처:" caption paragraphs under code or output blocks; the author removes them. If an excerpt was shortened or edited in a way that changes how it reads, say so in the surrounding prose.
+- Is every number and event in the post from the provenance the coverage table gives it (original work, reproduction, CI)? Is a scene told as the original work free of reproduction-only results?
+- Does each count say what it counts (which files, which documents are summed, before or after the move)? Check demo counter labels against the same scope.
+- Does a claim about another repository's state (registered, merged, fixed, recorded) hold on its remote, or only in a local working tree? Say "아직 고치지 않았습니다" rather than claiming a record that is not pushed.
 - Are inferences marked as inferences? Is a retrospective section marked as such in its first paragraph?
 - Where a measurement could have another explanation, is it stated or the claim narrowed?
 
@@ -37,4 +44,5 @@ Answer these before gate A and again before handing the reviewed draft back. The
 ## Visuals
 - Does each demo show a change the prose describes, built per `blog-interactive-demo`? Is a discovery scene placed before the prose reveals its answer?
 - Does each demo's disclaimer state what is measured, what is illustrative, and the model's limits from the brief?
+- Does demo text avoid position words (위쪽, 오른쪽 위) that the narrow layout changes? Name the element instead.
 - Would a timeline, toggle, or comparison make a central distinction visible that prose and tables leave abstract? Propose it at gate A instead of adding it silently.
