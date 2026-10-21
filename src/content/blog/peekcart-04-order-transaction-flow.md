@@ -21,7 +21,7 @@ slug: "peekcart-order-transaction-flow"
 | 상태 전이 (State Transition)           | 주문 상태가 한 값에서 다른 값으로 바뀌는 것. 모든 전이가 허용되지는 않는다               |
 | 스냅샷 (Snapshot)                     | 특정 시점의 값을 복사해 보존하는 것. 주문 시점의 상품 가격을 저장하는 것이 예시            |
 | 보상 트랜잭션 (Compensating Transaction) | 이미 커밋된 변경을 되돌리기 위한 별도 트랜잭션. 결제 실패 시 재고를 복구하는 것이 예시        |
-| Outbox 이벤트                         | DB 트랜잭션과 함께 저장되어 이벤트 유실을 방지하는 패턴. 10편에서 상세히 다룰 예정         |
+| Outbox 이벤트                         | DB 트랜잭션과 함께 저장되어 이벤트 유실을 방지하는 패턴. 뒤의 Outbox 글에서 상세히 다룰 예정 |
 
 이번 학습에서는 다음 질문을 확인하려고 합니다.
 
@@ -76,7 +76,7 @@ public class Cart extends BaseTimeEntity {
 }
 ```
 
-`Cart`는 `CartItem`을 포함하는 애그리거트 루트입니다. 여기에 비즈니스 규칙이 하나 있습니다. `addItem()`은 동일 상품이 이미 장바구니에 있으면 수량을 합산하고 없으면 새 항목을 추가합니다. 이 판단이 Application Service가 아니라 `Cart` 엔티티 안에 있습니다.
+`Cart`는 `CartItem`을 포함하는 애그리거트 루트입니다. 여기에 비즈니스 규칙이 하나 있습니다. `addItem()`은 동일 상품이 이미 장바구니에 있으면 수량을 합산하고 없으면 새 항목을 추가합니다. 이 분기는 Application Service에 두지 않고 `Cart` 엔티티 안에 두었습니다.
 
 ```java
 // CartTest.java
@@ -115,7 +115,7 @@ public class CartCommandService {
 }
 ```
 
-장바구니에 상품을 담을 때 `productPort.verifyProductExists()`로 상품 존재 여부를 먼저 확인합니다. 3편에서 본 `ProductPort`가 여기서도 도메인 간 경계를 만들고 있습니다. `CartCommandService`는 Product 엔티티를 직접 알지 못하고 "이 상품이 존재하는가?"라는 질문만 인터페이스를 통해 던집니다.
+장바구니에 상품을 담을 때 `productPort.verifyProductExists()`로 상품 존재 여부를 먼저 확인합니다. [상품과 재고 글](/blog/peekcart-product-inventory-concurrency/)에서 본 `ProductPort`가 여기서도 도메인 간 경계를 만들고 있습니다. `CartCommandService`는 Product 엔티티를 직접 알지 못하고 "이 상품이 존재하는가?"라는 질문만 인터페이스를 통해 던집니다.
 
 장바구니가 없으면 자동으로 생성합니다(`orElseGet`). 사용자가 처음 상품을 담을 때 별도로 "장바구니 생성" API를 호출할 필요가 없습니다.
 
@@ -201,17 +201,17 @@ public class OrderCommandService {
 
 **1단계: 장바구니 조회와 검증.** 장바구니가 없거나 비어 있으면 주문을 만들 수 없습니다. 이 검증은 UseCase 흐름에 가깝기 때문에 Application Service에 있습니다.
 
-**2단계: 재고 차감과 가격 스냅샷.** 장바구니의 각 아이템마다 `productPort.decreaseStockAndGetUnitPrice()`를 호출합니다. 내부에서는 `InventoryLockFacade`가 Redis 분산 락을 잡고 `InventoryService.decreaseStock()`을 호출합니다. 이때 `InventoryService`의 `@Transactional`이 기본 `Propagation.REQUIRED`이므로 `createOrder()`의 외부 트랜잭션에 참여합니다. 분산 락은 `InventoryService` 반환 후 해제되지만 실제 DB 커밋은 `createOrder()` 전체가 끝나야 일어납니다. 따라서 분산 락 해제와 커밋 사이에 다른 스레드가 실행될 수 있고 이때 `@Version` 낙관적 락이 최종 방어선이 됩니다(3편에서 상세히 다뤘습니다). 동시에 이 호출은 주문 시점의 상품 가격을 반환합니다.
+**2단계: 재고 차감과 가격 스냅샷.** 장바구니의 각 아이템마다 `productPort.decreaseStockAndGetUnitPrice()`를 호출합니다. 내부에서는 `InventoryLockFacade`가 Redis 분산 락을 잡고 `InventoryService.decreaseStock()`을 호출합니다. 이때 `InventoryService`의 `@Transactional`이 기본 `Propagation.REQUIRED`이므로 `createOrder()`의 외부 트랜잭션에 참여합니다. 분산 락은 `InventoryService` 반환 후 해제되지만 실제 DB 커밋은 `createOrder()` 전체가 끝나야 일어납니다. 따라서 분산 락 해제와 커밋 사이에 다른 스레드가 실행될 수 있고 이때 `@Version` 낙관적 락이 최종 방어선이 됩니다(상품과 재고 글에서 상세히 다뤘습니다). 동시에 이 호출은 주문 시점의 상품 가격을 반환합니다.
 
-여기서 중요한 것은 가격을 장바구니가 아니라 이 시점에 가져온다는 점입니다. 사용자가 장바구니에 상품을 담은 지 3일이 지났다면 그 사이에 가격이 바뀌었을 수 있습니다. 주문 시점의 최신 가격을 가져와야 정확합니다.
+가격은 장바구니에 담을 때 저장한 값을 쓰지 않고, 이 시점에 가져옵니다. 사용자가 장바구니에 상품을 담은 지 3일이 지났다면 그 사이에 가격이 바뀌었을 수 있습니다. 주문 시점의 최신 가격을 가져와야 정확합니다.
 
 **3단계: Order 엔티티 생성.** `Order.create()`는 `OrderItemData` 리스트를 받아 `Order`와 `OrderItem`들을 한 번에 만듭니다. 총액은 엔티티 생성 시점에 아이템 소계의 합으로 계산됩니다.
 
 **4단계: 장바구니 비우기.** 주문이 성공적으로 만들어졌으므로 장바구니를 비웁니다. `orphanRemoval = true`가 설정돼 있어 `clear()` 호출 시 DB에서도 `cart_items`가 삭제됩니다.
 
-**5단계: Outbox 이벤트 저장.** `order.created` 이벤트를 `outbox_events` 테이블에 저장합니다. 이 이벤트는 별도 폴링 스케줄러가 Kafka로 발행합니다. DB 저장과 이벤트 저장이 같은 트랜잭션이므로, 주문은 저장됐는데 이벤트는 유실되는 상황이 방지됩니다. Outbox 패턴은 10편에서 상세히 다룰 예정입니다.
+**5단계: Outbox 이벤트 저장.** `order.created` 이벤트를 `outbox_events` 테이블에 저장합니다. 이 이벤트는 별도 폴링 스케줄러가 Kafka로 발행합니다. DB 저장과 이벤트 저장이 같은 트랜잭션이므로, 주문은 저장됐는데 이벤트는 유실되는 상황이 방지됩니다. Outbox 패턴은 뒤의 Outbox 글에서 상세히 다룰 예정입니다.
 
-이 다섯 단계가 모두 하나의 `@Transactional` 안에 있습니다. 2단계에서 재고 부족으로 예외가 발생하면 3~5단계는 실행되지 않습니다. 재고 차감이 같은 트랜잭션에 참여하는 구조라면 이미 차감된 다른 상품의 재고도 롤백으로 함께 복원됩니다. 반대로 재고 차감을 별도 트랜잭션으로 분리한다면, 주문 저장 실패 시 보상 복구가 필요합니다. 이 차이는 3편에서 본 락 범위와 트랜잭션 범위 문제와 연결됩니다.
+이 다섯 단계가 모두 하나의 `@Transactional` 안에 있습니다. 2단계에서 재고 부족으로 예외가 발생하면 3~5단계는 실행되지 않습니다. 재고 차감이 같은 트랜잭션에 참여하는 구조라면 이미 차감된 다른 상품의 재고도 롤백으로 함께 복원됩니다. 반대로 재고 차감을 별도 트랜잭션으로 분리한다면, 주문 저장 실패 시 보상 복구가 필요합니다. 이 차이는 상품과 재고 글에서 본 락 범위와 트랜잭션 범위 문제와 연결됩니다.
 
 ---
 
@@ -306,7 +306,7 @@ OrderItem(Order order, Long productId, int quantity, long unitPrice) {
 
 ## 주문 상태 전이: 규칙은 어디에 있어야 하는가
 
-이 질문은 1편에서도 다뤘지만 이번 글에서는 더 자세히 살펴봅니다. 실제 전이 규칙과 그것을 사용하는 코드를 함께 보겠습니다.
+이 질문은 [계층 구조 글](/blog/peekcart-layered-ddd/)에서도 다뤘지만 이번 글에서는 더 자세히 살펴봅니다. 실제 전이 규칙과 그것을 사용하는 코드를 함께 보겠습니다.
 
 ### 상태 전이도
 
@@ -393,7 +393,7 @@ public enum OrderStatus {
 | enum 내부 (현재) | `canTransitionTo()` 추상 메서드 | 상태별 규칙이 응집, 간결 | 상태가 많아지면 enum이 비대 |
 | 별도 Map/Table | `Map<OrderStatus, Set<OrderStatus>>` | 외부 설정 가능, 테스트 쉬움 | 규칙과 상태가 분리되어 추적 어려움 |
 | State Machine 라이브러리 | Spring Statemachine 등 | 복잡한 전이/가드/액션 지원 | 학습 비용, 프레임워크 의존 |
-| Application Service | `if-else`로 전이 판단 | 없음 | 여러 Service에 규칙이 흩어짐 |
+| Application Service | `if-else`로 전이 검사 | 없음 | 여러 Service에 규칙이 흩어짐 |
 
 PeekCart에서는 현재 8개 상태와 11개 전이 정도라 enum 내부가 가장 간결합니다. 전이가 30개 이상으로 늘어나거나 전이 시 조건(가드)이 복잡해지면 State Machine이나 별도 정책 객체로 분리할 수 있습니다.
 
@@ -422,7 +422,7 @@ public void transitionTo(OrderStatus target) {
 
 `cancel()`은 "이미 취소된 주문을 다시 취소"하는 경우(ORD-002)와 "취소 불가 상태에서 취소"하는 경우(ORD-003)를 구분해 다른 에러 코드를 던집니다. `transitionTo()`는 범용적이라 어떤 상태로든 전이를 시도할 수 있지만 `canTransitionTo()`가 거부하면 ORD-003을 던집니다.
 
-1편에서 언급했던 것처럼, `transitionTo()`보다 도메인 언어에 가까운 메서드(`requestPayment()`, `completePayment()` 등)로 바꾸면 호출부의 의도가 더 명확해질 수 있습니다. 현재는 상태 전이가 단순하므로 `transitionTo()` + `cancel()`로 충분하지만 개선 후보로 남겨둡니다.
+계층 구조 글에서 언급했던 것처럼, `transitionTo()`보다 도메인 언어에 가까운 메서드(`requestPayment()`, `completePayment()` 등)로 바꾸면 호출부의 의도가 더 명확해질 수 있습니다. 현재는 상태 전이가 단순하므로 `transitionTo()` + `cancel()`로 충분하지만 개선 후보로 남겨둡니다.
 
 ### 테스트: 모든 전이를 검증한다
 
@@ -486,7 +486,7 @@ public void cancelOrder(Long userId, Long orderId) {
 }
 ```
 
-`findByIdAndUserId()`로 본인 주문만 취소할 수 있습니다. 2편에서 본 데이터 레벨 인가가 여기서도 적용됩니다. `order.cancel()`이 상태 전이 규칙을 확인하고 `productPort.restoreStock()`으로 재고를 복구하고 Outbox 이벤트를 저장합니다.
+`findByIdAndUserId()`로 본인 주문만 취소할 수 있습니다. [인증과 인가 글](/blog/peekcart-authn-authz-choices/)에서 본 데이터 레벨 인가가 여기서도 적용됩니다. `order.cancel()`이 상태 전이 규칙을 확인하고 `productPort.restoreStock()`으로 재고를 복구하고 Outbox 이벤트를 저장합니다.
 
 ### 경로 2: 결제 실패 (Kafka Consumer)
 
@@ -513,7 +513,7 @@ public void handlePaymentFailed(String message) {
 
 Payment 도메인이 결제 실패 이벤트를 Kafka로 발행하면, Order의 Consumer가 이를 소비해 주문을 취소하고 재고를 복구합니다. `idempotencyChecker.executeIfNew()`로 같은 이벤트가 중복 소비되더라도 한 번만 처리합니다.
 
-여기서 도메인 간 통신 방식이 보입니다. Payment와 Order 사이에 직접 메서드 호출이 없습니다. Kafka 이벤트로 연결되어 있습니다. Payment 도메인은 "결제가 실패했다"는 사실만 발행하고 Order 도메인이 "그러면 주문을 취소해야 한다"는 판단을 독립적으로 합니다.
+여기서 도메인 간 통신 방식이 보입니다. Payment와 Order 사이에 직접 메서드 호출이 없습니다. Kafka 이벤트로 연결되어 있습니다. Payment 도메인은 "결제가 실패했다"는 사실만 발행하고 Order 도메인이 "그러면 주문을 취소해야 한다"는 결정을 독립적으로 내립니다.
 
 ### 경로 3: 결제 타임아웃 (Scheduler)
 
@@ -543,7 +543,7 @@ private void cancelSafely(Long orderId, String orderNumber) {
 }
 ```
 
-3편에서 다룬 "재고 묶임" 문제의 해결책이 여기 있습니다. 주문 생성 시 즉시 재고를 차감하면(전략 A) 결제가 되지 않아도 재고가 묶여 있습니다. 스케줄러가 60초마다 `PAYMENT_REQUESTED` 상태가 15분을 초과한 주문을 찾아 자동 취소합니다.
+상품과 재고 글에서 다룬 "재고 묶임" 문제의 해결책이 여기 있습니다. 주문 생성 시 즉시 재고를 차감하면(전략 A) 결제가 되지 않아도 재고가 묶여 있습니다. 스케줄러가 60초마다 `PAYMENT_REQUESTED` 상태가 15분을 초과한 주문을 찾아 자동 취소합니다.
 
 여기서 두 가지 설계 포인트가 있습니다.
 
@@ -564,7 +564,7 @@ public void cancelExpiredOrder(Long orderId) {
 
 **실패 격리**: `cancelSafely()`가 각 건의 예외를 catch합니다. `OrderException`(상태 경합, 이미 취소됐거나 결제가 완료된 경우)은 warn 로그로 건너뛰고 예상 못한 예외는 error 로그를 남깁니다. 이 방식이 없으면 한 건의 실패가 루프 전체를 멈출 수 있습니다.
 
-**ShedLock**: `@SchedulerLock`으로 다중 Pod에서 스케줄러가 동시에 실행되는 것을 방지합니다. 12편에서 상세히 다룰 예정입니다.
+**ShedLock**: `@SchedulerLock`으로 다중 Pod에서 스케줄러가 동시에 실행되는 것을 방지합니다. 뒤의 ShedLock 글에서 상세히 다룰 예정입니다.
 
 ### 세 경로의 비교
 
@@ -698,7 +698,7 @@ UUID의 앞 8자리를 사용하므로 충돌 확률은 매우 낮지만 0은 �
 | --- | --- | --- |
 | 애그리거트는 어떤 기준으로 나누는가? | Vaughn Vernon, [Effective Aggregate Design](https://www.dddcommunity.org/library/vernon_2011/) | Order-OrderItem, Cart-CartItem의 경계를 왜 이렇게 잡았는가 |
 | 상태 머신을 도메인에서 어떻게 모델링하는가? | Martin Fowler, [State Machine](https://www.martinfowler.com/eaaDev/state.html) | OrderStatus enum의 상태 전이 설계를 볼 때 |
-| 이벤트 기반 보상 트랜잭션은 어떻게 동작하는가? | AWS, [Saga Pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-data-persistence/saga-pattern.html), Chris Richardson, [Sagas](https://microservices.io/patterns/data/saga.html) | 결제 실패에서 재고 복구로 이어지는 흐름을 Saga 관점에서 볼 때 |
+| 이벤트 기반 보상 트랜잭션은 어떻게 동작하는가? | AWS, [Saga Pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-data-persistence/saga-pattern.html), Chris Richardson, [Sagas](https://microservices.io/patterns/data/saga.html) | 결제 실패에서 재고 복구로 이어지는 흐름을 Saga로 볼 때 |
 | Outbox 패턴은 왜 필요한가? | Chris Richardson, [Transactional Outbox](https://microservices.io/patterns/data/transactional-outbox.html) | 주문 생성과 이벤트 저장이 같은 트랜잭션인 이유 |
 | 가격 스냅샷은 언제 필요한가? | Martin Fowler, [Temporal Patterns](https://www.martinfowler.com/eaaDev/timeNarrative.html) | order_items.unit_price가 왜 products.price를 복사하는가 |
 | 스케줄러 중복 실행은 어떻게 막는가? | ShedLock, [GitHub README](https://github.com/lukas-krecan/ShedLock) | 타임아웃 스케줄러가 다중 Pod에서 안전하게 동작하는 이유 |

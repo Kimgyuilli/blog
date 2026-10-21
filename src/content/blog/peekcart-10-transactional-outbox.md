@@ -105,7 +105,7 @@ flowchart LR
 
 Debezium 은 단순히 binlog 를 읽기만 하는 게 아니라 **Outbox Event Router**라는 전용 SMT(Single Message Transform)를 제공합니다. 이건 outbox 테이블의 행을 읽어 한 컬럼을 Kafka 메시지 key로, 다른 컬럼을 토픽 라우팅 기준으로, `payload` 컬럼을 메시지 본문으로 매핑해 줍니다. 다만 **기본값이 우리 스키마와 딱 맞지는 않는다.** 라우터는 기본적으로 `id`/`aggregatetype`/`aggregateid`/`type`/`payload` 컬럼명을 기대하고 토픽도 기본 `outbox.event.${aggregatetype값}` 형태로 만듭니다. 우리 `event_id`/`aggregate_id`/`event_type` 컬럼과 `order.created` 같은 토픽명을 그대로 쓰려면 `table.field.event.id`, `table.field.event.key`, `table.field.event.type`, `route.by.field`, `route.topic.replacement` 같은 커넥터 설정으로 매핑을 맞춰야 합니다. 그래도 바꾸는 건 주로 **커넥터 설정과 운영 방식**입니다. outbox 행의 핵심 의미와 메시지 payload 는 재사용할 수 있습니다.
 
-그렇다면 왜 더 빠르고 DB 부하도 적은 CDC 를 쓰지 않았는지 살펴보겠습니다. 속도가 아니라 **운영 인프라의 무게** 때문입니다. Debezium 은 보통 **Kafka Connect 클러스터** 위에서 커넥터로 돌아가는데 이게 통째로 새 운영 대상을 만듭니다.
+그렇다면 왜 더 빠르고 DB 부하도 적은 CDC 를 쓰지 않았는지 살펴보겠습니다. 이유는 **운영 인프라의 무게**입니다. Debezium 은 보통 **Kafka Connect 클러스터** 위에서 커넥터로 돌아가는데 이게 통째로 새 운영 대상을 만듭니다.
 
 - Kafka Connect 워커 프로세스(보통 별도 클러스터)를 띄우고 살려야 합니다.
 - Debezium 커넥터의 수명주기(등록, 설정, 재시작, 버전 업)를 관리해야 합니다.
@@ -267,7 +267,7 @@ public void pollAndPublish() {
 설계에서 짚을 내용은 셋입니다.
 
 - **`.get()`으로 동기 대기한다.** `kafkaTemplate.send(...)` 는 `CompletableFuture` 를 돌려주는데 여기에 `.get()` 을 붙여 **브로커 ack 결과를 받을 때까지 블록**합니다. ack 의 강도는 Producer `acks` 설정에 달려 있는데 PeekCart 는 `acks=all` + `enable.idempotence=true` 라 leader 가 모든 in-sync replica 의 ack 를 확인한 뒤 Future 가 완료됩니다. 비동기로 보내고 바로 `markPublished()` 를 하면, 발행이 실패했는데도 `PUBLISHED` 로 표시해버려 유실이 납니다. 동기 대기는 polling 처리량을 깎는 대가로 "브로커 ack 확인 후에만 PUBLISHED" 불변식을 지킵니다. 다만 타임아웃 없는 `.get()` 은 브로커가 응답을 멈추면 폴링 스레드가 무한정 블록될 수 있어, `.get(timeout, unit)` 이 더 안전합니다. 현재는 무한 `.get()` 이라 개선 여지가 남습니다.
-- **성공과 실패 모두 상태를 영속한다.** 발행 성공이면 `PUBLISHED`, 실패면 `retry_count++`. 실패한 행은 여전히 `PENDING` 이라 다음 폴링이 다시 읽습니다. 이게 "자동 재시도"의 정체입니다. 별도 재시도 큐가 아니라, 그냥 `PENDING`으로 남겨두면 5초 뒤 또 시도됩니다.
+- **성공과 실패 모두 상태를 영속한다.** 발행 성공이면 `PUBLISHED`, 실패면 `retry_count++`. 실패한 행은 여전히 `PENDING` 이라 다음 폴링이 다시 읽습니다. 별도 재시도 큐 없이 `PENDING`으로 남겨두기만 해도 5초 뒤 또 시도됩니다.
 - **`PENDING` 에서 `PUBLISHED` 로 가는 전이가 안전 방향이다.** 발행은 성공했는데 `markPublished()` 저장 직전에 프로세스가 죽으면, 그 행은 `PENDING`으로 남아 다음 폴링이 **다시 발행**합니다. 즉 중복이 날 수 있습니다. 반대로 발행 안 됐는데 `PUBLISHED` 가 되는 경우는 `.get()` 덕에 없습니다. **유실 대신 중복을 택한** 설계이고 이게 at-least-once 의 본질입니다.
 
 ---
@@ -278,7 +278,7 @@ public void pollAndPublish() {
 
 `fixedDelay = 5000` 은 직전 폴링이 **끝난 뒤** 5초를 셉니다. 그래서 이벤트가 outbox 에 저장된 뒤 Kafka로 나가기까지는 5초 주기에 더해 직전, 현재 폴링의 처리 시간만큼 더 걸립니다. 한산할 땐 5초 안팎이지만 폴링이 무겁거나 backlog 가 쌓이면 여러 사이클만큼 더 벌어집니다(고정 상한이 아닙니다). 주문 생성에서 결제 준비, 알림까지 이어지는 체감 지연이 그만큼 늘어납니다. 포트폴리오 범위에서 허용한 값이지만 결제 같은 사용자 대기 흐름에서 이 지연은 길 수 있습니다. 줄이는 길은 주기 단축(부하↑)이나 Debezium CDC 전환(인프라↑)인데, 둘 다 "지연 vs 비용" 트레이드오프의 다른 점일 뿐입니다.
 
-### at-least-once. 중복 발행은 버그가 아니라 설계의 일부다
+### at-least-once. 중복 발행은 설계에 포함된 동작이다
 
 위에서 본 "발행 성공 후 `markPublished` 직전 다운" 창 때문에, 같은 이벤트가 두 번 나갈 수 있습니다. 이건 Outbox + polling 조합의 **불가피한 성질**이지 결함이 아닙니다. DB 쓰기와 Kafka 발행을 하나의 원자적 커밋으로 묶으려면 2PC 같은 분산 트랜잭션이 필요한데, 그 비용이 중복을 Consumer 에서 흡수하는 비용보다 훨씬 큽니다. 멱등 Consumer로 중복을 걸러 effectively-once 에 도달하는 편이 실용적입니다. 그래서 "Producer는 최소 한 번 보낸다, Consumer가 중복을 거른다"로 책임을 나눴습니다. **이 글이 막은 건 유실이고, 중복 방어는 다음 글의 `processed_events` 멱등성이 받는다.**
 
@@ -324,7 +324,7 @@ await().atMost(10, SECONDS).untilAsserted(() -> {                       // Consu
 });
 ```
 
-핵심은 "저장 직후엔 `PENDING` 1건, 폴링 후엔 `PENDING` 0건"이라는 상태 전이를 직접 단언한다는 점입니다. `payment.completed`, `payment.failed`(주문 취소 + 재고 복구), `order.cancelled` 각 시나리오가 같은 골격으로 검증됩니다.
+이 테스트는 "저장 직후엔 `PENDING` 1건, 폴링 후엔 `PENDING` 0건"이라는 상태 전이를 직접 assert 합니다. `payment.completed`, `payment.failed`(주문 취소 + 재고 복구), `order.cancelled` 각 시나리오가 같은 골격으로 검증됩니다.
 
 **2. 정상 재폴링 시 재발행 방지**
 
@@ -337,7 +337,7 @@ assertThat(outboxEventRepository.findPendingEvents(100)).isEmpty();   // PUBLISH
 assertThat(notifications).hasSize(1);               // 알림도 그대로 1건
 ```
 
-한 번 `PUBLISHED`된 이벤트는 `PENDING` 이 아니라 재폴링에도 다시 안 나갑니다. "정상 경로에서는" 중복이 없음을 보입니다.
+한 번 `PUBLISHED`된 이벤트는 폴링 대상인 `PENDING` 에서 빠져 재폴링에도 다시 안 나갑니다. "정상 경로에서는" 중복이 없음을 보입니다.
 
 **3. 발행 실패 후 재시도를 소진하면 FAILED + Slack (단위 테스트)**
 
@@ -416,4 +416,4 @@ flowchart LR
 
 - **`FAILED`/DLQ 구분이 운영의 기본 어휘가 된다.** 서비스가 늘면 "어느 단계에서 멈췄나"를 빠르게 가르는 게 장애 대응 속도를 좌우합니다. Producer 발행 실패(`FAILED`)와 Consumer 처리 실패(DLQ)를 같은 Slack 채널에 섞어 보내는 현재 구조는 그 전에 분리하는 게 좋습니다.
 - **`outbox_events` 청소 정책**을 서비스별로 정해야 합니다. 모놀리스에선 미뤄도 됐지만 서비스마다 쌓이는 `PUBLISHED` 행은 폴링 비용으로 직결됩니다.
-- **유실/중복을 장애 주입으로 증명하는 테스트**가 Phase 4에선 선택이 아니라 필수가 됩니다. 지금은 정상 경로만 검증하지만 분산 환경에선 "브로커를 끊었다 살리면 PENDING이 발행되는가", "중복 창에서 같은 이벤트가 두 번 나가도 Consumer가 한 번만 처리하는가"를 카오스 테스트로 확인해야 합니다. 그 절반(Consumer 멱등성)이 바로 다음 11편입니다.
+- **유실/중복을 장애 주입으로 증명하는 테스트**가 Phase 4에선 필수가 됩니다. 지금은 정상 경로만 검증하지만 분산 환경에선 "브로커를 끊었다 살리면 PENDING이 발행되는가", "중복 창에서 같은 이벤트가 두 번 나가도 Consumer가 한 번만 처리하는가"를 카오스 테스트로 확인해야 합니다. 그 절반(Consumer 멱등성)은 [다음 글](/blog/peekcart-consumer-idempotency-dlq/)에서 다룹니다.

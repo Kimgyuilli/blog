@@ -41,7 +41,7 @@ const steps = [
   </div>
   <SceneTimeline ariaLabel="일곱 단계" steps={steps} />
   <ol class="scene-console" data-console aria-live="polite"></ol>
-  <p class="db-demo-disclaimer">실제 운영에서 실행된 적 없는 흐름을 옮긴 모형이고, 숫자는 예시입니다. 여덟 가지 재발행 조건 확인과 아홉 가지 재실패 대조는 "허용", "대조 통과" 한 줄로 줄였습니다. 재시도 간격, lag 관측 간격, 재시도 상한 시간은 표시만 하고 실제 시간 흐름은 압축했습니다. 저장 실패는 한 번 일어난 뒤 다음 주기에 다시 발행되는 경우만, outbox 행 삭제는 발행 뒤 결과가 정해지기 전에 사라지는 경우만 그렸습니다.</p>
+  <p class="db-demo-disclaimer">실제 운영에서 실행된 적 없는 흐름을 옮긴 모형이고, 숫자는 예시입니다. 여덟 가지 재발행 조건 확인과 아홉 가지 재실패 대조는 "허용", "대조 통과" 한 줄로 줄였습니다. 재시도 간격, lag 확인 간격, 재시도 상한 시간은 표시만 하고 실제 시간 흐름은 압축했습니다. 저장 실패는 한 번 일어난 뒤 다음 주기에 다시 발행되는 경우만, outbox 행 삭제는 발행 뒤 결과가 정해지기 전에 사라지는 경우만 그렸습니다.</p>
 </InteractiveDemoFrame>
 
 <script>
@@ -158,7 +158,7 @@ const steps = [
       lines.length = 0;
       lines.push(['롤백 확인: 네 서비스의 DB 와 브로커 조회', 'step'], ['안 나간 재발행 0', 'ok']);
       lines.push(o.deleted ? ['결과를 모르는 요청 1 (REQUESTED)', 'fail'] : ['결과를 모르는 요청 0', 'ok']);
-      lines.push(['재발행분 lag 0 (두 번 연속 관측)', 'ok'], ['마지막 결과 시각에서 재시도 상한 경과', 'ok']);
+      lines.push(['재발행분 lag 0 (두 번 연속 확인)', 'ok'], ['마지막 결과 시각에서 재시도 상한 경과', 'ok']);
       if (o.deleted) lines.push(['배포 중단', 'fail'], ['운영자: REQUESTED 에서 PUBLISH_UNKNOWN 으로 (근거 기록)', 'step'], ['다시 확인: 네 조건 통과, 배포 진행', 'ok']);
       else lines.push(['네 조건 통과, 배포 진행', 'ok']);
       if (o.deleted) { msg = '재발행 불가 상태'; msgTone = 'temp'; }

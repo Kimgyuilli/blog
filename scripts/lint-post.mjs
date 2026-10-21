@@ -31,7 +31,7 @@ const RULES = [
 
   // 번호와 절차명
   { id: 'internal-id', level: 'error', re: /\bADR-?\d+|\bPR\s?#?\d+|(?<![\w/])#\d{2,4}\b|\b[DL]-\d{3}\b/g, msg: '내부 ADR, PR, 부채 번호를 본문에 쓰지 않습니다' },
-  { id: 'episode-number', level: 'error', re: /\d+\s?편(?![가-힣])/g, msg: '다른 편 번호 대신 내용으로 가리킵니다' },
+  { id: 'episode-number', level: 'error', re: /\d+\s?편(?!집|리|향|안|차|견|성|법|도|중|입|제|승)/g, msg: '다른 편 번호 대신 내용으로 가리킵니다' },
   { id: 'review-process', level: 'error', re: /Codex|\d+\s?차 리뷰|리뷰 라운드|라운드 \d/g, msg: '리뷰 절차명을 쓰지 않습니다' },
   { id: 'reviewer-attribution', level: 'error', re: /리뷰(가|에서) (짚|반박|지적|잡아)/g, msg: '리뷰어 대신 문제 자체를 씁니다' },
 

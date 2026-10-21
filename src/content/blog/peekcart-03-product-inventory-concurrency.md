@@ -313,7 +313,7 @@ sequenceDiagram
   
 ### 어떤 상황에서 어느 쪽이 유리한가  
   
-| 판단 기준 | 낙관적 락이 유리 | 비관적 락이 유리 |  
+| 기준 | 낙관적 락이 유리 | 비관적 락이 유리 |  
 | --- | --- | --- |  
 | 동시 경합 빈도 | 낮음 (대부분 충돌 없이 성공) | 높음 (대부분 충돌이 발생) |  
 | 트랜잭션 길이 | 짧음 | 길어도 괜찮음 |  
@@ -454,7 +454,7 @@ sequenceDiagram
     end
 ```
 
-**이것이 낙관적 락(`@Version`)이 "Redis 장애 시 fallback"이 아니라 정상 경로에서도 필요한 진짜 이유다.** 외부 트랜잭션 안에서 호출될 때 분산 락은 경합을 줄여주지만 완전한 직렬화를 보장하지 못합니다. 낙관적 락이 커밋 시점에 version을 비교해서 실제 오버셀링을 막습니다.
+**그래서 낙관적 락(`@Version`)은 Redis 장애 때만 쓰는 fallback에 그치지 않고, 정상 경로에서도 필요하다.** 외부 트랜잭션 안에서 호출될 때 분산 락은 경합을 줄여주지만 완전한 직렬화를 보장하지 못합니다. 낙관적 락이 커밋 시점에 version을 비교해서 실제 오버셀링을 막습니다.
 
 ### 두 경우의 비교
 
@@ -686,7 +686,7 @@ public ProductDetailDto update(Long productId, UpdateProductCommand command) {
     // ...}  
 ```  
   
-결국 상품과 재고를 별도 엔티티로 분리한 것이 캐싱 전략에서도 자연스러운 분리를 만들어줍니다. 상품 정보는 캐시, 재고는 실시간 DB 조회. 이 패턴은 Phase 2의 캐시 부하 테스트(8편에서 다룰 예정)에서 캐시 ON/OFF TPS 차이를 측정하는 기반이 됩니다.  
+결국 상품과 재고를 별도 엔티티로 분리한 것이 캐싱 전략에서도 자연스러운 분리를 만들어줍니다. 상품 정보는 캐시, 재고는 실시간 DB 조회. 이 패턴은 Phase 2의 캐시 부하 테스트(뒤의 상품 캐시 글에서 다룰 예정)에서 캐시 ON/OFF TPS 차이를 측정하는 기반이 됩니다.  
   
 ---  
   
@@ -715,7 +715,7 @@ public ProductDetailDto update(Long productId, UpdateProductCommand command) {
 | 분산 락은 어떤 보장을 하고 어떤 한계가 있는가? | Martin Kleppmann, [How to do distributed locking](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html), Redis, [Distributed Locks with Redis](https://redis.io/docs/manual/patterns/distributed-locks/) | Redlock의 위험성과 단일 Redis 락의 트레이드오프                     |     |
 | 재고 차감 시점은 언제가 좋은가?          | 쿠팡 기술 블로그 등 이커머스 사례, AWS, [Saga Pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-data-persistence/saga-pattern.html)                                                                            | 전략 A/B 선택과 보상 트랜잭션의 관계                               |     |
 | 캐시 전략은 어떻게 설계하는가?           | Martin Fowler, [Two Hard Things](https://martinfowler.com/bliki/TwoHardThings.html), AWS, [Caching Best Practices](https://aws.amazon.com/caching/best-practices/)                                                             | 상품 정보 캐시와 재고 실시간 조회의 분리 설계                           |     |
-| 엔티티 분리와 애그리거트 설계의 기준은 무엇인가? | Vaughn Vernon, [Effective Aggregate Design](https://www.dddcommunity.org/library/vernon_2011/)                                                                                                                                 | Product와 Inventory를 왜 별도 애그리거트로 볼 수 있는가를 판단할 때       |     |
+| 엔티티 분리와 애그리거트 설계의 기준은 무엇인가? | Vaughn Vernon, [Effective Aggregate Design](https://www.dddcommunity.org/library/vernon_2011/)                                                                                                                                 | Product와 Inventory를 왜 별도 애그리거트로 볼 수 있는가를 따질 때       |     |
   
 ---  
   

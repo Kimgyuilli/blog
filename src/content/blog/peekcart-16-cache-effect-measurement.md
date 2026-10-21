@@ -9,13 +9,13 @@ draft: false
 slug: "peekcart-cache-effect-measurement"
 ---
 
-8편에서 상품 조회를 Redis Cache Aside 구조로 옮겼습니다. `@Cacheable`을 붙이고 캐시별 TTL을 정하고 `@CacheEvict`로 무효화 경로도 정했습니다.  
+[상품 캐시 글](/blog/peekcart-product-cache-aside/)에서 상품 조회를 Redis Cache Aside 구조로 옮겼습니다. `@Cacheable`을 붙이고 캐시별 TTL을 정하고 `@CacheEvict`로 무효화 경로도 정했습니다.  
   
 코드는 준비됐습니다. 확인할 질문이 하나 남았습니다.  
   
 > **그래서 실제로 빨라졌나?**  
   
-"캐시를 붙였으니 빨라졌을 것"이라는 말은 추정입니다. 이 프로젝트의 성능 요구사항은 추정이 아니라 측정을 요구합니다.  
+"캐시를 붙였으니 빨라졌을 것"이라는 말은 추정입니다. 이 프로젝트의 성능 요구사항은 측정값을 요구합니다.  
   
 | 측정 항목 | 목표 | 검증 방법 |  
 | --- | --- | --- |  
@@ -33,7 +33,7 @@ slug: "peekcart-cache-effect-measurement"
 | 개선 배율 | **x2.31** |  
 | 목표 | **x3 이상** |  
   
-이 실패를 세션 안에서 억지로 고치지는 않았습니다. 이 글의 핵심은 "목표 미달" 자체가 아니라, 그 미달 값을 **오염되지 않은 측정 결과**로 남기기 위해 지킨 세 가지 규율입니다.  
+이 실패를 세션 안에서 억지로 고치지는 않았습니다. 이 글은 그 미달 값을 **오염되지 않은 측정 결과**로 남기기 위해 지킨 세 가지 규율을 다룹니다.  
   
 1. **단일 변수 격리**: 캐시 ON/OFF만 바꾸고 이미지, 시드, 부하, 노드, 시나리오는 고정했습니다.  
 2. **개선 비율 중심 해석**: 절대 TPS보다 같은 환경에서의 before/after 배율을 봤습니다.  
@@ -80,7 +80,7 @@ Phase 2의 첫 작업으로 상품 목록/상세 조회를 Redis Cache Aside 뒤
   
 캐시 효과 측정은 생각보다 쉽게 오염됩니다.  
   
-"캐시를 켜고 부하를 걸었더니 빠르더라"는 측정이 아니라 일화에 가깝습니다. 측정이 되려면 두 실행 사이에서 **캐시 하나만 바뀌어야** 합니다.  
+"캐시를 켜고 부하를 걸었더니 빠르더라"만으로는 측정이 되지 않습니다. 측정이 되려면 두 실행 사이에서 **캐시 하나만 바뀌어야** 합니다.  
   
 다음 중 하나라도 달라지면 결과를 캐시 효과라고 말하기 어려워집니다.  
   
@@ -191,7 +191,7 @@ warm-up 실행
   
 612.7 TPS라는 숫자는 e2-standard-4 노드 1대, 앱 Pod 2 vCPU limit, 같은 zone의 loadgen VM, Internal LB 경로에서 나온 값입니다. 노드를 키우거나 Pod 수를 늘리면 달라질 수 있습니다.  
   
-따라서 이 글에서 가장 중요한 값은 절대 TPS가 아니라 다음 문장입니다.  
+따라서 이 글에서 남길 결과는 절대 TPS 대신 다음 문장입니다.  
   
 > 같은 환경에서 캐시 하나만 켰더니 평균 TPS가 **x2.31**이 됐다.  
   
@@ -264,7 +264,7 @@ warm-up 구간은 본측정에 포함하지 않았습니다. 초기 cold-start �
 - Pod 리소스를 늘립니다.  
 - JVM 옵션을 조정합니다.  
   
-하지만 세션 B의 목적은 튜닝이 아니라 **캐시 ON/OFF 비교 측정**이었습니다. 세션 중간에 여러 값을 바꾸면 마지막에 x3이 나오더라도 무엇이 그 결과를 만들었는지 알 수 없습니다.  
+하지만 세션 B의 목적은 **캐시 ON/OFF 비교 측정**이었고, 튜닝은 범위 밖이었습니다. 세션 중간에 여러 값을 바꾸면 마지막에 x3이 나오더라도 무엇이 그 결과를 만들었는지 알 수 없습니다.  
   
 그래서 시작 전에 두 가지 가드레일을 정했습니다.  
   
@@ -273,7 +273,7 @@ warm-up 구간은 본측정에 포함하지 않았습니다. 초기 cold-start �
 | 1. 클러스터 안에서 디버깅하지 않는다 | 이상이 보여도 GKE 위에서 고치지 않고 로컬 재현/별도 Task로 분리한다 |  
 | 2. 목표 미달도 유효한 결과로 기록한다 | 세션 중 튜닝하지 않고 나온 숫자를 그대로 남긴다 |  
   
-이 판단은 비용 때문이기도 합니다. GKE는 띄워 둔 시간만큼 과금됩니다. 하지만 더 중요한 이유는 측정 조건의 일관성입니다.  
+이 결정은 비용 때문이기도 합니다. GKE는 띄워 둔 시간만큼 과금됩니다. 하지만 더 중요한 이유는 측정 조건의 일관성입니다.  
   
 ```mermaid  
 flowchart LR  
@@ -314,7 +314,7 @@ Grafana `PeekCart - API & JVM` 대시보드의 API Response Time p95/p99 패널�
 > 캐시 ON에서 평균 테스트시간이 188.38 ms에서 81.87 ms로 줄었고, TPS도 x2.31 증가했다.    
 > 따라서 캐시가 응답시간과 처리량에 긍정적인 영향을 준 정황은 강하다.  
   
-이 No data 문제는 이후 15편의 출발점이 됐습니다. 세션 B에서 빈 패널을 발견했고 그 원인인 histogram bucket 부재를 후속 작업으로 분리했으며 15편에서 관측성 계약을 정리했습니다.  
+이 No data 문제는 이후 관측성 글의 출발점이 됐습니다. 세션 B에서 빈 패널을 발견했고 그 원인인 histogram bucket 부재를 후속 작업으로 분리했으며 그 글에서 관측성 계약을 정리했습니다.  
   
 ---  
   
@@ -322,7 +322,7 @@ Grafana `PeekCart - API & JVM` 대시보드의 API Response Time p95/p99 패널�
   
 세션 B의 Grafana 스크린샷은 한 가지 단서를 줬습니다.  
   
-| 관측 | 값 |  
+| 항목 | 값 |  
 | --- | --- |  
 | peekcart Pod CPU 피크 | 약 175% |  
 | Pod CPU limit | 2 vCPU |  
@@ -345,7 +345,7 @@ Grafana `PeekCart - API & JVM` 대시보드의 API Response Time p95/p99 패널�
   
 세션 B만으로는 이 중 하나를 확정하지 못했습니다. 그래서 결론은 **CPU 병목 가설**로 남겼습니다.  
   
-이 가설은 세션 C(2026-04-29)에서 강하게 보강됐습니다. 단, 세션 C는 상품 조회가 아니라 동시 주문 워크로드였으므로 세션 B의 원인을 그대로 확증한 것은 아닙니다.  
+이 가설은 세션 C(2026-04-29)에서 강하게 보강됐습니다. 단, 세션 C는 동시 주문 워크로드였으므로 상품 조회에서 본 세션 B의 원인을 그대로 확증한 것은 아닙니다.  
   
 그래도 세션 C에서 다음 사실이 확인됐습니다.  
   
@@ -367,19 +367,19 @@ flowchart LR
 | 항목 | 왜 못 봤나 | 영향 |  
 | --- | --- | --- |  
 | p99 직접 검증 | p95/p99 패널 No data | 요구사항 첫 줄을 직접 증명하지 못함 |  
-| 캐시 적중률 | `CacheMeterBinder` 미등록 | TPS/MTT로만 간접 추정 |  
+| 캐시 hit rate | `CacheMeterBinder` 미등록 | TPS/MTT로만 간접 추정 |  
 | x3 미달의 확정 원인 | 세션 중 튜닝/디버깅 금지 | CPU 병목 가설까지만 좁힘 |  
 | 단일 노드 한계 이후 처리량 | e2-standard-4 x 1, 단일 Pod 조건 | scale-out 이후 성능은 세션 B 범위 밖 |  
   
-특히 캐시 적중률을 보지 못한 점은 아쉽습니다.  
+특히 캐시 hit rate를 보지 못한 점은 아쉽습니다.  
   
 실제 hit/miss 메트릭이 있었다면 다음 질문에 더 직접적으로 답할 수 있었습니다.  
   
-- `@CacheEvict(allEntries=true)`가 적중률을 얼마나 깎을까?  
+- `@CacheEvict(allEntries=true)`가 hit rate를 얼마나 깎을까?  
 - 목록/상세 각각의 hit rate는 얼마일까?  
 - `disableCachingNullValues()`가 기대대로 동작할까?  
   
-이 공백은 별도 학습 부채로 남겼고 15편에서도 같은 지점을 짚었습니다.  
+이 공백은 별도 학습 부채로 남겼고 관측성 글에서도 같은 지점을 짚었습니다.  
   
 ---  
   
@@ -395,7 +395,7 @@ flowchart LR
 ### 보장하지 못한 것  
   
 - **p99 <= 100 ms 직접 검증**: histogram bucket 부재로 p99를 계산하지 못했습니다.  
-- **캐시 적중률 실시간 가시성**: hit/miss 메트릭이 없었습니다.  
+- **캐시 hit rate 실시간 가시성**: hit/miss 메트릭이 없었습니다.  
 - **x3 미달 원인의 단정**: CPU 병목 가설은 강하지만 세션 B만으로 확정하진 못했습니다.  
 - **scale-out 이후 처리량**: 단일 Pod/단일 노드 조건 밖의 성능은 측정하지 않았습니다.  
   
@@ -411,7 +411,7 @@ flowchart LR
 | `NoOpCacheManager`의 동작 | Spring Framework Reference, Cache Abstraction | 캐시 OFF 구현 |  
 | Cache Aside와 무효화 결정 | [상품 캐시 글](/blog/peekcart-product-cache-aside/) | 캐시 설계 배경 |  
 | p95/p99 패널이 왜 비었나 | [관측성 글](/blog/peekcart-observability-contract/) | No data와 histogram bucket |  
-| 캐시 적중률을 메트릭으로 보는 법 | Micrometer `CacheMeterBinder` 문서 | 측정하지 못한 것 |  
+| 캐시 hit rate를 메트릭으로 보는 법 | Micrometer `CacheMeterBinder` 문서 | 측정하지 못한 것 |  
 | 평균과 p95/p99의 차이 | Google SRE Book, Monitoring Percentiles | MTT 대체의 한계 |  
 | steady-state와 warm-up | nGrinder 문서 / Google SRE Book Load Testing | 부하 시나리오 |  
 | 동시 주문/HPA/2차 병목 | [동시 주문 부하 테스트 글](/blog/peekcart-order-concurrency-hpa/) | x3 미달 분석 보강 |  
@@ -446,7 +446,7 @@ flowchart LR
   
 Phase 4에 들어가기 전에는 다음 세 가지를 준비해야 합니다.  
   
-1. 15편에서 정리한 p95/p99 histogram metric을 기본 측정 세트에 포함합니다.  
+1. 관측성 글에서 정리한 p95/p99 histogram metric을 기본 측정 세트에 포함합니다.  
 2. `CacheMeterBinder`로 캐시 hit/miss를 수집합니다.  
 3. HikariCP wait, Redisson lock latency, Pod readiness 전이를 함께 수집해 2차 병목을 분리합니다.  
   

@@ -9,7 +9,7 @@ draft: false
 slug: "peekcart-observability-contract"
 ---
 
-이 글의 출발점은 한 장의 빈 그래프입니다. Phase 3 부하 테스트 중 Grafana의 API Response Time p95/p99 패널이 **"No data"**로 떴습니다. scrape는 정상이었고 HTTP 메트릭 일부(`_count`/`_sum`)도 들어오고 있었는데 하필 **p95 계산에 필요한 입력 series만 비어 있었다**. 원인은 코드 버그가 아니라 **설정을 YAML 어디에 두느냐**였습니다. 같은 설정이 커맨드라인에선 동작하는데 YAML 경로에선 런타임에 적용되지 않았습니다. 이 사건이 이 글의 두 축 (**YAML 설정 배치 원칙**과 **관측성 계약을 한 곳에서 관리하는 법**)의 계기가 됐고 "관측성은 패널을 예쁘게 그리는 일이 아니라 *계약*을 지키는 일"이라는 관점을 만들었습니다.  
+이 글의 출발점은 한 장의 빈 그래프입니다. Phase 3 부하 테스트 중 Grafana의 API Response Time p95/p99 패널이 **"No data"**로 떴습니다. scrape는 정상이었고 HTTP 메트릭 일부(`_count`/`_sum`)도 들어오고 있었는데 하필 **p95 계산에 필요한 입력 series만 비어 있었다**. 원인은 **설정을 YAML 어디에 두느냐**였습니다. 같은 설정이 커맨드라인에선 동작하는데 YAML 경로에선 런타임에 적용되지 않았습니다. 이 사건이 이 글의 두 축 (**YAML 설정 배치 원칙**과 **관측성 계약을 한 곳에서 관리하는 법**)의 계기가 됐고 "관측성은 *계약*을 지키는 일"이라는 관점을 만들었습니다.  
   
 이번 글은 (1) **애플리케이션 메트릭이 Grafana 알림까지 도달하는 경로**를 끝까지 따라가고 (2) 그 경로의 각 지점이 **어느 파일에 단일 출처(SSOT)로 자리잡고 있는지**를 9개 지점으로 쪼개 정리하고 (3) 메트릭과 짝을 이루는 **로그 추적(MDC) 경로**가 Outbox, Kafka를 건너 어떻게 이어지는지를 봅니다. 마지막으로 이 계약이 Phase 4에서 서비스마다 복제될 때 무엇이 위험한지를 짚습니다.  
   
@@ -32,11 +32,11 @@ slug: "peekcart-observability-contract"
   
 ### 관측성이 처음이라면
   
-이 글은 "기능을 어떻게 만드는가"가 아니라 "**돌고 있는 앱을 어떻게 들여다보는가**"가 주제입니다. 그래서 먼저 등장하는 구성요소 몇 가지만 알면 나머지가 읽힙니다. 핵심은 메트릭이 **앱 안에서 만들어져 밖으로 노출되고, 긁혀가서 저장되고, 그려진다**는 다섯 단계입니다.  
+이 글의 주제는 "**돌고 있는 앱을 어떻게 들여다보는가**"입니다. 그래서 먼저 등장하는 구성요소 몇 가지만 알면 나머지가 읽힙니다. 메트릭은 **앱 안에서 만들어져 밖으로 노출되고, 긁혀가서 저장되고, 그려지는** 다섯 단계를 거칩니다.  
   
 - **Micrometer (앱 안)**: 우리 앱이 요청을 처리할 때마다 "방금 요청, 200으로 21ms 걸림" 같은 사실을 *숫자로 적어 두는* 라이브러리. Spring Boot가 기본으로 `http.server.requests` 같은 메트릭을 Micrometer로 모읍니다. 개발자가 코드를 거의 안 써도 자동으로 쌓입니다.  
 - **Actuator (앱의 창구)**: Micrometer가 모은 숫자를 *바깥에서 읽을 수 있게* HTTP로 내주는 창구. `/actuator/prometheus`로 GET 하면 Prometheus가 처리할 수 있는 텍스트 포맷으로 현재 메트릭을 반환합니다. 단, **아무 엔드포인트나 다 열면 위험**하니(예: `/actuator/env`엔 비밀이 있을 수 있습니다) 무엇을 열지 화이트리스트로 고릅니다.  
-- **Prometheus (수집과 저장소)**: 그 창구를 *주기적으로*(우린 15초마다) 조회해 숫자를 수집하고 시계열로 쌓습니다. "지금 값"이 아니라 "시간에 따른 값의 변화"를 갖게 되는 게 핵심이며 그래야 "최근 5분 에러율" 같은 걸 물을 수 있습니다.  
+- **Prometheus (수집과 저장소)**: 그 창구를 *주기적으로*(우린 15초마다) 조회해 숫자를 수집하고 시계열로 쌓습니다. "시간에 따른 값의 변화"를 갖게 되므로 "최근 5분 에러율" 같은 걸 물을 수 있습니다.  
 - **Grafana (눈과 경보)**: Prometheus에 PromQL로 물어 그래프를 그리고 "에러율 5% 넘으면 알려라" 같은 규칙으로 *알림*을 보냅니다. 사람이 보는 면(대시보드)과 사람을 깨우는 면(Alert) 둘 다 Grafana의 일입니다.  
 - **MDC / traceId (로그 쪽)**: 위 다섯이 *메트릭*(숫자 통계) 이야기라면, MDC는 *로그* 쪽 관측성입니다. "이 에러 로그가 *어느 요청*에서 났는가"를 잇기 위해 요청마다 16자리 `traceId`를 붙여 로그 줄마다 적습니다. 메트릭이 "전체가 얼마나 아픈가"라면 로그/trace는 "이 한 건이 어디서 막혔나"입니다. 둘은 다른 기둥이고 이 글은 둘 다 다룹니다.  
   
@@ -72,9 +72,9 @@ histogram bucket을 켜는 설정은 한 줄입니다. `management.metrics.distr
   
 3번이 동작했다는 건 설정 *값*은 맞고 **YAML 바인딩/병합 경로**에 문제가 있다는 뜻입니다. 즉 같은 설정이 커맨드라인에선 적용되고 YAML(base든 프로파일이든)에선 런타임에 적용되지 않는 상태가 재현됐습니다. 정확한 바인딩 원인을 더 조사하기보다, 우리는 이 경로를 **YAML에서 들어내 Java Config로 옮겨** 회피했습니다. `management.metrics` 트리가 base(`application.yml`)와 환경 프로파일(`application-k8s.yml`)에 동시에 선언돼 있던 점이 의심 지점이었고(최상위 키 기준으로 맵이 병합될 때 프로파일 쪽이 우선해 base의 하위 키가 가려질 수 있습니다), 어느 쪽이든 *동작 규약을 YAML에 두는 한 재발 위험이 남는다*는 게 핵심이었습니다. 설정은 파일에 분명히 적혀 있는데 *런타임엔 없는* 상태, 디버깅이 가장 괴로운 종류의 버그입니다.  
   
-> Spring Boot 공식 문서는 프로파일 프로퍼티가 같은 키를 *override*하고 Map은 여러 property source에서 바인딩될 수 있다고만 설명한다. 그러니 `tags.application`이 `distribution.*`을 가린다는 건 *일반 규칙*이 아니라 **이 특정 YAML 구성에서 관측, 재현된 현상**으로 읽는 게 안전하다. 우리가 택한 해법(Java Config 이전)은 그 원인 규명과 무관하게 재발 경로 자체를 없앤다.  
+> Spring Boot 공식 문서는 프로파일 프로퍼티가 같은 키를 *override*하고 Map은 여러 property source에서 바인딩될 수 있다고만 설명한다. 그러니 `tags.application`이 `distribution.*`을 가린다는 건 **이 특정 YAML 구성에서 관찰하고 재현한 현상**이다. 일반 규칙으로 확인된 것은 아니다. 우리가 택한 해법(Java Config 이전)은 그 원인 규명과 무관하게 재발 경로 자체를 없앤다.  
   
-여기서 한 발 물러서 보면, 이 사건은 단발 사고가 아니라 **구조적 신호**였습니다. 관측성을 켜는 설정이 `application.yml`, `application-k8s.yml`, `SecurityConfig.java`, `servicemonitor.yml`, `grafana-alerts.yml` **다섯 군데에 흩어져 있었고**, 그중 한 곳의 병합 한 번이 어긋나자 전체 관측 그래프가 표시되지 않았습니다. 메트릭은 "수집됐나/안 됐나"의 이진 문제가 아니라, **여러 파일에 걸친 계약이 *전부* 정합해야 비로소 그래프가 그려지는** 연결 구조의 문제입니다. 이 연결 구조를 누가 어디서 책임지는가: 그것이 이 글의 핵심 설계 질문입니다.  
+여기서 한 발 물러서 보면, 이 사건은 **구조적 신호**였습니다. 관측성을 켜는 설정이 `application.yml`, `application-k8s.yml`, `SecurityConfig.java`, `servicemonitor.yml`, `grafana-alerts.yml` **다섯 군데에 흩어져 있었고**, 그중 한 곳의 병합 한 번이 어긋나자 전체 그래프가 표시되지 않았습니다. 메트릭은 **여러 파일에 걸친 계약이 *전부* 맞아야 비로소 그래프가 그려지는** 연결 구조의 문제입니다. 이 연결 구조를 누가 어디서 책임지는가: 그것이 이 글의 핵심 설계 질문입니다.  
   
 ---  
   
@@ -105,7 +105,7 @@ flowchart LR
   
 이 표가 말하는 바는 간단합니다: **"메트릭이 안 보인다"는 신고가 들어오면 이 6칸을 순서대로 짚으면 된다.** bucket이 없습니까(S1)? 태그가 빠졌습니까(S2)? 노출이 막혔습니까(S3)? 보안이 401입니까(S4)? scrape 대상이 안 잡혔습니까(S5)? alert PromQL이 틀렸습니까(S6)? 앞의 빈 그래프는 S1의 실패였고 그 진단을 다음에 5분 만에 끝내려고 이 표를 결정 문서로 남겼습니다.  
   
-### 2. YAML이 아니라 Java Config: 빈 그래프를 고친 방법  
+### 2. YAML에서 Java Config로: 빈 그래프를 고친 방법  
   
 빈 그래프를 고치는 *값*은 한 줄이지만 *어디에 두느냐*가 결정이었습니다. YAML에 두는 한 병합 충돌이 재발하므로, 해결은 **Java Config로 이동**이었습니다(`MetricsConfig.java`).  
   
@@ -134,7 +134,7 @@ public class MetricsConfig {
 }  
 ```  
   
-이것이 단순한 위치 이동이 아니라 *원칙*이 된 이유가 있습니다. 이 사건을 일반화해 우리는 **"환경마다 달라지는 연결 정보와 자격증명만 `application-{profile}.yml`에 두고, 런타임 *동작*을 바꾸는 정책은 base나 Java Config로 관리한다"** 는 규칙을 세웠습니다. 판단 기준 한 줄: *"환경마다 달라야 하는 값인가(그러면 프로파일), 아니면 동작 규약인가(그러면 base/Java Config)?"*  
+이 위치 이동은 이후 *원칙*이 됐습니다. 이 사건을 일반화해 우리는 **"환경마다 달라지는 연결 정보와 자격증명만 `application-{profile}.yml`에 두고, 런타임 *동작*을 바꾸는 정책은 base나 Java Config로 관리한다"** 는 규칙을 세웠습니다. 기준 한 줄: *"환경마다 달라야 하는 값인가(그러면 프로파일), 아니면 동작 규약인가(그러면 base/Java Config)?"*  
   
 histogram bucket은 **모든 환경에서 똑같이 켜져야 하는 동작 규약**입니다. minikube든 GKE든 p95는 같은 방식으로 계산돼야 합니다. 그러니 환경별 프로파일에 둘 이유가 없고 오히려 거기 두면 병합 충돌에 노출됩니다. 반대로 `application=peekcart` 태그(S2)나 노출 화이트리스트(S3)는 *동작 규약*이라 base `application.yml`에 두되, **프로파일엔 절대 재선언하지 않는다**.
   
@@ -193,7 +193,7 @@ flowchart LR
     K --> C["Consumer<br/>MdcRecordInterceptor<br/>헤더 → MDC 복원"]  
 ```  
   
-핵심은 **MDC를 캡처하는 시점**입니다. 폴링 스레드엔 MDC가 없으니, *원본 HTTP 요청 스레드*에서 Outbox 이벤트를 저장할 때 `MdcSnapshot.current()`로 traceId/userId를 떠서 **엔티티 컬럼(`outbox_events.trace_id`, `user_id`)에 같은 트랜잭션으로 영속**합니다(`V4__outbox_trace_context.sql`). 나중에 폴링 스레드는 MDC 대신 *컬럼에 저장된 값*을 읽어 Kafka 헤더에 싣습니다.  
+폴링 스레드엔 MDC가 없으므로 **MDC를 캡처하는 시점**을 앞당겨, *원본 HTTP 요청 스레드*에서 Outbox 이벤트를 저장할 때 `MdcSnapshot.current()`로 traceId/userId를 떠서 **엔티티 컬럼(`outbox_events.trace_id`, `user_id`)에 같은 트랜잭션으로 영속**합니다(`V4__outbox_trace_context.sql`). 나중에 폴링 스레드는 MDC 대신 *컬럼에 저장된 값*을 읽어 Kafka 헤더에 싣습니다.  
   
 ```java  
 // global/outbox/OutboxPollingService.java — 폴링 스레드는 컬럼에서 읽어 헤더로  
@@ -217,7 +217,7 @@ MDC.put(MDC_TRACE_ID, traceId);
   
 이 설계에서 눈여겨볼 결정 두 가지. (1) **헤더가 null이면 헤더 자체를 안 넣는다**(빈 문자열 헤더 금지), Consumer의 `value.isBlank() ? null` 분기와 정합시켜, "있다"와 "비었다"가 같은 의미가 되게 했습니다. (2) **payload envelope을 안 건드렸다**, trace를 메시지 본문(JSON)에 넣었으면(Alt B) Consumer 파서를 고쳐야 하고 기존 메시지 호환이 깨집니다. 헤더 경로를 택해 **스키마 불변 + 기존 Consumer 인프라 재활용**을 동시에 얻었습니다. 그리고 이것이 Phase 4 OpenTelemetry 도입 시 표준 헤더 `traceparent`를 *한 단계 더 추가하기만* 하면 되는 forward-compatible 구조입니다.  
   
-> 짚을 점: 이 MDC 추적은 **메트릭이 아니라 로그 상관관계**다. Prometheus/Grafana엔 안 보인다. 진짜 분산 추적(span, sampling, 서비스 간 전파)은 Phase 4에서 micrometer-tracing/OpenTelemetry로 별도 도입한다. 지금은 "모놀리스 안에서 로그를 한 traceId로 묶는" 최소 추적이고, 위 작업은 그 *컬럼과 헤더 인프라*를 미리 깔아 둔 것이다.  
+> 짚을 점: 이 MDC 추적은 **로그 상관관계**다. Prometheus/Grafana엔 안 보인다. 진짜 분산 추적(span, sampling, 서비스 간 전파)은 Phase 4에서 micrometer-tracing/OpenTelemetry로 별도 도입한다. 지금은 "모놀리스 안에서 로그를 한 traceId로 묶는" 최소 추적이고, 위 작업은 그 *컬럼과 헤더 인프라*를 미리 깔아 둔 것이다.  
   
 ---  
   
@@ -307,7 +307,7 @@ Phase 3 통합 테스트엔 Prometheus가 없습니다(Testcontainers로 MySQL/R
   
 지금 메트릭은 HTTP(`http.server.requests`)와 JVM 중심이고 **비즈니스/파이프라인 내부 메트릭이 비어 있다.** 학습 부채 후보로 이미 등록된 것만:  
   
-- **캐시 적중률 부재**: `RedisCacheManager`가 `CacheMeterBinder`에 안 붙어 `cache.gets{result=hit/miss}`가 없습니다. 캐시 효과를 부하 TPS로 *간접* 측정할 뿐 운영 중 실시간 적중률이 안 보입니다(상품 캐시 글).  
+- **캐시 hit rate 부재**: `RedisCacheManager`가 `CacheMeterBinder`에 안 붙어 `cache.gets{result=hit/miss}`가 없습니다. 캐시 효과를 부하 TPS로 *간접* 측정할 뿐 운영 중 실시간 hit rate 가 안 보입니다(상품 캐시 글).  
 - **Outbox 발행 메트릭 부재**: `OutboxPollingService`에 Micrometer 계측이 전무해 PENDING backlog 크기, 발행 지연, 실패율이 메트릭으로 안 나옵니다. 운영자의 유일한 신호는 MAX_RETRY 소진 시 Slack 단발 알림뿐(Outbox 글).  
 - **Slack 발송 가시성 부재**: 운영 알림 3종이 같은 Slack Webhook에 의존하는데 `SlackNotificationClient.send()`가 예외를 `log.error`로만 기록하고 전파하지 않아 발송 실패가 메트릭/알람으로 안 뜹니다(알림 실패 격리 글).  
   
@@ -329,10 +329,10 @@ Phase 3 통합 테스트엔 Prometheus가 없습니다(Testcontainers로 MySQL/R
   
 - **런타임 PromQL 의미**: 정적 lint(selector, PromQL 라벨)는 매칭, 라벨, 설정값을 보지만 Prometheus를 띄워 실제 쿼리 *결과*가 맞는지는 검증하지 않습니다.  
 - **분산 추적**: MDC는 로그 상관관계지 span, sampling이 있는 OpenTelemetry가 아닙니다.  
-- **비즈니스/파이프라인 가시성**: 캐시 적중률, Outbox backlog, Slack 발송 실패가 메트릭에 없습니다.  
+- **비즈니스/파이프라인 가시성**: 캐시 hit rate, Outbox backlog, Slack 발송 실패가 메트릭에 없습니다.  
 - **surface의 물리적 이전**: 9 surface는 아직 모놀리스 한 곳에 모여 있습니다. Phase 4 모듈/서비스로의 이전은 surface 표의 "Phase 4 owner"대로 그때 수행됩니다.  
   
-Kustomize 글에서 본 패턴("핵심은 단단히, 가장 중요한 보장의 일부는 공백으로 정직하게")이 여기서도 반복됩니다. *위치, 복제, 배선*의 공백은 lint/테스트로 이미 해소됐고 남은 공백은 "런타임 의미 검증, 분산 추적, 파이프라인 메트릭, Phase 4 물리 이전" 넷입니다.  
+Kustomize 글에서 본 패턴이 여기서도 반복됩니다. 핵심 동작은 단단히 검증하고, 일부 보장은 공백으로 남겨 둡니다. *위치, 복제, 배선*의 공백은 lint/테스트로 이미 해소됐고 남은 공백은 "런타임 의미 검증, 분산 추적, 파이프라인 메트릭, Phase 4 물리 이전" 넷입니다.  
   
 ---  
   
@@ -377,6 +377,6 @@ flowchart LR
   
 **그래서 Phase 4 진입 전 짚을 점**  
   
-- **이미 있는 SSOT lint를 서비스별로 확장해야 한다.** 지금의 정적 lint는 모놀리스 한 곳을 검사하도록 짜여 있습니다. 서비스 N개에서 "MeterFilter가 공통 모듈 1개소에만 있는가", "`application=`가 각 서비스 base 외에 재선언 안 됐는가"를 보려면 lint의 검사 범위를 모듈 트리에 맞춰 넓혀야 합니다. *새로 도입*이 아니라 *기존 lint의 확장*이 과제입니다.  
-- **공통 관측성 모듈의 경계를 surface 표대로 그어야 한다.** 무엇이 `peekcart-common-observability`로 가고(S1/S3/S4) 무엇이 서비스에 남는가(S2/S5)는 이미 표에 정해져 있습니다: Phase 4 계획은 이 모듈을 *자기 결정 항목에서 제외*하고 표를 그대로 따릅니다. 이것은 13, 18편의 "`common` 모듈에 무엇을 둘 것인가"와 같은 결의 질문입니다.  
+- **이미 있는 SSOT lint를 서비스별로 확장해야 한다.** 지금의 정적 lint는 모놀리스 한 곳을 검사하도록 짜여 있습니다. 서비스 N개에서 "MeterFilter가 공통 모듈 1개소에만 있는가", "`application=`가 각 서비스 base 외에 재선언 안 됐는가"를 보려면 lint의 검사 범위를 모듈 트리에 맞춰 넓혀야 합니다. 과제는 *기존 lint의 확장*입니다.  
+- **공통 관측성 모듈의 경계를 surface 표대로 그어야 한다.** 무엇이 `peekcart-common-observability`로 가고(S1/S3/S4) 무엇이 서비스에 남는가(S2/S5)는 이미 표에 정해져 있습니다: Phase 4 계획은 이 모듈을 *자기 결정 항목에서 제외*하고 표를 그대로 따릅니다. 이것은 CI 글과 부채 점검 글의 "`common` 모듈에 무엇을 둘 것인가"와 같은 결의 질문입니다.  
 - **정적 lint를 넘어 런타임 검증으로 갈지 결정해야 한다.** 서비스가 늘수록 selector 미스매치와 PromQL *결과* 오류가 생길 범위가 N배가 됩니다. 지금의 정적 lint가 *구조*는 막지만 Prometheus를 띄워 실제 쿼리 결과까지 보는 통합 검증을 어디까지 도입할지가 부채 점검 글에서 정할 항목입니다.

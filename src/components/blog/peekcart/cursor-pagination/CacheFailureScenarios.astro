@@ -28,7 +28,7 @@ const aria = '왼쪽은 클라이언트, 가운데는 상품 서비스, 오른�
     </div>
     <div class="cf-metrics" aria-hidden="true">
       <div class="scene-metric"><b data-m-req>0</b><span>조회 요청</span></div>
-      <div class="scene-metric"><b data-m-hit>0</b><span>캐시 적중</span></div>
+      <div class="scene-metric"><b data-m-hit>0</b><span>cache hit</span></div>
       <div class="scene-metric"><b data-m-db>0</b><span>DB 조회</span></div>
       <div class="scene-metric"><b data-m-err>0</b><span data-m-err-label>500 응답</span></div>
     </div>
@@ -79,7 +79,7 @@ const aria = '왼쪽은 클라이언트, 가운데는 상품 서비스, 오른�
       end: 'MySQL 은 정상인데 다섯 번 모두 <strong>500</strong> 입니다. 요청이 DB 까지 내려가지 못했습니다.',
     },
     open: {
-      run: '같은 장애에서 fail-open 핸들러는 조회 실패를 캐시 미스로 넘기고 MySQL 에서 읽습니다. 적재도 실패하지만 응답에는 영향이 없습니다.',
+      run: '같은 장애에서 fail-open 핸들러는 조회 실패를 cache miss 로 넘기고 MySQL 에서 읽습니다. 적재도 실패하지만 응답에는 영향이 없습니다.',
       end: '다섯 번 모두 200 으로 응답했지만 캐시가 채워지지 않아 <strong>DB 조회도 다섯 번</strong>입니다. Redis 장애가 DB 부하로 이어집니다.',
     },
     evict: {

@@ -114,7 +114,7 @@ public class Notification {
 }
 ```
 
-4편의 `Order`(8개 상태, 11개 전이)나 5편의 `Payment`(3개 상태, 2개 전이)와 비교하면 Notification에는 사실상 상태 전이가 없습니다. `is_read` 플래그가 있지만 이를 토글하는 도메인 메서드(`markAsRead()`)는 Phase 2에서 호출처가 없어 제거됐습니다(PHASE2.md 기록). 명세상 알림 읽음 처리 API가 정의되지 않았기 때문입니다.
+주문 생성 글의 `Order`(8개 상태, 11개 전이)나 결제 실패 글의 `Payment`(3개 상태, 2개 전이)와 비교하면 Notification에는 사실상 상태 전이가 없습니다. `is_read` 플래그가 있지만 이를 토글하는 도메인 메서드(`markAsRead()`)는 Phase 2에서 호출처가 없어 제거됐습니다(PHASE2.md 기록). 명세상 알림 읽음 처리 API가 정의되지 않았기 때문입니다.
 
 이 단순함은 Notification이 "쓰여진 뒤로는 거의 바뀌지 않는" 로그성 데이터에 가깝다는 것을 보여줍니다. 도메인 규칙이 거의 없으니 `create()` 정적 팩토리 하나로 끝납니다.
 
@@ -211,7 +211,7 @@ public interface SlackPort {
 | (A) Outbox 쪽에 별도 알림 인터페이스를 만든다 | 도메인 경계가 더 명확 | 같은 일을 하는 인터페이스가 둘이 됨 |
 | (B) `SlackPort`를 `global/port/`로 끌어올린다 | 횡단 관심사라는 정체성을 인정 | "Slack은 Notification의 전유물"이라는 가정이 깨짐 |
 
-(B)를 택했습니다. Slack 메시지 발송이라는 행위가 더 이상 한 도메인의 책임이 아니라 프로젝트 전체에서 쓰는 운영 통보 채널이 되었기 때문입니다.
+(B)를 택했습니다. Slack 메시지 발송이 한 도메인을 넘어 프로젝트 전체에서 쓰는 운영 통보 채널이 되었기 때문입니다.
 
 일반화하면: **두 개 이상의 도메인이 같은 외부 시스템을 호출하기 시작하면 그 Port는 도메인 패키지를 떠나야 한다.** 그렇지 않으면 "왜 Outbox가 Notification에 의존하지?"라는 의문이 영원히 남습니다.
 
@@ -248,9 +248,9 @@ public class SlackNotificationClient implements SlackPort {
 }
 ```
 
-이 클래스의 핵심은 `try-catch (Exception e)` 한 줄입니다. 어떤 예외가 나오든 로그만 남기고 예외를 전파하지 않습니다.
+이 클래스에서 실패를 격리하는 코드는 `try-catch (Exception e)` 한 줄입니다. 어떤 예외가 나오든 로그만 남기고 예외를 전파하지 않습니다.
 
-5편에서 봤던 `TossPaymentClient`와 비교하면 정반대의 설계입니다. Toss는 호출 실패가 곧 결제 실패이므로 예외를 그대로 전파해서 `Payment.fail()`을 트리거해야 했습니다. Slack은 호출 실패가 비즈니스적으로 의미를 갖지 않습니다. Slack이 잠깐 죽었다고 해서 사용자의 주문이 취소되어서는 안 됩니다.
+결제 실패 글에서 봤던 `TossPaymentClient`와 비교하면 정반대의 설계입니다. Toss는 호출 실패가 곧 결제 실패이므로 예외를 그대로 전파해서 `Payment.fail()`을 트리거해야 했습니다. Slack은 호출 실패가 비즈니스적으로 의미를 갖지 않습니다. Slack이 잠깐 죽었다고 해서 사용자의 주문이 취소되어서는 안 됩니다.
 
 이 "예외를 삼킨다"는 결정의 결과를 따라가 보겠습니다.
 
@@ -308,7 +308,7 @@ public void handleOrderCreated(OrderCreatedEvent event) {
 
 **(1) 단일 인스턴스 가정.** 리스너가 같은 JVM 안에서만 호출되므로, 알림 처리는 주문을 만든 그 인스턴스에서만 실행됩니다. Phase 3에서 HPA로 Pod이 1에서 3으로 늘어나면 이 모델은 자연스럽게 분산되지 않습니다. 어떤 Pod에서 주문이 만들어졌느냐에 따라 알림 부하가 한 Pod에 쏠릴 수 있습니다.
 
-**(2) Notification만의 문제가 아님.** Outbox 도입의 핵심 이유는 알림이 아니라 결제였습니다. "주문은 커밋됐는데 결제 이벤트가 유실되면 결제가 영원히 안 일어난다"는 문제 때문에 Outbox + Kafka가 필수가 됐습니다(자세한 흐름은 이후에 다룹니다). 일단 Kafka가 들어오면, 알림만 로컬 이벤트로 남길 이유가 없어집니다. 이벤트 통신 방식을 통일하는 게 운영적으로도 단순합니다.
+**(2) Notification만의 문제가 아님.** Outbox를 도입한 이유는 결제였습니다. "주문은 커밋됐는데 결제 이벤트가 유실되면 결제가 영원히 안 일어난다"는 문제 때문에 Outbox + Kafka가 필수가 됐습니다(자세한 흐름은 이후에 다룹니다). 일단 Kafka가 들어오면, 알림만 로컬 이벤트로 남길 이유가 없어집니다. 이벤트 통신 방식을 통일하는 게 운영적으로도 단순합니다.
 
 ---
 
@@ -347,9 +347,9 @@ private static final String GROUP_ORDER_CANCELLED     = "notification-svc-order-
 
 가장 큰 이유는 **Consumer Group 단위로 오프셋과 멱등성 처리가 독립적**이라는 점입니다.
 
-`payment.completed`는 `OrderEventConsumer`도 소비하고 `NotificationConsumer`도 소비합니다. 만약 두 Consumer가 같은 Group을 공유한다면 한쪽만 메시지를 받게 됩니다. 그래서 Group은 도메인 단위가 아니라 "도메인 × 토픽" 단위로 쪼개집니다. `notification-svc-payment-completed-group`이라는 이름이 그 사실을 그대로 드러냅니다.
+`payment.completed`는 `OrderEventConsumer`도 소비하고 `NotificationConsumer`도 소비합니다. 만약 두 Consumer가 같은 Group을 공유한다면 한쪽만 메시지를 받게 됩니다. 그래서 Group은 도메인과 토픽의 조합마다 하나씩 만듭니다. `notification-svc-payment-completed-group`이라는 이름이 그 사실을 그대로 드러냅니다.
 
-또 한 가지 효과는 멱등성 키의 범위입니다. 11편에서 다룰 `processed_events` 테이블은 `(event_id, consumer_group)` 복합 UK를 가집니다. Order가 한 번 처리한 `payment.completed`와 Notification이 한 번 처리해야 할 `payment.completed`는 같은 event_id를 갖지만 group이 다르므로 별개의 처리 이력으로 기록됩니다. 같은 이벤트를 여러 도메인이 각자 "한 번씩" 처리하는 것을 보장하는 메커니즘입니다.
+또 한 가지 효과는 멱등성 키의 범위입니다. 뒤의 Consumer 멱등성 글에서 다룰 `processed_events` 테이블은 `(event_id, consumer_group)` 복합 UK를 가집니다. Order가 한 번 처리한 `payment.completed`와 Notification이 한 번 처리해야 할 `payment.completed`는 같은 event_id를 갖지만 group이 다르므로 별개의 처리 이력으로 기록됩니다. 같은 이벤트를 여러 도메인이 각자 "한 번씩" 처리하는 것을 보장하는 메커니즘입니다.
 
 ### 멱등성 + at-least-once
 
@@ -484,7 +484,7 @@ Phase 4 분리 시 변하는 것과 안 변하는 것을 정리하면 다음과 
 
 - `NotificationConsumer`, `NotificationCommandService`, `Notification` 엔티티는 코드 한 줄 안 고치고 그대로 옮깁니다.
 - Consumer Group 이름이 이미 `notification-svc-*`로 prefix되어 있습니다. 서비스가 분리되어도 그룹 ID는 동일합니다.
-- 멱등성 처리(`processed_events`)도 그대로 따라갑니다. `(event_id, consumer_group)` UK는 서비스 단위가 아니라 그룹 단위라 영향이 없습니다.
+- 멱등성 처리(`processed_events`)도 그대로 따라갑니다. `(event_id, consumer_group)` UK는 그룹 단위로 걸려 있어 서비스가 나뉘어도 영향이 없습니다.
 
 **바뀌는 것**
 

@@ -34,7 +34,7 @@ const steps = [
   <SceneTimeline ariaLabel="네 단계" steps={steps} />
   <p class="scene-note" data-note role="status"></p>
   <p class="db-demo-disclaimer">
-    흐름을 단순화한 모형입니다. Outbox 와 poller, <code>payment.requested</code> 와 주문의 <code>PAYMENT_REQUESTED</code> 상태, <code>product.updated</code>, 재시도와 DLQ 는 그리지 않았습니다. 환불 경로에서는 Payment 자신의 감지와 이 시점의 결제 완료 알림 같은 일부 소비를 생략했고, 환불 원장과 fence 의 자세한 동작은 24편에서 다룹니다. 이벤트가 도착하는 순서와 속도는 설명용입니다.
+    흐름을 단순화한 모형입니다. Outbox 와 poller, <code>payment.requested</code> 와 주문의 <code>PAYMENT_REQUESTED</code> 상태, <code>product.updated</code>, 재시도와 DLQ 는 그리지 않았습니다. 환불 경로에서는 Payment 자신의 감지와 이 시점의 결제 완료 알림 같은 일부 소비를 생략했고, 환불 원장과 fence 의 자세한 동작은 환불 호출 글에서 다룹니다. 이벤트가 도착하는 순서와 속도는 설명용입니다.
   </p>
 </InteractiveDemoFrame>
 

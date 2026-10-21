@@ -11,7 +11,7 @@ slug: "peekcart-authn-authz-choices"
 
 처음 인증을 공부할 때는 단순하게 생각했습니다. "JWT 발급해서 헤더로 받고, 서명만 검증하면 끝 아닌가?" 그런데 인증/인가 자료를 조금만 읽어보면 갈림길이 많습니다. 토큰을 헤더에 둘지 쿠키에 둘지, 회수는 블랙리스트로 할지 화이트리스트로 할지, Refresh Token을 회전시킬지 슬라이딩으로 갈지, 인증 프로토콜은 자체로 짤지 OAuth2/OIDC를 쓸지, 인가는 역할로 할지 속성으로 할지. 각 갈림길마다 보안 권고, 운영 비용, 사용자 경험이 달라집니다.
 
-PeekCart 코드를 읽기 전에 이 갈림길들을 먼저 정리하고 싶었습니다. 그래야 PeekCart의 선택이 "정답"이 아니라 "여러 가능성 중 어디에 위치한 선택"인지를 볼 수 있습니다.
+PeekCart 코드를 읽기 전에 이 갈림길들을 먼저 정리하고 싶었습니다. 그래야 PeekCart의 선택이 여러 가능성 중 어디에 있는지 볼 수 있습니다.
 
 이 글에서 사용하는 용어는 다음 뜻으로 읽으면 됩니다.
 
@@ -46,7 +46,7 @@ PeekCart 코드를 읽기 전에 이 갈림길들을 먼저 정리하고 싶었�
 - **인증(Authentication, AuthN)**: 요청을 보낸 주체가 누구인지 확인하는 과정. "이 사람이 정말 user 42인가"에 답합니다.
 - **인가(Authorization, AuthZ)**: 그 주체가 특정 동작을 할 수 있는지 결정하는 과정. "user 42가 order 7을 취소할 수 있는가"에 답합니다.
 
-같은 시스템에서 두 동작이 거의 동시에 일어납니다. JWT를 예로 들면 서명 검증은 인증에 가깝고 클레임에 담긴 role을 보고 권한을 판단하는 부분은 인가에 가깝습니다. Spring Security의 `Authentication`과 `AccessDecisionManager`도 비슷한 방식으로 둘을 분리합니다.
+같은 시스템에서 두 동작이 거의 동시에 일어납니다. JWT를 예로 들면 서명 검증은 인증에 가깝고 클레임에 담긴 role을 보고 권한을 확인하는 부분은 인가에 가깝습니다. Spring Security의 `Authentication`과 `AccessDecisionManager`도 비슷한 방식으로 둘을 분리합니다.
 
 이 구분은 단지 용어 문제가 아닙니다. 인증과 인가는 **언제, 누가 책임지는가**가 다르게 설계될 수 있습니다.
 
@@ -173,7 +173,7 @@ private String resolveToken(HttpServletRequest request) {
 - `JwtFilter`가 `Authorization` 헤더 대신 쿠키에서 토큰을 꺼냅니다.
 - 로그인 응답이 토큰을 body에 담는 대신 `Set-Cookie`로 내려줍니다.
 - CSRF 방어로 `SameSite=Lax` 또는 `Strict`를 켜고 필요 시 별도 CSRF 토큰을 추가합니다.
-- 토큰 회수 정책은 그대로입니다(쿠키든 헤더든 서버가 토큰 값을 보고 판단하는 건 같습니다).
+- 토큰 회수 정책은 그대로입니다(쿠키든 헤더든 서버가 토큰 값을 보고 검사하는 건 같습니다).
 
 이 차이를 명확히 짚어두는 이유는, 클라이언트 환경이 바뀌면 같은 인증 백엔드도 토큰 전송 방식만 따로 갈아끼울 수 있어야 하기 때문입니다. 그래서 PeekCart는 `JwtFilter`에 토큰 추출 책임만 분리해두고 검증 로직은 그대로 재사용할 수 있게 짜여 있습니다.
 
@@ -238,7 +238,7 @@ private String createAccessToken(Long userId, String role) {
 
 문제는 Phase 4입니다. Gateway가 매 요청을 검증하고 User Service가 발급하는 구조로 가면, 두 서비스가 secret을 공유해야 합니다. Gateway가 secret을 들고 있다는 것은 Gateway가 토큰을 위조할 수도 있다는 뜻입니다. 신뢰 경계가 깨집니다. 그래서 Phase 4 진입 시 자연스러운 전환은 **HS256에서 RS256 또는 ES256으로 바꾸는 것**입니다. User Service가 개인키로 서명하고 Gateway는 공개키로만 검증합니다. 키 회전을 위해 `kid`(key ID) 헤더와 JWKS 엔드포인트를 도입합니다. 이 전환은 이미 OIDC IdP가 표준화한 패턴이라 구현 부담이 크지 않습니다.
 
-여기서 PeekCart의 또 한 가지 의식적인 결정이 보입니다. **Refresh Token은 서명이 아니라 UUID(opaque token)다.**
+여기서 PeekCart의 또 한 가지 의식적인 결정이 보입니다. **Refresh Token은 서명 없는 UUID(opaque token)다.**
 
 ```java
 // JwtProvider.java
@@ -247,7 +247,7 @@ String refreshTokenValue = UUID.randomUUID().toString();
 
 Refresh Token은 자체적으로 진위를 증명하지 않습니다. 진위 확인은 DB의 `refresh_tokens` 테이블이 합니다. 그래서 서명 알고리즘 결정과 무관합니다. Phase 4에서 액세스 토큰을 RS256으로 갈아끼워도, Refresh Token은 그대로 UUID + DB 검증을 유지하면 됩니다. 두 토큰의 신뢰 모델이 다르게 설계된 덕분에 변경 비용이 한쪽에 격리됩니다.
 
-키 관리 측면에서 의도적으로 안 한 것도 있습니다.
+키 관리에서 의도적으로 안 한 것도 있습니다.
 
 - **키 회전(Key Rotation)**: 현재는 단일 secret이라 secret이 유출되면 모든 토큰을 한 번에 무효화해야 합니다. `kid` + JWKS로 가면 키를 점진적으로 회전시킬 수 있습니다.
 - **키 보관소(KMS, Vault)**: 현재 secret은 환경변수에 있습니다. 운영 환경에서는 AWS KMS / HashiCorp Vault 같은 시크릿 저장소로 옮기는 게 권고됩니다.
@@ -430,7 +430,7 @@ public Optional<Long> consumeGracePeriod(String token) {
 |---|---|---|
 |즉시 무효화만|두 번째 요청이 실패해 사용자가 튕김|보안은 강하나 UX 손상|
 |Rotation + Grace Period (채택)|두 번째 요청도 새 토큰 발급|짧은 유예 윈도우(10s)만 보안 약화|
-|Rotation + Reuse Detection|두 번째 요청을 "재사용"으로 판단해 패밀리 전체 무효화|가장 강하지만 토큰 패밀리 트래킹 필요|
+|Rotation + Reuse Detection|두 번째 요청을 "재사용"으로 보고 패밀리 전체 무효화|가장 강하지만 토큰 패밀리 트래킹 필요|
 |Sliding Session|만료 시점 연장만 함, 토큰 자체는 안 바꿈|UX 좋으나 탈취 시 영구 사용 위험|
 
 PeekCart의 grace period는 일종의 "회전과 즉시 무효화 사이의 절충"입니다. 10초라는 짧은 윈도우는 정상 사용자의 우연한 동시 요청(수십~수백ms)을 흡수하기엔 충분하고 실제 탈취 공격이 활용하기엔 좁습니다. 다만 Reuse Detection까지는 가지 않았기 때문에 "탈취된 토큰이 회전 이후 10초 안에 다시 쓰였을 때 그것을 공격 신호로 감지하고 사용자 전체 토큰을 무효화"하는 강한 대응은 못 합니다. Phase 4에서 추가 후보입니다.
@@ -483,7 +483,7 @@ public class JwtProvider implements TokenIssuer {
 }
 ```
 
-여기서 짚어둘 디테일은 **액세스 토큰은 JWT지만 리프레시 토큰은 JWT가 아니라 UUID**라는 점입니다. 리프레시 토큰의 역할은 자신을 자체적으로 검증하는 게 아니라, "DB에 저장된 이 토큰의 소유자가 누구인지를 가져오는 키"입니다. 그래서 서명과 페이로드가 필요 없는 식별자(opaque token)면 충분합니다. 굳이 JWT로 만들면 검증 비용만 늘어나고 얻는 것이 없습니다. 이건 OAuth2가 권고하는 "Refresh Token은 opaque로 두라"는 방향과도 일치합니다.
+여기서 짚어둘 디테일은 **액세스 토큰은 JWT지만 리프레시 토큰은 UUID**라는 점입니다. 리프레시 토큰은 "DB에 저장된 이 토큰의 소유자가 누구인지를 가져오는 키"로 쓰이고, 스스로를 검증할 필요가 없습니다. 그래서 서명과 페이로드가 필요 없는 식별자(opaque token)면 충분합니다. 굳이 JWT로 만들면 검증 비용만 늘어나고 얻는 것이 없습니다. 이건 OAuth2가 권고하는 "Refresh Token은 opaque로 두라"는 방향과도 일치합니다.
 
 PeekCart가 OIDC로 갔다면 어떻게 됐을까요? Keycloak이나 Authelia 같은 IdP를 띄우고 PeekCart는 Resource Server로만 남았을 것입니다. 토큰 발급/회수 책임이 IdP로 이동하고 PeekCart는 토큰 검증만 합니다. 학습 프로젝트 범위에서는 자체로 짜는 편이 토큰 생명주기를 직접 보고 만지기에 좋습니다. 운영 시스템이라면 IdP를 따로 두는 게 보안 권고에 더 가깝습니다.
 
@@ -575,7 +575,7 @@ private static final String BLACKLIST_PREFIX = "bl:";
 private static final String GRACE_PERIOD_PREFIX = "gp:";
 ```
 
-그리고 1편에서 본 4-Layered + DDD가 여기에서도 그대로 적용됩니다. Application(`AuthService`)은 `TokenBlacklistPort` 인터페이스에만 의존하고 Redis 구현체는 Infrastructure에 격리되어 있습니다.
+그리고 [계층 구조 글](/blog/peekcart-layered-ddd/)에서 본 4-Layered + DDD가 여기에서도 그대로 적용됩니다. Application(`AuthService`)은 `TokenBlacklistPort` 인터페이스에만 의존하고 Redis 구현체는 Infrastructure에 격리되어 있습니다.
 
 ```java
 // AuthService.java
@@ -627,7 +627,7 @@ PeekCart의 인증 구조에서 의도적으로 안 한 것, 미해결로 남은
 |JWT 서명과 암호화는 어떻게 동작하는가?|IETF, [RFC 7515: JWS](https://datatracker.ietf.org/doc/html/rfc7515), [RFC 7516: JWE](https://datatracker.ietf.org/doc/html/rfc7516), [RFC 7518: JWA](https://datatracker.ietf.org/doc/html/rfc7518), Auth0, [Critical Vulnerabilities in JWT Libraries](https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/)|HS256/RS256 선택과 알고리즘 confusion 위협을 볼 때|
 |비대칭 키와 키 회전은 어떻게 운용하는가?|OpenID Foundation, [OIDC Discovery (JWKS)](https://openid.net/specs/openid-connect-discovery-1_0.html), IETF, [RFC 7517: JWK](https://datatracker.ietf.org/doc/html/rfc7517)|MSA에서 공개키 배포와 키 회전 흐름을 설계할 때|
 |OAuth2와 OIDC의 차이는?|IETF, [RFC 6749: OAuth 2.0](https://datatracker.ietf.org/doc/html/rfc6749), OpenID Foundation, [OIDC Core](https://openid.net/specs/openid-connect-core-1_0.html)|자체 인증과 표준 위임의 갈림길을 볼 때|
-|토큰을 어디에 저장해야 하는가?|OWASP, [Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html), Auth0, [Token Storage](https://auth0.com/docs/secure/security-guidance/data-security/token-storage)|헤더 vs 쿠키 트레이드오프를 판단할 때|
+|토큰을 어디에 저장해야 하는가?|OWASP, [Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html), Auth0, [Token Storage](https://auth0.com/docs/secure/security-guidance/data-security/token-storage)|헤더 vs 쿠키 트레이드오프를 비교할 때|
 |Refresh Token Rotation은 왜 권고되는가?|Auth0, [Refresh Token Rotation](https://auth0.com/docs/secure/tokens/refresh-tokens/refresh-token-rotation), IETF, [OAuth 2.0 Security BCP](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics)|회전과 재사용 감지의 위협 모델을 이해할 때|
 |토큰을 클라이언트 키에 묶으려면?|IETF, [RFC 9449: DPoP](https://datatracker.ietf.org/doc/html/rfc9449), Curity, [Phantom Token Pattern](https://curity.io/resources/learn/phantom-token-pattern/)|Bearer 토큰의 탈취 위험을 줄이는 강한 대안을 볼 때|
 |비밀번호 없는 인증은 어떻게 동작하는가?|W3C, [Web Authentication API](https://www.w3.org/TR/webauthn/), FIDO Alliance, [Passkeys](https://fidoalliance.org/passkeys/)|자체 인증의 다음 단계 후보를 볼 때|
@@ -673,6 +673,6 @@ flowchart LR
 - **Refresh Token Reuse Detection을 도입할 자리**: 분산 환경에서 토큰 탈취 시나리오가 더 무서워지므로 이 단계에서 본격적으로 추가하는 게 합리적입니다.
 - **자체 인증을 그대로 둘 것인가, OIDC IdP를 분리할 것인가**: 별도 IdP를 두면 User Service의 책임이 더 좁아지고 "Login with Google" 같은 위임 흐름을 추가하기 쉬워집니다.
 
-핵심은, 1편에서 본 도메인/레이어 경계가 Phase 4에서 서비스 경계로 옮겨갈 때 **`TokenBlacklistPort` 인터페이스가 그대로 살아남는다**는 점입니다. 구현체만 "로컬 Redis 호출"에서 "공유 Redis 호출" 또는 "Gateway가 검증한 결과를 신뢰"로 바뀝니다. Application 코드는 같은 계약에 의존합니다.
+핵심은, 계층 구조 글에서 본 도메인/레이어 경계가 Phase 4에서 서비스 경계로 옮겨갈 때 **`TokenBlacklistPort` 인터페이스가 그대로 살아남는다**는 점입니다. 구현체만 "로컬 Redis 호출"에서 "공유 Redis 호출" 또는 "Gateway가 검증한 결과를 신뢰"로 바뀝니다. Application 코드는 같은 계약에 의존합니다.
 
-이게 1편에서 강조했던 4-Layered + DDD의 학습 효과입니다. 지금 구조가 완벽해서가 아니라, **나중에 서비스를 나눌 때 어떤 책임이 어디로 가야 하는지를 추적할 수 있게 해주기 때문에** 의미가 있습니다.
+[4-Layered + DDD 구조 글](/blog/peekcart-layered-ddd/)에서 강조했던 학습 효과가 여기서 드러납니다. 이 구조 덕분에 **나중에 서비스를 나눌 때 어떤 책임이 어디로 가야 하는지 추적할 수 있습니다.**

@@ -17,7 +17,7 @@ Phase 1을 끝낸 시점의 PeekCart 는 모든 요청이 MySQL 을 조회합니
 | ------------------ | ---------------------------------------------------------------------------------------------- |
 | Cache Aside        | 애플리케이션이 "캐시 조회, 미스면 DB 조회, 결과를 캐시에 적재"의 순서로 캐시를 직접 다루는 패턴. Read-Through/Write-Through와 구분됨 |
 | TTL                | Time To Live. 캐시 엔트리가 자동 만료되는 시간                                                                |
-| 캐시 적중률             | 전체 조회 중 캐시에서 응답된 비율 (cache hit / (cache hit + cache miss))                                     |
+| cache hit rate          | 전체 조회 중 캐시에서 응답된 비율 (cache hit / (cache hit + cache miss))                                     |
 | `@Cacheable`       | Spring Cache 추상화의 어노테이션. AOP 프록시가 호출을 가로채 캐시 조회/적재를 자동화                                       |
 | `@CacheEvict`      | 캐시 엔트리를 명시적으로 무효화하는 어노테이션. `allEntries = true`는 해당 캐시 전체 flush                                |
 | Self-invocation 문제 | 같은 빈 내부에서 메서드를 호출하면 AOP 프록시를 거치지 않아 `@Cacheable` 등이 동작하지 않는 Spring AOP의 구조적 한계               |
@@ -56,7 +56,7 @@ Phase 1을 끝낸 시점의 PeekCart 는 모든 요청이 MySQL 을 조회합니
 PeekCart 가 Cache Aside 를 택한 이유는 네 가지입니다.
 
 1. **읽기/쓰기 비대칭이 극단적이다**. 상품 조회는 1초에 수백 건, 변경은 관리자 작업이라 하루 수십 건 수준. Write-Through나 Write-Behind 는 "쓰기마다 캐시도 갱신한다"는 비용을 전제로 하는데 우리 쓰기 대부분은 그 직후 읽힐 데이터가 아닙니다. 차라리 다음 read 시점의 cache miss로 자연 적재되는 게 효율적입니다.
-2. **무효화 영향 범위가 도메인 지식이다**. 상품 한 건이 수정되면 그 상품의 상세 캐시 한 줄 + 모든 페이지의 목록 캐시가 영향을 받습니다(뒤의 `allEntries = true` 절). 이 범위는 도메인이 결정해야 하는데 Read-Through/Write-Through 는 캐시 라이브러리에 read/write 책임을 위임하는 구조라 "이 변경이 어떤 키들에 파급되는가"라는 도메인 결정이 끼어들 자리가 좁습니다. Cache Aside 는 갱신/무효화를 애플리케이션이 명시적으로 한다는 점이 오히려 장점입니다.
+2. **무효화 영향 범위가 도메인 지식이다**. 상품 한 건이 수정되면 그 상품의 상세 캐시 한 줄 + 모든 페이지의 목록 캐시가 영향을 받습니다(뒤의 `allEntries = true` 절). 이 범위는 도메인이 결정해야 하는데 Read-Through/Write-Through 는 캐시 라이브러리에 read/write 책임을 위임하는 구조라 "이 변경이 어떤 키들에 파급되는가"라는 도메인 결정을 넣을 자리가 좁습니다. Cache Aside 는 갱신/무효화를 애플리케이션이 명시적으로 한다는 점이 오히려 장점입니다.
 3. **Write-Behind의 정합성 리스크를 받아들일 수 없다**. 상품 정보는 변경이 드물지만 한 번 바뀌면(예: 가격 수정) 그 순간부터 정확해야 합니다. Write-Behind 는 "DB 반영이 늦어지는 사이 다른 인스턴스(또는 Phase 4의 다른 서비스)가 옛 DB를 읽는" 윈도우를 만듭니다. "캐시가 사라져도 DB가 진실"이라는 단순한 정합성 모델을 깨지 않으려면 동기 쓰기가 안전합니다.
 4. **Spring Cache 추상화와 자연스럽게 맞물린다**. `@Cacheable` + `@CacheEvict` 는 사실상 Cache Aside 의 문법적 설탕입니다. Read-Through 를 흉내내려면 별도 캐시 라이브러리(Redisson local cache, Caffeine `LoadingCache` 등)를 끼우거나 `RedisTemplate` 를 직접 다뤄야 하고 추가 의존성과 추가 추상화 계층이 따라옵니다. 같은 효과를 어노테이션 두 종류로 낼 수 있어서 다른 방법을 택할 이유가 없습니다.
 
@@ -117,7 +117,7 @@ public ProductDetailDto getProduct(Long productId) {
 
 캐시 hit 이 나도 재고 한 줄은 DB로 갑니다. 얼핏 보면 "그러면 캐시가 무슨 의미인가" 싶지만 사라진 비용을 따져보면 분명합니다. `products` 테이블 + `categories` 조인이 사라지고 남은 것은 `inventory` 의 PK 단건 조회(`WHERE product_id = ?`)입니다. 인덱스를 탄 PK 조회는 ~1ms 이고 DTO 매핑이 빠집니다. 반면 캐시에 재고를 함께 넣었다면 주문 한 건마다 캐시를 무효화해야 합니다.
 
-재고 변경 빈도와 상품 정보 변경 빈도가 100배 이상 차이 나는데 둘을 같은 캐시 엔트리에 묶으면 캐시 적중률이 재고의 변경 빈도 쪽으로 끌려갑니다. "캐시 경계를 변경 빈도가 비슷한 데이터끼리 묶는다"는 원칙이 여기서 자연스럽게 적용됩니다.
+재고 변경 빈도와 상품 정보 변경 빈도가 100배 이상 차이 나는데 둘을 같은 캐시 엔트리에 묶으면 cache hit rate 가 재고 변경 빈도에 맞춰 떨어집니다. "캐시 경계를 변경 빈도가 비슷한 데이터끼리 묶는다"는 원칙이 여기서 자연스럽게 적용됩니다.
 
 ---
 
@@ -129,7 +129,7 @@ public ProductDetailDto getProduct(Long productId) {
 
 해결책 후보는 두 가지였습니다. 하나는 `@Autowired` 로 자기 자신을 주입받는 self-injection. 다른 하나는 캐시 호출만 담당하는 별도 빈으로 분리. 후자를 선택했습니다. self-injection 은 "내가 나를 주입한다"는 표현이 도메인적으로 어색하고 캐시가 들어가는 메서드를 한 곳에 모으면 캐시 정책을 확인할 범위가 좁아집니다. `ProductCacheService` 파일 하나만 보면 "어떤 키로 무엇이 캐시되는가"를 확인할 수 있습니다.
 
-레이어 관점에서도 자연스럽습니다. `ProductQueryService` 는 "상품 + 재고를 조합해서 상세를 만든다"는 비즈니스 책임이고 `ProductCacheService` 는 "캐시 어느 키 아래에 어떤 DTO를 둔다"는 기술적 책임입니다. 둘이 한 클래스 안에서 섞이지 않는 게 읽기에도 편합니다.
+레이어 구조로 봐도 자연스럽습니다. `ProductQueryService` 는 "상품 + 재고를 조합해서 상세를 만든다"는 비즈니스 책임이고 `ProductCacheService` 는 "캐시 어느 키 아래에 어떤 DTO를 둔다"는 기술적 책임입니다. 둘이 한 클래스 안에서 섞이지 않는 게 읽기에도 편합니다.
 
 ---
 
@@ -187,9 +187,9 @@ public void delete(Long productId) { ... }
 대안 둘이 있습니다.
 
 1. **세밀한 키 무효화**: 영향 범위를 도메인 로직으로 추론해서 필요한 키만 지웁니다. 정확성이 높지만 정렬, 필터, 페이지네이션 조합이 늘어날 때마다 무효화 로직이 따라가야 합니다.
-2. **전체 flush**: 그냥 `products` 캐시 전체를 비웁니다. 거칠지만 안전합니다. 트레이드오프는 다음 조회들이 캐시 미스를 한 번씩 겪는다는 것.
+2. **전체 flush**: 그냥 `products` 캐시 전체를 비웁니다. 거칠지만 안전합니다. 트레이드오프는 다음 조회들이 cache miss 를 한 번씩 겪는다는 것.
 
-상품 변경은 관리자 작업이고 빈도가 낮습니다. 반면 조회는 1초에 수백 건입니다. 관리자 변경 빈도가 조회 빈도에 비해 수십 분의 일 이하라는 비대칭이 있는 한, 관리자가 상품 하나를 등록할 때 다음 짧은 구간의 캐시 미스를 받아들이는 게, "복잡한 무효화 로직을 만들고 그게 정확한지 영원히 의심하는 것"보다 낫습니다. 이 경우에는 정확성이 분명한 방법을 택했습니다.
+상품 변경은 관리자 작업이고 빈도가 낮습니다. 반면 조회는 1초에 수백 건입니다. 관리자 변경 빈도가 조회 빈도에 비해 수십 분의 일 이하라는 비대칭이 있는 한, 관리자가 상품 하나를 등록할 때 다음 짧은 구간의 cache miss 를 받아들이는 게, "복잡한 무효화 로직을 만들고 그게 정확한지 영원히 의심하는 것"보다 낫습니다. 이 경우에는 정확성이 분명한 방법을 택했습니다.
 
 ---
 
@@ -257,13 +257,13 @@ public CacheManager noOpCacheManager() {
 
 업데이트가 트랜잭션 안에서 일어나고 `@CacheEvict` 는 메서드 종료 시점에 동작합니다. 트랜잭션 커밋과 캐시 evict 사이에는 짧은 시간차가 있습니다. 그 사이에 다른 요청이 캐시를 채워 넣으면, 새로 채워진 엔트리는 곧바로 evict 대상이 됩니다. 결과적으로는 또 한 번의 조회가 DB로 가지만 사용자 입장에서 "갱신 직후 옛날 데이터를 본다"는 일은 거의 없습니다. 거의 모든 경우 evict 가 충분히 일찍 일어납니다. 이 부분은 `@Transactional` 과 `@CacheEvict` 의 순서를 정밀하게 통제하려면 `TransactionSynchronization` 을 끼워 넣어야 하는데 현재 규모에서는 그 복잡도가 정당화되지 않습니다.
 
-### 캐시 적중률을 메트릭으로 보지 않는다
+### cache hit rate 를 메트릭으로 보지 않는다
 
-지금 코드에는 캐시 hit/miss 를 카운트하는 메트릭이 없습니다. Spring Boot Actuator 의 `cache.*` 메트릭을 활성화하면 `CacheMeterBinder` 가 자동으로 hit/miss 카운터를 만들어주지만 현재 `MetricsConfig`(관측성 글에서 다룸)에는 등록되어 있지 않습니다. 부하 테스트에서는 nGrinder 의 TPS 차이로 캐시 효과를 보지만 운영 중인 캐시 적중률을 실시간으로 확인할 메트릭이 없습니다. Phase 4에서 캐시가 서비스 경계에 걸치게 되면 이 메트릭이 필요해집니다.
+지금 코드에는 캐시 hit/miss 를 카운트하는 메트릭이 없습니다. Spring Boot Actuator 의 `cache.*` 메트릭을 활성화하면 `CacheMeterBinder` 가 자동으로 hit/miss 카운터를 만들어주지만 현재 `MetricsConfig`(관측성 글에서 다룸)에는 등록되어 있지 않습니다. 부하 테스트에서는 nGrinder 의 TPS 차이로 캐시 효과를 보지만 운영 중인 cache hit rate 를 실시간으로 확인할 메트릭이 없습니다. Phase 4에서 캐시가 서비스 경계에 걸치게 되면 이 메트릭이 필요해집니다.
 
 ### Redis 장애에 무방비
 
-Redis 가 다운되면 `@Cacheable` 호출이 `RedisConnectionFailureException` 을 던지고 그대로 위로 올라옵니다. 사용자는 상품 조회 자체가 실패합니다. 이상적으로는 캐시 장애 시 DB 직조회로 자동 fallback 이 있어야 하지만(9편의 분산 락 fallback 과 같은 구조), 조회 캐시에는 아직 그 안전장치가 없습니다. Redis 가 죽으면 트래픽이 통째로 DB로 떨어진다는 점도 같이 고려해야 합니다(thundering herd). 이 부분은 명시적으로 "남은 부채"로 두고 다음 Phase 에서 다룰 영역입니다.
+Redis 가 다운되면 `@Cacheable` 호출이 `RedisConnectionFailureException` 을 던지고 그대로 위로 올라옵니다. 사용자는 상품 조회 자체가 실패합니다. 이상적으로는 캐시 장애 시 DB 직조회로 자동 fallback 이 있어야 하지만(다음 글의 분산 락 fallback 과 같은 구조), 조회 캐시에는 아직 그 안전장치가 없습니다. Redis 가 죽으면 트래픽이 통째로 DB로 떨어진다는 점도 같이 고려해야 합니다(thundering herd). 이 부분은 명시적으로 "남은 부채"로 두고 다음 Phase 에서 다룰 영역입니다.
 
 ### 의도적으로 안 한 것
 
@@ -277,13 +277,13 @@ Redis 가 다운되면 `@Cacheable` 호출이 `RedisConnectionFailureException` 
 
 `ProductCacheIntegrationTest` 는 Testcontainers로 MySQL + Redis + Kafka 를 띄우고 캐시 동작을 5건의 테스트로 검증합니다.
 
-1. **상세 조회 캐시 적중**: 첫 호출 후 `cacheManager.getCache("product").get(productId)` 가 not null. 두 번째 호출이 같은 결과 반환.
-2. **목록 조회 캐시 적중**: `cacheManager.getCache("products").get("list:null:0:10")` 로 직접 키 확인.
+1. **상세 조회 cache hit**: 첫 호출 후 `cacheManager.getCache("product").get(productId)` 가 not null. 두 번째 호출이 같은 결과 반환.
+2. **목록 조회 cache hit**: `cacheManager.getCache("products").get("list:null:0:10")` 로 직접 키 확인.
 3. **상품 수정 시 양쪽 캐시 evict**: `update` 호출 후 두 키 모두 null. 다시 조회하면 갱신된 데이터.
 4. **상품 삭제 시 양쪽 캐시 evict**: `delete` 도 동일하게 두 캐시 모두 비운다는 사실을 명시 검증.
 5. **상품 등록 시 목록 캐시 evict**: 새 상품이 다음 조회에 포함되는지까지 확인.
 
-`CacheManager.getCache().get(key)` 로 캐시 상태를 직접 확인하는 것이 핵심입니다. "두 번째 호출이 빠르더라" 같은 간접 신호가 아니라, Redis 에 실제 엔트리가 있는지/없는지를 비교합니다. 캐시 통합 테스트는 자칫 "DB가 같은 결과를 두 번 돌려준다"는 사실로 만족하기 쉬워서, 캐시 매니저를 직접 확인하는 검증이 의미가 있습니다.
+`CacheManager.getCache().get(key)` 로 캐시 상태를 직접 확인하는 것이 핵심입니다. Redis 에 실제 엔트리가 있는지 없는지를 직접 비교합니다. "두 번째 호출이 빠르더라" 같은 간접 신호는 쓰지 않습니다. 캐시 통합 테스트는 자칫 "DB가 같은 결과를 두 번 돌려준다"는 사실로 만족하기 쉬워서, 캐시 매니저를 직접 확인하는 검증이 의미가 있습니다.
 
 `setUp()` 에서 `commandService.create(...)` 가 목록 캐시를 evict하는 부수효과까지 의식해서 테스트 시작 전 `cleanCaches(cacheManager)` 를 한 번 더 호출합니다. 캐시 어노테이션이 트랜잭션 경계 밖에서 동작하면 테스트가 미묘하게 어긋날 수 있다는 신호입니다.
 
@@ -297,7 +297,7 @@ Redis 가 다운되면 `@Cacheable` 호출이 `RedisConnectionFailureException` 
 | Cache Aside / Read-Through / Write-Behind 패턴 비교? | Martin Kleppmann, *Designing Data-Intensive Applications* Ch.1 "Caching" 절 / AWS Caching Best Practices | "Cache Aside를 선택한 이유" 전체           |
 | `RedisCacheManager`의 키 직렬화, TTL, prefix 옵션?   | Spring Data Redis 공식 문서, [Cache Configuration](https://docs.spring.io/spring-data/redis/reference/redis/redis-cache.html) | `CacheConfig`의 `defaultConfig` 구성 |
 | `Page<T>`를 Redis에 직렬화하는 표준 방법?              | Spring Data Commons 이슈 트래커의 `PageImpl` 직렬화 관련 PR 논의                                                                    | `CachedPage` 래퍼 결정                |
-| 캐시 적중률을 실시간으로 보는 표면 만들기?                    | Micrometer `CacheMeterBinder` 문서, Spring Boot Actuator `cache.*` 메트릭                                                    | "캐시 적중률을 메트릭으로 보지 않는다" 절          |
+| cache hit rate 를 실시간으로 볼 메트릭 만들기?                    | Micrometer `CacheMeterBinder` 문서, Spring Boot Actuator `cache.*` 메트릭                                                    | "cache hit rate 를 메트릭으로 보지 않는다" 절          |
 | 캐시 무효화의 두 가지 어려움(naming / invalidation)?    | Phil Karlton, "There are only two hard things..." 인용 맥락 / Mnesia, Hibernate cache invalidation 문서                       | `allEntries = true` 결정 정당화        |
 
 ---
@@ -344,4 +344,4 @@ flowchart LR
 
 - 상품 캐시 코드 자체는 분리하기 쉽습니다. 캐시 어노테이션은 도메인 로직과 결합되지 않은 횡단 관심사라 패키지 이동만으로 따라옵니다.
 - 결정할 것은 "상세 페이지 조립을 누가 하는가"입니다. Product + Inventory 의 합성 책임은 ADR로 남겨둘 필요가 있습니다. 같이 검토할 자료: `docs/02-architecture.md` Phase 4 섹션, `docs/adr/0002-monolith-to-msa-evolution.md`.
-- 캐시 적중률 메트릭 부재(`CacheMeterBinder` 미등록)는 Phase 4 전에 해소하는 게 좋습니다. 서비스가 늘어나면 어느 서비스의 캐시가 효과적인지 비교해야 하는데 그 비교의 기본 지표가 hit rate입니다.
+- cache hit rate 메트릭 부재(`CacheMeterBinder` 미등록)는 Phase 4 전에 해소하는 게 좋습니다. 서비스가 늘어나면 어느 서비스의 캐시가 효과적인지 비교해야 하는데 그 비교의 기본 지표가 hit rate입니다.

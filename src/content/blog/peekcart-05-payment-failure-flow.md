@@ -22,7 +22,7 @@ slug: "peekcart-payment-failure-flow"
 | 웹훅 (Webhook) | 외부 시스템이 이벤트 발생 시 우리 서버의 특정 URL로 HTTP 요청을 보내는 방식 |
 | HMAC-SHA256 | 공유 비밀키로 메시지의 무결성과 출처를 검증하는 서명 알고리즘 |
 | 멱등성 (Idempotency) | 같은 요청을 여러 번 보내도 결과가 한 번 보낸 것과 같은 성질 |
-| Outbox 이벤트 | DB 트랜잭션과 함께 저장되어 이벤트 유실을 방지하는 패턴. 10편에서 상세히 다룰 예정 |
+| Outbox 이벤트 | DB 트랜잭션과 함께 저장되어 이벤트 유실을 방지하는 패턴. 뒤의 Outbox 글에서 상세히 다룰 예정 |
 
 이번 학습에서는 다음 질문을 확인하려고 합니다.
 
@@ -82,7 +82,7 @@ public void handleOrderCreated(String message) {
 
 `order.created` 이벤트에는 `orderId`와 `totalAmount`가 들어 있습니다. Consumer는 이 정보로 `PENDING` 상태의 Payment를 생성합니다. `idempotencyChecker.executeIfNew()`로 같은 이벤트가 중복 소비되더라도 Payment가 두 개 만들어지는 것을 방지합니다.
 
-Payment를 만드는 주체는 Order 도메인이 아닌 Payment 도메인 자신입니다. Order는 "주문이 생성됐다"는 사실만 이벤트로 알리고 "그러면 결제 레코드를 만들어야 한다"는 판단은 Payment가 독립적으로 합니다.
+Payment를 만드는 주체는 Order 도메인이 아닌 Payment 도메인 자신입니다. Order는 "주문이 생성됐다"는 사실만 이벤트로 알리고 "그러면 결제 레코드를 만들어야 한다"는 결정은 Payment가 독립적으로 내립니다.
 
 ### PaymentEventListener: Phase 1의 로컬 이벤트 버전
 
@@ -97,7 +97,7 @@ public void handleOrderCreated(OrderCreatedEvent event) {
 }
 ```
 
-Phase 1에서는 `@TransactionalEventListener(AFTER_COMMIT)`으로 주문 트랜잭션 커밋 이후 Payment를 생성했습니다. Phase 2에서 Kafka + Outbox로 전환하면서 `PaymentEventConsumer`가 이 역할을 대체했습니다. 로컬 이벤트 방식의 한계는 이후 상세히 다룰 예정이지만 핵심은 "주문 커밋은 됐는데 Payment 생성이 실패하면 이벤트가 유실된다"는 것입니다. Outbox 패턴은 이벤트 저장을 주문 트랜잭션 안에 포함시켜 이 문제를 해결합니다.
+Phase 1에서는 `@TransactionalEventListener(AFTER_COMMIT)`으로 주문 트랜잭션 커밋 이후 Payment를 생성했습니다. Phase 2에서 Kafka + Outbox로 전환하면서 `PaymentEventConsumer`가 이 역할을 대체했습니다. 로컬 이벤트 방식의 한계는 이후 상세히 다룰 예정입니다. 간단히 말하면 "주문 커밋은 됐는데 Payment 생성이 실패하면 이벤트가 유실된다"는 것입니다. Outbox 패턴은 이벤트 저장을 주문 트랜잭션 안에 포함시켜 이 문제를 해결합니다.
 
 ---
 
@@ -208,7 +208,7 @@ OrderStatus(8개 상태, 11개 전이)와 비교하면 PaymentStatus는 훨씬 �
 
 이 단순함은 의도적입니다. 결제의 복잡한 후속 처리(환불, 부분 취소 등)는 현재 프로젝트 범위에 포함되지 않습니다. 결제가 성공하면 `payment.completed` 이벤트를, 실패하면 `payment.failed` 이벤트를 발행하는 것이 Payment 도메인의 책임 범위입니다.
 
-4편의 OrderStatus와 같은 패턴(`canTransitionTo()` 추상 메서드)을 사용하고 있습니다. 프로젝트 전체에서 상태 전이 규칙을 일관된 방식으로 표현합니다.
+주문 생성 글의 OrderStatus와 같은 패턴(`canTransitionTo()` 추상 메서드)을 사용하고 있습니다. 프로젝트 전체에서 상태 전이 규칙을 일관된 방식으로 표현합니다.
 
 ### Payment의 도메인 메서드
 
@@ -236,7 +236,7 @@ public void validateAmount(long requestedAmount) {
 }
 ```
 
-4편에서 Order는 범용 `transitionTo()`와 특화된 `cancel()`을 함께 제공했습니다. Payment는 `approve()`와 `fail()`이라는 도메인 언어에 가까운 메서드만 있습니다. 전이가 2개뿐이므로 범용 메서드가 필요하지 않습니다. Order에서 개선 후보로 남겨둔 "도메인 언어화"가 Payment에서는 이미 적용되어 있습니다.
+주문 생성 글에서 Order는 범용 `transitionTo()`와 특화된 `cancel()`을 함께 제공했습니다. Payment는 `approve()`와 `fail()`이라는 도메인 언어에 가까운 메서드만 있습니다. 전이가 2개뿐이므로 범용 메서드가 필요하지 않습니다. Order에서 개선 후보로 남겨둔 "도메인 언어화"가 Payment에서는 이미 적용되어 있습니다.
 
 `validateAmount()`는 클라이언트가 보낸 금액과 서버에 저장된 금액이 일치하는지 확인합니다. 이 검증은 클라이언트가 금액을 조작해서 더 적은 금액으로 결제를 승인받는 것을 방지하기 위한 것입니다. 금액 검증은 Toss API 호출 전에 서버 측에서 먼저 수행합니다.
 
@@ -310,13 +310,13 @@ public PaymentDetailDto confirmPayment(Long userId, ConfirmPaymentCommand comman
 
 각 단계를 하나씩 보겠습니다.
 
-**1단계: 주문 소유권 검증.** `orderPort.verifyOrderOwner()`로 본인 주문인지 확인합니다. 다른 사용자의 주문에 대해 결제를 시도할 수 없습니다. 2편에서 본 데이터 레벨 인가가 여기서도 적용됩니다.
+**1단계: 주문 소유권 검증.** `orderPort.verifyOrderOwner()`로 본인 주문인지 확인합니다. 다른 사용자의 주문에 대해 결제를 시도할 수 없습니다. [인증과 인가 글](/blog/peekcart-authn-authz-choices/)에서 본 데이터 레벨 인가가 여기서도 적용됩니다.
 
 **2단계: Payment 조회.** `findByOrderId()`로 해당 주문의 Payment를 찾습니다. 없으면 PAY-003. 이 시점에서 Payment는 `PaymentEventConsumer`가 이미 생성해둔 상태입니다.
 
 **3단계: 금액 검증.** 클라이언트가 보낸 `amount`와 서버의 `payment.amount`가 일치하는지 확인합니다. 불일치 시 PAY-001. 이 검증이 Toss API 호출보다 앞에 있습니다. 금액이 맞지 않으면 외부 API를 호출할 필요가 없습니다.
 
-**4단계: Order 상태 전이.** `orderPort.transitionToPaymentRequested()`로 Order 상태를 `PENDING → PAYMENT_REQUESTED`로 바꿉니다. 이 전이가 결제 승인 전에 일어나는 이유는, "결제가 진행 중이다"라는 상태를 먼저 기록하기 위함입니다. 4편에서 본 타임아웃 스케줄러는 `PAYMENT_REQUESTED` 상태를 기준으로 15분 초과 주문을 찾습니다.
+**4단계: Order 상태 전이.** `orderPort.transitionToPaymentRequested()`로 Order 상태를 `PENDING → PAYMENT_REQUESTED`로 바꿉니다. 이 전이가 결제 승인 전에 일어나는 이유는, "결제가 진행 중이다"라는 상태를 먼저 기록하기 위함입니다. 주문 생성 글에서 본 타임아웃 스케줄러는 `PAYMENT_REQUESTED` 상태를 기준으로 15분 초과 주문을 찾습니다.
 
 **5단계: paymentKey 교체.** 생성 시 부여한 임시 UUID를 Toss가 발급한 실제 `paymentKey`로 교체합니다.
 
@@ -350,7 +350,7 @@ payment.fail();
 outboxEventPublisher.publishPaymentFailed(payment, userId);
 ```
 
-이 이벤트가 바로 4편에서 다룬 "결제 실패 취소(경로 2)"의 출발점입니다.
+이 이벤트가 바로 주문 생성 글에서 다룬 "결제 실패 취소(경로 2)"의 출발점입니다.
 
 ```mermaid
 sequenceDiagram
@@ -378,7 +378,7 @@ sequenceDiagram
     OEC->>DB: order.cancel() + 재고 복구
 ```
 
-Payment 도메인은 "결제가 실패했다"는 사실만 이벤트로 발행합니다. "그러면 주문을 취소하고 재고를 복구해야 한다"는 판단은 Order 도메인이 독립적으로 합니다. 이것이 이벤트 기반 도메인 간 통신의 핵심입니다. Payment가 Order의 취소 로직을 알 필요가 없고 Order가 Toss API의 존재를 알 필요도 없습니다.
+Payment 도메인은 "결제가 실패했다"는 사실만 이벤트로 발행합니다. "그러면 주문을 취소하고 재고를 복구해야 한다"는 결정은 Order 도메인이 독립적으로 내립니다. 이것이 이벤트 기반 도메인 간 통신의 핵심입니다. Payment가 Order의 취소 로직을 알 필요가 없고 Order가 Toss API의 존재를 알 필요도 없습니다.
 
 ### PaymentStatus와 OrderStatus의 연결
 
@@ -494,7 +494,7 @@ public record TossConfirmResponse(
 | Application 레이어 | Toss를 다른 PG로 교체 시 Application 코드가 변경됨. UseCase 흐름과 외부 연동 세부사항이 섞임 |
 | Infrastructure 레이어 (현재) | 도메인과 Application은 Toss의 존재를 모름. PG 교체 시 Infrastructure만 교체 |
 
-`PaymentCommandService`는 `TossPaymentClient.confirm()`을 직접 호출하고 있어, 현재는 Application이 Infrastructure 구현체에 의존하고 있습니다. 이 의존을 Port 인터페이스로 분리하면("결제를 승인해주세요") 테스트가 더 쉬워지고 PG 교체 시 영향 범위가 줄어듭니다. 3편과 4편에서 본 `ProductPort`, `OrderPort`와 같은 패턴입니다. 현재 결제 PG가 하나뿐이어서 포트 분리의 실질적 필요성이 낮지만 개선 후보로 남겨둡니다.
+`PaymentCommandService`는 `TossPaymentClient.confirm()`을 직접 호출하고 있어, 현재는 Application이 Infrastructure 구현체에 의존하고 있습니다. 이 의존을 Port 인터페이스로 분리하면("결제를 승인해주세요") 테스트가 더 쉬워지고 PG 교체 시 영향 범위가 줄어듭니다. 상품과 재고 글, 주문 생성 글에서 본 `ProductPort`, `OrderPort`와 같은 패턴입니다. 현재 결제 PG가 하나뿐이어서 포트 분리의 실질적 필요성이 낮지만 개선 후보로 남겨둡니다.
 
 `TossConfirmResponse`도 Infrastructure에 위치합니다. Toss API의 응답 구조가 바뀌어도 영향이 이 클래스에서 멈춥니다. `PaymentCommandService`는 응답에서 `method`와 `approvedAt`만 꺼내 쓰므로, Toss 응답의 다른 필드가 추가되거나 바뀌어도 영향을 받지 않습니다.
 
@@ -643,7 +643,7 @@ public class WebhookLog {
 }
 ```
 
-`idempotency_key`에 UK(Unique Key)가 걸려 있습니다. `existsByIdempotencyKey()` 조회와 `save()` 사이에 동시 요청이 들어와도, UK 제약조건이 중복 INSERT를 막습니다. 이것은 11편에서 다룰 `processed_events`의 `(event_id, consumer_group)` UK와 같은 패턴입니다.
+`idempotency_key`에 UK(Unique Key)가 걸려 있습니다. `existsByIdempotencyKey()` 조회와 `save()` 사이에 동시 요청이 들어와도, UK 제약조건이 중복 INSERT를 막습니다. 이것은 뒤의 Consumer 멱등성 글에서 다룰 `processed_events`의 `(event_id, consumer_group)` UK와 같은 패턴입니다.
 
 ### Controller의 idempotencyKey 처리
 
@@ -689,7 +689,7 @@ public interface OrderPort {
 }
 ```
 
-이 Port는 Payment 도메인의 `application/port`에 정의되고 구현체(`OrderPortAdapter`)는 Order 도메인의 infrastructure에 위치합니다. 4편에서 본 것과 같은 방향입니다.
+이 Port는 Payment 도메인의 `application/port`에 정의되고 구현체(`OrderPortAdapter`)는 Order 도메인의 infrastructure에 위치합니다. 주문 생성 글에서 본 것과 같은 방향입니다.
 
 ### PaymentOutboxEventPublisher: Payment에서 Kafka로 (비동기)
 
@@ -756,7 +756,7 @@ void failed_allTransitions_denied() {
 }
 ```
 
-4편의 `OrderStatusTest`와 같은 패턴입니다. 터미널 상태에서 모든 전이가 거부되는지를 전수 검사합니다.
+주문 생성 글의 `OrderStatusTest`와 같은 패턴입니다. 터미널 상태에서 모든 전이가 거부되는지를 전수 검사합니다.
 
 ### PaymentCommandService 테스트: 성공과 실패 분기
 
@@ -835,7 +835,7 @@ void processWebhook_duplicateKey_skips() {
 }
 ```
 
-멱등성 테스트의 핵심은 두 번째 테스트입니다. 같은 `idempotencyKey`로 두 번 호출해도 `save()`가 한 번도 호출되지 않는 것을 검증합니다.
+멱등성은 두 번째 테스트가 검증합니다. 같은 `idempotencyKey`로 두 번 호출해도 `save()`가 한 번도 호출되지 않는지 봅니다.
 
 ---
 
@@ -849,7 +849,7 @@ void processWebhook_duplicateKey_skips() {
 
 ### TossPaymentClient에 Port 인터페이스가 없다
 
-3편의 `ProductPort`, 4편의 `OrderPort`처럼 도메인 간 경계에는 Port 인터페이스가 있지만 `PaymentCommandService`와 `TossPaymentClient` 사이에는 인터페이스 없이 구현체를 직접 주입하고 있습니다. 테스트에서는 `@Mock`으로 교체하고 있어 실질적 문제는 없지만 PG를 교체하거나 테스트 환경에서 Fake를 주입하려면 Port 분리가 필요합니다.
+상품과 재고 글의 `ProductPort`, 주문 생성 글의 `OrderPort`처럼 도메인 간 경계에는 Port 인터페이스가 있지만 `PaymentCommandService`와 `TossPaymentClient` 사이에는 인터페이스 없이 구현체를 직접 주입하고 있습니다. 테스트에서는 `@Mock`으로 교체하고 있어 실질적 문제는 없지만 PG를 교체하거나 테스트 환경에서 Fake를 주입하려면 Port 분리가 필요합니다.
 
 ### 웹훅이 비즈니스 로직을 실행하지 않는다
 
