@@ -30,7 +30,7 @@ slug: "peekcart-product-inventory-concurrency"
 3. 낙관적 락은 어떤 상황에서 충분하고 어떤 상황에서 부족할까?  
 4. 분산 락과 낙관적 락을 함께 쓰는 이유는 무엇일까?  
 5. 락 범위와 트랜잭션 범위의 순서가 왜 중요할까?  
-6. 재고 차감 시점은 언제가 적절할까 — 주문 생성 시점일까, 결제 완료 시점일까?  
+6. 재고 차감 시점은 언제가 적절할까: 주문 생성 시점일까, 결제 완료 시점일까?  
 7. 캐싱에서 재고를 제외한 이유는 무엇일까?  
 8. Phase 4 MSA에서 Product Service는 어떤 책임을 갖게 될까?  
   
@@ -387,11 +387,11 @@ public class InventoryLockFacade {
   
 이 코드에서 살펴볼 부분은 `InventoryLockFacade`와 `InventoryService`의 분리입니다.  
   
-`InventoryService`는 `@Transactional`이 붙어 있습니다(기본 `Propagation.REQUIRED`). `InventoryLockFacade`는 `@Transactional`이 없습니다. 이 분리의 의도는 "락 획득 → 트랜잭션 시작 → 재고 변경 → 트랜잭션 커밋 → 락 해제" 순서를 보장하는 것입니다.
+`InventoryService`는 `@Transactional`이 붙어 있습니다(기본 `Propagation.REQUIRED`). `InventoryLockFacade`는 `@Transactional`이 없습니다. 이 분리의 의도는 "락 획득, 트랜잭션 시작, 재고 변경, 트랜잭션 커밋, 락 해제" 순서를 보장하는 것입니다.
 
 하지만 이 순서가 항상 보장되는 것은 아닙니다. **호출자의 트랜잭션 컨텍스트에 따라 실제 동작이 달라진다.**
 
-### 경우 1: 단독 호출 — 의도대로 동작
+### 경우 1: 단독 호출, 의도대로 동작
 
 `InventoryLockFacade`를 외부 트랜잭션 없이 직접 호출하면 설계 의도대로 동작합니다.
 
@@ -405,7 +405,7 @@ public class InventoryLockFacade {
 
 다른 스레드가 락을 획득하는 시점에는 이미 커밋이 끝나 있습니다. 분산 락만으로 직렬화가 완성됩니다.
 
-### 경우 2: 외부 트랜잭션 안에서 호출 — 락이 먼저 풀린다
+### 경우 2: 외부 트랜잭션 안에서 호출, 락이 먼저 풀린다
 
 `OrderCommandService.createOrder()`처럼 이미 `@Transactional`이 열린 컨텍스트에서 호출하면 이야기가 달라집니다.
 
@@ -584,7 +584,7 @@ void concurrentDecrease_distributedLock_preventsOverselling() throws Interrupted
   
 ---  
   
-## 갈림길 2. 재고 차감 시점 — 주문 생성 시인가, 결제 완료 후인가  
+## 갈림길 2. 재고 차감 시점, 주문 생성 시인가, 결제 완료 후인가  
   
 재고를 언제 차감하느냐도 큰 갈림길입니다. 이것은 동시성 제어와는 별개의 비즈니스 결정입니다.  
   

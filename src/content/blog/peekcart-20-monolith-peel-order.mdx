@@ -202,7 +202,7 @@ Gateway가 생기기 전까지 다섯 서비스가 모두 토큰을 검증해야
 
 1. 재고 차감을 예약 이벤트로 옮깁니다. 이 단계의 "예약 성공"은 아직 "이미 차감됨"이라는 임시 의미이고, 단가는 여전히 동기로 읽습니다.
 2. 단가를 로컬 캐시에서 읽습니다. 동기 단가 조회가 사라집니다.
-3. 예약 확정·해제와 결제 전 확인을 갖춥니다.
+3. 예약 확정, 해제와 결제 전 확인을 갖춥니다.
 4. 장바구니의 상품 존재 확인을 캐시로 바꿉니다. 이제 `ProductPort`를 지울 수 있습니다. **여기서 Product를 떼어냅니다.**
 5. Payment의 `OrderPort` 호출을 로컬 상태와 이벤트로 바꿉니다. `OrderPort`를 지우고 **Order와 Payment를 떼어냅니다.**
 
@@ -238,7 +238,7 @@ peekcart (루트: 빌드 설정과 검사만)
 
 서비스 모듈은 공통 모듈 세 개만 의존할 수 있고, 다른 서비스 모듈을 의존하면 빌드가 실패합니다. Order와 Product, Order와 Payment가 서로의 패키지를 참조해도 빌드가 실패합니다. 앞에서 정리한 표의 첫 줄(다른 모듈 import)과, 지운 동기 호출이 되살아나는 경우는 이제 빌드가 막아 줍니다.
 
-서비스 사이의 대화는 동기 호출 대신 일곱 개의 토픽이 맡습니다. 처음부터 있던 주문·결제 토픽 넷에, 재고 예약 결과(`stock.reservation.result`)와 상품 변경(`product.updated`), 결제 시작(`payment.requested`)이 더해졌습니다.
+서비스 사이의 대화는 동기 호출 대신 일곱 개의 토픽이 맡습니다. 처음부터 있던 주문과 결제 토픽 넷에, 재고 예약 결과(`stock.reservation.result`)와 상품 변경(`product.updated`), 결제 시작(`payment.requested`)이 더해졌습니다.
 
 ### 배포도 다섯 벌이 됐습니다
 
@@ -248,7 +248,7 @@ peekcart (루트: 빌드 설정과 검사만)
 - **Kubernetes**: 서비스마다 Deployment, Service, ConfigMap, Secret, 메트릭 수집 설정을 따로 둡니다.
 - **관측성**: 메트릭과 경고 규칙이 `application=peekcart` 하나를 전제하던 것을, 서비스 이름별로 나눠 보도록 바꿨습니다.
 
-검증 범위도 작업 단위마다 달랐습니다. `ProductPort`를 지운 뒤에는 `./gradlew assertNoOrderProductSourceCoupling test`가 통과했고, Product를 떼어낸 뒤에는 새 멀티모듈에서 `./gradlew build`가 통과했습니다. 배포 구성을 바꿀 때는 다섯 이미지의 `docker build`와 minikube·GKE 매니페스트 렌더를 확인했습니다. 관측성 규칙은 문법·서비스 집합·필수 경고 누락을 일부러 만들어 정적 검사가 실패하는지 확인했습니다. 이 검증이 실제 서비스별 DB 분리나 운영 중 경고 발화까지 증명하지는 않습니다.
+검증 범위도 작업 단위마다 달랐습니다. `ProductPort`를 지운 뒤에는 `./gradlew assertNoOrderProductSourceCoupling test`가 통과했고, Product를 떼어낸 뒤에는 새 멀티모듈에서 `./gradlew build`가 통과했습니다. 배포 구성을 바꿀 때는 다섯 이미지의 `docker build`와 minikube, GKE 매니페스트 렌더를 확인했습니다. 관측성 규칙은 문법, 서비스 집합, 필수 경고 누락을 일부러 만들어 정적 검사가 실패하는지 확인했습니다. 이 검증이 실제 서비스별 DB 분리나 운영 중 경고 발화까지 증명하지는 않습니다.
 
 ### 완료 조건 하나의 전제만 갖췄습니다
 

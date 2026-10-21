@@ -11,16 +11,16 @@ import '@/styles/scene.css';
   </DemoControls>
   <div class="scene-chips" role="group" aria-label="보낼 요청">
     <span class="scene-chips-label">보내기</span>
-    <button type="button" class="scene-chip is-plain" data-fk-send="0">① 없는 상품 담기</button>
-    <button type="button" class="scene-chip is-plain" data-fk-send="1">② 상품 삭제</button>
-    <button type="button" class="scene-chip is-plain" data-fk-send="2">③ 코드 밖 INSERT</button>
+    <button type="button" class="scene-chip is-plain" data-fk-send="0">(1) 없는 상품 담기</button>
+    <button type="button" class="scene-chip is-plain" data-fk-send="1">(2) 상품 삭제</button>
+    <button type="button" class="scene-chip is-plain" data-fk-send="2">(3) 코드 밖 INSERT</button>
     <button type="button" class="scene-chip is-plain" data-fk-send="all">모두</button>
   </div>
   <div class="scene-stage">
     <svg data-fk-svg role="img" aria-label="세 요청이 서비스 코드 관문과 교차 FK 관문을 지나 MySQL 테이블에 닿는 그림"></svg>
   </div>
   <p class="scene-note" data-fk-note role="status"></p>
-  <p class="db-demo-disclaimer">③은 서비스 코드를 거치지 않는 쓰기(예: 수동 SQL)가 있을 때 DB 수준 보장이 무엇을 하는지 보여주려고 넣은 가상의 요청입니다. 글의 작업에서 이런 쓰기가 있었다는 뜻은 아닙니다. 사용자 ID 경로(토큰)와 결제·알림의 이벤트 경로, 이벤트 지연은 그리지 않았습니다.</p>
+  <p class="db-demo-disclaimer">(3)은 서비스 코드를 거치지 않는 쓰기(예: 수동 SQL)가 있을 때 DB 수준 보장이 무엇을 하는지 보여주려고 넣은 가상의 요청입니다. 글의 작업에서 이런 쓰기가 있었다는 뜻은 아닙니다. 사용자 ID 경로(토큰)와 결제와 알림의 이벤트 경로, 이벤트 지연은 그리지 않았습니다.</p>
 </InteractiveDemoFrame>
 
 <script>
@@ -40,13 +40,13 @@ import '@/styles/scene.css';
     narrow: { view: [360, 352], start: 22, app: 120, fk: 212, db: { x: 246, w: 106 }, chipX: 300, chipW: 90, lanes: [96, 176, 266], top: 52, bottom: 306, appBottom: 214 },
   };
   const LANES = [
-    { title: '① 없는 상품을 장바구니에', short: '① 없는 상품 담기', table: 'cart_items', hue: 'var(--scene-hue-violet)', packet: 'INSERT' },
-    { title: '② 상품 삭제', short: '② 상품 삭제', table: 'products', hue: 'var(--scene-hue-amber)', packet: 'DELETE' },
-    { title: '③ 서비스 코드를 거치지 않은 INSERT', short: '③ 코드 밖 INSERT', table: 'orders', hue: 'var(--scene-hue-violet)', packet: 'INSERT' },
+    { title: '(1) 없는 상품을 장바구니에', short: '(1) 없는 상품 담기', table: 'cart_items', hue: 'var(--scene-hue-violet)', packet: 'INSERT' },
+    { title: '(2) 상품 삭제', short: '(2) 상품 삭제', table: 'products', hue: 'var(--scene-hue-amber)', packet: 'DELETE' },
+    { title: '(3) 서비스 코드를 거치지 않은 INSERT', short: '(3) 코드 밖 INSERT', table: 'orders', hue: 'var(--scene-hue-violet)', packet: 'INSERT' },
   ];
   const NOTES: Record<Mode, string> = {
-    on: '교차 FK가 걸려 있습니다. ①은 서비스 코드의 단가 캐시에서, ②는 삭제가 상태 변경으로 바뀌어 FK까지 가지 않습니다. FK가 직접 막는 것은 ③뿐입니다.',
-    off: '교차 FK를 걷어 냈습니다. ①과 ②의 결과는 그대로입니다. ③만 달라져서, 부모 없는 행이 그대로 저장됩니다. 이 보장은 이제 서비스 코드와 이벤트 처리에 달려 있습니다.',
+    on: '교차 FK가 걸려 있습니다. (1)은 서비스 코드의 단가 캐시에서, (2)는 삭제가 상태 변경으로 바뀌어 FK까지 가지 않습니다. FK가 직접 막는 것은 (3)뿐입니다.',
+    off: '교차 FK를 걷어 냈습니다. (1)과 (2)의 결과는 그대로입니다. (3)만 달라져서, 부모 없는 행이 그대로 저장됩니다. 이 보장은 이제 서비스 코드와 이벤트 처리에 달려 있습니다.',
   };
 
   document.querySelectorAll<HTMLElement>('[data-blog-demo="fk-guard"]').forEach((demo) => {
@@ -97,7 +97,7 @@ import '@/styles/scene.css';
       if (at) setAttrs(v, { x: at.x, y: at.y, 'text-anchor': anchor });
     };
     const updateTally = () => {
-      tally.textContent = `보낸 요청 ${sent} · 교차 FK가 직접 막은 요청 ${blocked}`;
+      tally.textContent = `보낸 요청 ${sent}, 교차 FK가 직접 막은 요청 ${blocked}`;
     };
 
     const scene = createScene<State>({ fk: 1, strike: 0 }, (state) => {
@@ -146,7 +146,7 @@ import '@/styles/scene.css';
         if (!(await p.bounce({ x: l.app - 40, y }))) return;
         if (!alive()) return;
         if (narrow) setVerdict(0, 'ORD-009 거절', 'danger', below(l.start), 'start');
-        else setVerdict(0, '단가 캐시에 없음 · ORD-009', 'danger', below(l.app - 18), 'end');
+        else setVerdict(0, '단가 캐시에 없음, ORD-009', 'danger', below(l.app - 18), 'end');
         await scene.pause(duration.read);
         if (alive()) await p.fade();
         return;
@@ -171,7 +171,7 @@ import '@/styles/scene.css';
         if (!(await p.bounce({ x: l.fk - 30, y })) || !alive()) return;
         blocked += 1;
         updateTally();
-        setVerdict(2, 'FK 위반 · 거절', 'danger', below(l.fk - 14), 'end');
+        setVerdict(2, 'FK 위반, 거절', 'danger', below(l.fk - 14), 'end');
         await scene.pause(duration.read);
         if (alive()) await p.fade();
         return;

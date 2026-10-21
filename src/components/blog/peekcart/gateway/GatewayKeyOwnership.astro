@@ -14,8 +14,8 @@ const services = [
 
 <InteractiveDemoFrame demoId="gateway-key-ownership" ariaLabel="서비스 하나의 키가 유출됐을 때 HS512와 RS256에서 위조 토큰을 받아 주는 서비스 수 비교" title="키 하나가 새면, 위조 토큰을 누가 받아 줄까요?" description="서비스 하나를 골라 키를 유출시켜 보세요. 공격자가 그 키로 만든 토큰을 다섯 서비스에 보냅니다. 그다음 RS256으로 바꾸고 같은 서비스를 다시 털어 보세요.">
   <DemoControls ariaLabel="서명 방식">
-    <button type="button" data-key-mode="hs" aria-pressed="true">HS512 · 전환 전</button>
-    <button type="button" data-key-mode="rs" aria-pressed="false">RS256 · 전환 후</button>
+    <button type="button" data-key-mode="hs" aria-pressed="true">HS512, 전환 전</button>
+    <button type="button" data-key-mode="rs" aria-pressed="false">RS256, 전환 후</button>
   </DemoControls>
   <div class="scene-chips" role="group" aria-label="키를 유출시킬 서비스">
     <span class="scene-chips-label">유출시키기</span>
@@ -85,7 +85,7 @@ const services = [
     const railArrow = createArrow(root, 'var(--scene-flow)');
     const railLabel = svg('text', { class: 'scene-label scene-label-flow is-sans' }, root);
     railLabel.textContent = 'JWKS로 공개키만 공개';
-    const nodes = NAMES.map((label, i) => createNode(root, { label, hue: HUES[i], sub: '서명·검증' }));
+    const nodes = NAMES.map((label, i) => createNode(root, { label, hue: HUES[i], sub: '서명과 검증' }));
     const attacker = createNode(root, { label: '공격자', hue: 'var(--scene-hue-gray)', sub: '' });
 
     const metricText = (anchor: 'start' | 'end') => {
@@ -170,7 +170,7 @@ const services = [
     // ── 표시 ─────────────────────────────────────────────
     let acceptedCount: number | null = null;
     const setSubs = () => nodes.forEach((node, i) => {
-      node.setSub(mode === 'hs' || i === 0 ? '서명·검증' : '검증만');
+      node.setSub(mode === 'hs' || i === 0 ? '서명과 검증' : '검증만');
       node.flash('is-error', false);
       node.flash('is-done', false);
     });
@@ -218,7 +218,7 @@ const services = [
       nodes[index].flash('is-error', false);
       const kind = stolenKind();
       const canSign = kind !== 'public';
-      attacker.setSub(canSign ? '토큰 서명 ✓' : '서명 불가');
+      attacker.setSub(canSign ? '토큰 서명 가능' : '서명 불가');
       if (canSign) attacker.flash('is-error');
       await scene.pause(duration.beat);
       if (!alive()) return;
@@ -235,14 +235,14 @@ const services = [
         if (canSign) {
           if (!(await p.travel(path, 760, ease.standard)) || !alive()) return;
           await p.land(false);
-          node.setSub('✕ 받아 줌');
+          node.setSub('받아 줌');
           node.flash('is-error');
           acceptedCount = (acceptedCount ?? 0) + 1;
           setMetrics();
         } else {
           if (!(await p.travel(path.slice(0, -2), 640, ease.standard)) || !alive()) return;
           if (!(await p.bounce(target, 22)) || !alive()) return;
-          node.setSub('✓ 서명 불일치');
+          node.setSub('서명 불일치로 거부');
           node.flash('is-done');
           await p.fade(500);
         }

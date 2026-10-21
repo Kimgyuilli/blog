@@ -53,7 +53,7 @@ slug: "peekcart-consumer-idempotency-dlq"
 | `payment.completed` | `OrderEventConsumer`   | 주문 상태 `PAYMENT_COMPLETED` 재전이 시도 |
 | `payment.failed`    | `OrderEventConsumer`   | 주문 재취소 + 재고 재복구 시도               |
 
-여기서 "시도된다"와 "실제로 커밋된다"를 구분하는 게 중요합니다. PeekCart 에는 멱등성 말고도 **두 번째 방어선**이 깔려 있기 때문입니다(9편의 분산 락 ⊃ 낙관적 락 이중 방어와 같은 결의 구조입니다). `Payment` 는 `order_id` 에 UNIQUE 제약이 있어(`Payment.java`) 같은 주문으로 두 번째 결제를 INSERT하면 DB 가 막습니다. `Order` 는 이미 `CANCELLED`면 `cancel()` 이 `ORD-002` 를, 허용되지 않은 전이면 `transitionTo()` 가 `ORD-003` 을 던집니다(`Order.java`). 즉 결제, 주문 쪽 중복은 멱등성이 없더라도 **double-commit이 아니라 예외**가 되고 그 예외는 재시도를 거쳐 DLQ로 떨어집니다 — 정합성은 지키지만 시끄럽습니다.
+여기서 "시도된다"와 "실제로 커밋된다"를 구분하는 게 중요합니다. PeekCart 에는 멱등성 말고도 **두 번째 방어선**이 깔려 있기 때문입니다(9편의 분산 락 ⊃ 낙관적 락 이중 방어와 같은 결의 구조입니다). `Payment` 는 `order_id` 에 UNIQUE 제약이 있어(`Payment.java`) 같은 주문으로 두 번째 결제를 INSERT하면 DB 가 막습니다. `Order` 는 이미 `CANCELLED`면 `cancel()` 이 `ORD-002` 를, 허용되지 않은 전이면 `transitionTo()` 가 `ORD-003` 을 던집니다(`Order.java`). 즉 결제, 주문 쪽 중복은 멱등성이 없더라도 **double-commit이 아니라 예외**가 되고 그 예외는 재시도를 거쳐 DLQ로 떨어집니다. 정합성은 지키지만 시끄럽습니다.
 
 실제로 오류 없이 이중 반영되는 곳은 **알림**입니다. `notifications` 에는 그런 자연 UK 가 없고 게다가 `createNotification` 은 DB 저장에 더해 외부 `slackPort.send` 까지 부릅니다(뒤 「부수효과의 경계」 절). 받쳐줄 도메인 가드가 없어, 멱등성이 빠지면 알림 행이 둘 생기고 Slack 도 두 번 나갑니다.
 
@@ -63,7 +63,7 @@ slug: "peekcart-consumer-idempotency-dlq"
 
 ## 선택한 설계: "이미 처리했다"를 DB 한 행으로 증명한다
 
-발상은 Outbox 와 대응합니다. Outbox 가 "발행할 이벤트를 DB 한 행으로 저장"했다면, 멱등성은 "처리한 이벤트를 DB 한 행으로 저장"합니다. Consumer 는 이벤트를 받으면 먼저 묻습니다 — **"이 `event_id`를, 내 consumer group이, 이미 처리한 적 있나?"** 있으면 건너뛰고 없으면 처리 이력을 적고 비즈니스 로직을 돌립니다.
+발상은 Outbox 와 대응합니다. Outbox 가 "발행할 이벤트를 DB 한 행으로 저장"했다면, 멱등성은 "처리한 이벤트를 DB 한 행으로 저장"합니다. Consumer 는 이벤트를 받으면 먼저 묻습니다. **"이 `event_id`를, 내 consumer group이, 이미 처리한 적 있나?"** 있으면 건너뛰고 없으면 처리 이력을 적고 비즈니스 로직을 돌립니다.
 
 ```mermaid
 flowchart TD
@@ -84,8 +84,8 @@ flowchart TD
 
 `order.created` 하나를 보겠습니다. 이걸 받는 그룹은 둘입니다.
 
-- `payment-svc-order-created-group` → `Payment(PENDING)` 생성
-- `notification-svc-order-created-group` → 주문 생성 알림 발송
+- `payment-svc-order-created-group`: `Payment(PENDING)` 생성
+- `notification-svc-order-created-group`: 주문 생성 알림 발송
 
 두 그룹은 같은 이벤트를 받지만 **다른 일을 한다.** 만약 멱등성 키가 `event_id` 단독이라면, Payment 그룹이 먼저 처리해 이력을 적는 순간 Notification 그룹은 "이미 처리됨"으로 판단하고 알림을 건너뜁니다. 한쪽의 정당한 처리가 다른 쪽을 막아버립니다. 그래서 키는 반드시 **"누가(consumer group) 그 이벤트를 처리했나"**까지 포함해야 합니다. 같은 `event_id` 라도 consumer group 이 다르면 다른 행이고 각자 독립적으로 한 번씩 처리됩니다.
 
@@ -103,8 +103,8 @@ flowchart LR
 
 순서가 중요합니다. 두 가지 선택지가 있습니다.
 
-- **act-first**: 비즈니스 로직 먼저 실행 → 성공하면 처리 이력 기록
-- **save-first**: 처리 이력 먼저 기록(선점) → 그 다음 비즈니스 로직 실행
+- **act-first**: 비즈니스 로직을 먼저 실행하고 성공하면 처리 이력 기록
+- **save-first**: 처리 이력을 먼저 기록(선점)하고 그 다음 비즈니스 로직 실행
 
 PeekCart 는 **save-first**를 택했습니다(`IdempotencyChecker.executeIfNew`). 이유는 동시성입니다. Kafka 리밸런스 등으로 같은 메시지가 거의 동시에 두 번 소비되는 순간을 생각해 보겠습니다. act-first라면 두 소비자가 "아직 이력 없음"을 동시에 확인하고 **둘 다 비즈니스 로직을 실행**한 뒤 이력을 적으려다 충돌합니다. 이미 이중 처리가 끝난 뒤입니다. save-first 는 비즈니스 로직 **전에** UK 가 걸린 INSERT로 자리를 선점하므로 하나만 INSERT 에 성공하고 나머지는 거기서 막힙니다. 비즈니스 로직은 선점에 성공한 하나만 실행합니다.
 
@@ -149,7 +149,7 @@ public class ProcessedEvent {
 
 여기서 `GenerationType.IDENTITY` 는 우연이 아니라 **동작에 기여하는 선택**입니다. IDENTITY 는 PK 를 DB 의 AUTO_INCREMENT로 받으므로 Hibernate 가 `save()` 시점에 INSERT 를 **즉시 실행**해야 생성된 id 를 알 수 있습니다. 덕분에 UK 충돌이 트랜잭션 커밋 시점까지 미뤄지지 않고 `save()` 호출 시점에 `DataIntegrityViolationException`으로 바로 튀어나옵니다. 아래 `IdempotencyChecker` 의 try-catch 가 그 예외를 잡을 수 있는 건 이 즉시 INSERT 덕입니다. (만약 INSERT 가 flush까지 지연됐다면 충돌이 try 블록 바깥의 커밋 시점에 터졌을 것입니다.)
 
-### 2. `IdempotencyChecker` — 멱등성의 심장
+### 2. `IdempotencyChecker`: 멱등성의 심장
 
 전체 로직이 메서드 하나에 들어갑니다.
 
@@ -176,12 +176,12 @@ public class IdempotencyChecker {
 
 - **(1) fast path**: 대부분의 중복(이미 한참 전에 처리된 재발행)은 여기서 `false` 로 빠집니다. INSERT까지 안 가니 쌉니다.
 - **(2) 선점 INSERT**: 비즈니스 로직 *전에* 자리를 맡습니다. save-first 의 핵심.
-- **(3) UK 충돌 흡수**: `exists()` 와 `save()` 사이에 발생한 동시 중복은 여기서 막힙니다. 예외를 `false` 로 변환해 "이긴 쪽이 처리하니 나는 빠진다"로 처리합니다. (다만 이 catch-and-continue 가 정말 깨끗한지는 짚을 데가 있습니다 — 「한계」의 'UK 충돌을 잡고 같은 트랜잭션을 이어가도 되는가' 참고.)
+- **(3) UK 충돌 흡수**: `exists()` 와 `save()` 사이에 발생한 동시 중복은 여기서 막힙니다. 예외를 `false` 로 변환해 "이긴 쪽이 처리하니 나는 빠진다"로 처리합니다. (다만 이 catch-and-continue 가 정말 깨끗한지는 짚을 데가 있습니다. 「한계」의 'UK 충돌을 잡고 같은 트랜잭션을 이어가도 되는가' 참고.)
 - **(4) 비즈니스 로직**: 선점에 성공한 하나만 실행합니다.
 
 이 메서드에서 가장 중요한 부분은 주석에도, 코드에도 안 보이는 **트랜잭션 경계**입니다. `IdempotencyChecker` 는 자기 트랜잭션을 열지 않습니다. **호출자(Consumer)의 `@Transactional`에 그대로 참여**합니다. 그래서 `(2) 처리 이력 INSERT` 와 `(4) 비즈니스 로직` 이 **같은 트랜잭션**입니다. 이 때문에 다음 성질이 생깁니다.
 
-### 3. Consumer — 얇은 진입점
+### 3. Consumer: 얇은 진입점
 
 Consumer 는 메시지를 파싱하고 `eventId` 를 꺼내, `executeIfNew` 에 비즈니스 로직을 람다로 넘깁니다. 그게 전부입니다.
 
@@ -207,13 +207,13 @@ public void handlePaymentFailed(String message) {
 
 세 Consumer(`PaymentEventConsumer`, `OrderEventConsumer`, `NotificationConsumer`)의 7개 메서드가 전부 이 골격을 따릅니다. `consumerGroup` 상수만 다르고 구조는 동일합니다. 메시지 파싱은 `KafkaMessageParser` 로 공통화돼 있고 멱등성은 `IdempotencyChecker` 로 공통화돼 있어 Consumer 본문에는 "이 이벤트로 무엇을 하는가"만 남습니다.
 
-### 4. 실패하면 처리 이력도 함께 사라진다 — 재처리 안전성
+### 4. 실패하면 처리 이력도 함께 사라진다. 재처리 안전성
 
 다음은 save-first + 같은 트랜잭션이 주는 특징입니다. `action.run()` 이 예외를 던지면 어떻게 될까?
 
 처리 이력 INSERT(2)와 비즈니스 로직(4)이 **같은 트랜잭션**이므로 비즈니스 로직이 실패하면 **트랜잭션 전체가 롤백**됩니다. 방금 선점한 `processed_events` 행도 **함께 사라진다.** 즉 "처리했다고 기록은 됐는데 실제로는 실패한" 어정쩡한 상태가 원천적으로 안 생깁니다.
 
-이게 왜 중요한지 살펴보겠습니다. 비즈니스 로직 실패 → Spring Kafka 의 에러 핸들러가 **재시도**합니다(다음 절). 재시도 시 그 이벤트는 `processed_events` 에 이력이 없는 상태(롤백됐으니)라, 멱등성 체크를 정상 통과해 **다시 처리된다.** 만약 실패해도 이력이 남는 구조였다면, 재시도가 "이미 처리됨"으로 잘못 판단해 영영 건너뛰었을 것입니다.
+이게 왜 중요한지 살펴보겠습니다. 비즈니스 로직이 실패하면 Spring Kafka 의 에러 핸들러가 **재시도**합니다(다음 절). 재시도 시 그 이벤트는 `processed_events` 에 이력이 없는 상태(롤백됐으니)라, 멱등성 체크를 정상 통과해 **다시 처리된다.** 만약 실패해도 이력이 남는 구조였다면, 재시도가 "이미 처리됨"으로 잘못 판단해 영영 건너뛰었을 것입니다.
 
 정리하면 책임이 깔끔하게 나뉩니다.
 
@@ -225,7 +225,7 @@ public void handlePaymentFailed(String message) {
 
 "성공한 것만 기록에 남는다"는 불변식이, 멱등성과 재시도를 **모순 없이** 공존시킵니다.
 
-### 5. DLQ — 재시도해도 안 되는 메시지를 격리한다
+### 5. DLQ: 재시도해도 안 되는 메시지를 격리한다
 
 멱등성은 "같은 걸 두 번 처리하지 않기"를 보장하지, "처리에 실패한 걸 어떻게든 처리하기"를 보장하지 않습니다. 4번에서 본 재시도는 일시적 실패(DB 락 경합, 순간적 네트워크)에는 잘 듣지만 **구조적으로 못 처리하는 메시지**에는 무한히 실패를 반복합니다.
 
@@ -258,7 +258,7 @@ public CommonErrorHandler kafkaErrorHandler(KafkaTemplate<String, String> kafkaT
 동작을 따라가면 다음과 같습니다.
 
 1. Consumer 가 메시지 처리에 실패(예외)하면 `DefaultErrorHandler` 가 받습니다.
-2. `FixedSequenceBackOff` 가 정한 간격(1초 → 5초 → 30초)으로 **3회 재시도**합니다. 배열을 소진하면 `BackOffExecution.STOP` 을 반환해 재시도를 끝냅니다.
+2. `FixedSequenceBackOff` 가 정한 간격(1초, 5초, 30초)으로 **3회 재시도**합니다. 배열을 소진하면 `BackOffExecution.STOP` 을 반환해 재시도를 끝냅니다.
 3. 재시도가 소진되면 recoverer 가 원본 레코드를 **`{원본토픽}.dlq`로 발행**합니다. `TopicPartition(..., -1)` 의 `-1` 은 "파티션은 Kafka가 알아서 고르라"는 뜻입니다(DLQ 토픽은 파티션 1개라 사실상 0번).
 4. Slack으로 운영자에게 알립니다. Slack 발송 실패는 try-catch로 흡수합니다. 10편의 Outbox `FAILED` Slack 격리와 **같은 처리 철학**입니다(통지 실패가 DLQ 발행 자체를 막으면 안 됩니다).
 5. DLQ로 보낸 레코드는 "복구됨(recovered)"으로 간주되어 **오프셋이 커밋**됩니다. 그래서 poison message 가 파티션을 영구히 막지 않고 Consumer 는 다음 메시지로 넘어갑니다. (단, 여기엔 "DLQ 발행이 정말 성공했나"를 확정하지 않는 함정이 있습니다. 「한계」의 'DLQ 발행 성공을 확인하지 않는다' 참고.)
@@ -267,9 +267,9 @@ public CommonErrorHandler kafkaErrorHandler(KafkaTemplate<String, String> kafkaT
 
 ### 6. DLQ로 가도 추적 끈은 끊기지 않는다
 
-`DeadLetterPublishingRecoverer` 는 원본 레코드를 DLQ로 옮길 때 **헤더를 자동 복사**합니다. 그래서 10편에서 Outbox 가 발행 시 심어둔 `X-Trace-Id`/`X-User-Id` 헤더(ADR-0008, D-010)가 DLQ 메시지에도 살아남습니다. "HTTP 요청 → Outbox 저장 → 발행 → Consumer 처리 실패 → DLQ"까지 **단일 traceId로 묶인다.** 장애 대응에서 "이 DLQ 메시지가 원래 어느 요청에서 비롯됐나"를 로그로 역추적할 수 있다는 뜻입니다. `DlqIntegrationTest.dlqPreservesTraceHeaders` 가 정확히 이걸 검증합니다.
+`DeadLetterPublishingRecoverer` 는 원본 레코드를 DLQ로 옮길 때 **헤더를 자동 복사**합니다. 그래서 10편에서 Outbox 가 발행 시 심어둔 `X-Trace-Id`/`X-User-Id` 헤더(ADR-0008, D-010)가 DLQ 메시지에도 살아남습니다. "HTTP 요청, Outbox 저장, 발행, Consumer 처리 실패, DLQ"까지 **단일 traceId로 묶인다.** 장애 대응에서 "이 DLQ 메시지가 원래 어느 요청에서 비롯됐나"를 로그로 역추적할 수 있다는 뜻입니다. `DlqIntegrationTest.dlqPreservesTraceHeaders` 가 정확히 이걸 검증합니다.
 
-`MdcRecordInterceptor` 는 한 발 더 나갑니다. Consumer 진입 시 헤더의 traceId 를 MDC 에 넣고 **에러 핸들러(DLQ 발행 + Slack)가 다 끝난 뒤에야** MDC 를 정리합니다(`afterRecord`). Spring Kafka 호출 순서상 `failure()` → `CommonErrorHandler`(DLQ 발행) → `afterRecord` 이므로 DLQ 발행 로그까지 traceId 가 살아 있게 의도적으로 맞춘 것입니다.
+`MdcRecordInterceptor` 는 한 발 더 나갑니다. Consumer 진입 시 헤더의 traceId 를 MDC 에 넣고 **에러 핸들러(DLQ 발행 + Slack)가 다 끝난 뒤에야** MDC 를 정리합니다(`afterRecord`). Spring Kafka 호출 순서상 `failure()`, `CommonErrorHandler`(DLQ 발행), `afterRecord` 이므로 DLQ 발행 로그까지 traceId 가 살아 있게 의도적으로 맞춘 것입니다.
 
 ---
 
@@ -282,7 +282,7 @@ public CommonErrorHandler kafkaErrorHandler(KafkaTemplate<String, String> kafkaT
 
 ### UK 충돌을 잡고 같은 트랜잭션을 이어가도 되는가
 
-`IdempotencyChecker` 는 동시 중복 시 `save()` 에서 터지는 `DataIntegrityViolationException` 을 잡고 `false` 를 돌려준 뒤, **같은 트랜잭션을 그대로 커밋**시킵니다(비즈니스 로직은 안 돌렸으니 빈 커밋). 그런데 JPA/Hibernate 에서는 영속성 예외가 한 번 발생하면 그 세션, 트랜잭션이 rollback-only로 마킹될 수 있어, 예외를 잡았더라도 이후 커밋이 `UnexpectedRollbackException`으로 실패할 수 있습니다. 즉 "예외를 잡았으니 깨끗하게 빠져나간다"가 보장은 아닙니다. 다행히 커밋이 실패해도 복구할 수 있습니다. 커밋이 실패하면 그 레코드는 다시 재시도되고 그때는 이긴 쪽이 이미 커밋해 둔 이력이 있어 `exists()` fast path로 조용히 걸러집니다. 결국 결과는 같지만 "한 번에 조용히"가 아니라 "한 번 더 시끄럽게 돌고 나서" 같은 결과에 도달합니다. 더 견고한 길은 애초에 예외를 안 만드는 선점입니다 — MySQL `INSERT ... ON DUPLICATE KEY UPDATE`(또는 `INSERT IGNORE`)로 충돌을 예외 없이 흡수하면 세션 상태를 건드리지 않습니다. 어느 쪽이든, 이 동시 충돌 경로는 아래 「검증」 절에서 보듯 통합 테스트로 실제 동작을 확인하지 않았다는 점이 취약한 부분입니다.
+`IdempotencyChecker` 는 동시 중복 시 `save()` 에서 터지는 `DataIntegrityViolationException` 을 잡고 `false` 를 돌려준 뒤, **같은 트랜잭션을 그대로 커밋**시킵니다(비즈니스 로직은 안 돌렸으니 빈 커밋). 그런데 JPA/Hibernate 에서는 영속성 예외가 한 번 발생하면 그 세션, 트랜잭션이 rollback-only로 마킹될 수 있어, 예외를 잡았더라도 이후 커밋이 `UnexpectedRollbackException`으로 실패할 수 있습니다. 즉 "예외를 잡았으니 깨끗하게 빠져나간다"가 보장은 아닙니다. 다행히 커밋이 실패해도 복구할 수 있습니다. 커밋이 실패하면 그 레코드는 다시 재시도되고 그때는 이긴 쪽이 이미 커밋해 둔 이력이 있어 `exists()` fast path로 조용히 걸러집니다. 결국 결과는 같지만 "한 번에 조용히"가 아니라 "한 번 더 시끄럽게 돌고 나서" 같은 결과에 도달합니다. 더 견고한 길은 애초에 예외를 안 만드는 선점입니다. MySQL `INSERT ... ON DUPLICATE KEY UPDATE`(또는 `INSERT IGNORE`)로 충돌을 예외 없이 흡수하면 세션 상태를 건드리지 않습니다. 어느 쪽이든, 이 동시 충돌 경로는 아래 「검증」 절에서 보듯 통합 테스트로 실제 동작을 확인하지 않았다는 점이 취약한 부분입니다.
 
 ### 멱등성은 "전달"을 정확히 한 번으로 만들지 못한다. 부수효과의 경계
 
@@ -295,7 +295,7 @@ public void createNotification(Long userId, NotificationType type, String messag
 }
 ```
 
-그래서 좁지만 실재하는 틈이 있습니다. `slackPort.send` 가 나간 **뒤** 커밋이 실패하거나(예: 커밋 시점 DB 오류), 발송 직후 커밋 전에 프로세스가 죽으면, 트랜잭션은 미완으로 끝나 `processed_events` 행이 남지 않지만 **Slack 메시지는 이미 나갔다.** 이후 재시도가 그 이벤트를 다시 처리하면서 Slack 을 **또** 보냅니다 — 알림 중복입니다. 다만 이게 무한 루프나 정합성 붕괴로 번지지는 않는데 Slack 클라이언트가 자기 예외를 내부에서 흡수하기 때문입니다(L-004). 즉 `send` 자체가 실패해도 예외를 던지지 않아 롤백을 유발하지는 않고 중복은 "커밋이 다른 이유로 깨지는" 드문 경로에서만 생깁니다. 그럼에도 결론은 분명합니다. effectively-once 는 **DB 상태에 대해서만** 성립하고 Slack 같은 외부 전달까지 정확히 한 번으로 만들어주지는 않습니다. DB 안의 결제, 주문, 재고는 멱등성이 보장되지만 알림 발송은 그 경계 밖에 있습니다.
+그래서 좁지만 실재하는 틈이 있습니다. `slackPort.send` 가 나간 **뒤** 커밋이 실패하거나(예: 커밋 시점 DB 오류), 발송 직후 커밋 전에 프로세스가 죽으면, 트랜잭션은 미완으로 끝나 `processed_events` 행이 남지 않지만 **Slack 메시지는 이미 나갔다.** 이후 재시도가 그 이벤트를 다시 처리하면서 Slack 을 **또** 보냅니다. 알림 중복입니다. 다만 이게 무한 루프나 정합성 붕괴로 번지지는 않는데 Slack 클라이언트가 자기 예외를 내부에서 흡수하기 때문입니다(L-004). 즉 `send` 자체가 실패해도 예외를 던지지 않아 롤백을 유발하지는 않고 중복은 "커밋이 다른 이유로 깨지는" 드문 경로에서만 생깁니다. 그럼에도 결론은 분명합니다. effectively-once 는 **DB 상태에 대해서만** 성립하고 Slack 같은 외부 전달까지 정확히 한 번으로 만들어주지는 않습니다. DB 안의 결제, 주문, 재고는 멱등성이 보장되지만 알림 발송은 그 경계 밖에 있습니다.
 
 ### DLQ 재시도가 파티션을 블록한다
 
@@ -319,7 +319,7 @@ DLQ 메시지를 **원본 토픽으로 재발행**한다고 하겠습니다. 같
 
 여기엔 전제가 하나 붙습니다. 이 "안전함"은 **고친 내용이 실패했던 그룹에만 영향을 줄 때** 성립합니다. 만약 페이로드의 어떤 필드를 바로잡았고 그 수정이 **이미 성공한 그룹에도 반영돼야 한다면**, 같은 `event_id` 재발행은 그 그룹에서 (이력이 있으니) 그냥 건너뛰어집니다. 수정이 반영되지 않습니다. 이 경우엔 새 `event_id` 로 보정 이벤트를 따로 발행하거나 별도 보상 처리가 필요합니다. 복합 키 멱등성은 "같은 이벤트의 부분 재시도"를 안전하게 해주는 것이지, "내용이 바뀐 재처리"를 자동으로 전파해주지는 않습니다.
 
-### 관측성 공백 — DLQ 적재량이 메트릭으로 안 보인다
+### 관측성 공백: DLQ 적재량이 메트릭으로 안 보인다
 
 DLQ 도달은 Slack 단발 알림으로만 통지됩니다. "지금 DLQ에 몇 건이 쌓여 있나", "어느 토픽의 DLQ가 늘고 있나"를 보는 메트릭이 없습니다. 10편에서 본 Outbox `FAILED` 도 같은 Slack 채널을 씁니다(L-004). 운영자 입장에서 "발행이 안 된 건가(Outbox FAILED), 처리가 안 된 건가(DLQ)"를 알림 문구로만 구분해야 합니다. 둘은 대응이 정반대(전자는 브로커 복구 후 재발행, 후자는 데이터 수정 후 원본 토픽 재투입)라, Phase 4 전에 채널/메트릭 분리가 필요한 지점입니다.
 
@@ -327,9 +327,9 @@ DLQ 도달은 Slack 단발 알림으로만 통지됩니다. "지금 DLQ에 몇 �
 
 ## 통합 테스트로 검증된 것 (과 못한 것)
 
-`IdempotencyIntegrationTest` 와 `DlqIntegrationTest` 는 Testcontainers로 MySQL + Redis + Kafka 를 띄우고 실제 발행→소비를 돌립니다.
+`IdempotencyIntegrationTest` 와 `DlqIntegrationTest` 는 Testcontainers로 MySQL + Redis + Kafka 를 띄우고 실제 발행과 소비를 돌립니다.
 
-**1. 같은 이벤트 2회 소비 → 1회만 처리** (`duplicateEvent_sameConsumerGroup_processedOnce`)
+**1. 같은 이벤트를 2회 소비해도 1회만 처리** (`duplicateEvent_sameConsumerGroup_processedOnce`)
 
 ```java
 orderOutboxEventPublisher.publishOrderCreated(order);
@@ -346,7 +346,7 @@ await().during(3, SECONDS)...untilAsserted(() ->                // 3초간 지�
 
 핵심은 `during(3, SECONDS)`입니다. "변화가 없음"을 증명하려면 일정 시간 지켜봐야 합니다. 같은 payload(같은 `event_id`)를 다시 보내도 Payment/Notification 수가 그대로임을 단언합니다.
 
-**2. 같은 이벤트, 다른 그룹 → 각자 독립 처리** (`sameEvent_differentConsumerGroups_processedIndependently`)
+**2. 같은 이벤트라도 그룹이 다르면 각자 독립 처리** (`sameEvent_differentConsumerGroups_processedIndependently`)
 
 ```java
 List<ProcessedEvent> processedEvents = ...filter(pe -> pe.getEventId().equals(eventId)).toList();
@@ -355,9 +355,9 @@ assertThat(processedEvents).extracting(ProcessedEvent::getConsumerGroup)
     .containsExactlyInAnyOrder("payment-svc-order-created-group", "notification-svc-order-created-group");
 ```
 
-복합 키 설계를 직접 검증합니다 — 같은 `event_id` 가 서로 다른 두 그룹의 행으로 공존하고 둘 다 처리됐습니다.
+복합 키 설계를 직접 검증합니다. 같은 `event_id` 가 서로 다른 두 그룹의 행으로 공존하고 둘 다 처리됐습니다.
 
-**3. 처리 실패 → 재시도 소진 → DLQ + Slack** (`consumerFailure_routesToDlqAndSendsSlack`)
+**3. 처리 실패 후 재시도를 소진하면 DLQ + Slack** (`consumerFailure_routesToDlqAndSendsSlack`)
 
 ```java
 kafkaTemplate.send("order.created", "test-key", "invalid-json-message");   // 파싱 불가
@@ -375,9 +375,9 @@ assertThat(dlqTestListener.records).allSatisfy(r -> {
 
 **이 테스트들이 증명하지 못하는 것**도 분명히 해야 합니다.
 
-- **동시 중복(UK 충돌 경로)은 재현하지 않는다.** 1번 테스트는 첫 처리가 끝난 *뒤* 재전송하므로 `exists()` fast path로 걸립니다. `exists()` 와 `save()` 사이에 일어나 `DataIntegrityViolationException` 을 발생시키는 진짜 동시 경로 — 즉 save-first 가 act-first보다 나은 이유 그 자체 — 는 통합 테스트로 확인하지 않았습니다. 두 스레드가 같은 메시지를 동시에 소비하도록 강제하는 시나리오가 없습니다. 단일 consumer group 은 파티션을 한 인스턴스가 잡으므로 이 경합은 주로 리밸런스 창에서만 생기는데 그 창을 테스트로 재현하지 않았습니다.
-- **실패 후 재처리 안전성을 음성으로 검증하지 않는다.** "비즈니스 로직 실패 → 트랜잭션 롤백 → processed_events 행도 사라짐 → 재시도가 정상 통과" 흐름(§4)은 설계 논증이지, "실패시킨 뒤 행이 없는지 + 재시도가 처리하는지"를 단언하는 테스트는 없습니다. 멱등성 보장의 중요한 부분이 정작 테스트 공백입니다.
-- **30초 backoff 전체를 돌리지 않는다.** DLQ 테스트는 `FixedSequenceBackOff(100, 100, 100)`으로 간격을 줄여 빠르게 돌립니다. 프로덕션의 1s/5s/30s 타이밍 자체는 검증 대상이 아닙니다(합리적 — 테스트에서 36초를 기다릴 순 없습니다).
+- **동시 중복(UK 충돌 경로)은 재현하지 않는다.** 1번 테스트는 첫 처리가 끝난 *뒤* 재전송하므로 `exists()` fast path로 걸립니다. `exists()` 와 `save()` 사이에 일어나 `DataIntegrityViolationException` 을 발생시키는 진짜 동시 경로, 즉 save-first 가 act-first보다 나은 이유 그 자체, 는 통합 테스트로 확인하지 않았습니다. 두 스레드가 같은 메시지를 동시에 소비하도록 강제하는 시나리오가 없습니다. 단일 consumer group 은 파티션을 한 인스턴스가 잡으므로 이 경합은 주로 리밸런스 창에서만 생기는데 그 창을 테스트로 재현하지 않았습니다.
+- **실패 후 재처리 안전성을 음성으로 검증하지 않는다.** "비즈니스 로직이 실패하면 트랜잭션이 롤백되고, processed_events 행도 사라지므로 재시도가 정상 통과" 흐름(§4)은 설계 논증이지, "실패시킨 뒤 행이 없는지 + 재시도가 처리하는지"를 단언하는 테스트는 없습니다. 멱등성 보장의 중요한 부분이 정작 테스트 공백입니다.
+- **30초 backoff 전체를 돌리지 않는다.** DLQ 테스트는 `FixedSequenceBackOff(100, 100, 100)`으로 간격을 줄여 빠르게 돌립니다. 프로덕션의 1s/5s/30s 타이밍 자체는 검증 대상이 아닙니다(합리적, 테스트에서 36초를 기다릴 순 없습니다).
 - **중복 테스트의 기준값 포착이 타이밍에 취약하다.** `duplicateEvent_...` 는 Payment 생성만 `await` 로 기다린 뒤 `notificationCountBefore` 를 찍습니다. 그 순간 Notification Consumer 가 아직 첫 메시지를 처리 중이면, 중복과 무관하게 알림 수가 사후에 늘어 기준값이 어긋날 수 있습니다(간헐 실패 소지). 두 그룹의 `processed_events` 기록이 모두 남은 걸 확인한 뒤 기준값을 잡는 편이 견고합니다.
 
 테스트는 **"정상 재전송 중복 차단", "그룹별 독립 처리", "DLQ 라우팅 + 헤더 보존"**은 검증하지만 **동시성 경합과 실패-롤백-재처리**라는 설계의 핵심 논증은 코드 읽기에 맡겨두고 있습니다.
@@ -389,7 +389,7 @@ assertThat(dlqTestListener.records).allSatisfy(r -> {
 | 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |
 | --- | --- | --- |
 | at-least-once는 왜 중복을 허용하는가 | Kafka 공식 문서, *Message Delivery Semantics* | "두 번 받으면 두 번 한다" 절 |
-| effectively-once를 멱등 Consumer로 만드는 패턴 | Chris Richardson, *Microservices Patterns* — Idempotent Consumer | save-first 절 |
+| effectively-once를 멱등 Consumer로 만드는 패턴 | Chris Richardson, *Microservices Patterns*: Idempotent Consumer | save-first 절 |
 | save-first vs act-first 동시성 | `IdempotencyChecker` 코드 + `04-design-deep-dive.md` §9-7 | (2)(3) 선점 INSERT / UK 충돌 |
 | JPA IDENTITY 전략과 즉시 INSERT | Hibernate 문서, *Identifier generation strategies* | `ProcessedEvent` 엔티티 절 |
 | DLQ와 에러 핸들러 | Spring for Apache Kafka, *Dead-Letter Topics / DefaultErrorHandler* | DLQ 구현 절 |
@@ -430,11 +430,11 @@ flowchart LR
 **바뀌는 것**
 
 - **`processed_events`가 서비스별로 분산된다.** 단일 테이블이 N개가 됩니다. 각 서비스가 자기 consumer group 의 이력만 들고 있으면 되므로(다른 서비스 그룹 행을 가질 일이 없으니) 오히려 테이블이 가벼워지고 청소 정책도 서비스별로 정합니다.
-- **DLQ가 Saga 보상의 실패 지점이 된다.** Phase 4의 `payment.failed → order.cancelled → inventory restore` Choreography Saga(§8-5)에서, 한 단계가 DLQ로 빠지면 **보상 체인이 거기서 끊긴다.** §10-4의 "재고 정합성 검사 쿼리" 같은 감지 보완책이 모놀리스에선 미뤄도 됐지만 분산에선 사실상 필수가 됩니다 — 어느 서비스의 어느 Consumer 가 멈췄는지 한곳에서 알 수 없기 때문입니다.
+- **DLQ가 Saga 보상의 실패 지점이 된다.** Phase 4의 `payment.failed → order.cancelled → inventory restore` Choreography Saga(§8-5)에서, 한 단계가 DLQ로 빠지면 **보상 체인이 거기서 끊긴다.** §10-4의 "재고 정합성 검사 쿼리" 같은 감지 보완책이 모놀리스에선 미뤄도 됐지만 분산에선 사실상 필수가 됩니다. 어느 서비스의 어느 Consumer 가 멈췄는지 한곳에서 알 수 없기 때문입니다.
 - **Outbox `FAILED`와 DLQ의 채널 분리가 운영 어휘가 된다.** 서비스가 늘면 "발행이 막혔나(Producer/Outbox), 처리가 막혔나(Consumer/DLQ)"를 빠르게 가르는 게 장애 대응 속도를 좌우합니다. 지금처럼 둘을 같은 Slack 에 섞는 구조(L-004)는 그 전에 분리해야 합니다.
 
 **그래서 Phase 4 진입 전 짚을 점**
 
 - **`processed_events` 청소 정책**을 실제로 구현해야 합니다(§9-7은 문서만, 코드는 없음). 보존 기간 = 멱등성 창이라는 트레이드오프를 명시적으로 정합니다. 12편의 ShedLock 스케줄러 패턴을 재사용하면 outbox 청소(L-008)와 한 작업으로 묶을 수 있습니다.
 - **DLQ 적재량을 메트릭으로** 노출해야 합니다. Slack 단발 알림만으로는 "지금 얼마나 밀렸나"가 안 보입니다(L-004와 같은 관측성 공백).
-- **동시 중복·실패-재처리를 카오스 테스트로** 검증해야 합니다. 지금은 정상 재전송과 DLQ 라우팅만 검증하지만 분산에선 "리밸런스 중 동시 소비에서 UK가 정말 하나만 통과시키는가", "처리 실패 후 재시도가 깨끗이 재처리하는가"가 선택이 아니라 필수 검증이 됩니다. 10편 말미에서 "그 절반(Consumer 멱등성)이 11편"이라 했는데 그 검증의 절반은 여전히 카오스 테스트로 남아 있습니다.
+- **동시 중복과 실패-재처리를 카오스 테스트로** 검증해야 합니다. 지금은 정상 재전송과 DLQ 라우팅만 검증하지만 분산에선 "리밸런스 중 동시 소비에서 UK가 정말 하나만 통과시키는가", "처리 실패 후 재시도가 깨끗이 재처리하는가"가 선택이 아니라 필수 검증이 됩니다. 10편 말미에서 "그 절반(Consumer 멱등성)이 11편"이라 했는데 그 검증의 절반은 여전히 카오스 테스트로 남아 있습니다.

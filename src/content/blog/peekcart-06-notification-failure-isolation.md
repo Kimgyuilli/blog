@@ -75,7 +75,7 @@ public ResponseEntity<ApiResponse<Page<NotificationResponse>>> getNotifications(
 ) { ... }
 ```
 
-`GET /api/v1/notifications` — 내가 받은 알림 목록을 페이징 조회합니다. 알림 생성 API는 없습니다. 사용자가 직접 알림을 만들 일이 없기 때문입니다. 알림은 항상 다른 도메인의 이벤트에서 유래합니다.
+`GET /api/v1/notifications`: 내가 받은 알림 목록을 페이징 조회합니다. 알림 생성 API는 없습니다. 사용자가 직접 알림을 만들 일이 없기 때문입니다. 알림은 항상 다른 도메인의 이벤트에서 유래합니다.
 
 이 한정된 책임 범위가 Phase 4에서 Notification Service를 가장 쉽게 분리할 수 있는 이유가 됩니다. 다른 도메인의 상태를 읽거나 쓰지 않습니다.
 
@@ -306,7 +306,7 @@ public void handleOrderCreated(OrderCreatedEvent event) {
 
 이 구조는 단일 JVM 안에서는 완벽하게 동작합니다. 문제는 다음 두 가지입니다.
 
-**(1) 단일 인스턴스 가정.** 리스너가 같은 JVM 안에서만 호출되므로, 알림 처리는 주문을 만든 그 인스턴스에서만 실행됩니다. Phase 3에서 HPA로 Pod이 1→3으로 늘어나면 이 모델은 자연스럽게 분산되지 않습니다. 어떤 Pod에서 주문이 만들어졌느냐에 따라 알림 부하가 한 Pod에 쏠릴 수 있습니다.
+**(1) 단일 인스턴스 가정.** 리스너가 같은 JVM 안에서만 호출되므로, 알림 처리는 주문을 만든 그 인스턴스에서만 실행됩니다. Phase 3에서 HPA로 Pod이 1에서 3으로 늘어나면 이 모델은 자연스럽게 분산되지 않습니다. 어떤 Pod에서 주문이 만들어졌느냐에 따라 알림 부하가 한 Pod에 쏠릴 수 있습니다.
 
 **(2) Notification만의 문제가 아님.** Outbox 도입의 핵심 이유는 알림이 아니라 결제였습니다. "주문은 커밋됐는데 결제 이벤트가 유실되면 결제가 영원히 안 일어난다"는 문제 때문에 Outbox + Kafka가 필수가 됐습니다(자세한 흐름은 이후에 다룹니다). 일단 Kafka가 들어오면, 알림만 로컬 이벤트로 남길 이유가 없어집니다. 이벤트 통신 방식을 통일하는 게 운영적으로도 단순합니다.
 
@@ -363,7 +363,7 @@ Kafka는 기본적으로 at-least-once delivery입니다. 같은 메시지가 �
 
 이 보장이 알림 도메인에서 갖는 의미는 단순합니다. **사용자가 같은 주문에 대해 "주문이 생성되었습니다" 알림을 두 번 받지 않는다.** 운영자가 Slack 채널에 같은 메시지가 도배되는 것도 방지됩니다. 작아 보이지만 사용자 경험에 직결되는 보장입니다.
 
-### Phase 1 → Phase 2 변화 정리
+### Phase 1에서 Phase 2로 바뀐 점 정리
 
 | 측면         | Phase 1 (`NotificationEventListener`)                        | Phase 2 (`NotificationConsumer`)       |
 | ---------- | ------------------------------------------------------------ | -------------------------------------- |
@@ -371,7 +371,7 @@ Kafka는 기본적으로 at-least-once delivery입니다. 같은 메시지가 �
 | 트랜잭션 분리    | `@TransactionalEventListener(AFTER_COMMIT)` + `REQUIRES_NEW` | Consumer 메서드의 독립 트랜잭션 (애초에 다른 프로세스 가능) |
 | 멱등성        | 단일 처리이므로 불필요                                                 | `(event_id, consumer_group)` UK로 보장    |
 | 다중 인스턴스    | 인스턴스마다 같은 이벤트 처리 (중복 위험)                                     | Consumer Group이 자동 파티션 분배              |
-| Phase 4 분리 | 같은 JVM 가정이 깨짐 → 불가                                           | 그대로 별 프로세스로 이동 가능                      |
+| Phase 4 분리 | 같은 JVM 가정이 깨져 불가                                           | 그대로 별 프로세스로 이동 가능                      |
 
 ---
 
@@ -379,10 +379,10 @@ Kafka는 기본적으로 at-least-once delivery입니다. 같은 메시지가 �
 
 PHASE2.md의 E2E 통합 테스트가 검증하는 시나리오 중 알림과 직접 연결된 것은 다음과 같습니다.
 
-1. `order.created` E2E — Outbox 저장 → Kafka 발행 → Payment(PENDING) 생성 + `Notification(ORDER_CREATED)` 생성
-2. `payment.completed` E2E — 주문 상태 PAYMENT_COMPLETED 전이 + `Notification(PAYMENT_COMPLETED)` 생성
-3. `payment.failed` E2E — 주문 취소 + 재고 복구(100→98→100) + `Notification(PAYMENT_FAILED)` 생성
-4. `order.cancelled` E2E — NotificationConsumer만 소비, Payment 미생성 확인
+1. `order.created` E2E: Outbox 저장, Kafka 발행, Payment(PENDING) 생성 + `Notification(ORDER_CREATED)` 생성
+2. `payment.completed` E2E: 주문 상태 PAYMENT_COMPLETED 전이 + `Notification(PAYMENT_COMPLETED)` 생성
+3. `payment.failed` E2E: 주문 취소 + 재고 복구(100에서 98, 다시 100) + `Notification(PAYMENT_FAILED)` 생성
+4. `order.cancelled` E2E: NotificationConsumer만 소비, Payment 미생성 확인
 5. 동일 이벤트 중복 발행 시 Notification 수 변화 없음
 
 특히 (4)와 (5)를 살펴보겠습니다.
@@ -428,10 +428,10 @@ Notification 엔티티에 `is_read` 컬럼이 있지만 이를 갱신하는 API/
 
 | 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |
 | --- | --- | --- |
-| 도메인 이벤트는 무엇이고 왜 쓰는가? | Vaughn Vernon, *Implementing Domain-Driven Design* — Domain Events 장 | Notification이 Order/Payment에 직접 의존하지 않는 이유 |
+| 도메인 이벤트는 무엇이고 왜 쓰는가? | Vaughn Vernon, *Implementing Domain-Driven Design*, Domain Events 장 | Notification이 Order/Payment에 직접 의존하지 않는 이유 |
 | Spring의 `@TransactionalEventListener`는 어떻게 동작하는가? | Spring Framework 공식 문서, Transaction-bound Events | Phase 1 `NotificationEventListener`의 `AFTER_COMMIT + REQUIRES_NEW` 조합 |
 | Kafka Consumer Group은 어떻게 동작하는가? | Confluent, [Consumer Group Protocol](https://docs.confluent.io/platform/current/clients/consumer.html) | "왜 토픽마다 Group을 따로 두는가" 절 |
-| at-least-once delivery는 어떻게 안전하게 받아들이는가? | Martin Kleppmann, *Designing Data-Intensive Applications* — 메시지 처리 챕터 | `executeIfNew(eventId, group)` 멱등성 처리 |
+| at-least-once delivery는 어떻게 안전하게 받아들이는가? | Martin Kleppmann, *Designing Data-Intensive Applications*, 메시지 처리 챕터 | `executeIfNew(eventId, group)` 멱등성 처리 |
 | Hexagonal Architecture에서 Port의 위치 결정 기준은? | Alistair Cockburn, [Hexagonal Architecture](https://alistair.cockburn.us/hexagonal-architecture/) | `SlackPort`가 `global/port/`로 이동한 이유 |
 | Slack Incoming Webhook의 스펙과 한계는? | Slack API 공식, [Incoming Webhooks](https://api.slack.com/messaging/webhooks) | `SlackNotificationClient` 구현 디테일 |
 

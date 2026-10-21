@@ -513,7 +513,7 @@ public void handlePaymentFailed(String message) {
 
 Payment 도메인이 결제 실패 이벤트를 Kafka로 발행하면, Order의 Consumer가 이를 소비해 주문을 취소하고 재고를 복구합니다. `idempotencyChecker.executeIfNew()`로 같은 이벤트가 중복 소비되더라도 한 번만 처리합니다.
 
-여기서 도메인 간 통신 방식이 보입니다. Payment → Order 사이에 직접 메서드 호출이 없습니다. Kafka 이벤트로 연결되어 있습니다. Payment 도메인은 "결제가 실패했다"는 사실만 발행하고 Order 도메인이 "그러면 주문을 취소해야 한다"는 판단을 독립적으로 합니다.
+여기서 도메인 간 통신 방식이 보입니다. Payment와 Order 사이에 직접 메서드 호출이 없습니다. Kafka 이벤트로 연결되어 있습니다. Payment 도메인은 "결제가 실패했다"는 사실만 발행하고 Order 도메인이 "그러면 주문을 취소해야 한다"는 판단을 독립적으로 합니다.
 
 ### 경로 3: 결제 타임아웃 (Scheduler)
 
@@ -562,7 +562,7 @@ public void cancelExpiredOrder(Long orderId) {
 }
 ```
 
-**실패 격리**: `cancelSafely()`가 각 건의 예외를 catch합니다. `OrderException`(상태 경합 — 이미 취소됐거나 결제가 완료된 경우)은 warn 로그로 건너뛰고 예상 못한 예외는 error 로그를 남깁니다. 이 방식이 없으면 한 건의 실패가 루프 전체를 멈출 수 있습니다.
+**실패 격리**: `cancelSafely()`가 각 건의 예외를 catch합니다. `OrderException`(상태 경합, 이미 취소됐거나 결제가 완료된 경우)은 warn 로그로 건너뛰고 예상 못한 예외는 error 로그를 남깁니다. 이 방식이 없으면 한 건의 실패가 루프 전체를 멈출 수 있습니다.
 
 **ShedLock**: `@SchedulerLock`으로 다중 Pod에서 스케줄러가 동시에 실행되는 것을 방지합니다. 12편에서 상세히 다룰 예정입니다.
 
@@ -582,7 +582,7 @@ public void cancelExpiredOrder(Long orderId) {
 
 Order 도메인은 두 개의 Port를 통해 다른 도메인과 소통합니다.
 
-### ProductPort: Order → Product
+### ProductPort: Order에서 Product로
 
 ```java
 // Order 도메인의 application/port에 정의
@@ -593,7 +593,7 @@ public interface ProductPort {
 }
 ```
 
-### OrderPort: Payment → Order
+### OrderPort: Payment에서 Order로
 
 ```java
 // Payment 도메인의 application/port에 정의 (구현은 Order infrastructure에)
@@ -698,7 +698,7 @@ UUID의 앞 8자리를 사용하므로 충돌 확률은 매우 낮지만 0은 �
 | --- | --- | --- |
 | 애그리거트는 어떤 기준으로 나누는가? | Vaughn Vernon, [Effective Aggregate Design](https://www.dddcommunity.org/library/vernon_2011/) | Order-OrderItem, Cart-CartItem의 경계를 왜 이렇게 잡았는가 |
 | 상태 머신을 도메인에서 어떻게 모델링하는가? | Martin Fowler, [State Machine](https://www.martinfowler.com/eaaDev/state.html) | OrderStatus enum의 상태 전이 설계를 볼 때 |
-| 이벤트 기반 보상 트랜잭션은 어떻게 동작하는가? | AWS, [Saga Pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-data-persistence/saga-pattern.html), Chris Richardson, [Sagas](https://microservices.io/patterns/data/saga.html) | 결제 실패 → 재고 복구 흐름을 Saga 관점에서 볼 때 |
+| 이벤트 기반 보상 트랜잭션은 어떻게 동작하는가? | AWS, [Saga Pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-data-persistence/saga-pattern.html), Chris Richardson, [Sagas](https://microservices.io/patterns/data/saga.html) | 결제 실패에서 재고 복구로 이어지는 흐름을 Saga 관점에서 볼 때 |
 | Outbox 패턴은 왜 필요한가? | Chris Richardson, [Transactional Outbox](https://microservices.io/patterns/data/transactional-outbox.html) | 주문 생성과 이벤트 저장이 같은 트랜잭션인 이유 |
 | 가격 스냅샷은 언제 필요한가? | Martin Fowler, [Temporal Patterns](https://www.martinfowler.com/eaaDev/timeNarrative.html) | order_items.unit_price가 왜 products.price를 복사하는가 |
 | 스케줄러 중복 실행은 어떻게 막는가? | ShedLock, [GitHub README](https://github.com/lukas-krecan/ShedLock) | 타임아웃 스케줄러가 다중 Pod에서 안전하게 동작하는 이유 |
@@ -748,5 +748,5 @@ flowchart TD
 나머지 변화들
 
 - **장바구니 소유권**: `carts`와 `cart_items`는 Order DB에 남습니다. 장바구니에서 상품 정보(이름, 가격)를 보여주려면 Product Service API를 호출하거나 CQRS 로컬 캐시를 유지해야 합니다.
-- **`OrderPort` → HTTP API**: Payment Service가 주문 상태를 `PAYMENT_REQUESTED`로 전이할 때, `OrderPortAdapter`의 메서드 호출이 HTTP API 호출로 바뀝니다.
+- **`OrderPort`를 HTTP API로**: Payment Service가 주문 상태를 `PAYMENT_REQUESTED`로 전이할 때, `OrderPortAdapter`의 메서드 호출이 HTTP API 호출로 바뀝니다.
 - **이벤트 계약 강화**: `order.created`, `order.cancelled`의 payload가 서비스 간 계약이 됩니다. 현재 `OrderOutboxEventPublisher`가 정의하는 payload 구조가 그대로 API 계약의 출발점입니다.

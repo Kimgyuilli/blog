@@ -108,7 +108,7 @@ const steps = [
   const NOTES = [
     '다섯 서비스가 같은 <strong>peekcart</strong> 스키마와 계정을 씁니다. Flyway는 Order만 돌리고 나머지는 꺼 두었습니다. 도메인을 가로지르는 FK 여섯 개(빨간 호)가 테이블을 묶고 있습니다.',
     '<strong>PR1</strong>: 교차 FK 여섯 개만 걷어 냈습니다. ID 컬럼은 남아 값으로만 가리키고(점선), 같은 도메인 안의 FK(회색 호)도 그대로입니다. 스키마는 아직 하나입니다.',
-    '<strong>PR2</strong>: 테이블이 주인 스키마로 옮겨 갑니다. 함께 쓰던 processed_events·outbox_events는 필요한 서비스마다 따로 생겼습니다. 계정과 Flyway 이력도 서비스마다 하나씩입니다.',
+    '<strong>PR2</strong>: 테이블이 주인 스키마로 옮겨 갑니다. 함께 쓰던 processed_events, outbox_events는 필요한 서비스마다 따로 생겼습니다. 계정과 Flyway 이력도 서비스마다 하나씩입니다.',
     '<strong>PR3</strong>: 기록 테이블마다 정리 잡(↻)이 붙었습니다. processed_events 네 곳, outbox_events 세 곳입니다. 기록 테이블이 없는 User에는 잡이 없습니다.',
   ];
 
@@ -204,7 +204,7 @@ const steps = [
       const boxIn = clamp01((state.fly - 0.18) / 0.3); // 서비스 상자는 노드가 자리 잡을 즈음 나타남
       const nodeT = clamp01(state.fly / 0.3);
       sharedBox.place({ ...sb, o: 1 - listGone }, { x: sb.x + 14, y: sb.y + 24 });
-      sharedBox.caption.textContent = 'peekcart · 공유 계정 1';
+      sharedBox.caption.textContent = 'peekcart, 공유 계정 1';
       IDS.forEach((id) => {
         const b = l.boxes[id];
         const s = 0.9 + 0.1 * boxIn;

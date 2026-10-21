@@ -22,14 +22,14 @@ const steps = [
 
 <InteractiveDemoFrame
   demoId="refund-fence-rollback"
-  ariaLabel={toggle ? 'PG 호출 위치를 소비 트랜잭션 안과 진입점·실행자 분리 사이에서 바꾸며 같은 다섯 단계를 비교하는 타임라인' : '소비 트랜잭션 안에서 Toss 취소를 호출할 때 롤백으로 fence 행이 사라지고 다음 요청이 Toss를 다시 부르는 타임라인'}
+  ariaLabel={toggle ? 'PG 호출 위치를 소비 트랜잭션 안과 진입점과 실행자 분리 사이에서 바꾸며 같은 다섯 단계를 비교하는 타임라인' : '소비 트랜잭션 안에서 Toss 취소를 호출할 때 롤백으로 fence 행이 사라지고 다음 요청이 Toss를 다시 부르는 타임라인'}
   title={toggle ? 'PG 호출 위치를 옮기면' : '트랜잭션 안에서 Toss를 부르면'}
   description={toggle ? '같은 다섯 단계를 두 구조로 비교합니다. 커밋 실패 뒤에 payment_refunds 행이 남는지, Toss 취소 횟수가 몇이 되는지 보세요.' : '요청 A의 소비 트랜잭션이 fence 행을 넣고 Toss를 부른 뒤 커밋에 실패합니다. 행과 Toss 취소 횟수를 따라가 보세요.'}
 >
   {toggle && (
     <DemoControls ariaLabel="PG 호출 위치">
       <button type="button" data-rf-mode="intx" aria-pressed="false">트랜잭션 안에서 호출</button>
-      <button type="button" data-rf-mode="split" aria-pressed="true">진입점 · 실행자 분리</button>
+      <button type="button" data-rf-mode="split" aria-pressed="true">진입점, 실행자 분리</button>
     </DemoControls>
   )}
   <div class="scene-stage" data-stage>
@@ -83,27 +83,27 @@ const steps = [
   const base: State = { split: 0, row: 1, rowC: 0, pe: 1, peC: 0, fail: 0, fail2: 0 };
   const SPECS: Record<Mode, Spec[]> = {
     intx: [
-      { state: { ...base }, caption: '소비 트랜잭션 · 요청 A', rowText: 'INSERT · 미커밋', peText: '기록 · 미커밋', dispText: '', count: 0, tossSub: '', danger: false, detail: '미커밋',
+      { state: { ...base }, caption: '소비 트랜잭션, 요청 A', rowText: 'INSERT, 미커밋', peText: '기록, 미커밋', dispText: '', count: 0, tossSub: '', danger: false, detail: '미커밋',
         note: '요청 A를 소비하는 트랜잭션이 <code>payment_refunds</code>에 fence 행을 넣었습니다. 아직 커밋 전입니다.' },
-      { state: { ...base }, caption: '소비 트랜잭션 · 요청 A', rowText: 'INSERT · 미커밋', peText: '기록 · 미커밋', dispText: 'Toss 호출', count: 1, tossSub: '', danger: false, detail: '취소 1회',
+      { state: { ...base }, caption: '소비 트랜잭션, 요청 A', rowText: 'INSERT, 미커밋', peText: '기록, 미커밋', dispText: 'Toss 호출', count: 1, tossSub: '', danger: false, detail: '취소 1회',
         note: '같은 트랜잭션 안에서 Toss 취소를 호출했고 성공했습니다. Toss 쪽 취소는 <strong>1회</strong>입니다.' },
-      { state: { ...base, fail: 1 }, caption: '소비 트랜잭션 · 요청 A', rowText: 'INSERT · 미커밋', peText: '기록 · 미커밋', dispText: '✕ 커밋 실패', count: 1, tossSub: '', danger: false, detail: '결과 저장 중',
+      { state: { ...base, fail: 1 }, caption: '소비 트랜잭션, 요청 A', rowText: 'INSERT, 미커밋', peText: '기록, 미커밋', dispText: '커밋 실패', count: 1, tossSub: '', danger: false, detail: '결과 저장 중',
         note: '결과를 저장하고 커밋하려는 순간 실패합니다.' },
-      { state: { ...base, row: 0, pe: 0, fail: 1 }, caption: '소비 트랜잭션 · 롤백', rowText: '행 없음', peText: '기록 없음', dispText: '✕ 롤백', count: 1, tossSub: 'DB 롤백과 무관', danger: false, detail: 'fence 사라짐',
+      { state: { ...base, row: 0, pe: 0, fail: 1 }, caption: '소비 트랜잭션, 롤백', rowText: '행 없음', peText: '기록 없음', dispText: '롤백', count: 1, tossSub: 'DB 롤백과 무관', danger: false, detail: 'fence 사라짐',
         note: '트랜잭션이 롤백되며 fence 행과 <code>processed_events</code> 기록이 <strong>함께 사라집니다</strong>. Toss의 취소는 DB 롤백으로 되돌아오지 않습니다.' },
-      { state: { ...base }, caption: '소비 트랜잭션 · 요청 B', rowText: 'INSERT 성공 · 미커밋', peText: '기록 · 미커밋', dispText: 'Toss 호출', count: 2, tossSub: '같은 주문 두 번', danger: true, detail: '취소 2회',
+      { state: { ...base }, caption: '소비 트랜잭션, 요청 B', rowText: 'INSERT 성공, 미커밋', peText: '기록, 미커밋', dispText: 'Toss 호출', count: 2, tossSub: '같은 주문 두 번', danger: true, detail: '취소 2회',
         note: '요청 B가 도착합니다. fence 행이 없으니 삽입이 성공하고 Toss를 다시 부릅니다. 취소는 <strong>2회</strong>가 됩니다.' },
     ],
     split: [
-      { state: { ...base, split: 1, rowC: 1, peC: 1 }, caption: '진입점 · 요청 A', rowText: 'REQUESTED · 커밋됨', peText: '기록 · 커밋됨', dispText: '', count: 0, tossSub: '', danger: false, detail: '행 커밋',
+      { state: { ...base, split: 1, rowC: 1, peC: 1 }, caption: '진입점, 요청 A', rowText: 'REQUESTED, 커밋됨', peText: '기록, 커밋됨', dispText: '', count: 0, tossSub: '', danger: false, detail: '행 커밋',
         note: '진입점이 <code>REQUESTED</code> 행과 <code>processed_events</code>를 넣고 <strong>커밋</strong>한 뒤 끝납니다. Toss는 부르지 않습니다.' },
-      { state: { ...base, split: 1, rowC: 1, peC: 1 }, caption: '진입점 · 요청 A', rowText: 'CLAIMED · 커밋됨', peText: '기록 · 커밋됨', dispText: 'CAS 1행 → 호출', count: 1, tossSub: '', danger: false, detail: '취소 1회',
+      { state: { ...base, split: 1, rowC: 1, peC: 1 }, caption: '진입점, 요청 A', rowText: 'CLAIMED, 커밋됨', peText: '기록, 커밋됨', dispText: 'CAS 1행 후 호출', count: 1, tossSub: '', danger: false, detail: '취소 1회',
         note: 'dispatcher가 <code>REQUESTED → CLAIMED</code> 조건부 UPDATE로 1행을 바꾸고 커밋한 뒤, 트랜잭션 밖에서 Toss 취소를 호출합니다.' },
-      { state: { ...base, split: 1, rowC: 1, peC: 1, fail2: 1 }, caption: '진입점 · 요청 A', rowText: 'CLAIMED · 커밋됨', peText: '기록 · 커밋됨', dispText: '✕ 커밋 실패', count: 1, tossSub: '', danger: false, detail: '결과 저장 중',
+      { state: { ...base, split: 1, rowC: 1, peC: 1, fail2: 1 }, caption: '진입점, 요청 A', rowText: 'CLAIMED, 커밋됨', peText: '기록, 커밋됨', dispText: '커밋 실패', count: 1, tossSub: '', danger: false, detail: '결과 저장 중',
         note: 'dispatcher가 결과를 저장하고 커밋하려는 순간 실패합니다.' },
-      { state: { ...base, split: 1, rowC: 1, peC: 1, fail2: 1 }, caption: '진입점 · 요청 A', rowText: 'CLAIMED · 그대로', peText: '기록 · 그대로', dispText: '✕ 결과만 롤백', count: 1, tossSub: 'DB 롤백과 무관', danger: false, detail: '행 남음',
+      { state: { ...base, split: 1, rowC: 1, peC: 1, fail2: 1 }, caption: '진입점, 요청 A', rowText: 'CLAIMED, 그대로', peText: '기록, 그대로', dispText: '결과만 롤백', count: 1, tossSub: 'DB 롤백과 무관', danger: false, detail: '행 남음',
         note: '롤백되는 것은 dispatcher의 결과 기록뿐입니다. 진입점이 커밋한 행은 <code>CLAIMED</code>로 남습니다.' },
-      { state: { ...base, split: 1, rowC: 1, peC: 1 }, caption: '진입점 · 요청 B', rowText: 'CLAIMED · 새 INSERT 0행', peText: '기록 · 커밋됨', dispText: '', count: 1, tossSub: '1회 그대로', danger: false, detail: '0행 no-op',
+      { state: { ...base, split: 1, rowC: 1, peC: 1 }, caption: '진입점, 요청 B', rowText: 'CLAIMED, 새 INSERT 0행', peText: '기록, 커밋됨', dispText: '', count: 1, tossSub: '1회 그대로', danger: false, detail: '0행 no-op',
         note: '요청 B의 삽입은 유니크 제약에 걸려 <strong>0행 no-op</strong>으로 끝나고, Toss 취소는 1회에 머뭅니다. 오래된 <code>CLAIMED</code>는 reconciliation이 Toss 조회로 확정합니다(장면에는 그리지 않았습니다).' },
     ],
   };
@@ -130,9 +130,9 @@ const steps = [
     const call = svg('path', { class: 'rf-call' }, root);
     const dispLabel = svg('text', { class: 'scene-label is-sans rf-disp', 'text-anchor': 'middle' }, root);
 
-    const row = createChip(root, { label: 'payment_refunds · 주문 7', hue: violet, width: LAYOUTS.wide.chipW });
+    const row = createChip(root, { label: 'payment_refunds, 주문 7', hue: violet, width: LAYOUTS.wide.chipW });
     const pe = createChip(root, { label: 'processed_events', hue: violet, width: LAYOUTS.wide.chipW });
-    const rowNarrow = createChip(root, { label: 'payment_refunds · 주문 7', hue: violet, width: LAYOUTS.narrow.chipW });
+    const rowNarrow = createChip(root, { label: 'payment_refunds, 주문 7', hue: violet, width: LAYOUTS.narrow.chipW });
     const peNarrow = createChip(root, { label: 'processed_events', hue: violet, width: LAYOUTS.narrow.chipW });
     const rowText = svg('text', { class: 'scene-label is-sans rf-status', 'text-anchor': 'middle' }, root);
     const peText = svg('text', { class: 'scene-label is-sans rf-status', 'text-anchor': 'middle' }, root);
@@ -142,7 +142,7 @@ const steps = [
     const tossBody = svg('g', { class: 'scene-node-body' }, toss);
     const tossCard = svg('rect', { class: 'scene-node-card', rx: 12 }, tossBody);
     const tossName = svg('text', { class: 'scene-caption', 'text-anchor': 'middle' }, tossBody);
-    tossName.textContent = 'Toss · 결제 7';
+    tossName.textContent = 'Toss, 결제 7';
     const tossCount = svg('text', { class: 'rf-count', 'text-anchor': 'middle' }, tossBody);
     const tossUnit = svg('text', { class: 'scene-label is-sans rf-unit', 'text-anchor': 'middle' }, tossBody);
     tossUnit.textContent = '취소 횟수';
@@ -193,7 +193,7 @@ const steps = [
       bumpText(rowText, sp.rowText);
       bumpText(peText, sp.peText);
       dispLabel.textContent = sp.dispText;
-      dispLabel.classList.toggle('is-danger', sp.dispText.startsWith('✕'));
+      dispLabel.classList.toggle('is-danger', sp.state.fail + sp.state.fail2 > 0);
       tossSub.textContent = sp.tossSub;
       if (withCount) setCount(sp.count, sp.danger);
       say(sp.note);

@@ -10,7 +10,7 @@ import '@/styles/scene.css';
     <button type="button" class="scene-chip is-plain" data-rc-entry="2">Payment 로컬 감지</button>
   </div>
   <div class="scene-chips" role="group" aria-label="실행">
-    <button type="button" class="scene-chip is-plain" data-rc-dispatch>▶ dispatcher 한 주기</button>
+    <button type="button" class="scene-chip is-plain" data-rc-dispatch>dispatcher 한 주기</button>
     <button type="button" class="scene-chip is-plain" data-rc-reset>처음부터</button>
   </div>
   <div class="scene-stage" data-stage>
@@ -140,7 +140,7 @@ import '@/styles/scene.css';
       rowStatus.classList.toggle('is-temp', next === 'CLAIMED');
     };
     const updateTally = () => {
-      tally.textContent = `INSERT 시도 ${tries} · 1행 ${status === 'none' ? 0 : 1} · 0행 no-op ${noops} · Toss 호출 ${calls}`;
+      tally.textContent = `INSERT 시도 ${tries}, 1행 ${status === 'none' ? 0 : 1}, 0행 no-op ${noops}, Toss 호출 ${calls}`;
     };
     const reset = () => {
       scene.begin();

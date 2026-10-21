@@ -23,7 +23,7 @@ Phase 1의 주문은 단일 스레드를 가정했습니다. 재고 100개짜리
 | 낙관적 락(Optimistic Lock) | 충돌이 드물다고 가정하고, 커밋 시점에 `@Version` 비교로 충돌을 사후 감지하는 방식                 |
 | `@Version`             | JPA가 UPDATE 시 `WHERE version = ?`를 붙여 stale 갱신을 막는 낙관적 락 컬럼         |
 | `leaseTime`            | 분산 락의 자동 만료 시간. 이 시간이 지나면 락이 풀려 다른 스레드가 획득할 수 있다                    |
-| 락 범위 ⊃ 트랜잭션 범위         | 락 획득 → 트랜잭션 시작 → 커밋 → 락 해제 순서. 커밋 전에 락을 풀면 안 된다는 불변식                |
+| 락 범위 ⊃ 트랜잭션 범위         | 락 획득, 트랜잭션 시작, 커밋, 락 해제 순서. 커밋 전에 락을 풀면 안 된다는 불변식                |
   
 이번 학습에서는 다음 질문을 확인하려고 합니다.  
   
@@ -69,10 +69,10 @@ PeekCart 는 셋 중 하나를 고르는 대신, **분산 락을 1차 방어선�
   
 |             | 분산 락 (Redis)              | 낙관적 락 (`@Version`)                        |
 | ----------- | ------------------------- | ----------------------------------------- |
-| 일하는 시점      | 정상 상황 - 동시 요청을 직렬화        | Redis 장애·락 만료 - 직렬화가 풀린 순간                |
+| 일하는 시점      | 정상 상황 - 동시 요청을 직렬화        | Redis 장애와 락 만료 - 직렬화가 풀린 순간                |
 | 막는 방식       | 임계 구역 진입 자체를 차단 (사전 예방)   | 커밋 시점에 stale 갱신을 거부 (사후 감지)               |
-| 실패 시 사용자 응답 | 락 획득 실패 → `PRD-004` (409) | 충돌 감지 → 낙관적 락 예외 → 차감 실패 |
-| 비용          | Redis 락 획득·해제 요청               | UPDATE의 `WHERE version = ?` 조건과 버전 증가          |
+| 실패 시 사용자 응답 | 락 획득 실패 시 `PRD-004` (409) | 충돌 감지 후 낙관적 락 예외로 차감 실패 |
+| 비용          | Redis 락 획득과 해제 요청               | UPDATE의 `WHERE version = ?` 조건과 버전 증가          |
   
 두 겹을 쌓는 추가 비용은 비교적 작습니다. 낙관적 락은 `Inventory` 엔티티에 `@Version int version` 필드를 두면 JPA 가 UPDATE 에 자동으로 `WHERE version = ?` 조건을 붙이고 버전을 증가시킵니다. 정상 상황에서 충돌이 없으면 재시도 비용도 발생하지 않습니다. Redis 에 장애가 난 비상 상황에서는 이 조건이 stale 갱신을 거부해 오버셀링을 막습니다. "거의 안 쓰이지만 없으면 치명적인" 안전벨트입니다.  
   
@@ -97,7 +97,7 @@ public class Inventory {
   
 ---  
   
-## 락 범위 ⊃ 트랜잭션 범위 — Facade와 Service를 쪼갠 이유  
+## 락 범위 ⊃ 트랜잭션 범위: Facade와 Service를 쪼갠 이유  
   
 분산 락은 반드시 트랜잭션 커밋 **이후에** 풀어야 합니다.  
   
@@ -243,7 +243,7 @@ Facade 가 의도했던 "커밋 후 해제"가, 바깥 트랜잭션 때문에 **
   
 `InventoryConcurrencyTest` 는 Testcontainers로 MySQL + Redis + Kafka 를 띄우고 두 가지를 검증합니다.  
   
-**1. 낙관적 락 단독 동작** — 분산 락을 거치지 않고 `EntityManager` 로 10스레드가 같은 재고를 동시에 깎습니다. `CountDownLatch` 로 10개 스레드를 동시에 시작하도록 맞춘 뒤 동시에 커밋시킵니다.  
+**1. 낙관적 락 단독 동작**: 분산 락을 거치지 않고 `EntityManager` 로 10스레드가 같은 재고를 동시에 깎습니다. `CountDownLatch` 로 10개 스레드를 동시에 시작하도록 맞춘 뒤 동시에 커밋시킵니다.  
   
 ```java  
 assertThat(successCount.get() + conflictCount.get()).isEqualTo(threadCount);  // 성공+충돌=전체  
@@ -251,9 +251,9 @@ assertThat(conflictCount.get()).isGreaterThanOrEqualTo(1);                    //
 assertThat(result.getStock()).isEqualTo(100 - successCount.get());           // lost update 없음  
 ```  
   
-여기서 핵심은 "충돌이 **나야** 한다"는 검증 조건입니다. 충돌이 0건이면 낙관적 락이 일을 안 했거나 동시성이 재현되지 않은 것입니다. 그리고 최종 재고가 정확히 `100 - 성공 횟수` 라는 건, 실패한 차감이 재고를 건드리지 않았다는 뜻 — lost update 가 없다는 증거입니다.  
+여기서 핵심은 "충돌이 **나야** 한다"는 검증 조건입니다. 충돌이 0건이면 낙관적 락이 일을 안 했거나 동시성이 재현되지 않은 것입니다. 그리고 최종 재고가 정확히 `100 - 성공 횟수` 라는 건, 실패한 차감이 재고를 건드리지 않았다는 뜻, lost update 가 없다는 증거입니다.  
   
-**2. 분산 락으로 오버셀링 0건** — 50스레드가 `InventoryLockFacade.decreaseStock(productId, 1)` 을 동시에 호출합니다.  
+**2. 분산 락으로 오버셀링 0건**: 50스레드가 `InventoryLockFacade.decreaseStock(productId, 1)` 을 동시에 호출합니다.  
   
 ```java
 assertThat(successCount.get()).isEqualTo(threadCount);   // 50건 전부 성공
@@ -280,13 +280,13 @@ assertThat(result.getStock()).isEqualTo(100 - 50);       // 정확히 50 남음
 | `@Transactional` 전파(`REQUIRED` vs `REQUIRES_NEW`) | Spring 공식 문서, *Transaction Propagation* | 주문 경로 불변식 위반 절 |  
 | 낙관적 락 충돌이 애플리케이션에 던지는 예외 계층 | Spring Data JPA, `ObjectOptimisticLockingFailureException` / Hibernate `StaleObjectStateException` | Redis 장애 fallback 테스트 보강 |  
 | 데드락과 락 정렬(global ordering) | *Operating Systems* - Coffman 조건(hold-and-wait) | 다중 락 동시 보유 대안 |  
-| fail-open vs fail-closed 가용성 트레이드오프 | Release It! (Nygard) — Stability Patterns | Redis 장애 fallback 결정 |  
+| fail-open vs fail-closed 가용성 트레이드오프 | Release It! (Nygard), Stability Patterns | Redis 장애 fallback 결정 |  
   
 ---  
   
 ## Phase 4 MSA에서는 어떻게 바뀌는가  
   
-지금은 Order 와 Inventory 가 같은 프로세스, 같은 DB, 같은 트랜잭션 안에 있습니다. 그래서 `@Version` 낙관적 락이 "최후 방어선"으로 성립합니다 — 차감이 한 트랜잭션 안에서 커밋되기 때문입니다. Phase 4에서 Inventory 가 별도 서비스, 별도 DB로 떨어지면 이 구조가 통째로 바뀝니다.  
+지금은 Order 와 Inventory 가 같은 프로세스, 같은 DB, 같은 트랜잭션 안에 있습니다. 그래서 `@Version` 낙관적 락이 "최후 방어선"으로 성립합니다. 차감이 한 트랜잭션 안에서 커밋되기 때문입니다. Phase 4에서 Inventory 가 별도 서비스, 별도 DB로 떨어지면 이 구조가 통째로 바뀝니다.  
   
 ```mermaid
 flowchart LR
@@ -310,12 +310,12 @@ flowchart LR
   
 **그대로 가는 것**  
   
-- **`@Version` 낙관적 락**. Inventory DB 안의 동시성 제어라서 서비스가 쪼개져도 그대로 유지됩니다. 오히려 더 중요해집니다 — 분산 트랜잭션이 사라지면서 "한 DB 안의 원자성"이 유일하게 믿을 수 있는 보장이 되기 때문입니다.  
+- **`@Version` 낙관적 락**. Inventory DB 안의 동시성 제어라서 서비스가 쪼개져도 그대로 유지됩니다. 오히려 더 중요해집니다. 분산 트랜잭션이 사라지면서 "한 DB 안의 원자성"이 유일하게 믿을 수 있는 보장이 되기 때문입니다.  
 - **분산 락 키(`inventory-lock:{productId}`)와 Redisson 구조**. Inventory Service 내부의 동시성 제어로 이동할 뿐, 메커니즘은 동일합니다.  
   
-**바뀌는 것 — 그리고 오히려 깔끔해지는 것**  
+**바뀌는 것: 그리고 오히려 깔끔해지는 것**  
   
-- **「한계」에서 본 불변식 위반이 자연 소멸한다.** Order 와 Inventory 가 다른 서비스가 되면, Order 의 트랜잭션이 Inventory 의 차감 트랜잭션을 더 이상 감쌀 수 없습니다. `InventoryService.decreaseStock` 은 자기 서비스 안에서 독립 트랜잭션으로 열리고 닫히므로 Facade 가 의도한 "락 → 트랜잭션 → 커밋 → 락 해제"가 다시 성립합니다. 모놀리스에서 바깥 트랜잭션이 깨뜨렸던 불변식이, 서비스 경계가 트랜잭션 경계를 강제하면서 복원됩니다.  
+- **「한계」에서 본 불변식 위반이 자연 소멸한다.** Order 와 Inventory 가 다른 서비스가 되면, Order 의 트랜잭션이 Inventory 의 차감 트랜잭션을 더 이상 감쌀 수 없습니다. `InventoryService.decreaseStock` 은 자기 서비스 안에서 독립 트랜잭션으로 열리고 닫히므로 Facade 가 의도한 "락, 트랜잭션, 커밋, 락 해제" 순서가 다시 성립합니다. 모놀리스에서 바깥 트랜잭션이 깨뜨렸던 불변식이, 서비스 경계가 트랜잭션 경계를 강제하면서 복원됩니다.  
 - **재고 차감의 원자성이 사라진다.** 지금은 "재고 차감 + 주문 저장"이 한 트랜잭션이라 둘 다 되거나 둘 다 안 됩니다. 서비스가 분리되면 Order 는 자기 DB 에, Inventory 는 자기 DB 에 따로 커밋합니다. 재고는 깎였는데 주문 저장이 실패하는(또는 그 반대) 부분 실패가 가능해집니다. 여기서 **Saga**가 등장합니다 - `payment.failed → order.cancelled → inventory restore` 의 보상 흐름(`restoreStock` 이 보상 트랜잭션의 핵심 연산이 됩니다). 이때 복구 이벤트 중복 수신에 대비한 멱등성 보장도 필요합니다.  
 - **동기 호출이냐 이벤트냐**의 결정이 새로 생깁니다. Order 가 Inventory 를 동기 호출하면 책임은 명확하지만 Inventory 장애가 주문을 막습니다. 이벤트로 비동기 차감하면 결합은 느슨해지지만 "주문은 받았는데 재고가 모자랐던" 사후 보상이 필요합니다.  
   

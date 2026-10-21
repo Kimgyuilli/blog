@@ -408,10 +408,10 @@ flowchart LR
 
 | Payment 상태 변경 | 트리거 | Order 상태 변경 | 연결 방식 |
 | --- | --- | --- | --- |
-| (생성 전) → PENDING | `order.created` Kafka 이벤트 | — | Kafka Consumer |
-| PENDING → (결제 진행 중) | `confirmPayment()` 호출 | PENDING → PAYMENT_REQUESTED | `OrderPort` 동기 호출 |
-| PENDING → APPROVED | Toss API 성공 | PAYMENT_REQUESTED → PAYMENT_COMPLETED | `payment.completed` Kafka 이벤트 |
-| PENDING → FAILED | Toss API 실패 | PAYMENT_REQUESTED → CANCELLED (`order.cancel()`) | `payment.failed` Kafka 이벤트 |
+| (생성 전)에서 PENDING으로 | `order.created` Kafka 이벤트 | 없음 | Kafka Consumer |
+| PENDING 유지 (결제 진행 중) | `confirmPayment()` 호출 | PENDING에서 PAYMENT_REQUESTED로 | `OrderPort` 동기 호출 |
+| PENDING에서 APPROVED로 | Toss API 성공 | PAYMENT_REQUESTED에서 PAYMENT_COMPLETED로 | `payment.completed` Kafka 이벤트 |
+| PENDING에서 FAILED로 | Toss API 실패 | PAYMENT_REQUESTED에서 CANCELLED로 (`order.cancel()`) | `payment.failed` Kafka 이벤트 |
 
 Payment와 Order가 동기로 연결되는 지점은 `OrderPort.transitionToPaymentRequested()` 하나뿐입니다. 나머지는 모두 Kafka 이벤트로 비동기 연결됩니다.
 
@@ -491,7 +491,7 @@ public record TossConfirmResponse(
 | 위치 | 문제 |
 | --- | --- |
 | Domain 레이어 | 도메인이 HTTP, RestClient, Toss API 스펙에 의존. 단위 테스트에서 외부 API를 호출하거나 Mock해야 함 |
-| Application 레이어 | Toss → 다른 PG로 교체 시 Application 코드가 변경됨. UseCase 흐름과 외부 연동 세부사항이 섞임 |
+| Application 레이어 | Toss를 다른 PG로 교체 시 Application 코드가 변경됨. UseCase 흐름과 외부 연동 세부사항이 섞임 |
 | Infrastructure 레이어 (현재) | 도메인과 Application은 Toss의 존재를 모름. PG 교체 시 Infrastructure만 교체 |
 
 `PaymentCommandService`는 `TossPaymentClient.confirm()`을 직접 호출하고 있어, 현재는 Application이 Infrastructure 구현체에 의존하고 있습니다. 이 의존을 Port 인터페이스로 분리하면("결제를 승인해주세요") 테스트가 더 쉬워지고 PG 교체 시 영향 범위가 줄어듭니다. 3편과 4편에서 본 `ProductPort`, `OrderPort`와 같은 패턴입니다. 현재 결제 PG가 하나뿐이어서 포트 분리의 실질적 필요성이 낮지만 개선 후보로 남겨둡니다.
@@ -680,7 +680,7 @@ Toss가 `Idempotency-Key` 헤더를 보내면 그것을 사용하고 없으면 `
 
 Payment 도메인이 다른 도메인과 소통하는 방식을 정리하면 이렇습니다.
 
-### OrderPort: Payment → Order (동기)
+### OrderPort: Payment에서 Order로 (동기)
 
 ```java
 public interface OrderPort {
@@ -691,7 +691,7 @@ public interface OrderPort {
 
 이 Port는 Payment 도메인의 `application/port`에 정의되고 구현체(`OrderPortAdapter`)는 Order 도메인의 infrastructure에 위치합니다. 4편에서 본 것과 같은 방향입니다.
 
-### PaymentOutboxEventPublisher: Payment → Kafka (비동기)
+### PaymentOutboxEventPublisher: Payment에서 Kafka로 (비동기)
 
 `payment.completed`와 `payment.failed` 이벤트를 Outbox에 저장합니다. Order와 Notification이 각각의 Consumer Group으로 이 이벤트를 소비합니다.
 
@@ -849,7 +849,7 @@ void processWebhook_duplicateKey_skips() {
 
 ### TossPaymentClient에 Port 인터페이스가 없다
 
-3편의 `ProductPort`, 4편의 `OrderPort`처럼 도메인 간 경계에는 Port 인터페이스가 있지만 `PaymentCommandService` → `TossPaymentClient` 사이에는 인터페이스 없이 구현체를 직접 주입하고 있습니다. 테스트에서는 `@Mock`으로 교체하고 있어 실질적 문제는 없지만 PG를 교체하거나 테스트 환경에서 Fake를 주입하려면 Port 분리가 필요합니다.
+3편의 `ProductPort`, 4편의 `OrderPort`처럼 도메인 간 경계에는 Port 인터페이스가 있지만 `PaymentCommandService`와 `TossPaymentClient` 사이에는 인터페이스 없이 구현체를 직접 주입하고 있습니다. 테스트에서는 `@Mock`으로 교체하고 있어 실질적 문제는 없지만 PG를 교체하거나 테스트 환경에서 Fake를 주입하려면 Port 분리가 필요합니다.
 
 ### 웹훅이 비즈니스 로직을 실행하지 않는다
 
@@ -872,7 +872,7 @@ void processWebhook_duplicateKey_skips() {
 | 외부 API를 Infrastructure에 격리하는 이유는 무엇인가? | Alistair Cockburn, [Hexagonal Architecture](https://alistair.cockburn.us/hexagonal-architecture/) | TossPaymentClient의 위치와 Port 패턴을 비교할 때 |
 | 웹훅 보안은 어떻게 구현하는가? | OWASP, [Webhook Security](https://cheatsheetseries.owasp.org/cheatsheets/Webhook_Security_Cheat_Sheet.html) | HMAC-SHA256 서명 검증의 필요성을 이해할 때 |
 | 멱등성은 왜 필요하고 어떻게 구현하는가? | Stripe, [Idempotent Requests](https://docs.stripe.com/api/idempotent_requests) | webhook_logs.idempotency_key UK의 설계를 볼 때 |
-| Saga 보상 트랜잭션은 어떻게 동작하는가? | Chris Richardson, [Sagas](https://microservices.io/patterns/data/saga.html) | payment.failed → order.cancelled → inventory.restore 흐름을 볼 때 |
+| Saga 보상 트랜잭션은 어떻게 동작하는가? | Chris Richardson, [Sagas](https://microservices.io/patterns/data/saga.html) | payment.failed, order.cancelled, inventory.restore로 이어지는 흐름을 볼 때 |
 | Outbox 패턴은 왜 필요한가? | Chris Richardson, [Transactional Outbox](https://microservices.io/patterns/data/transactional-outbox.html) | payment.completed/failed Outbox 이벤트의 필요성을 이해할 때 |
 
 ---
@@ -918,7 +918,7 @@ flowchart TD
 
 **`payment_failures` 테이블이 도입된다.** 현재는 `payments.status = 'FAILED'`로 실패를 표현하지만 실패 사유(잔액 부족, 카드 한도, 네트워크 오류 등)를 구분하지 않습니다. Phase 4에서는 별도 테이블에 상세 실패 이력을 기록합니다.
 
-**결제 실패 보상이 Choreography Saga가 된다.** 현재 모놀리스에서는 `payment.failed` → Order Consumer가 주문 취소 + 재고 복구를 하나의 서비스 안에서 처리합니다. MSA에서는 이 흐름이 서비스 경계를 넘습니다.
+**결제 실패 보상이 Choreography Saga가 된다.** 현재 모놀리스에서는 `payment.failed`를 받은 Order Consumer가 주문 취소 + 재고 복구를 하나의 서비스 안에서 처리합니다. MSA에서는 이 흐름이 서비스 경계를 넘습니다.
 
 ```
 payment.failed 발행 (Payment Service)  → Order Service 소비 → 주문 CANCELLED + order.cancelled 발행

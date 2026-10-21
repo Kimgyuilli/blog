@@ -9,7 +9,7 @@ draft: false
 slug: "peekcart-order-timeout-scheduler"
 ---
 
-주문은 만들었는데 결제는 끝내지 않은 사용자가 있습니다. 결제 위젯을 열어둔 채 탭을 닫았을 수도 있고 결제 도중 카드사 인증에서 막혔을 수도 있습니다. 문제는 이 미완료 주문이 살아 있는 동안 재고가 묶여 있다는 점입니다. 4편에서 본 "전략 A — 주문 생성 시점에 재고를 즉시 차감"을 선택한 순간부터, "그러면 결제를 안 끝낸 주문의 재고는 누가 풀어주는가"라는 질문이 따라붙습니다. 그 질문에 답하는 결제 타임아웃 스케줄러가 이번 글의 주제입니다.
+주문은 만들었는데 결제는 끝내지 않은 사용자가 있습니다. 결제 위젯을 열어둔 채 탭을 닫았을 수도 있고 결제 도중 카드사 인증에서 막혔을 수도 있습니다. 문제는 이 미완료 주문이 살아 있는 동안 재고가 묶여 있다는 점입니다. 4편에서 본 "전략 A, 주문 생성 시점에 재고를 즉시 차감"을 선택한 순간부터, "그러면 결제를 안 끝낸 주문의 재고는 누가 풀어주는가"라는 질문이 따라붙습니다. 그 질문에 답하는 결제 타임아웃 스케줄러가 이번 글의 주제입니다.
 
 이 글에서 사용하는 용어의 뜻은 다음과 같습니다.
 
@@ -220,7 +220,7 @@ KEY idx_orders_status_ordered_at (status, ordered_at),
 
 복합 인덱스의 컬럼 순서가 `(status, ordered_at)` 이지 `(ordered_at, status)` 가 아니라는 점에 의도가 있습니다. `status` 는 카디널리티가 낮지만(8개 enum 값) 가장 선택적으로 좁혀줍니다. 전체 주문의 대부분은 `PAYMENT_COMPLETED` 이후 상태이고 `PAYMENT_REQUESTED` 만 골라내면 후보 집합이 급격히 줄어듭니다. 그 뒤에 `ordered_at < cutoff` 로 범위 스캔을 하면 인덱스 트리 한쪽 끝만 훑으면 됩니다.
 
-JOIN FETCH 는 N+1 회피용입니다. `Order` 한 건당 `OrderItem` 이 평균 N개 있는데 JOIN FETCH 없이 `for (var item : order.getOrderItems())` 를 돌리면 주문 수 × 1번의 추가 쿼리가 발생합니다. 만료 주문이 100건이면 101개의 SELECT 가 나갑니다. JOIN FETCH로 1개로 압축합니다.
+JOIN FETCH 는 N+1 회피용입니다. `Order` 한 건당 `OrderItem` 이 평균 N개 있는데 JOIN FETCH 없이 `for (var item : order.getOrderItems())` 를 돌리면 주문 수 1배번의 추가 쿼리가 발생합니다. 만료 주문이 100건이면 101개의 SELECT 가 나갑니다. JOIN FETCH로 1개로 압축합니다.
 
 > JOIN FETCH는 페이징과 함께 쓰면 메모리에서 페이징하는 함정이 있지만, 이 쿼리는 페이징이 없다. "지금까지 만료된 모든 주문"을 한 번에 가져온다. 컷오프가 15분이고 1분 주기라 정상 운영 시 한 번에 누적되는 건수가 많지 않다는 가정에 기댄 선택이다. 운영 부하가 커지면 LIMIT을 두는 페이지네이션이 필요해질 수 있다.
 
@@ -230,7 +230,7 @@ JOIN FETCH 는 N+1 회피용입니다. `Order` 한 건당 `OrderItem` 이 평균
 
 지금까지 본 코드는 단일 JVM, 단일 Pod 환경에서 완벽하게 동작합니다. 1분마다 한 번 깨어나고 만료 주문을 모아서 건별로 안전하게 취소하고 다음 주기를 기다립니다.
 
-문제는 Phase 3에서 HPA로 Pod 이 1→3으로 늘어나는 순간 발생합니다. 같은 `@Scheduled` 메서드가 세 Pod 에서 동시에 깨어납니다. 세 Pod 이 같은 쿼리로 같은 만료 주문 목록을 가져오고 같은 주문에 대해 동시에 `cancelExpiredOrder()` 를 호출합니다.
+문제는 Phase 3에서 HPA로 Pod 이 1에서 3으로 늘어나는 순간 발생합니다. 같은 `@Scheduled` 메서드가 세 Pod 에서 동시에 깨어납니다. 세 Pod 이 같은 쿼리로 같은 만료 주문 목록을 가져오고 같은 주문에 대해 동시에 `cancelExpiredOrder()` 를 호출합니다.
 
 이 상황에서 무엇이 잘못될 수 있을까? 두 가지 안전장치가 이미 들어있습니다.
 
@@ -291,7 +291,7 @@ LocalDateTime cutoff = LocalDateTime.now().minusMinutes(15);
 
 (3)과 (4)가 같은 형태의 테스트지만 별도로 분리되어 있다는 점이 중요합니다. 같은 try-catch라도 분기 두 개를 각각 검증한다는 뜻입니다. 추후 누가 "어차피 같은 catch니까 통합하자"고 리팩토링하려고 할 때, 이 테스트가 "두 분기는 의도적으로 다르다"는 시그널을 줍니다.
 
-서비스 측에서는 `OrderCommandServiceTest` 에 `cancelExpiredOrder` 성공/주문 미존재(ORD-001) 2건이 추가되어 있어, 스케줄러 → 서비스 → 도메인의 호출 과정이 한 단위씩 끊어서 검증됩니다.
+서비스 측에서는 `OrderCommandServiceTest` 에 `cancelExpiredOrder` 성공/주문 미존재(ORD-001) 2건이 추가되어 있어, 스케줄러에서 서비스, 도메인으로 이어지는 호출 과정이 한 단위씩 끊어서 검증됩니다.
 
 ---
 
@@ -302,9 +302,9 @@ LocalDateTime cutoff = LocalDateTime.now().minusMinutes(15);
 | Spring `@Scheduled`의 fixedDelay와 fixedRate, cron의 차이는? | Spring Framework 공식 문서, [Task Execution and Scheduling](https://docs.spring.io/spring-framework/reference/integration/scheduling.html) | 60초 주기 선택의 의미                 |
 | `Propagation.REQUIRES_NEW`는 정확히 어떻게 동작하는가?                | Spring Framework 공식 문서, [Transaction Propagation](https://docs.spring.io/spring-framework/reference/data-access/transaction/declarative/tx-propagation.html) | 건별 독립 트랜잭션 절                  |
 | 결제 PSP의 세션 만료 정책은 어떻게 설계되는가?           | Toss Payments 개발자 문서, [결제 위젯 가이드](https://docs.tosspayments.com/guides/v2/payment-widget/integration) | 15분 컷오프의 근거                   |
-| 배치 작업의 "건별 격리" 패턴은 어떤 책에서 다루는가?      | Robert C. Martin, *Clean Code* — Error Handling 장 / Spring Batch 공식 문서의 skip/retry 정책 | `cancelSafely`의 try-catch 구조  |
+| 배치 작업의 "건별 격리" 패턴은 어떤 책에서 다루는가?      | Robert C. Martin, *Clean Code*, Error Handling 장 / Spring Batch 공식 문서의 skip/retry 정책 | `cancelSafely`의 try-catch 구조  |
 | 다중 인스턴스 스케줄러 락 패턴 비교 (DB / Redis / ZooKeeper)? | ShedLock 공식 README, [Distributed Lock Comparison](https://github.com/lukas-krecan/ShedLock) | "단일 인스턴스 가정과 그것이 깨질 때" 절       |
-| 복합 인덱스 컬럼 순서 결정 기준?                  | High Performance MySQL (Schwartz et al.) — Indexing for High Performance 장            | `idx_orders_status_ordered_at`의 컬럼 순서 |
+| 복합 인덱스 컬럼 순서 결정 기준?                  | High Performance MySQL (Schwartz et al.): Indexing for High Performance 장            | `idx_orders_status_ordered_at`의 컬럼 순서 |
 
 ---
 
@@ -333,14 +333,14 @@ flowchart LR
 
 **그대로 가는 것**
 
-- `OrderTimeoutScheduler` 와 `cancelExpiredOrder()` 의 흐름은 거의 그대로 옮깁니다. 컷오프 결정 → 후보 조회 → 건별 위임 → 실패 격리.
+- `OrderTimeoutScheduler` 와 `cancelExpiredOrder()` 의 흐름은 거의 그대로 옮깁니다. 컷오프 결정, 후보 조회, 건별 위임, 실패 격리 순서입니다.
 - `REQUIRES_NEW` + try-catch 패턴, 그리고 그 의미는 변하지 않습니다. 오히려 서비스가 분리되면서 한 인스턴스의 트랜잭션 경계가 더 명확해집니다.
 - ShedLock 은 Phase 4에서도 그대로 유효합니다. Order Service 가 여러 Pod으로 뜨는 한 같은 문제가 남습니다.
 
 **바뀌는 것**
 
 - 재고 복구가 **동기 메서드 호출에서 비동기 이벤트로** 전환됩니다. 현재는 `productPort.restoreStock()` 이 같은 트랜잭션 안에서 직접 호출되지만 서비스 분리 후에는 `OrderCancelledEvent` 를 Outbox 에 저장하고 Kafka로 Inventory Service 에 알리는 형태가 됩니다. 4편/5편에서 결제 실패 시 재고 복구가 보상 트랜잭션(Saga) 단계로 바뀌는 흐름과 정확히 같습니다.
-- 이 비동기화는 "취소 발생 → 재고 실제 복구"까지의 지연을 만듭니다. 사용자 입장에서는 보이지 않지만 운영 모니터링에서는 `order.cancelled` Kafka Lag 을 보고 있어야 재고가 제때 풀리고 있는지 확인할 수 있습니다.
+- 이 비동기화는 "취소 발생부터 재고 실제 복구"까지의 지연을 만듭니다. 사용자 입장에서는 보이지 않지만 운영 모니터링에서는 `order.cancelled` Kafka Lag 을 보고 있어야 재고가 제때 풀리고 있는지 확인할 수 있습니다.
 - Order Service 가 더 이상 `Inventory` 의 데이터 모델을 알지 않습니다. `OrderItem.productId` 와 수량만 이벤트에 실어 보내면, 재고를 어떻게 풀지는 Inventory Service 의 책임이 됩니다.
 
 **그래서 Phase 4 진입 전 짚을 점**

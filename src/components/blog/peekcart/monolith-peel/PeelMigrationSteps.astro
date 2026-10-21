@@ -10,7 +10,7 @@ const steps = [
   { name: '단가 캐시', detail: '동기 2' },
   { name: '예약 정리', detail: '동기 2' },
   { name: 'Product 분리', detail: '동기 1' },
-  { name: 'Order·\u200bPayment 분리', detail: '동기 0' },
+  { name: 'Order, \u200bPayment 분리', detail: '동기 0' },
 ];
 ---
 
@@ -50,7 +50,7 @@ const steps = [
     { id: 'stock', from: 'order', to: 'product', text: '재고 차감' },
     { id: 'price', from: 'order', to: 'product', text: '단가 조회' },
     { id: 'exists', from: 'order', to: 'product', text: '상품 존재 확인' },
-    { id: 'owner', from: 'payment', to: 'order', text: '소유자·상태 전이' },
+    { id: 'owner', from: 'payment', to: 'order', text: '소유자와 상태 전이' },
   ];
   const EVENTS: { id: EventId; text: string }[] = [
     { id: 'created', text: 'order.created' },
@@ -121,8 +121,8 @@ const steps = [
       sub: { product: '예약 = 이미 차감', order: '+ 단가 캐시', payment: 'payment 패키지' },
       note: 'Product가 바뀔 때마다 <code>product.updated</code>를 발행하고, Order는 <strong>단가를 로컬 캐시</strong>에서 읽습니다.' },
     { removed: ['stock', 'price'], events: ['created', 'reserved', 'updated'], productOut: false, boundaryGone: false, newTopics: 2, temp: false, services: [],
-      sub: { product: '예약 확정·해제', order: '+ 단가 캐시', payment: 'payment 패키지' },
-      note: '예약 확정·해제와 결제 전 확인을 갖췄습니다. 끊은 호출은 없지만 <strong>임시 의미가 사라졌습니다</strong>. 상품 존재 확인은 아직 동기 호출입니다.' },
+      sub: { product: '예약 확정과 해제', order: '+ 단가 캐시', payment: 'payment 패키지' },
+      note: '예약 확정, 해제와 결제 전 확인을 갖췄습니다. 끊은 호출은 없지만 <strong>임시 의미가 사라졌습니다</strong>. 상품 존재 확인은 아직 동기 호출입니다.' },
     { removed: ['stock', 'price', 'exists'], events: ['created', 'reserved', 'updated'], productOut: true, boundaryGone: false, newTopics: 2, temp: false, services: ['product'],
       sub: { product: 'service 모듈', order: '+ 상품 캐시', payment: 'payment 패키지' },
       note: '장바구니의 상품 존재 확인도 캐시로 바꾸고 <code>ProductPort</code>를 지웠습니다. <strong>이제 Product를 떼어냅니다.</strong>' },

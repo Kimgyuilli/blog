@@ -26,15 +26,15 @@ PeekCart 코드를 읽기 전에 이 갈림길들을 먼저 정리하고 싶었�
 이번 학습에서는 다음 질문을 확인하려고 합니다.
 
 1. 인증과 인가는 어떻게 구분해서 봐야 할까?
-2. 비밀번호는 어떻게 저장하고 검증해야 할까 — bcrypt, Argon2, salt, pepper?
-3. 사용자 상태를 어디에 둘 것일까 — 서버, 클라이언트, 둘 다?
-4. 토큰을 어디에 담아 보낼 것일까 — Authorization 헤더, 쿠키, 그 외?
-5. 토큰을 어떻게 서명/암호화할 것일까 — HS256, RS256, ES256, JWE?
-6. 토큰을 어떻게 회수할 것일까 — 블랙리스트, 화이트리스트, 짧은 만료?
-7. 재발급 전략과 토큰 수명은 무엇이 있을까 — Rotation, Sliding, Reuse Detection, Grace Period?
+2. 비밀번호는 어떻게 저장하고 검증해야 할까: bcrypt, Argon2, salt, pepper?
+3. 사용자 상태를 어디에 둘 것일까: 서버, 클라이언트, 둘 다?
+4. 토큰을 어디에 담아 보낼 것일까: Authorization 헤더, 쿠키, 그 외?
+5. 토큰을 어떻게 서명/암호화할 것일까: HS256, RS256, ES256, JWE?
+6. 토큰을 어떻게 회수할 것일까: 블랙리스트, 화이트리스트, 짧은 만료?
+7. 재발급 전략과 토큰 수명은 무엇이 있을까: Rotation, Sliding, Reuse Detection, Grace Period?
 8. 인증 프로토콜은 자체로 짤 것일까, OAuth2/OIDC/Passkey 같은 표준을 쓸 것일까?
-9. 인가는 어떤 모델로 표현할 것일까 — RBAC, ABAC, ReBAC, Scope?
-10. 서비스 간 신뢰는 어떻게 세울 것일까 — mTLS, API Key, Service Token, Gateway?
+9. 인가는 어떤 모델로 표현할 것일까: RBAC, ABAC, ReBAC, Scope?
+10. 서비스 간 신뢰는 어떻게 세울 것일까: mTLS, API Key, Service Token, Gateway?
 11. 이 갈림길들에서 PeekCart는 어떤 선택을 했고 어떤 한계를 남겼을까?
 
 ---
@@ -66,12 +66,12 @@ PeekCart 코드를 읽기 전에 이 갈림길들을 먼저 정리하고 싶었�
 |방식|핵심 아이디어|적합한 상황 / 문제|
 |---|---|---|
 |평문 저장|그대로 저장|사고 시 즉시 전체 유출, 적합한 상황은 없다|
-|단순 해시 (MD5, SHA-1)|일방향 해시|레인보우 테이블 · GPU 무차별 대입에 무력|
+|단순 해시 (MD5, SHA-1)|일방향 해시|레인보우 테이블, GPU 무차별 대입에 무력|
 |Salted Hash (SHA-256 + salt)|사용자별 salt 추가|레인보우 테이블 방어, GPU 무차별 대입은 여전|
 |PBKDF2|해시 반복 (key stretching)|NIST 권고, FIPS 환경에서 자주 채택|
 |bcrypt|적응형 해시, work factor 조정 가능|검증된 알고리즘, 메모리는 적게 사용|
 |scrypt|메모리 강성 추가|GPU/ASIC 공격에 더 강함|
-|Argon2id|메모리·시간·병렬성 모두 조정|OWASP 권고, 새로 짤 때의 기본값|
+|Argon2id|메모리, 시간, 병렬성 모두 조정|OWASP 권고, 새로 짤 때의 기본값|
 
 모든 알고리즘은 다음 두 원리를 따릅니다.
 
@@ -206,7 +206,7 @@ JWT를 예로 들면 두 가지 표준이 갈라집니다 ([RFC 7515 JWS](https:
 
 대칭키는 단순합니다. 하나의 secret을 들고 발급도 하고 검증도 합니다. 단일 서비스에서는 가장 자연스럽습니다. 그러나 **검증자가 곧 발급자**라는 뜻이기도 합니다. 검증을 위해 secret을 공유해야 한다면, 공유받은 쪽이 토큰을 위조할 수도 있습니다.
 
-비대칭키는 이 문제를 분리합니다. 발급자는 개인키로 서명하고 검증자는 공개키로만 검증합니다. 검증자가 공개키를 알아도 토큰을 만들 수는 없습니다. 그래서 **여러 서비스가 같은 토큰을 검증해야 하는 환경(MSA, OIDC IdP 분리)에서는 비대칭이 자연스럽다.** OIDC의 [JWKS 엔드포인트](https://openid.net/specs/openid-connect-discovery-1_0.html)도 이 모델 위에 서 있습니다 — IdP가 공개키를 JWKS로 노출하면 모든 서비스가 그것으로 토큰을 검증할 수 있습니다.
+비대칭키는 이 문제를 분리합니다. 발급자는 개인키로 서명하고 검증자는 공개키로만 검증합니다. 검증자가 공개키를 알아도 토큰을 만들 수는 없습니다. 그래서 **여러 서비스가 같은 토큰을 검증해야 하는 환경(MSA, OIDC IdP 분리)에서는 비대칭이 자연스럽다.** OIDC의 [JWKS 엔드포인트](https://openid.net/specs/openid-connect-discovery-1_0.html)도 이 모델 위에 서 있습니다. IdP가 공개키를 JWKS로 노출하면 모든 서비스가 그것으로 토큰을 검증할 수 있습니다.
 
 추가로 고려할 위협이 하나 있습니다. **알고리즘 confusion 공격**입니다. 검증 측이 토큰 헤더의 `alg` 값을 무비판적으로 신뢰하면, 공격자가 RS256으로 발급된 토큰을 HS256으로 위조해 검증을 통과시킬 수 있습니다(검증자가 공개키를 HMAC secret으로 잘못 쓰면 가능합니다). 그래서 검증 라이브러리는 **허용 알고리즘을 코드에서 명시적으로 고정**해야 합니다. 2015년경 다수의 JWT 라이브러리가 이 문제로 패치됐고 `alg: none`을 허용하던 버그도 같은 시기에 정리됐습니다. Auth0의 [Critical Vulnerabilities in JSON Web Token Libraries](https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/)가 그 이력을 잘 정리합니다.
 
@@ -236,7 +236,7 @@ private String createAccessToken(Long userId, String role) {
 
 이 선택의 합리성은 Phase 1의 맥락에 있습니다. 발급자(`JwtProvider`)와 검증자(`JwtFilter`)가 같은 애플리케이션 안에 있고 secret을 공유한다는 사실이 곧 "같은 프로세스가 발급과 검증을 모두 한다"는 자연스러운 사실입니다. 대칭키의 약점인 "공유 시 위조 가능"이 여기서는 문제가 되지 않습니다.
 
-문제는 Phase 4입니다. Gateway가 매 요청을 검증하고 User Service가 발급하는 구조로 가면, 두 서비스가 secret을 공유해야 합니다. Gateway가 secret을 들고 있다는 것은 Gateway가 토큰을 위조할 수도 있다는 뜻입니다. 신뢰 경계가 깨집니다. 그래서 Phase 4 진입 시 자연스러운 전환은 **HS256 → RS256 또는 ES256**입니다. User Service가 개인키로 서명하고 Gateway는 공개키로만 검증합니다. 키 회전을 위해 `kid`(key ID) 헤더와 JWKS 엔드포인트를 도입합니다. 이 전환은 이미 OIDC IdP가 표준화한 패턴이라 구현 부담이 크지 않습니다.
+문제는 Phase 4입니다. Gateway가 매 요청을 검증하고 User Service가 발급하는 구조로 가면, 두 서비스가 secret을 공유해야 합니다. Gateway가 secret을 들고 있다는 것은 Gateway가 토큰을 위조할 수도 있다는 뜻입니다. 신뢰 경계가 깨집니다. 그래서 Phase 4 진입 시 자연스러운 전환은 **HS256에서 RS256 또는 ES256으로 바꾸는 것**입니다. User Service가 개인키로 서명하고 Gateway는 공개키로만 검증합니다. 키 회전을 위해 `kid`(key ID) 헤더와 JWKS 엔드포인트를 도입합니다. 이 전환은 이미 OIDC IdP가 표준화한 패턴이라 구현 부담이 크지 않습니다.
 
 여기서 PeekCart의 또 한 가지 의식적인 결정이 보입니다. **Refresh Token은 서명이 아니라 UUID(opaque token)다.**
 
@@ -428,7 +428,7 @@ public Optional<Long> consumeGracePeriod(String token) {
 
 |전략|동시 요청에서의 동작|PeekCart 적용 가능성|
 |---|---|---|
-|즉시 무효화만|두 번째 요청이 실패 → 사용자 튕김|보안은 강하나 UX 손상|
+|즉시 무효화만|두 번째 요청이 실패해 사용자가 튕김|보안은 강하나 UX 손상|
 |Rotation + Grace Period (채택)|두 번째 요청도 새 토큰 발급|짧은 유예 윈도우(10s)만 보안 약화|
 |Rotation + Reuse Detection|두 번째 요청을 "재사용"으로 판단해 패밀리 전체 무효화|가장 강하지만 토큰 패밀리 트래킹 필요|
 |Sliding Session|만료 시점 연장만 함, 토큰 자체는 안 바꿈|UX 좋으나 탈취 시 영구 사용 위험|
@@ -483,7 +483,7 @@ public class JwtProvider implements TokenIssuer {
 }
 ```
 
-여기서 짚어둘 디테일은 **액세스 토큰은 JWT지만 리프레시 토큰은 JWT가 아니라 UUID**라는 점입니다. 리프레시 토큰의 역할은 자신을 자체적으로 검증하는 게 아니라, "DB에 저장된 이 토큰의 소유자가 누구인지를 가져오는 키"입니다. 그래서 서명·페이로드가 필요 없는 식별자(opaque token)면 충분합니다. 굳이 JWT로 만들면 검증 비용만 늘어나고 얻는 것이 없습니다. 이건 OAuth2가 권고하는 "Refresh Token은 opaque로 두라"는 방향과도 일치합니다.
+여기서 짚어둘 디테일은 **액세스 토큰은 JWT지만 리프레시 토큰은 JWT가 아니라 UUID**라는 점입니다. 리프레시 토큰의 역할은 자신을 자체적으로 검증하는 게 아니라, "DB에 저장된 이 토큰의 소유자가 누구인지를 가져오는 키"입니다. 그래서 서명과 페이로드가 필요 없는 식별자(opaque token)면 충분합니다. 굳이 JWT로 만들면 검증 비용만 늘어나고 얻는 것이 없습니다. 이건 OAuth2가 권고하는 "Refresh Token은 opaque로 두라"는 방향과도 일치합니다.
 
 PeekCart가 OIDC로 갔다면 어떻게 됐을까요? Keycloak이나 Authelia 같은 IdP를 띄우고 PeekCart는 Resource Server로만 남았을 것입니다. 토큰 발급/회수 책임이 IdP로 이동하고 PeekCart는 토큰 검증만 합니다. 학습 프로젝트 범위에서는 자체로 짜는 편이 토큰 생명주기를 직접 보고 만지기에 좋습니다. 운영 시스템이라면 IdP를 따로 두는 게 보안 권고에 더 가깝습니다.
 
@@ -609,7 +609,7 @@ PeekCart의 인증 구조에서 의도적으로 안 한 것, 미해결로 남은
 - **계정 잠금 / 무차별 대입 방어**: 로그인 실패가 누적돼도 잠금이 없습니다. exponential backoff, IP/디바이스 단위 레이트 리미트, 캡차가 모두 비어 있습니다. Gateway 또는 WAF 레벨 책임으로 봅니다.
 - **계정 열거(Account Enumeration) 방지 미흡**: 회원가입 시 "이메일 중복(USR-001)"과 로그인 실패 시 "인증 실패(USR-002)"가 응답으로 구분됩니다. 공격자가 이메일 존재 여부를 확인할 수 있는 단서가 됩니다. 운영 시스템이라면 회원가입도 "확인 메일을 보냈습니다"로 통일하는 게 권고됩니다.
 - **레이트 리미트**: 같은 IP에서 로그인/재발급을 무한히 시도할 수 있습니다. Gateway 레벨 책임으로 봅니다.
-- **PKCE / state / nonce**: 자체 인증에서는 직접 영향이 없지만 OIDC IdP로 이행할 때 SPA·모바일 클라이언트에 대해 [PKCE (RFC 7636)](https://datatracker.ietf.org/doc/html/rfc7636)와 OIDC nonce가 필수가 됩니다.
+- **PKCE / state / nonce**: 자체 인증에서는 직접 영향이 없지만 OIDC IdP로 이행할 때 SPA, 모바일 클라이언트에 대해 [PKCE (RFC 7636)](https://datatracker.ietf.org/doc/html/rfc7636)와 OIDC nonce가 필수가 됩니다.
 - **DPoP / Token Binding**: 토큰을 클라이언트 키에 묶어 탈취 시에도 사용 불가하게 만드는 강한 보호 ([RFC 9449](https://datatracker.ietf.org/doc/html/rfc9449)). 모바일/SPA 클라이언트와 함께 설계해야 하므로 학습 범위에서는 미적용.
 - **보안 감사 로그와 이상 행동 탐지**: 발급/회전/실패 이력을 별도 저장. Phase 3에서 일부 Prometheus 메트릭으로 들어왔지만 본격적인 보안 감사 로그와 IP/디바이스/지역 기반 이상 행동 탐지(risk-based authentication)는 없습니다. OWASP [ASVS](https://owasp.org/www-project-application-security-verification-standard/)의 인증 관련 요구사항을 체크리스트로 사용하면 어느 위치에 있는지 측정 가능합니다.
 
@@ -624,7 +624,7 @@ PeekCart의 인증 구조에서 의도적으로 안 한 것, 미해결로 남은
 |비밀번호는 어떻게 저장해야 안전한가?|OWASP, [Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), Troy Hunt, [Have I Been Pwned: Pwned Passwords](https://haveibeenpwned.com/Passwords)|bcrypt/Argon2id 선택과 유출 비밀번호 차단을 볼 때|
 |평문 전송은 왜 모든 결정을 무력화하는가?|IETF, [RFC 6797: HSTS](https://datatracker.ietf.org/doc/html/rfc6797), OWASP, [Transport Layer Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Transport_Layer_Protection_Cheat_Sheet.html)|HTTPS 강제와 인증서 핀닝 정책을 볼 때|
 |JWT는 무엇이고 어떤 한계가 있는가?|IETF, [RFC 7519: JSON Web Token](https://datatracker.ietf.org/doc/html/rfc7519), Sven Slootweg, [Stop using JWT for sessions](http://cryto.net/~joepie91/blog/2016/06/13/stop-using-jwt-for-sessions/)|stateless의 매력과 회수 불가의 함정을 동시에 보고 싶을 때|
-|JWT 서명·암호화는 어떻게 동작하는가?|IETF, [RFC 7515: JWS](https://datatracker.ietf.org/doc/html/rfc7515), [RFC 7516: JWE](https://datatracker.ietf.org/doc/html/rfc7516), [RFC 7518: JWA](https://datatracker.ietf.org/doc/html/rfc7518), Auth0, [Critical Vulnerabilities in JWT Libraries](https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/)|HS256/RS256 선택과 알고리즘 confusion 위협을 볼 때|
+|JWT 서명과 암호화는 어떻게 동작하는가?|IETF, [RFC 7515: JWS](https://datatracker.ietf.org/doc/html/rfc7515), [RFC 7516: JWE](https://datatracker.ietf.org/doc/html/rfc7516), [RFC 7518: JWA](https://datatracker.ietf.org/doc/html/rfc7518), Auth0, [Critical Vulnerabilities in JWT Libraries](https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/)|HS256/RS256 선택과 알고리즘 confusion 위협을 볼 때|
 |비대칭 키와 키 회전은 어떻게 운용하는가?|OpenID Foundation, [OIDC Discovery (JWKS)](https://openid.net/specs/openid-connect-discovery-1_0.html), IETF, [RFC 7517: JWK](https://datatracker.ietf.org/doc/html/rfc7517)|MSA에서 공개키 배포와 키 회전 흐름을 설계할 때|
 |OAuth2와 OIDC의 차이는?|IETF, [RFC 6749: OAuth 2.0](https://datatracker.ietf.org/doc/html/rfc6749), OpenID Foundation, [OIDC Core](https://openid.net/specs/openid-connect-core-1_0.html)|자체 인증과 표준 위임의 갈림길을 볼 때|
 |토큰을 어디에 저장해야 하는가?|OWASP, [Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html), Auth0, [Token Storage](https://auth0.com/docs/secure/security-guidance/data-security/token-storage)|헤더 vs 쿠키 트레이드오프를 판단할 때|

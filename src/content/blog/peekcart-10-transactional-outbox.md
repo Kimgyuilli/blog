@@ -38,7 +38,7 @@ Phase 2에서 Order, Payment, Notification 을 Kafka로 느슨하게 잇기 시�
 
 ## 문제 상황: 두 번의 쓰기는 원자적이지 않다
 
-주문 생성이 끝나면 두 가지가 일어나야 합니다. **(1) 주문을 DB에 저장**하고 **(2) "주문이 생겼다"를 Payment·Notification에게 알린다.** Phase 1에서는 (2)가 같은 프로세스 안의 메서드 호출이었으니 (1)과 묶기 쉬웠습니다. Phase 2에서 (2)가 Kafka 발행이 되는 순간, (1)과 (2)는 서로 다른 시스템에 대한 두 번의 독립적인 쓰기가 됩니다.
+주문 생성이 끝나면 두 가지가 일어나야 합니다. **(1) 주문을 DB에 저장**하고 **(2) "주문이 생겼다"를 Payment, Notification에게 알린다.** Phase 1에서는 (2)가 같은 프로세스 안의 메서드 호출이었으니 (1)과 묶기 쉬웠습니다. Phase 2에서 (2)가 Kafka 발행이 되는 순간, (1)과 (2)는 서로 다른 시스템에 대한 두 번의 독립적인 쓰기가 됩니다.
 
 문제는 이 둘을 감쌀 공통 트랜잭션이 없다는 데 있습니다. DB 트랜잭션은 DB만 롤백할 수 있고 Kafka 발행은 트랜잭션 바깥의 네트워크 호출입니다. 그래서 다음 두 순서 모두 유실 가능성이 있습니다.
 
@@ -74,7 +74,7 @@ public void handleOrderCreated(OrderCreatedEvent event) {
 
 ## 선택한 설계: 이벤트를 "또 하나의 행"으로 저장한다
 
-Outbox 패턴의 발상은 단순합니다. **Kafka에 직접 쏘지 말고, 같은 DB의 `outbox_events` 테이블에 한 행으로 저장하라.** 그러면 "주문 저장"과 "이벤트 저장"이 둘 다 같은 DB 에 대한 쓰기가 되고 하나의 로컬 트랜잭션으로 묶을 수 있습니다. 둘은 같이 커밋되거나 같이 롤백됩니다. 정확히 말하면, 원자적으로 묶여야 했던 부분이 **하나의 DB 트랜잭션**으로 축소되고 DB→Kafka 전달이라는 두 번째 홉은 사라지는 게 아니라 폴러가 **재시도 가능한 형태로** 이어받습니다. 서로 다른 두 시스템에 대한 동시 쓰기 문제를 로컬 트랜잭션과 재시도 가능한 전달 문제로 바꾼 것입니다.
+Outbox 패턴의 발상은 단순합니다. **Kafka에 직접 쏘지 말고, 같은 DB의 `outbox_events` 테이블에 한 행으로 저장하라.** 그러면 "주문 저장"과 "이벤트 저장"이 둘 다 같은 DB 에 대한 쓰기가 되고 하나의 로컬 트랜잭션으로 묶을 수 있습니다. 둘은 같이 커밋되거나 같이 롤백됩니다. 정확히 말하면, 원자적으로 묶여야 했던 부분이 **하나의 DB 트랜잭션**으로 축소되고 DB에서 Kafka로 전달하는 두 번째 홉은 사라지는 게 아니라 폴러가 **재시도 가능한 형태로** 이어받습니다. 서로 다른 두 시스템에 대한 동시 쓰기 문제를 로컬 트랜잭션과 재시도 가능한 전달 문제로 바꾼 것입니다.
 
 ```mermaid
 flowchart LR
@@ -121,15 +121,15 @@ CDC 는 "발행 지연"이라는 문제를 "운영해야 할 분산 컴포넌트
 | 추가 인프라 | 없음 (`@Scheduled` + ShedLock) | Kafka Connect 클러스터 + 커넥터 |
 | DB 부하 | idle 시에도 주기적 SELECT | binlog 읽기 (반복 SELECT 없음) |
 | outbox 테이블 | 그대로 사용 | 행 의미 재사용 (Event Router 매핑 설정 필요) |
-| 운영 복잡도 | 낮음 | 커넥터·offset·스키마 토픽·모니터링 추가 |
+| 운영 복잡도 | 낮음 | 커넥터, offset, 스키마 토픽, 모니터링 추가 |
 
-토이 프로젝트 범위에서 수백 ms~수 초의 발행 지연은 허용 가능한 값이고(§10-1), Spring Scheduler 하나로 끝나는 단순함이 Kafka Connect 클러스터를 운영하는 비용보다 명백히 쌉니다. 무엇보다 **갈아탈 길을 막지 않는 설계**라는 점이 결정을 쉽게 했습니다 — payload 는 표준 `KafkaEventEnvelope` JSON 이고 outbox 행에 라우팅에 필요한 정보(`aggregate_id`/`event_type`/`payload`)가 이미 다 들어 있습니다. 바뀌는 건 발행 메커니즘(polling 스케줄러 → Debezium 커넥터)과 위에서 본 커넥터 매핑 설정뿐이고 Producer, Consumer 코드와 outbox 스키마, 메시지 본문은 건드리지 않습니다. 트래픽이 커져 발행 지연이 실제 병목이 되는 날(그 신호를 측정할 메트릭은 아직 없습니다 — 「한계」 절 참고) Debezium으로 옮기면 됩니다.
+토이 프로젝트 범위에서 수백 ms~수 초의 발행 지연은 허용 가능한 값이고(§10-1), Spring Scheduler 하나로 끝나는 단순함이 Kafka Connect 클러스터를 운영하는 비용보다 명백히 쌉니다. 무엇보다 **갈아탈 길을 막지 않는 설계**라는 점이 결정을 쉽게 했습니다. payload 는 표준 `KafkaEventEnvelope` JSON 이고 outbox 행에 라우팅에 필요한 정보(`aggregate_id`/`event_type`/`payload`)가 이미 다 들어 있습니다. 바뀌는 건 발행 메커니즘(polling 스케줄러에서 Debezium 커넥터로)과 위에서 본 커넥터 매핑 설정뿐이고 Producer, Consumer 코드와 outbox 스키마, 메시지 본문은 건드리지 않습니다. 트래픽이 커져 발행 지연이 실제 병목이 되는 날(그 신호를 측정할 메트릭은 아직 없습니다. 「한계」 절 참고) Debezium으로 옮기면 됩니다.
 
 ---
 
 ## 구현 구조
 
-### 1. outbox 테이블과 엔티티 — 발행 상태를 가진 한 행
+### 1. outbox 테이블과 엔티티: 발행 상태를 가진 한 행
 
 `outbox_events` 는 이벤트 본문(`payload`)과 발행 수명주기(`status`, `retry_count`)를 함께 담습니다.
 
@@ -154,7 +154,7 @@ CREATE TABLE outbox_events (
 CREATE INDEX idx_outbox_status_created ON outbox_events (status, created_at);
 ```
 
-상태는 셋입니다. `PENDING`(저장됨, 미발행) → `PUBLISHED`(발행 완료) 또는 `FAILED`(재시도 소진). 엔티티는 이 전이를 메서드로 캡슐화합니다.
+상태는 셋입니다. `PENDING`(저장됨, 미발행)에서 `PUBLISHED`(발행 완료) 또는 `FAILED`(재시도 소진)로 바뀝니다. 엔티티는 이 전이를 메서드로 캡슐화합니다.
 
 ```java
 @Entity
@@ -179,9 +179,9 @@ public class OutboxEvent {
 }
 ```
 
-`event_id` 의 `UNIQUE` 제약과 `aggregate_id`(파티션 키)는 11편(Consumer 멱등성)과 파티션 순서 보장에서 다시 등장합니다. 지금 단계에서 기억할 것은 `idx_outbox_status_created` 인덱스입니다. 폴링이 매번 `status='PENDING' ORDER BY created_at` 으로 조회하므로 이 인덱스가 없으면 테이블이 커질수록 폴링이 풀스캔이 됩니다. 한 가지 덧붙이면, 정렬이 `created_at ASC` 단독이라 `created_at`(마이크로초)이 동률인 두 이벤트의 상대 순서는 비결정적입니다. 같은 aggregate 에 거의 동시에 쌓인 이벤트의 파티션 내 순서를 엄밀히 보장하려면 `ORDER BY created_at, id` 처럼 `id` 를 tiebreaker로 더해야 합니다(현재는 미적용 — 동일 트랜잭션당 이벤트가 대개 1건이라 충돌 빈도가 낮습니다).
+`event_id` 의 `UNIQUE` 제약과 `aggregate_id`(파티션 키)는 11편(Consumer 멱등성)과 파티션 순서 보장에서 다시 등장합니다. 지금 단계에서 기억할 것은 `idx_outbox_status_created` 인덱스입니다. 폴링이 매번 `status='PENDING' ORDER BY created_at` 으로 조회하므로 이 인덱스가 없으면 테이블이 커질수록 폴링이 풀스캔이 됩니다. 한 가지 덧붙이면, 정렬이 `created_at ASC` 단독이라 `created_at`(마이크로초)이 동률인 두 이벤트의 상대 순서는 비결정적입니다. 같은 aggregate 에 거의 동시에 쌓인 이벤트의 파티션 내 순서를 엄밀히 보장하려면 `ORDER BY created_at, id` 처럼 `id` 를 tiebreaker로 더해야 합니다(현재는 미적용, 동일 트랜잭션당 이벤트가 대개 1건이라 충돌 빈도가 낮습니다).
 
-### 2. Publisher — 이벤트 저장이 도메인 트랜잭션에 합류한다
+### 2. Publisher: 이벤트 저장이 도메인 트랜잭션에 합류한다
 
 패턴은 "어디서 저장하느냐"에 달려 있습니다. `OrderOutboxEventPublisher.publishOrderCreated` 는 Kafka 를 전혀 모릅니다. 그저 `outboxEventRepository.save()` 를 호출할 뿐입니다.
 
@@ -266,9 +266,9 @@ public void pollAndPublish() {
 
 설계에서 짚을 내용은 셋입니다.
 
-- **`.get()`으로 동기 대기한다.** `kafkaTemplate.send(...)` 는 `CompletableFuture` 를 돌려주는데 여기에 `.get()` 을 붙여 **브로커 ack 결과를 받을 때까지 블록**합니다. ack 의 강도는 Producer `acks` 설정에 달려 있는데 PeekCart 는 `acks=all` + `enable.idempotence=true` 라 leader 가 모든 in-sync replica 의 ack 를 확인한 뒤 Future 가 완료됩니다. 비동기로 보내고 바로 `markPublished()` 를 하면, 발행이 실패했는데도 `PUBLISHED` 로 표시해버려 유실이 납니다. 동기 대기는 polling 처리량을 깎는 대가로 "브로커 ack 확인 후에만 PUBLISHED" 불변식을 지킵니다. 다만 타임아웃 없는 `.get()` 은 브로커가 응답을 멈추면 폴링 스레드가 무한정 블록될 수 있어, `.get(timeout, unit)` 이 더 안전합니다 — 현재는 무한 `.get()` 이라 개선 여지가 남습니다.
-- **성공과 실패 모두 상태를 영속한다.** 발행 성공이면 `PUBLISHED`, 실패면 `retry_count++`. 실패한 행은 여전히 `PENDING` 이라 다음 폴링이 다시 읽습니다. 이게 "자동 재시도"의 정체입니다 — 별도 재시도 큐가 아니라, 그냥 `PENDING`으로 남겨두면 5초 뒤 또 시도됩니다.
-- **`PENDING` → `PUBLISHED` 전이가 안전 방향이다.** 발행은 성공했는데 `markPublished()` 저장 직전에 프로세스가 죽으면, 그 행은 `PENDING`으로 남아 다음 폴링이 **다시 발행**합니다. 즉 중복이 날 수 있습니다. 반대로 발행 안 됐는데 `PUBLISHED` 가 되는 경우는 `.get()` 덕에 없습니다. **유실 대신 중복을 택한** 설계이고 이게 at-least-once 의 본질입니다.
+- **`.get()`으로 동기 대기한다.** `kafkaTemplate.send(...)` 는 `CompletableFuture` 를 돌려주는데 여기에 `.get()` 을 붙여 **브로커 ack 결과를 받을 때까지 블록**합니다. ack 의 강도는 Producer `acks` 설정에 달려 있는데 PeekCart 는 `acks=all` + `enable.idempotence=true` 라 leader 가 모든 in-sync replica 의 ack 를 확인한 뒤 Future 가 완료됩니다. 비동기로 보내고 바로 `markPublished()` 를 하면, 발행이 실패했는데도 `PUBLISHED` 로 표시해버려 유실이 납니다. 동기 대기는 polling 처리량을 깎는 대가로 "브로커 ack 확인 후에만 PUBLISHED" 불변식을 지킵니다. 다만 타임아웃 없는 `.get()` 은 브로커가 응답을 멈추면 폴링 스레드가 무한정 블록될 수 있어, `.get(timeout, unit)` 이 더 안전합니다. 현재는 무한 `.get()` 이라 개선 여지가 남습니다.
+- **성공과 실패 모두 상태를 영속한다.** 발행 성공이면 `PUBLISHED`, 실패면 `retry_count++`. 실패한 행은 여전히 `PENDING` 이라 다음 폴링이 다시 읽습니다. 이게 "자동 재시도"의 정체입니다. 별도 재시도 큐가 아니라, 그냥 `PENDING`으로 남겨두면 5초 뒤 또 시도됩니다.
+- **`PENDING` 에서 `PUBLISHED` 로 가는 전이가 안전 방향이다.** 발행은 성공했는데 `markPublished()` 저장 직전에 프로세스가 죽으면, 그 행은 `PENDING`으로 남아 다음 폴링이 **다시 발행**합니다. 즉 중복이 날 수 있습니다. 반대로 발행 안 됐는데 `PUBLISHED` 가 되는 경우는 `.get()` 덕에 없습니다. **유실 대신 중복을 택한** 설계이고 이게 at-least-once 의 본질입니다.
 
 ---
 
@@ -276,7 +276,7 @@ public void pollAndPublish() {
 
 ### 발행은 폴링 주기만큼 지연된다
 
-`fixedDelay = 5000` 은 직전 폴링이 **끝난 뒤** 5초를 셉니다. 그래서 이벤트가 outbox 에 저장된 뒤 Kafka로 나가기까지는 5초 주기에 더해 직전, 현재 폴링의 처리 시간만큼 더 걸립니다 — 한산할 땐 5초 안팎이지만 폴링이 무겁거나 backlog 가 쌓이면 여러 사이클만큼 더 벌어집니다(고정 상한이 아닙니다). 주문 생성 → 결제 준비 → 알림의 체감 지연이 그만큼 늘어납니다. 포트폴리오 범위에서 허용한 값이지만 결제 같은 사용자 대기 흐름에서 이 지연은 길 수 있습니다. 줄이는 길은 주기 단축(부하↑)이나 Debezium CDC 전환(인프라↑)인데, 둘 다 "지연 vs 비용" 트레이드오프의 다른 점일 뿐입니다.
+`fixedDelay = 5000` 은 직전 폴링이 **끝난 뒤** 5초를 셉니다. 그래서 이벤트가 outbox 에 저장된 뒤 Kafka로 나가기까지는 5초 주기에 더해 직전, 현재 폴링의 처리 시간만큼 더 걸립니다. 한산할 땐 5초 안팎이지만 폴링이 무겁거나 backlog 가 쌓이면 여러 사이클만큼 더 벌어집니다(고정 상한이 아닙니다). 주문 생성에서 결제 준비, 알림까지 이어지는 체감 지연이 그만큼 늘어납니다. 포트폴리오 범위에서 허용한 값이지만 결제 같은 사용자 대기 흐름에서 이 지연은 길 수 있습니다. 줄이는 길은 주기 단축(부하↑)이나 Debezium CDC 전환(인프라↑)인데, 둘 다 "지연 vs 비용" 트레이드오프의 다른 점일 뿐입니다.
 
 ### at-least-once. 중복 발행은 버그가 아니라 설계의 일부다
 
@@ -307,9 +307,9 @@ public void pollAndPublish() {
 
 ## 통합 테스트로 검증된 것 (과 못한 것)
 
-`OutboxKafkaIntegrationTest` 는 Testcontainers로 MySQL + Redis + Kafka 를 띄우고 **Outbox 저장 → 폴링 → Kafka 발행 → Consumer 처리**의 E2E를 검증합니다. 단위 테스트 `OutboxPollingServiceTest` 는 발행 실패/재시도/헤더 주입 같은 분기를 Mockito로 좁혀 봅니다.
+`OutboxKafkaIntegrationTest` 는 Testcontainers로 MySQL + Redis + Kafka 를 띄우고 **Outbox 저장, 폴링, Kafka 발행, Consumer 처리**로 이어지는 E2E를 검증합니다. 단위 테스트 `OutboxPollingServiceTest` 는 발행 실패/재시도/헤더 주입 같은 분기를 Mockito로 좁혀 봅니다.
 
-**1. 정상 E2E — 저장이 발행으로, 발행이 처리로 이어진다**
+**1. 정상 E2E: 저장이 발행으로, 발행이 처리로 이어진다**
 
 ```java
 orderOutboxEventPublisher.publishOrderCreated(order);
@@ -337,9 +337,9 @@ assertThat(outboxEventRepository.findPendingEvents(100)).isEmpty();   // PUBLISH
 assertThat(notifications).hasSize(1);               // 알림도 그대로 1건
 ```
 
-한 번 `PUBLISHED`된 이벤트는 `PENDING` 이 아니라 재폴링에도 다시 안 나갑니다 — "정상 경로에서는" 중복이 없음을 보입니다.
+한 번 `PUBLISHED`된 이벤트는 `PENDING` 이 아니라 재폴링에도 다시 안 나갑니다. "정상 경로에서는" 중복이 없음을 보입니다.
 
-**3. 발행 실패 → 재시도 소진 → FAILED + Slack (단위 테스트)**
+**3. 발행 실패 후 재시도를 소진하면 FAILED + Slack (단위 테스트)**
 
 ```java
 given(kafkaTemplate.send(any())).willThrow(new RuntimeException("Kafka down"));
@@ -353,7 +353,7 @@ Slack 발송 자체가 또 실패해도 `FAILED` 저장이 수행되고 예외�
 
 **이 테스트들이 증명하지 못하는 것**도 분명히 해야 합니다.
 
-- **at-least-once의 중복 창은 재현하지 않는다.** 위 2번은 "`PUBLISHED`면 재발행 안 함"을 보일 뿐, "발행 성공 후 `markPublished` 저장 직전에 죽어 다음 폴링이 재발행하는" 시나리오 — 즉 진짜 중복이 나는 경로는 건드리지 않습니다. 프로세스를 그 좁은 창에서 강제 종료시키는 카오스 테스트가 없습니다. 그래서 "중복은 날 수 있다"는 설계상 사실이지 테스트로 확인한 사실이 아닙니다.
+- **at-least-once의 중복 창은 재현하지 않는다.** 위 2번은 "`PUBLISHED`면 재발행 안 함"을 보일 뿐, "발행 성공 후 `markPublished` 저장 직전에 죽어 다음 폴링이 재발행하는" 시나리오, 즉 진짜 중복이 나는 경로는 건드리지 않습니다. 프로세스를 그 좁은 창에서 강제 종료시키는 카오스 테스트가 없습니다. 그래서 "중복은 날 수 있다"는 설계상 사실이지 테스트로 확인한 사실이 아닙니다.
 - **dual-write 원자성 자체를 음성으로 검증하지 않는다.** "주문 커밋 후 outbox 저장이 롤백되면 둘 다 사라지는가"를 보려면 트랜잭션 중간에 예외를 주입해야 하는데 그 테스트는 없습니다. 원자성은 `@Transactional` 의미론에 기대고 있고 통합 테스트는 정상 커밋 경로만 봅니다.
 - **유실 0건을 장애 주입으로 증명하지 않았다.** 브로커를 폴링 중간에 끊고 재기동 후 `PENDING` 이 발행되는지를 보는 시나리오는 단위 테스트의 mock 예외로 흉내 냈을 뿐, 실제 Kafka 컨테이너를 죽였다 살리는 검증은 아닙니다.
 - **발행 실패 테스트가 동기 예외만 흉내 낸다.** 단위 테스트는 `kafkaTemplate.send(...)` 가 호출 즉시 `RuntimeException` 을 던지게 mock합니다. 그러나 실제 브로커 장애는 `send()` 가 정상 반환한 뒤 **`Future`가 예외로 완료**되고 `.get()` 이 `ExecutionException`으로 풀어내는 경로로 나타납니다. 현재 `catch (Exception)` 이 둘 다 잡으므로 런타임 동작은 같지만 테스트가 실제로 검증하는 건 전자(동기 throw)뿐입니다.
@@ -366,7 +366,7 @@ Slack 발송 자체가 또 실패해도 `FAILED` 저장이 수행되고 예외�
 
 | 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |
 | --- | --- | --- |
-| dual-write는 왜 트랜잭션으로 못 묶는가 | Chris Richardson, *Microservices Patterns* — Transactional Outbox / Polling Publisher | "두 번의 쓰기" 절 |
+| dual-write는 왜 트랜잭션으로 못 묶는가 | Chris Richardson, *Microservices Patterns*: Transactional Outbox / Polling Publisher | "두 번의 쓰기" 절 |
 | `@TransactionalEventListener`의 phase별 동작 | Spring 공식 문서, *Transaction-bound Events* (`AFTER_COMMIT` vs `BEFORE_COMMIT`) | "AFTER_COMMIT는 유령은 막고 유실은 못 막는다" |
 | polling vs CDC 트레이드오프 | Debezium 공식 문서, *Outbox Event Router* | §10-1 발행 지연 절 |
 | at-least-once와 중복 흡수 | Kafka 공식 문서, *Message Delivery Semantics* | "중복은 설계의 일부" 절 |
@@ -401,15 +401,15 @@ flowchart LR
 
 **그대로 가는 것**
 
-- **패턴 자체.** 서비스마다 자기 DB 안에 `outbox_events` 를 두고 자기 폴러가 발행합니다. "로컬 트랜잭션으로 dual-write를 막는다"는 원리는 서비스가 쪼개질수록 **더 본질적**이 됩니다 — 분산 트랜잭션을 안 쓰기로 한 이상, 각 서비스의 "한 DB 안 원자성"이 유일하게 믿을 수 있는 보장이기 때문입니다.
+- **패턴 자체.** 서비스마다 자기 DB 안에 `outbox_events` 를 두고 자기 폴러가 발행합니다. "로컬 트랜잭션으로 dual-write를 막는다"는 원리는 서비스가 쪼개질수록 **더 본질적**이 됩니다. 분산 트랜잭션을 안 쓰기로 한 이상, 각 서비스의 "한 DB 안 원자성"이 유일하게 믿을 수 있는 보장이기 때문입니다.
 - **`event_id` 멱등성 키와 `aggregate_id` 파티션 키.** 서비스 경계를 넘어도 Consumer 멱등성과 파티션 순서의 토대로 그대로 쓰입니다.
 - **at-least-once 계약.** Producer 는 여전히 최소 한 번 보내고 Consumer 가 중복을 거릅니다. 책임 분담이 서비스 경계와 정확히 겹칩니다.
 
 **바뀌는 것**
 
 - **`outbox_events`가 서비스별로 분산된다.** 단일 테이블이 N개가 되고 폴러도 N개가 됩니다. ShedLock 락 이름도 서비스별로 분리돼야 합니다(12편). 한 서비스의 폴러 장애가 그 서비스 이벤트만 지연시키도록 격리되는 건 장점입니다.
-- **Choreography Saga의 발행 지점이 된다.** `payment.failed → order.cancelled → inventory restore` 의 보상 흐름(§8-5)에서, 각 단계의 이벤트가 바로 이 outbox 를 거쳐 나갑니다. 지금 모놀리스에서 한 트랜잭션 안의 메서드 호출로 처리되는 보상이, Phase 4에선 outbox 발행 → Kafka → 다른 서비스 소비로 풀립니다. **Outbox가 Saga의 신뢰성 토대**가 되는 것입니다.
-- **trace context가 cross-service로 확장된다.** ADR-0008이 모놀리스 단계에서 미리 깔아둔 `trace_id`/`user_id` 헤더 전파는, Phase 4에서 W3C `traceparent` 주입, 추출과 OpenTelemetry 계측을 붙일 수 있는 기반이 됩니다. "HTTP 요청 → outbox 저장 → 발행 → 다른 서비스 소비 → DLQ"를 단일 traceId로 묶기 위한 선결 작업 일부가 끝나 있습니다.
+- **Choreography Saga의 발행 지점이 된다.** `payment.failed`, `order.cancelled`, `inventory restore` 로 이어지는 보상 흐름(§8-5)에서, 각 단계의 이벤트가 바로 이 outbox 를 거쳐 나갑니다. 지금 모놀리스에서 한 트랜잭션 안의 메서드 호출로 처리되는 보상이, Phase 4에선 outbox 발행, Kafka, 다른 서비스 소비로 나뉩니다. **Outbox가 Saga의 신뢰성 토대**가 되는 것입니다.
+- **trace context가 cross-service로 확장된다.** ADR-0008이 모놀리스 단계에서 미리 깔아둔 `trace_id`/`user_id` 헤더 전파는, Phase 4에서 W3C `traceparent` 주입, 추출과 OpenTelemetry 계측을 붙일 수 있는 기반이 됩니다. "HTTP 요청, outbox 저장, 발행, 다른 서비스 소비, DLQ"를 단일 traceId로 묶기 위한 선결 작업 일부가 끝나 있습니다.
 - **CDC 전환이 현실적 선택지가 된다.** 서비스가 많아지고 발행 지연이 누적되면, 서비스별 polling 을 Debezium Outbox Event Router로 갈아탈 수 있습니다. payload 스키마(`KafkaEventEnvelope`)와 outbox 컬럼을 안 바꾸고 발행 메커니즘만 교체하도록 설계해둔 게 여기서 도움이 됩니다.
 
 **그래서 Phase 4 진입 전 짚을 점**

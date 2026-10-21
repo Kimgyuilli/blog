@@ -103,10 +103,10 @@ import '@/styles/scene.css';
     const peeled = new Set<Peelable>();
     const results: Partial<Record<Peelable, 'ok' | 'fail'>> = {};
 
-    const monolith = createBoundary(root, 'peekcart 모놀리스 · 한 애플리케이션');
+    const monolith = createBoundary(root, 'peekcart 모놀리스, 한 애플리케이션');
     const zone = createBoundary(root, '떼어낸 모듈', 'zone');
-    const productOrder = createFlipLink(root, { forward: 'implements ProductPort', backward: '재고 차감 · 단가 조회' });
-    const orderPayment = createFlipLink(root, { forward: 'implements OrderPort', backward: '소유자 확인 · 상태 전이' });
+    const productOrder = createFlipLink(root, { forward: 'implements ProductPort', backward: '재고 차감, 단가 조회' });
+    const orderPayment = createFlipLink(root, { forward: 'implements OrderPort', backward: '소유자 확인, 상태 전이' });
     const views = Object.fromEntries(NODES.map(({ id, label, hue }) => [id, createNode(root, { label, hue })])) as Record<Id, NodeView>;
 
     const restingState = (): State => ({
@@ -140,7 +140,7 @@ import '@/styles/scene.css';
         const result = results[id];
         chip.dataset.state = result ?? (id === next ? 'next' : 'idle');
         chip.disabled = busy || result === 'ok';
-        chip.querySelector('[data-mark]')!.textContent = result === 'ok' ? '✓' : result === 'fail' ? '✕ 부팅 실패' : '';
+        chip.querySelector('[data-mark]')!.textContent = result === 'ok' ? '완료' : result === 'fail' ? '부팅 실패' : '';
       });
       lensButtons.forEach((button) => { button.disabled = busy; });
       resetButton.hidden = Object.keys(results).length === 0;
@@ -162,7 +162,7 @@ import '@/styles/scene.css';
       const label = NODES.find((node) => node.id === id)!.label;
       const object = `${label}${id === 'notification' ? '을' : '를'}`;
 
-      terminal.log(`${id} 패키지 → ${id}-service 모듈로 이동`);
+      terminal.log(`${id} 패키지를 ${id}-service 모듈로 이동`);
       peeled.add(id);
       views[id].setSub('service 모듈');
       views[id].flash('is-done');
@@ -172,7 +172,7 @@ import '@/styles/scene.css';
       const compile = terminal.log('남은 모놀리스 컴파일', 'pending');
       await scene.pause(duration.beat);
       if (!alive()) return;
-      compile(`남은 모놀리스 컴파일 — ${object} import하는 코드 없음`, 'ok');
+      compile(`남은 모놀리스 컴파일, ${object} import하는 코드 없음`, 'ok');
 
       const boot = terminal.log('남은 모놀리스 부팅', 'pending');
       await scene.pause(duration.beat + 160);
@@ -183,7 +183,7 @@ import '@/styles/scene.css';
         views[id].flash('is-ok');
         if (id === 'notification') {
           terminal.log('남은 통합 테스트 일부가 Notification의 이벤트 소비로 결과를 확인하고 있었음', 'warn');
-          say('Notification은 이벤트를 받기만 해서 바로 떨어집니다. 다만 남은 모놀리스의 멱등성·Outbox·DLQ 테스트가 Notification의 소비 결과를 검증 수단으로 쓰고 있어 다시 써야 했습니다.');
+          say('Notification은 이벤트를 받기만 해서 바로 떨어집니다. 다만 남은 모놀리스의 멱등성, Outbox, DLQ 테스트가 Notification의 소비 결과를 검증 수단으로 쓰고 있어 다시 써야 했습니다.');
         } else {
           say(results.product === 'fail'
             ? 'User는 어디에서도 import되거나 호출되지 않아 바로 떨어집니다. 그래서 실제로는 User를 먼저 떼어내고, Product는 동기 호출을 걷어낸 다음에 떼어냈습니다.'

@@ -10,13 +10,13 @@ import '@/styles/scene.css';
     <button type="button" data-trust-toggle="sig" aria-pressed="false">서명 검증</button>
   </DemoControls>
   <div class="scene-chips" role="group" aria-label="요청">
-    <button type="button" class="scene-chip is-plain" data-trust-send>▶ 세 요청 다시 보내기</button>
+    <button type="button" class="scene-chip is-plain" data-trust-send>세 요청 다시 보내기</button>
   </div>
   <div class="scene-stage">
     <svg data-trust-svg role="img" aria-label="왼쪽 세 출발지(게이트웨이 경유 정상 요청, 게이트웨이 Pod 안의 위조, 다른 Pod의 위조)가 NetworkPolicy 벽과 서명 검증 벽을 지나 오른쪽 서비스로 요청을 보내는 그림"></svg>
   </div>
   <p class="scene-note" data-trust-note role="status"></p>
-  <p class="db-demo-disclaimer">글의 표(NetworkPolicy와 서명이 각각 막는 것)를 그림으로 옮긴 모형입니다. 클러스터에서 실측한 것은 NetworkPolicy와 서명 검증이 모두 켜진 상태의 결과(위조·평문 401, 정상 200, 게이트웨이가 아닌 Pod 000)와, 게이트웨이 Pod 안에서 보낸 평문 헤더가 서명만 받는 모드에서 401·평문도 받는 모드에서 200이 된 것입니다. 나머지 조합의 결과와 ADMIN 위조 요청은 설정과 테스트를 근거로 만든 예시이고, 실제로 보내 보지는 않았습니다. "담 꺼짐"은 정책이 강제되지 않는 상태입니다. <code>000</code>은 curl이 HTTP 응답 상태를 받지 못했다는 뜻입니다.</p>
+  <p class="db-demo-disclaimer">글의 표(NetworkPolicy와 서명이 각각 막는 것)를 그림으로 옮긴 모형입니다. 클러스터에서 실측한 것은 NetworkPolicy와 서명 검증이 모두 켜진 상태의 결과(위조와 평문 401, 정상 200, 게이트웨이가 아닌 Pod 000)와, 게이트웨이 Pod 안에서 보낸 평문 헤더가 서명만 받는 모드에서 401, 평문도 받는 모드에서 200이 된 것입니다. 나머지 조합의 결과와 ADMIN 위조 요청은 설정과 테스트를 근거로 만든 예시이고, 실제로 보내 보지는 않았습니다. "담 꺼짐"은 정책이 강제되지 않는 상태입니다. <code>000</code>은 curl이 HTTP 응답 상태를 받지 못했다는 뜻입니다.</p>
 </InteractiveDemoFrame>
 
 <script>
@@ -97,7 +97,7 @@ import '@/styles/scene.css';
       });
       const captionY = l.wallY[1] + 14;
       npWall.place({ x: l.npX, y1: l.wallY[0], y2: l.wallY[1] }, { show: 1, ghost: state.npGhost }, { x: l.npX, y: captionY });
-      npWall.caption.textContent = state.npGhost > 0.5 ? 'NetworkPolicy · 강제 안 됨' : 'NetworkPolicy';
+      npWall.caption.textContent = state.npGhost > 0.5 ? 'NetworkPolicy, 강제 안 됨' : 'NetworkPolicy';
       sigWall.place({ x: l.sigX, y1: l.wallY[0], y2: l.wallY[1] }, { show: state.sigShow, ghost: 0 }, { x: l.sigX, y: captionY });
       target.setBox({ ...l.target, ...l.targetSize });
       setAttrs(metricCaption, { x: l.metric.x, y: l.metric.y });

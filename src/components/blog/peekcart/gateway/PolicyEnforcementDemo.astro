@@ -10,7 +10,7 @@ import '@/styles/scene.css';
     <button type="button" data-policy-mode="calico" aria-pressed="false">--cni calico</button>
   </DemoControls>
   <div class="scene-chips" role="group" aria-label="요청">
-    <button type="button" class="scene-chip is-plain" data-policy-send>▶ 네 Pod에서 요청 보내기</button>
+    <button type="button" class="scene-chip is-plain" data-policy-send>네 Pod에서 요청 보내기</button>
   </div>
   <div class="scene-stage">
     <svg data-policy-svg role="img" aria-label="왼쪽 네 Pod가 NetworkPolicy 벽을 지나 오른쪽 보호 대상 Pod의 8080으로 요청을 보내는 그림"></svg>
@@ -93,7 +93,7 @@ import '@/styles/scene.css';
         setAttrs(results[i], { x: l.wallX - 14, y: y - 9 });
       });
       wall.place({ x: l.wallX, y1: l.wallY[0], y2: l.wallY[1] }, { show: 1, ghost: state.ghost }, { x: l.wallX, y: l.wallY[1] + 14 });
-      wall.caption.textContent = state.ghost > 0.5 ? 'NetworkPolicy · 강제 안 됨' : 'NetworkPolicy · Calico가 강제';
+      wall.caption.textContent = state.ghost > 0.5 ? 'NetworkPolicy, 강제 안 됨' : 'NetworkPolicy, Calico가 강제';
       target.setBox({ ...l.target, ...l.targetSize });
       setAttrs(metricCaption, { x: l.metric.x, y: l.metric.y });
       setAttrs(metric, { x: l.metric.x, y: l.metric.y + 26 });

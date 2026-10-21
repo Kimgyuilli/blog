@@ -94,7 +94,7 @@ const steps = [
     '서비스를 하나도 떼지 않고 <strong>공통 코드부터</strong> common과 관측성 모듈로 뺐습니다. 루트는 이 두 모듈을 의존해 그대로 부팅됐습니다.',
     '이벤트를 받기만 하는 <strong>Notification</strong>부터 떼어내며 분리 절차를 확립했습니다.',
     '계획에서는 Product 차례였지만 <strong>User를 먼저</strong> 떼어냈습니다. Order가 <code>ProductPort</code>로 Product의 빈을 부르고 있었기 때문입니다.',
-    '재고 차감·단가 조회·상품 존재 확인을 이벤트와 캐시로 바꾼 뒤에야 <strong>Product</strong>를 떼어냈습니다.',
+    '재고 차감, 단가 조회, 상품 존재 확인을 이벤트와 캐시로 바꾼 뒤에야 <strong>Product</strong>를 떼어냈습니다.',
     'Payment의 <code>OrderPort</code> 호출을 로컬 상태와 이벤트로 바꾼 뒤 <strong>Order</strong>를 떼어냈습니다.',
     '마지막으로 <strong>Payment</strong>를 옮기자 루트에는 소스가 하나도 남지 않았습니다. 루트는 실행 파일을 만들지 않는 <strong>빌드 집합점</strong>이 됐습니다.',
   ];

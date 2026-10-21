@@ -171,7 +171,7 @@ const steps = [
       rowChips.forEach((chip, i) => {
         chip.place(l.rows[i], state.rows[i]);
         const status = state.status[i];
-        statusText[i].textContent = status === 'DELETED' ? '지워짐 · 기록 없음' : status;
+        statusText[i].textContent = status === 'DELETED' ? '지워짐, 기록 없음' : status;
         statusText[i].classList.toggle('is-sans', status === 'DELETED');
         statusText[i].style.fill = STATUS_FILL[status];
         setAttrs(statusText[i], { x: l.rows[i].x + l.statusDx, y: l.rows[i].y + 4, opacity: status === 'DELETED' ? 1 : state.rows[i] });

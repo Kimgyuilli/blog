@@ -15,7 +15,7 @@ const methods = ['Kafka 직접', 'outbox INSERT', '운영 seed runner', 'E2E 전
     <p class="saga-status" role="status" aria-live="polite"></p>
     <button type="button" class="saga-replay">선택한 입력 다시 보내기</button>
   </div>
-  <p class="db-demo-disclaimer">Payment의 결제 실패 발행 경로만 단순화했습니다. 입력 패킷은 설명용이며 실제 로그가 아닙니다. seed runner는 구현되지 않은 계획입니다. HTTP는 기존 DUAL_ACCEPT 모드입니다. gateway 서명·SIGNED_ONLY와 환불 시나리오의 직접 발행 예외는 이 그림 밖입니다.</p>
+  <p class="db-demo-disclaimer">Payment의 결제 실패 발행 경로만 단순화했습니다. 입력 패킷은 설명용이며 실제 로그가 아닙니다. seed runner는 구현되지 않은 계획입니다. HTTP는 기존 DUAL_ACCEPT 모드입니다. gateway 서명, SIGNED_ONLY와 환불 시나리오의 직접 발행 예외는 이 그림 밖입니다.</p>
 </InteractiveDemoFrame>
 <script>
   import { initSagaStart } from '@/scripts/blog/saga-e2e/start';

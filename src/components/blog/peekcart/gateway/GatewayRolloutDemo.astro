@@ -37,7 +37,7 @@ const shortOf = Object.fromEntries(steps.map((step) => [step.id, step.short]));
       ))}
     </div>
   </div>
-  <p class="db-demo-disclaimer">서비스 하나(Order)와 요청 두 개로 줄인 모형입니다. 출발 상태는 글의 ‘검증 병행’으로, 게이트웨이가 검증한 뒤 Authorization도 함께 넘깁니다. ‘토큰 빼기’는 글에서 아직 실행하지 않은 계획 단계이고, 옛 검증기 제거와 함께 묶여 있습니다. 입구를 닫으면 NetworkPolicy가 실제로 강제된다고 가정했고, Prometheus 허용 경로와 옛·새 Pod가 섞이는 과정은 그리지 않았습니다. 200·401 같은 결과는 설명용 판정입니다.</p>
+  <p class="db-demo-disclaimer">서비스 하나(Order)와 요청 두 개로 줄인 모형입니다. 출발 상태는 글의 ‘검증 병행’으로, 게이트웨이가 검증한 뒤 Authorization도 함께 넘깁니다. ‘토큰 빼기’는 글에서 아직 실행하지 않은 계획 단계이고, 옛 검증기 제거와 함께 묶여 있습니다. 입구를 닫으면 NetworkPolicy가 실제로 강제된다고 가정했고, Prometheus 허용 경로와 옛과 새 Pod가 섞이는 과정은 그리지 않았습니다. 200, 401 같은 결과는 설명용 판정입니다.</p>
 </InteractiveDemoFrame>
 
 <script>
@@ -86,9 +86,9 @@ const shortOf = Object.fromEntries(steps.map((step) => [step.id, step.short]));
 
   const BASE: State = { close: 0, closeCut: 0, trust: 0, strip: 0, stripCut: 0 };
   const STEP_NOTE: Record<Step, [string, string]> = {
-    close: ['<strong>입구 닫기</strong> — Service를 ClusterIP로 바꾸고 NetworkPolicy로 게이트웨이만 들여보냅니다.', '<strong>입구 다시 열기</strong> — 우회 경로 설정을 복구합니다.'],
-    trust: ['<strong>헤더 믿기</strong> — Order를 X-User-*를 읽는 새 이미지로 바꿉니다.', '<strong>옛 이미지로</strong> — Order가 다시 Bearer 토큰을 검증합니다.'],
-    strip: ['<strong>토큰 빼기</strong> — 게이트웨이가 Authorization을 더는 넘기지 않습니다.', '<strong>토큰 전달 복구</strong> — 게이트웨이가 Authorization을 다시 넘깁니다.'],
+    close: ['<strong>입구 닫기</strong>, Service를 ClusterIP로 바꾸고 NetworkPolicy로 게이트웨이만 들여보냅니다.', '<strong>입구 다시 열기</strong>, 우회 경로 설정을 복구합니다.'],
+    trust: ['<strong>헤더 믿기</strong>, Order를 X-User-*를 읽는 새 이미지로 바꿉니다.', '<strong>옛 이미지로</strong>, Order가 다시 Bearer 토큰을 검증합니다.'],
+    strip: ['<strong>토큰 빼기</strong>, 게이트웨이가 Authorization을 더는 넘기지 않습니다.', '<strong>토큰 전달 복구</strong>, 게이트웨이가 Authorization을 다시 넘깁니다.'],
   };
   const SHORT: Record<Step, string> = { close: '닫기', trust: '믿기', strip: '빼기' };
 
@@ -224,7 +224,7 @@ const shortOf = Object.fromEntries(steps.map((step) => [step.id, step.short]));
         if (!(await p.bounce({ x: last.x, y: last.y + 4 }, 26)) || !alive()) return;
         service.flash('is-error');
         service.flash('is-shaking');
-        setVerdict(normalVerdict, '✕ 401 · 토큰 없음', 'danger');
+        setVerdict(normalVerdict, '401, 토큰 없음', 'danger');
         await p.fade(600);
       }
     }
@@ -237,21 +237,21 @@ const shortOf = Object.fromEntries(steps.map((step) => [step.id, step.short]));
       const p = packets.spawn({ label: 'X-User-Id: 1', tone: 'danger', at: { x: l.attacker.x + l.source.w / 2, y: lane } });
       if (applied.close) {
         if (!(await p.bounce({ x: l.door.x - 8, y: lane }, 30)) || !alive()) return;
-        setVerdict(attackVerdict, '✓ 입구에서 차단', 'flow');
+        setVerdict(attackVerdict, '입구에서 차단', 'flow');
         await p.fade(600);
         return;
       }
       if (!(await p.travel([{ x: l.service.x, y: lane }], 900, ease.linear)) || !alive()) return;
       if (outcome.attackBlocked) {
         if (!(await p.bounce({ x: l.service.x, y: l.service.y + 34 }, 26)) || !alive()) return;
-        setVerdict(attackVerdict, '✓ 401 · 토큰 없음', 'flow');
+        setVerdict(attackVerdict, '401, 토큰 없음', 'flow');
         await p.fade(600);
       } else {
         if (!(await p.travel([{ x: l.service.x, y: l.service.y + 44 }], 360, ease.out)) || !alive()) return;
         await p.land(true);
         service.flash('is-error');
         service.flash('is-shaking');
-        setVerdict(attackVerdict, '✕ user 1로 인증됨', 'danger');
+        setVerdict(attackVerdict, 'user 1로 인증됨', 'danger');
       }
     }
 
@@ -351,11 +351,11 @@ const shortOf = Object.fromEntries(steps.map((step) => [step.id, step.short]));
       sequence.push(entry);
       markChips();
       const n = sequence.length;
-      setNote(`<strong>${n}단계</strong> · ${STEP_NOTE[step][0]}`);
+      setNote(`<strong>${n}단계</strong>, ${STEP_NOTE[step][0]}`);
       if (!(await change(step, true, alive)) || !alive()) return false;
       entry.shown = true;
       markChips();
-      let html = `<strong>${n}단계</strong> · ${STEP_NOTE[step][0]} ${describe(outcome)}`;
+      let html = `<strong>${n}단계</strong>, ${STEP_NOTE[step][0]} ${describe(outcome)}`;
       if (n === 3) {
         const safe = sequence.every((e) => e.ok);
         revealCard();
@@ -381,7 +381,7 @@ const shortOf = Object.fromEntries(steps.map((step) => [step.id, step.short]));
         const seq = stepButtons.find((b) => b.dataset.rolloutStep === entry.step)!;
         seq.dataset.state = ok ? 'ok' : 'fail';
         seq.querySelector<HTMLElement>('.rollout-seq')!.textContent = '↩';
-        setNote(`<strong>되돌리기 ${i + 1}</strong> · ${STEP_NOTE[entry.step][1]} ${describe(outcome)}`, !ok);
+        setNote(`<strong>되돌리기 ${i + 1}</strong>, ${STEP_NOTE[entry.step][1]} ${describe(outcome)}`, !ok);
         await scene.pause(duration.read);
         if (!alive()) return;
       }

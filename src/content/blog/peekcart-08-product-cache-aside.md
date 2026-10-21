@@ -15,7 +15,7 @@ Phase 1을 끝낸 시점의 PeekCart 는 모든 요청이 MySQL 을 조회합니
 
 | 용어                 | 이 글에서의 의미                                                                                       |
 | ------------------ | ---------------------------------------------------------------------------------------------- |
-| Cache Aside        | 애플리케이션이 "캐시 조회 → 미스면 DB 조회 → 결과를 캐시에 적재"의 순서로 캐시를 직접 다루는 패턴. Read-Through/Write-Through와 구분됨 |
+| Cache Aside        | 애플리케이션이 "캐시 조회, 미스면 DB 조회, 결과를 캐시에 적재"의 순서로 캐시를 직접 다루는 패턴. Read-Through/Write-Through와 구분됨 |
 | TTL                | Time To Live. 캐시 엔트리가 자동 만료되는 시간                                                                |
 | 캐시 적중률             | 전체 조회 중 캐시에서 응답된 비율 (cache hit / (cache hit + cache miss))                                     |
 | `@Cacheable`       | Spring Cache 추상화의 어노테이션. AOP 프록시가 호출을 가로채 캐시 조회/적재를 자동화                                       |
@@ -29,7 +29,7 @@ Phase 1을 끝낸 시점의 PeekCart 는 모든 요청이 MySQL 을 조회합니
 2. 같은 빈 안에서 `@Cacheable` 을 호출하면 왜 동작하지 않을까? 그 해결책으로 빈을 분리한 의미는 무엇일까?
 3. 목록 캐시를 "키 하나씩" 무효화하지 않고 `allEntries = true` 로 통째로 비운 이유는 무엇일까?
 4. `Page<T>` 를 Redis 에 직렬화하지 못해서 등장한 `CachedPage` 래퍼는 어떤 트레이드오프일까?
-5. 캐시 ON 에서 목표 3배에 못 미친 ×2.31이 왜 실패가 아닐까?
+5. 캐시 ON 에서 목표 3배에 못 미친 2.31배이 왜 실패가 아닐까?
 
 ---
 
@@ -47,7 +47,7 @@ Phase 1을 끝낸 시점의 PeekCart 는 모든 요청이 MySQL 을 조회합니
 
 | 패턴 | 읽기 | 쓰기 | 캐시를 다루는 주체 |
 | --- | --- | --- | --- |
-| Cache Aside (Lazy Loading) | 앱이 캐시 조회 → 미스면 앱이 DB 조회 → 앱이 캐시 적재 | 앱이 DB 갱신 → 앱이 캐시 invalidate | 애플리케이션 |
+| Cache Aside (Lazy Loading) | 앱이 캐시 조회, 미스면 앱이 DB 조회, 앱이 캐시 적재 | 앱이 DB 갱신 후 앱이 캐시 invalidate | 애플리케이션 |
 | Read-Through | 앱이 캐시에만 요청. 미스 시 캐시 라이브러리가 자기 backend loader로 DB 조회 후 적재 | (별도 결정) | 캐시 라이브러리 |
 | Write-Through | (보통 Read-Through와 동반) | 앱이 캐시에 쓰면 캐시 라이브러리가 동기로 DB까지 반영 | 캐시 라이브러리 |
 | Write-Behind (Write-Back) | (별도 결정) | 앱이 캐시에 쓰면 캐시가 비동기로 DB에 flush | 캐시 라이브러리 |
@@ -201,7 +201,7 @@ Spring Data 의 `PageImpl` 은 Jackson 이 역직렬화할 표준 방법이 없�
 
 1. `PageImpl` 을 Jackson 이 다룰 수 있게 커스텀 직렬화기를 만듭니다. 외부 라이브러리 내부 구조에 의존해서 깨지기 쉽습니다.
 2. `Page` 를 풀어서 `List<T>` 만 캐시하고 페이징 메타는 매번 재계산합니다. totalElements 를 캐시 밖에서 다시 구해야 해서 의미가 없습니다.
-3. `Page` → 직렬화 친화적인 record → `Page` 로 왕복합니다.
+3. `Page` 를 직렬화 친화적인 record 로 바꿨다가 다시 `Page` 로 되돌립니다.
 
 세 번째를 택했습니다. `global/cache/CachedPage` 는 33줄짜리 record입니다.
 
@@ -295,10 +295,10 @@ Redis 가 다운되면 `@Cacheable` 호출이 `RedisConnectionFailureException` 
 | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
 | Spring `@Cacheable`이 내부 호출에서 동작하지 않는 이유?    | Spring Framework 공식 문서, [Understanding AOP Proxies](https://docs.spring.io/spring-framework/reference/core/aop/proxying.html) | `ProductCacheService` 별도 빈 분리     |
 | Cache Aside / Read-Through / Write-Behind 패턴 비교? | Martin Kleppmann, *Designing Data-Intensive Applications* Ch.1 "Caching" 절 / AWS Caching Best Practices | "Cache Aside를 선택한 이유" 전체           |
-| `RedisCacheManager`의 키 직렬화·TTL·prefix 옵션?   | Spring Data Redis 공식 문서, [Cache Configuration](https://docs.spring.io/spring-data/redis/reference/redis/redis-cache.html) | `CacheConfig`의 `defaultConfig` 구성 |
+| `RedisCacheManager`의 키 직렬화, TTL, prefix 옵션?   | Spring Data Redis 공식 문서, [Cache Configuration](https://docs.spring.io/spring-data/redis/reference/redis/redis-cache.html) | `CacheConfig`의 `defaultConfig` 구성 |
 | `Page<T>`를 Redis에 직렬화하는 표준 방법?              | Spring Data Commons 이슈 트래커의 `PageImpl` 직렬화 관련 PR 논의                                                                    | `CachedPage` 래퍼 결정                |
 | 캐시 적중률을 실시간으로 보는 표면 만들기?                    | Micrometer `CacheMeterBinder` 문서, Spring Boot Actuator `cache.*` 메트릭                                                    | "캐시 적중률을 메트릭으로 보지 않는다" 절          |
-| 캐시 무효화의 두 가지 어려움(naming / invalidation)?    | Phil Karlton, "There are only two hard things..." 인용 맥락 / Mnesia·Hibernate cache invalidation 문서                       | `allEntries = true` 결정 정당화        |
+| 캐시 무효화의 두 가지 어려움(naming / invalidation)?    | Phil Karlton, "There are only two hard things..." 인용 맥락 / Mnesia, Hibernate cache invalidation 문서                       | `allEntries = true` 결정 정당화        |
 
 ---
 
