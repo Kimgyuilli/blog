@@ -9,7 +9,7 @@ draft: false
 slug: "peekcart-layered-ddd"
 ---
 
-PeekCart는 이커머스 도메인을 예제로 삼아 회원, 상품, 재고, 장바구니, 주문, 결제, 알림을 구현하는 학습 프로젝트입니다. 목표는 처음부터 마이크로서비스를 만드는 것이 아니라, 단일 애플리케이션에서 출발해 성능, 정합성, 운영 문제를 겪어본 뒤 서비스 분리까지 이어지는 흐름을 이해하는 것입니다.
+PeekCart는 이커머스 도메인을 예제로 삼아 회원, 상품, 재고, 장바구니, 주문, 결제, 알림을 구현하는 학습 프로젝트입니다. 단일 애플리케이션에서 출발해 성능, 정합성, 운영 문제를 겪어본 뒤 서비스 분리까지 이어지는 흐름을 이해하는 것이 목표입니다.
 
 이번 글에서는 그 출발점인 단일 Spring Boot 모놀리스 구조를 봅니다. 하나의 애플리케이션으로 배포되지만 내부까지 하나의 덩어리로 둔 것은 아닙니다. 각 도메인은 `presentation`, `application`, `domain`, `infrastructure` 네 레이어로 나뉘어 있습니다.
 
@@ -19,7 +19,7 @@ PeekCart는 이커머스 도메인을 예제로 삼아 회원, 상품, 재고, �
 |---|---|
 |Phase 1|단일 Spring Boot 애플리케이션으로 핵심 도메인을 구현한 단계|
 |Phase 2|Redis, Kafka, Outbox, 분산 락 등을 추가해 성능과 정합성을 보강하는 단계|
-|Phase 3|Kubernetes, 모니터링, 부하 테스트로 운영 관점을 검증하는 단계|
+|Phase 3|Kubernetes, 모니터링, 부하 테스트로 운영 환경에서 동작을 검증하는 단계|
 |Phase 4|Gradle 멀티모듈과 MSA를 고민하며 서비스를 분리하는 단계|
 |ADR|Architecture Decision Record의 약자. 왜 특정 설계를 선택했는지 기록한 내부 의사결정 문서|
 
@@ -39,9 +39,9 @@ PeekCart는 이커머스 도메인을 예제로 삼아 회원, 상품, 재고, �
 
 이커머스 도메인은 단순 CRUD만으로 끝나지 않습니다.
 
-상품은 등록, 수정, 삭제만 있으면 되는 것처럼 보이지만 재고가 붙는 순간 동시성 문제가 생깁니다. 주문은 생성만 하는 것이 아니라 결제 요청, 결제 성공, 결제 실패, 배송 준비, 배송 완료, 취소 같은 상태 전이를 가집니다. 결제 실패나 타임아웃이 발생하면 주문 상태와 재고도 함께 맞춰야 합니다.
+상품은 등록, 수정, 삭제만 있으면 되는 것처럼 보이지만 재고가 붙는 순간 동시성 문제가 생깁니다. 주문은 생성 뒤에도 결제 요청, 결제 성공, 결제 실패, 배송 준비, 배송 완료, 취소 같은 상태 전이를 가집니다. 결제 실패나 타임아웃이 발생하면 주문 상태와 재고도 함께 맞춰야 합니다.
 
-이런 규칙이 모두 Service 클래스에 모이면 처음에는 편해 보여도 점점 읽기 어려워집니다. Controller는 요청을 받고 Service는 모든 판단을 하고 Repository는 DB만 보는 전통적인 구조에서는 비즈니스 규칙이 Service에 집중되기 쉽습니다.
+이런 규칙이 모두 Service 클래스에 모이면 처음에는 편해 보여도 점점 읽기 어려워집니다. Controller는 요청을 받고 Service는 모든 규칙을 처리하고 Repository는 DB만 보는 전통적인 구조에서는 비즈니스 규칙이 Service에 집중되기 쉽습니다.
 
 처음 문제를 정의할 때 이 문제를 다음처럼 보았습니다.
 
@@ -60,10 +60,10 @@ PeekCart는 이커머스 도메인을 예제로 삼아 회원, 상품, 재고, �
 참고한 글 중 하나는 [지속 성장 가능한 소프트웨어를 만들어가는 방법](https://geminikims.medium.com/%EC%A7%80%EC%86%8D-%EC%84%B1%EC%9E%A5-%EA%B0%80%EB%8A%A5%ED%95%9C-%EC%86%8C%ED%94%84%ED%8A%B8%EC%9B%A8%EC%96%B4%EB%A5%BC-%EB%A7%8C%EB%93%A4%EC%96%B4%EA%B0%80%EB%8A%94-%EB%B0%A9%EB%B2%95-97844c5dab63)입니다. 이 글에서 특히 인상 깊었던 관점은 세 가지입니다.
 
 - 비즈니스 로직은 상세 구현을 모두 읽지 않아도 흐름을 이해할 수 있어야 합니다.
-- 레이어는 폴더 이름이 아니라 참조 방향과 제약으로 통제되어야 합니다.
+- 레이어는 참조 방향과 제약으로 통제되어야 합니다. 폴더 이름만으로는 막을 수 없습니다.
 - 모듈화는 기술 의존성을 상위 비즈니스 코드로 전파하지 않기 위한 장치가 될 수 있습니다.
 
-이 관점으로 PeekCart를 다시 보면 현재 구조는 "완전한 정답"이라기보다 다음 단계로 성장하기 위한 중간 형태에 가깝습니다.
+이 관점으로 PeekCart를 다시 보면 현재 구조는 다음 단계로 성장하기 위한 중간 형태입니다.
 
 |구조|핵심 관심사|PeekCart에 적용한다면|부담|
 |---|---|---|---|
@@ -117,7 +117,7 @@ PeekCart의 현재 선택은 이 중에서 `레이어 분리`, `도메인 중심
 |질문|같이 읽을 자료|이 글에서 연결되는 지점|
 |---|---|---|
 |전통적인 레이어 구조는 무엇을 나누려는가?|Martin Fowler, [Presentation Domain Data Layering](https://martinfowler.com/bliki/PresentationDomainDataLayering.html)|Controller, Application, Domain, Infrastructure의 책임을 비교할 때|
-|DDD에서 경계는 왜 중요한가?|Eric Evans, [DDD Reference](https://www.domainlanguage.com/ddd/reference/), Martin Fowler, [Bounded Context](https://martinfowler.com/bliki/BoundedContext.html)|`user`, `product`, `order`, `payment`가 단순 패키지인지 서비스 후보인지 판단할 때|
+|DDD에서 경계는 왜 중요한가?|Eric Evans, [DDD Reference](https://www.domainlanguage.com/ddd/reference/), Martin Fowler, [Bounded Context](https://martinfowler.com/bliki/BoundedContext.html)|`user`, `product`, `order`, `payment`가 단순 패키지인지 서비스 후보인지 구분할 때|
 |Hexagonal은 왜 Port와 Adapter를 강조하는가?|Alistair Cockburn, [Hexagonal Architecture](https://alistair.cockburn.us/hexagonal-architecture)|`ProductPort`, Repository 인터페이스, Toss/Slack/Kafka 연동을 해석할 때|
 |Clean Architecture와 Onion은 무엇이 다른가?|Robert C. Martin, [The Clean Architecture](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html), Jeffrey Palermo, [The Onion Architecture: Part 1](https://jeffreypalermo.com/2008/07/the-onion-architecture-part-1/)|JPA Entity와 Domain Entity를 분리하지 않은 절충안을 평가할 때|
 |레이어가 아니라 유스케이스별로 묶으면 어떨까?|Jimmy Bogard, [Vertical Slice Architecture](https://www.jimmybogard.com/vertical-slice-architecture/)|`CreateOrder`, `CancelOrder`처럼 기능 흐름 중심 구조를 비교할 때|
@@ -130,7 +130,7 @@ PeekCart의 현재 선택은 이 중에서 `레이어 분리`, `도메인 중심
 
 ## 의존성 흐름으로 비교하기
 
-구조를 비교할 때 가장 먼저 볼 것은 "어느 코드가 어느 코드를 알아도 되는가"입니다. 아래 도식은 실제 구현을 모두 표현한 것이 아니라, 각 아키텍처가 통제하려는 의존 방향을 단순화한 것입니다.
+구조를 비교할 때 가장 먼저 볼 것은 "어느 코드가 어느 코드를 알아도 되는가"입니다. 아래 도식은 각 아키텍처가 통제하려는 의존 방향만 단순화해 그렸습니다.
 
 ### 3-Layered
 
@@ -187,7 +187,7 @@ flowchart TD
     I --> D
 ```
 
-Business 레이어는 상세 구현을 직접 알지 않고 Implement 레이어의 협력 객체를 통해 흐름을 표현합니다. 핵심은 "비즈니스 흐름은 읽히고 상세 구현은 아래로 숨긴다"는 점입니다.
+Business 레이어는 상세 구현을 직접 알지 않고 Implement 레이어의 협력 객체를 통해 흐름을 표현합니다. 비즈니스 흐름은 위에서 읽히고, 상세 구현은 아래로 숨겨집니다.
 
 ### PeekCart의 4-Layered + DDD
 
@@ -401,9 +401,9 @@ flowchart TD
     A -. "interface 호출" .-> I
 ```
 
-Infrastructure는 Domain에 정의된 인터페이스를 구현합니다. Application은 구체적인 JPA Repository 구현체가 아니라 Domain의 Repository 인터페이스에 의존합니다.
+Infrastructure는 Domain에 정의된 인터페이스를 구현합니다. Application은 Domain의 Repository 인터페이스에 의존하고, 구체적인 JPA Repository 구현체는 모릅니다.
 
-이 구조를 단순히 폴더 규칙으로 보면 별 의미가 없습니다. 핵심은 "비즈니스 판단이 어디에 있어야 하는가"입니다.
+이 구조를 폴더 규칙으로만 보면 별 의미가 없습니다. 이 구조가 정하는 것은 비즈니스 규칙을 어느 레이어에 둘지입니다.
 
 ---
 
@@ -465,7 +465,7 @@ public void transitionTo(OrderStatus target) {
 }
 ```
 
-상태 전이 가능 여부는 `OrderStatus` enum이 직접 판단합니다.
+상태 전이 가능 여부는 `OrderStatus` enum이 직접 검사합니다.
 
 ```java
 PAYMENT_REQUESTED {
@@ -476,9 +476,9 @@ PAYMENT_REQUESTED {
 }
 ```
 
-이 부분이 중요합니다. 주문이 어떤 상태로 바뀔 수 있는지는 단순한 데이터 변경이 아니라 도메인 규칙입니다. 이 규칙을 Service에 흩어놓지 않고 `Order`와 `OrderStatus`에 둔 덕분에, 주문 상태 전이를 테스트할 때 HTTP나 DB를 몰라도 됩니다.
+이 부분이 중요합니다. 주문이 어떤 상태로 바뀔 수 있는지는 도메인 규칙입니다. 이 규칙을 Service에 흩어놓지 않고 `Order`와 `OrderStatus`에 둔 덕분에, 주문 상태 전이를 테스트할 때 HTTP나 DB를 몰라도 됩니다.
 
-즉 Domain 레이어는 "데이터 모양"만 갖는 곳이 아니라, 비즈니스 규칙도 모이는 곳입니다.
+즉 Domain 레이어에는 데이터와 함께 비즈니스 규칙도 모입니다.
 
 ---
 
@@ -503,11 +503,11 @@ OrderStatus.canTransitionTo(...)
 
 - `OrderCommandService`, Kafka Consumer, Scheduler는 "어떤 상황에서 상태를 바꿀지"를 결정합니다.
 - `Order`는 실제 상태 변경을 수행하고 이미 취소된 주문인지 같은 애그리거트 불변식을 확인합니다.
-- `OrderStatus`는 현재 상태에서 목표 상태로 갈 수 있는지 판단합니다.
+- `OrderStatus`는 현재 상태에서 목표 상태로 갈 수 있는지 검사합니다.
 
-이 정도의 상태 전이라면 `Order`와 `OrderStatus`에 두는 편이 자연스럽습니다. 주문 상태는 주문 애그리거트의 핵심 생명주기이기 때문입니다. `DELIVERED` 상태의 주문이 `CANCELLED`로 갈 수 없다는 규칙은 외부 Service가 대신 지켜줘야 하는 규칙이 아니라, `Order` 자신이 반드시 지켜야 하는 규칙입니다.
+이 정도의 상태 전이라면 `Order`와 `OrderStatus`에 두는 편이 자연스럽습니다. 주문 상태는 주문 애그리거트의 핵심 생명주기이기 때문입니다. `DELIVERED` 상태의 주문이 `CANCELLED`로 갈 수 없다는 규칙은 `Order` 자신이 지켜야 합니다. 외부 Service에 맡기면 호출하는 쪽마다 같은 검사를 반복해야 합니다.
 
-반대로 아래처럼 상태 전이 조건이 `Order` 안의 값만으로 판단되지 않기 시작하면 분리를 고려할 수 있습니다.
+반대로 아래처럼 상태 전이 조건이 `Order` 안의 값만으로 결정되지 않기 시작하면 분리를 고려할 수 있습니다.
 
 ```
 배송 준비 상태라도
@@ -529,9 +529,9 @@ OrderLifecycleService
 
 분리 기준을 표로 정리하면 이렇습니다.
 
-|판단 기준|`Order` 안에 둔다|별도 정책/상태 머신으로 분리한다|
+|기준|`Order` 안에 둔다|별도 정책/상태 머신으로 분리한다|
 |---|---|---|
-|규칙의 성격|주문 자신의 생명주기와 불변식|여러 도메인 정책이 섞인 판단|
+|규칙의 성격|주문 자신의 생명주기와 불변식|여러 도메인 정책이 섞인 결정|
 |필요한 정보|`Order.status`, `OrderItem` 등 애그리거트 내부 값|결제, 배송, 외부 시스템, 시간 정책|
 |복잡도|상태 전이 수가 적고 단순하다|상태와 조건 조합이 많다|
 |재사용성|Order에만 필요한 규칙|여러 UseCase나 서비스에서 공유되는 정책|
@@ -551,9 +551,9 @@ order.deliver();
 order.cancel();
 ```
 
-이렇게 하면 Application Service나 Event Consumer는 단순히 상태 값을 넘기는 것이 아니라, "결제가 완료됐다", "배송을 시작했다" 같은 비즈니스 사건을 표현하게 됩니다.
+이렇게 하면 Application Service나 Event Consumer는 상태 값을 넘기는 대신 "결제가 완료됐다", "배송을 시작했다" 같은 비즈니스 사건을 표현하게 됩니다.
 
-그래서 현재는 이렇게 판단했습니다.
+그래서 현재는 이렇게 정했습니다.
 
 > 상태 전이가 `Order`의 생명주기 자체라면 `Order`와 `OrderStatus`에 둔다. 여러 도메인 정책과 외부 조건이 섞이기 시작하면 `OrderTransitionPolicy`나 `OrderStateMachine`으로 분리한다.
 
@@ -573,7 +573,7 @@ order.cancel();
 6. 장바구니를 비웁니다.
 7. `order.created` Outbox 이벤트를 저장합니다.
 
-여기서 Application Service가 모든 비즈니스 규칙을 직접 판단하는 것은 아닙니다. 예를 들어 주문 생성 시 총액 계산이나 취소 가능 여부는 `Order` 쪽에 있습니다. Application은 여러 도메인 객체와 포트를 어떤 순서로 호출할지 조율합니다.
+여기서 Application Service가 모든 비즈니스 규칙을 직접 처리하지는 않습니다. 예를 들어 주문 생성 시 총액 계산이나 취소 가능 여부는 `Order` 쪽에 있습니다. Application은 여러 도메인 객체와 포트를 어떤 순서로 호출할지 조율합니다.
 
 이 레이어를 "얇은 Service"로만 보면 아쉬울 수 있습니다. 하지만 트랜잭션 경계와 UseCase 흐름이 여기에 모인다는 점이 중요합니다.
 
@@ -601,7 +601,7 @@ public class OrderCommandService {
 }
 ```
 
-여기서 학습 포인트는 "Application Service에 로직이 전혀 없어야 한다"가 아닙니다. UseCase 판단과 도메인 규칙을 구분해서 보는 것입니다.
+Application Service에도 로직은 있습니다. UseCase 흐름과 도메인 규칙을 구분해서 보면 됩니다.
 
 - 장바구니가 비어 있으면 주문을 만들 수 없다는 흐름 검증은 UseCase에 가깝습니다.
 - 주문 상태가 `DELIVERED`에서 `CANCELLED`로 갈 수 없다는 규칙은 Domain에 가깝습니다.
@@ -646,13 +646,13 @@ PeekCart는 Clean Architecture처럼 Domain Entity와 JPA Entity를 완전히 �
 
 `Order`에는 `@Entity`, `@Table`, `@Id`, `@OneToMany` 같은 JPA 어노테이션이 붙어 있습니다. 이 선택은 도메인 순수성을 일부 포기하는 대신, 매핑 레이어를 줄이고 학습과 구현의 복잡도를 낮춥니다.
 
-중요한 것은 "JPA 어노테이션이 붙었으니 DDD가 아니다"라고 단순히 보는 것이 아닙니다. 이 프로젝트의 절충선은 다음과 같습니다.
+JPA 어노테이션이 붙었다고 DDD에서 벗어난 것은 아닙니다. 이 프로젝트의 절충선은 다음과 같습니다.
 
 |허용|금지|
 |---|---|
 |Domain Entity에 `@Entity`, `@Id`, `@Column` 사용|Domain Entity가 `EntityManager`, `Session` 같은 JPA API 직접 사용|
 |JPA 연관관계 매핑 사용|Controller나 Application이 JPA 구현 세부사항에 직접 의존|
-|Entity 안에 비즈니스 메서드 작성|모든 비즈니스 판단을 Service에 몰아넣기|
+|Entity 안에 비즈니스 메서드 작성|모든 비즈니스 규칙을 Service에 몰아넣기|
 
 이 절충은 포트폴리오 프로젝트에서 현실적입니다. 도메인과 영속성 모델을 완전히 분리하면 이론적으로는 깔끔하지만 엔티티와 매퍼가 크게 늘어납니다. 이 프로젝트에서는 그 비용보다 도메인 규칙을 Entity에 응집하는 이득을 더 크게 보았습니다.
 
@@ -660,7 +660,7 @@ PeekCart는 Clean Architecture처럼 Domain Entity와 JPA Entity를 완전히 �
 
 ## 멀티모듈로 갔다면 무엇이 달라졌을까
 
-현재 PeekCart의 첫 단계 구조는 단일 Gradle 모듈입니다. `user`, `product`, `order`, `payment`, `notification`이 패키지로 나뉘어 있지만 빌드 관점에서는 하나의 애플리케이션입니다.
+현재 PeekCart의 첫 단계 구조는 단일 Gradle 모듈입니다. `user`, `product`, `order`, `payment`, `notification`이 패키지로 나뉘어 있지만 빌드 단위로 보면 하나의 애플리케이션입니다.
 
 만약 처음부터 멀티모듈 모놀리스로 갔다면 구조는 대략 이렇게 바뀔 수 있습니다.
 
@@ -703,7 +703,7 @@ peekcart/
 |멀티모듈 모놀리스|의존성 전파 차단, 모듈별 책임 강화|모듈 설계, 순환 의존성 관리, 테스트 설정 비용이 생긴다|
 |MSA|독립 배포, 독립 DB, 장애 격리|네트워크, 이벤트 계약, 분산 트랜잭션, 운영 복잡도가 생긴다|
 
-따라서 현재 구조는 "멀티모듈을 몰라서 선택하지 않은 구조"가 아니라, 첫 단계의 목표에 맞춘 낮은 비용의 출발점으로 볼 수 있습니다. 먼저 패키지 레벨에서 레이어와 도메인 책임을 설계하고 이후 Gradle 멀티모듈로 넘어가며 그 경계를 더 강하게 고정하는 흐름입니다.
+따라서 현재 구조는 첫 단계의 목표에 맞춰 비용을 낮춘 출발점입니다. 먼저 패키지 레벨에서 레이어와 도메인 책임을 설계하고 이후 Gradle 멀티모듈로 넘어가며 그 경계를 더 강하게 고정하는 흐름입니다.
 
 ---
 
@@ -736,7 +736,7 @@ src/main/java/com/peekcart/product/
 
 Order 도메인은 Product를 직접 구현체로 호출하지 않고 `ProductPort`를 통해 재고 차감과 가격 조회를 요청합니다. 지금은 모놀리스 안에서 adapter가 연결하지만 서비스 분리 이후에는 이 경계가 서비스 간 통신 또는 CQRS 로컬 캐시로 바뀔 수 있습니다.
 
-이 점이 중요합니다. 4-Layered + DDD 구조는 단지 "예쁜 패키지 구조"가 아니라, 나중에 서비스 경계를 볼 수 있게 해주는 관찰 도구이기도 합니다.
+4-Layered + DDD 구조는 나중에 서비스 경계를 찾는 데도 쓰입니다.
 
 ---
 
@@ -769,4 +769,4 @@ MSA
   → 배포, 데이터, 장애, 확장 단위까지 분리한다.
 ```
 
-현재 PeekCart는 첫 번째 단계에 가깝습니다. 바로 MSA만 보는 것이 아니라, 그 사이에 멀티모듈 모놀리스라는 학습 지점을 두면 "서비스를 나눈다"는 말을 더 구체적으로 이해할 수 있습니다. 서비스 분리는 단순히 프로젝트를 여러 개 만드는 일이 아니라, 이미 통제하고 있던 의존성과 책임 경계를 더 강한 운영 경계로 올리는 일이기 때문입니다.
+현재 PeekCart는 첫 번째 단계에 가깝습니다. MSA로 바로 가기 전에 멀티모듈 모놀리스라는 학습 지점을 두면 "서비스를 나눈다"는 말을 더 구체적으로 이해할 수 있습니다. 서비스 분리는 이미 통제하고 있던 의존성과 책임 경계를 더 강한 운영 경계로 올리는 일이기 때문입니다.
