@@ -9,7 +9,7 @@ draft: false
 slug: "peekcart-observability-contract"
 ---
 
-이 글의 출발점은 한 장의 빈 그래프입니다. Phase 3 부하 테스트 중 Grafana의 API Response Time p95/p99 패널이 "**No data**"로 떴습니다. scrape는 정상이었고 HTTP 메트릭 일부(`_count`/`_sum`)도 들어오고 있었는데 하필 **p95 계산에 필요한 입력 series만 비어 있었다**. 원인은 **설정을 YAML 어디에 두느냐**였습니다. 같은 설정이 커맨드라인에선 동작하는데 YAML 경로에선 런타임에 적용되지 않았습니다. 이 사건이 이 글의 두 축 (**YAML 설정 배치 원칙**과 **관측성 계약을 한 곳에서 관리하는 법**)의 계기가 됐고 "관측성은 *계약*을 지키는 일"이라는 관점을 만들었습니다.  
+이 글의 출발점은 한 장의 빈 그래프입니다. Phase 3 부하 테스트 중 Grafana의 API Response Time p95/p99 패널이 "**No data**"로 떴습니다. scrape는 정상이었고 HTTP 메트릭 일부(`_count`/`_sum`)도 들어오고 있었는데 하필 **p95 계산에 필요한 입력 series만 비어 있었다**. 원인은 두 겹이었습니다. p95 계산에 필요한 histogram bucket을 켜는 설정이 처음부터 빠져 있었고, 그 설정을 **YAML에 넣어도 프로파일 병합 때문에 런타임에 적용되지 않았습니다**. 같은 설정을 커맨드라인 프로퍼티로 주면 동작했습니다. 이 사건이 이 글의 두 축 (**YAML 설정 배치 원칙**과 **관측성 계약을 한 곳에서 관리하는 법**)의 계기가 됐고 "관측성은 *계약*을 지키는 일"이라는 관점을 만들었습니다.  
   
 이 연재는 PeekCart를 네 단계로 진행했습니다. Phase 1은 단일 Spring Boot 모놀리스로 도메인을 구현한 단계, Phase 2는 캐시, 분산 락, Kafka와 Outbox로 성능과 정합성을 보강한 단계, Phase 3은 CI, Kubernetes, 관측성, 부하 테스트로 운영 환경을 검증한 단계, Phase 4는 서비스별로 나눈 MSA 단계입니다.  
   
@@ -40,7 +40,7 @@ slug: "peekcart-observability-contract"
 - **Actuator (앱의 창구)**: Micrometer가 모은 숫자를 *바깥에서 읽을 수 있게* HTTP로 내주는 창구. `/actuator/prometheus`로 GET 하면 Prometheus가 처리할 수 있는 텍스트 포맷으로 현재 메트릭을 반환합니다. 단, **아무 엔드포인트나 다 열면 위험**하니(예: `/actuator/env`엔 비밀이 있을 수 있습니다) 무엇을 열지 화이트리스트로 고릅니다.  
 - **Prometheus (수집과 저장소)**: 그 창구를 *주기적으로*(우린 15초마다) 조회해 숫자를 수집하고 시계열로 쌓습니다. "시간에 따른 값의 변화"를 갖게 되므로 "최근 5분 에러율" 같은 걸 물을 수 있습니다.  
 - **Grafana (눈과 경보)**: Prometheus에 PromQL로 물어 그래프를 그리고 "에러율 5% 넘으면 알려라" 같은 규칙으로 *알림*을 보냅니다. 사람이 보는 면(대시보드)과 사람을 깨우는 면(Alert) 둘 다 Grafana의 일입니다.  
-- **MDC / traceId (로그 쪽)**: 위 다섯이 *메트릭*(숫자 통계) 이야기라면, MDC는 *로그* 쪽 관측성입니다. "이 에러 로그가 *어느 요청*에서 났는가"를 잇기 위해 요청마다 16자리 `traceId`를 붙여 로그 줄마다 적습니다. 메트릭이 "전체가 얼마나 아픈가"라면 로그/trace는 "이 한 건이 어디서 막혔나"입니다. 둘은 다른 기둥이고 이 글은 둘 다 다룹니다.  
+- **MDC / traceId (로그 쪽)**: 위 네 가지가 *메트릭*(숫자 통계) 이야기라면, MDC는 *로그* 쪽 관측성입니다. "이 에러 로그가 *어느 요청*에서 났는가"를 잇기 위해 요청마다 16자리 `traceId`를 붙여 로그 줄마다 적습니다. 메트릭이 "전체가 얼마나 아픈가"라면 로그/trace는 "이 한 건이 어디서 막혔나"입니다. 둘은 다른 기둥이고 이 글은 둘 다 다룹니다.  
   
 메트릭과 로그를 굳이 한 글에 묶는 이유가 있습니다. 둘 다 "앱이 *동작 규약*으로서 외부에 약속하는 계약"이고 그 계약이 **여러 파일에 흩어져 한 곳만 어긋나도 조용히 깨진다**는 같은 문제가 있기 때문입니다. 앞서 말한 빈 그래프가 바로 그 문제의 첫 사례였습니다.  
   
@@ -49,7 +49,7 @@ slug: "peekcart-observability-contract"
 이번 학습에서 확인하고 싶은 질문은 다음과 같습니다.  
   
 1. 메트릭이 정상 수집됐는데도 Grafana 그래프가 비는 게 어떻게 가능할까?  
-2. 같은 `management.*` 설정을 base에 둘 때와 프로파일에 둘 때 결과가 왜 달라질까? (YAML 병합)  
+2. 같은 `management.*` 설정을 YAML에 넣었는데 왜 base에서도 프로파일에서도 적용되지 않았을까? (YAML 병합)  
 3. 애플리케이션 메트릭이 Grafana 알림까지 가는 경로의 *각 지점*은 어느 파일에 있을까?  
 4. 관측성 계약을 "9개 surface"로 쪼개 SSOT를 명시하면 무엇이 좋아질까?  
 5. `up == 0`과 `absent(up)`은 무엇이 다르길래 alert를 둘로 나눴을까?  
@@ -62,9 +62,9 @@ slug: "peekcart-observability-contract"
   
 Phase 3에서 kube-prometheus-stack을 띄우고([Kustomize 글](/blog/peekcart-kustomize-base-overlays-gke/)) 대시보드를 붙였을 때, 대부분의 패널은 정상이었습니다. 그런데 **API Response Time의 p95/p99 패널만 "No data"** 였습니다. 직관과 어긋납니다. Prometheus를 열어 보면 `http_server_requests_seconds_count`, `_sum`은 분명히 들어와 있었습니다. scrape 대상이 막힌 것도, HTTP 메트릭 전체가 안 들어온 것도 아닙니다.  
   
-원인은 **메트릭의 *타입***이었습니다. p95/p99는 "95%의 요청이 몇 초 안에 끝났나"인데, 이것을 계산하려면 응답시간을 구간별로 쪼갠 **histogram bucket**(`..._seconds_bucket{le="0.1"}`, `le="0.5"` 등)이 있어야 합니다. PromQL `histogram_quantile()`은 이 bucket을 입력으로 받아 분위수를 *역산*합니다. 그런데 우리 앱은 `http_server_requests_seconds`를 **bucket 없는 `summary` 타입**으로만 내보내고 있었습니다. 입력 시계열 자체가 없으니 `histogram_quantile()`은 NaN을 반환하고 Grafana는 그것을 "No data"로 표시합니다.  
+첫 번째 원인은 **메트릭의 *타입***이었습니다. p95/p99는 "95%의 요청이 몇 초 안에 끝났나"인데, 이것을 계산하려면 응답시간을 구간별로 쪼갠 **histogram bucket**(`..._seconds_bucket{le="0.1"}`, `le="0.5"` 등)이 있어야 합니다. PromQL `histogram_quantile()`은 이 bucket을 입력으로 받아 분위수를 *역산*합니다. 그런데 우리 앱은 `http_server_requests_seconds`를 **bucket 없는 `summary` 타입**으로만 내보내고 있었습니다. 입력 시계열 자체가 없으니 `histogram_quantile()`은 NaN을 반환하고 Grafana는 그것을 "No data"로 표시합니다.  
   
-histogram bucket을 켜는 설정은 한 줄입니다. `management.metrics.distribution.percentiles-histogram[http.server.requests]: true`. 그런데 **이 한 줄을 YAML 어디에 넣어도 동작하지 않았습니다**.
+histogram bucket을 켜는 설정은 한 줄입니다. `management.metrics.distribution.percentiles-histogram[http.server.requests]: true`. 두 번째 원인은 이 한 줄을 넣는 자리였습니다. **YAML 어디에 넣어도 동작하지 않았습니다**.
   
 ```  
 시도 1) application-k8s.yml 에 추가      → 동작 안 함  
@@ -72,11 +72,11 @@ histogram bucket을 켜는 설정은 한 줄입니다. `management.metrics.distr
 시도 3) 커맨드라인 프로퍼티로 주입         → 동작함 (!)
 ```  
   
-3번이 동작했다는 건 설정 *값*은 맞고 **YAML 바인딩/병합 경로**에 문제가 있다는 뜻입니다. 즉 같은 설정이 커맨드라인에선 적용되고 YAML(base든 프로파일이든)에선 런타임에 적용되지 않는 상태가 재현됐습니다. 정확한 바인딩 원인을 더 조사하기보다, 우리는 이 경로를 **YAML에서 들어내 Java Config로 옮겨** 회피했습니다. `management.metrics` 트리가 base(`application.yml`)와 환경 프로파일(`application-k8s.yml`)에 동시에 선언돼 있던 점이 의심 지점이었고(최상위 키 기준으로 맵이 병합될 때 프로파일 쪽이 우선해 base의 하위 키가 가려질 수 있습니다), 어느 쪽이든 *동작 규약을 YAML에 두는 한 재발 위험이 남는다*는 게 핵심이었습니다. 설정은 파일에 분명히 적혀 있는데 *런타임엔 없는* 상태, 디버깅이 가장 괴로운 종류의 버그입니다.  
+3번이 동작했다는 건 설정 *값*은 맞고 **YAML 바인딩/병합 경로**에 문제가 있다는 뜻입니다. 즉 같은 설정이 커맨드라인에선 적용되고 YAML(base든 프로파일이든)에선 런타임에 적용되지 않는 상태가 재현됐습니다. Spring Boot 내부의 어느 단계에서 값이 가려지는지까지는 추적하지 않고, 우리는 이 경로를 **YAML에서 들어내 Java Config로 옮겨** 회피했습니다. `management.metrics` 트리가 base(`application.yml`)와 환경 프로파일(`application-k8s.yml`)에 동시에 선언돼 있던 점이 의심 지점이었고(최상위 키 기준으로 맵이 병합될 때 프로파일 쪽이 우선해 base의 하위 키가 가려질 수 있습니다), 어느 쪽이든 *동작 규약을 YAML에 두는 한 재발 위험이 남는다*는 게 핵심이었습니다. 설정은 파일에 분명히 적혀 있는데 *런타임엔 없는* 상태, 디버깅이 가장 괴로운 종류의 버그입니다.  
   
-> Spring Boot 공식 문서는 프로파일 프로퍼티가 같은 키를 *override*하고 Map은 여러 property source에서 바인딩될 수 있다고만 설명한다. 그러니 `tags.application`이 `distribution.*`을 가린다는 건 **이 특정 YAML 구성에서 관찰하고 재현한 현상**이다. 일반 규칙으로 확인된 것은 아니다. 우리가 택한 해법(Java Config 이전)은 그 원인 규명과 무관하게 재발 경로 자체를 없앤다.  
+> Spring Boot 공식 문서는 프로파일 프로퍼티가 같은 키를 *override*하고 Map은 여러 property source에서 바인딩될 수 있다고만 설명한다. 그러니 `tags.application`이 `distribution.*`을 가린다는 건 **이 특정 YAML 구성에서 관찰한 현상**이다. 일반 규칙으로 확인된 것은 아니다. 우리가 택한 해법(Java Config 이전)은 그 원인 규명과 무관하게 재발 경로 자체를 없앤다.  
   
-여기서 한 발 물러서 보면, 이 사건은 **구조적 신호**였습니다. 관측성을 켜는 설정이 `application.yml`, `application-k8s.yml`, `SecurityConfig.java`, `servicemonitor.yml`, `grafana-alerts.yml` **다섯 군데에 흩어져 있었고**, 그중 한 곳의 병합 한 번이 어긋나자 전체 그래프가 표시되지 않았습니다. 메트릭은 **여러 파일에 걸친 계약이 *전부* 맞아야 비로소 그래프가 그려지는** 연결 구조의 문제입니다. 이 연결 구조를 누가 어디서 책임지는가: 그것이 이 글의 핵심 설계 질문입니다.  
+여기서 한 발 물러서 보면, 이 사건은 **구조적 신호**였습니다. 관측성을 켜는 설정이 `application.yml`, `application-k8s.yml`, `SecurityConfig.java`, `servicemonitor.yml`, `grafana-alerts.yml` **다섯 군데에 흩어져 있었고**, 그중 한 곳의 병합 한 번이 어긋나자 p95/p99 그래프가 표시되지 않았습니다. 메트릭은 **여러 파일에 걸친 계약이 *전부* 맞아야 비로소 그래프가 그려지는** 연결 구조의 문제입니다. 이 연결 구조를 누가 어디서 책임지는가: 그것이 이 글의 핵심 설계 질문입니다.  
   
 ---  
   
@@ -94,7 +94,7 @@ flowchart LR
     D --> E["⑤ Grafana<br/>대시보드 + Alert<br/>(PromQL)"]  
 ```  
   
-각 지점은 **서로 다른 파일에 SSOT로 자리잡고 있고**, 하나라도 어긋나면 연결이 끊깁니다. 지점별로 "무엇이, 어디에" 있는지를 정리한 게 아래 surface 표입니다(S1~S6.d).  
+각 지점은 **서로 다른 파일에 SSOT로 자리잡고 있고**, 하나라도 어긋나면 연결이 끊깁니다. 지점별로 "무엇이, 어디에" 있는지를 정리한 게 아래 surface 표입니다. 빈 그래프를 고친 뒤의 위치라서, bucket 설정은 `MetricsConfig.java`에 있습니다. surface는 앱과 매니페스트 쪽 설정 S1~S5 다섯 개와 Grafana alert 룰 S6.a~d 네 개, 모두 9개입니다. 아래 표는 alert 넷을 S6 한 행으로 묶었습니다.  
   
 | 지점 | 무엇을 보장하나 | SSOT 위치 (파일) | surface |  
 | --- | --- | --- | --- |  
@@ -105,11 +105,11 @@ flowchart LR
 | (3) scrape 설정 | 15초마다 긁어감, 대상 매칭 | `servicemonitor.yml:6-20` | S5 |  
 | (5) alert 규칙 | 임계 초과 시 발화 | `grafana-alerts.yml` | S6.a~d |  
   
-이 표가 말하는 바는 간단합니다: **"메트릭이 안 보인다"는 신고가 들어오면 이 6칸을 순서대로 짚으면 된다.** bucket이 없습니까(S1)? 태그가 빠졌습니까(S2)? 노출이 막혔습니까(S3)? 보안이 401입니까(S4)? scrape 대상이 안 잡혔습니까(S5)? alert PromQL이 틀렸습니까(S6)? 앞의 빈 그래프는 S1의 실패였고 그 진단을 다음에 5분 만에 끝내려고 이 표를 결정 문서로 남겼습니다.  
+이 표가 말하는 바는 간단합니다: **"메트릭이 안 보인다"는 신고가 들어오면 이 표의 행을 순서대로 짚으면 된다.** bucket이 없습니까(S1)? 태그가 빠졌습니까(S2)? 노출이 막혔습니까(S3)? 보안이 401입니까(S4)? scrape 대상이 안 잡혔습니까(S5)? alert PromQL이 틀렸습니까(S6)? 앞의 빈 그래프는 S1의 실패였고 그 진단을 다음에 5분 만에 끝내려고 이 표를 결정 문서로 남겼습니다.  
   
 ### 2. YAML에서 Java Config로: 빈 그래프를 고친 방법  
   
-빈 그래프를 고치는 *값*은 한 줄이지만 *어디에 두느냐*가 결정이었습니다. YAML에 두는 한 병합 충돌이 재발하므로, 해결은 **Java Config로 이동**이었습니다(`MetricsConfig.java`).  
+빈 그래프를 고치는 *값*은 한 줄이지만 *어디에 두느냐*가 결정이었습니다. base와 프로파일이 같은 `management.metrics` 트리를 나눠 갖는 한 YAML에서는 다시 가려질 수 있어서, 해결은 **Java Config로 이동**이었습니다(`MetricsConfig.java`).  
   
 ```java  
 // com.peekcart.global.config.MetricsConfig (S1의 SSOT)
@@ -138,7 +138,7 @@ public class MetricsConfig {
   
 이 위치 이동은 이후 *원칙*이 됐습니다. 이 사건을 일반화해 우리는 **"환경마다 달라지는 연결 정보와 자격증명만 `application-{profile}.yml`에 두고, 런타임 *동작*을 바꾸는 정책은 base나 Java Config로 관리한다"** 는 규칙을 세웠습니다. 기준 한 줄: *"환경마다 달라야 하는 값인가(그러면 프로파일), 아니면 동작 규약인가(그러면 base/Java Config)?"*  
   
-histogram bucket은 **모든 환경에서 똑같이 켜져야 하는 동작 규약**입니다. minikube든 GKE든 p95는 같은 방식으로 계산돼야 합니다. 그러니 환경별 프로파일에 둘 이유가 없고 오히려 거기 두면 병합 충돌에 노출됩니다. 반대로 `application=peekcart` 태그(S2)나 노출 화이트리스트(S3)는 *동작 규약*이라 base `application.yml`에 두되, **프로파일엔 절대 재선언하지 않는다**.
+histogram bucket은 **모든 환경에서 똑같이 켜져야 하는 동작 규약**입니다. minikube든 GKE든 p95는 같은 방식으로 계산돼야 합니다. 그러니 환경별 프로파일에 둘 이유가 없고 오히려 거기 두면 병합 충돌에 노출됩니다. `application=peekcart` 태그(S2)와 노출 화이트리스트(S3)도 *동작 규약*이지만 이 둘은 base `application.yml`에 두고, **프로파일엔 재선언하지 않습니다**. base에 넣은 시도 2가 실패한 것은 `application-k8s.yml`에도 `management.metrics` 트리가 있었기 때문입니다. 그래서 빈 그래프를 고친 뒤 프로파일에 있던 태그와 노출 설정을 base로 옮겨, `management.*` 트리가 base 한 곳에만 있게 했습니다.
   
 특히 이 원칙은 *"최상위 키 트리(`management.*`)에 base/프로파일 병합 충돌 가능성이 있으면 Java Config로 가라"*를 명시 케이스로 둡니다.
   
@@ -146,21 +146,21 @@ histogram bucket은 **모든 환경에서 똑같이 켜져야 하는 동작 규�
   
 YAML 원칙은 *값을 어디에 두나*를 풀었지만 더 큰 질문이 남았습니다. **9개 지점이 흩어져 있다는 사실 자체**를 어떻게 관리할까? 그것이 이 절의 주제입니다.  
   
-결정은 의외로 "통합하지 않는다"였습니다. 모든 설정을 한 `ObservabilityConfig` 클래스로 모으는 길도 검토했지만 코드 통합 자체가 위험과 검증 비용을 동반하는 별도 변경이라 *결정*과 *코드 이동*을 한 작업에 묶으면 둘 다 품질이 깎인다고 봤습니다. 대신 **"각 surface가 지금 어디에 있고, Phase 4에서 어느 모듈로 가고, 무엇을 검증하는가"를 표로 분명히 정해 두었다.** 9 surface를 요약하면
+결정은 의외로 "통합하지 않는다"였습니다. 모든 설정을 한 `ObservabilityConfig` 클래스로 모으는 길도 검토했지만 코드 통합 자체가 위험과 검증 비용을 동반하는 별도 변경이라 *결정*과 *코드 이동*을 한 작업에 묶으면 둘 다 품질이 깎인다고 봤습니다. 대신 **"각 surface가 지금 어디에 있고, Phase 4에서 어느 모듈로 가고, 무엇을 검증하는가"를 표로 분명히 정해 두었습니다.** 9 surface를 요약하면 다음과 같습니다.
   
-| surface | 무엇 | 의존 | 깨지면 |  
-| --- | --- | --- | --- |  
-| S1 | histogram bucket | 없음 | p95 패널과 latency alert만 NaN (error-rate는 무관) |  
-| S2 | `application=` 태그 | 없음 | alert의 `{application="peekcart"}` 필터가 시계열을 못 잡음 |  
-| S3 | exposure 화이트리스트 | 없음 | `/actuator/prometheus` scrape 불가 |  
-| S4 | actuator 보안 허용 | 없음 | scrape가 401, Probe 실패 |  
-| S5 | scrape 설정 | 없음 | **모든 S6 alert가 발화 불가** (또는 S6.d가 absent 발화) |  
-| S6.a | error-rate alert (5xx>5%) | S2, S5 | `_count` 사용, S1 무관 |  
-| S6.b | latency alert (p95>2s) | S1, S2, S5 | `_bucket` 사용, S1 직접 의존 |  
-| S6.c | target-down (`up==0`) | S5 | scrape label만 의존 |  
-| S6.d | scrape-absent (`absent(up)`) | S5 | selector 미스매치/리소스 삭제 |  
+| surface | 무엇 | 의존 | 깨지면 | Phase 4 위치 |  
+| --- | --- | --- | --- | --- |  
+| S1 | histogram bucket | 없음 | p95 패널과 latency alert만 NaN (error-rate는 무관) | 공통 관측성 모듈 한 곳 |  
+| S2 | `application=` 태그 | 없음 | alert의 `{application="peekcart"}` 필터가 시계열을 못 잡음 | 각 서비스의 base `application.yml`(값은 서비스 이름) |  
+| S3 | exposure 화이트리스트 | 없음 | `/actuator/prometheus` scrape 불가 | 공통 관측성 모듈이 제공하는 base 설정 |  
+| S4 | actuator 보안 허용 | 없음 | scrape가 401, Probe 실패 | 공통 관측성 모듈의 actuator 보안 설정 |  
+| S5 | scrape 설정 | 없음 | S6.a~c는 입력 시계열이 없어 발화하지 못하고, S6.d만 발화 | 서비스마다 자기 ServiceMonitor |  
+| S6.a | error-rate alert (5xx>5%) | S2, S5 | `_count` 사용, S1 무관 | monitoring 공용 alert 파일 한 곳 |  
+| S6.b | latency alert (p95>2s) | S1, S2, S5 | `_bucket` 사용, S1 직접 의존 | 위와 같음 |  
+| S6.c | target-down (`up==0`) | S5 | scrape label만 의존 | 위와 같음 |  
+| S6.d | scrape-absent (`absent(up)`) | S5 | selector 미스매치/리소스 삭제 | 위와 같음 |  
   
-이 표의 가치는 **의존 방향**에 있습니다. 예를 들어 "error-rate alert는 멀쩡한데 latency alert만 NaN"이면 S1(bucket)만 의심하면 됩니다. error-rate는 `_count`를 쓰므로 S1과 무관하기 때문입니다. 반대로 "alert가 *전부* 안 뜬다"면 공통 의존인 S5(scrape)를 먼저 봅니다. 흩어진 계약을 *통합하지 않고도* "어디를 보면 되는지"를 결정론적으로 만든 게 이 표입니다.  
+이 표의 가치는 **의존 방향**에 있습니다. 예를 들어 "error-rate alert는 멀쩡한데 latency alert만 NaN"이면 S1(bucket)만 의심하면 됩니다. error-rate는 `_count`를 쓰므로 S1과 무관하기 때문입니다. 반대로 다른 alert는 조용한데 scrape-absent만 뜬다면 공통 의존인 S5(scrape)를 먼저 봅니다. 흩어진 계약을 *통합하지 않고도* "어디를 보면 되는지"를 결정론적으로 만든 게 이 표입니다.  
   
 이 SSOT 표는 앞의 YAML 원칙을 **대체하는 게 아니라 확장**합니다. YAML 원칙이 "동작 정책은 Java Config로"라는 *일반 규칙*이라면, 이 표는 그 규칙을 관측성의 9 surface에 *구체화*하고 특히 일반 규칙만으론 도출되지 않는 **manifest 측 surface**(S5 ServiceMonitor, S6 Grafana alert)의 위치까지 정합니다.  
   
@@ -243,7 +243,7 @@ MDC.put(MDC_TRACE_ID, traceId);
   
 이 구분이 실무적으로 중요한 이유: `up == 0`은 "서비스가 떠 있는데 응답을 못 한다"(앱/네트워크 문제)고 `absent(up)`은 "그 서비스를 *감시하고 있다는 사실 자체*가 사라졌다"(설정/배포 문제)입니다. 전자는 앱을 보고 후자는 매니페스트(S5)를 봅니다. 알림 하나로 뭉뚱그렸으면 둘을 구분하느라 새벽에 헤맸을 것입니다. `grafana-alerts.yml`의 description이 *"up 시계열은 존재하되 0 ... Error Rate 패널의 강제 0% 표시와 구분하는 신호"*라고 그 의도를 적어 둡니다.  
   
-또 하나의 디테일, error-rate는 `_count`를, latency는 `_bucket`을 씁니다. 그래서 **histogram bucket(S1)이 깨져도 error-rate alert는 멀쩡히 돈다.** 앞의 빈 그래프 문제로 p95 패널만 표시되지 않고 에러율 패널은 정상 표시된 게 이 때문입니다. surface 의존 표(S6.a는 S1 무관, S6.b는 S1 의존)가 이 동작을 정확히 예측합니다.  
+또 하나의 디테일, error-rate는 `_count`를, latency는 `_bucket`을 씁니다. 그래서 **histogram bucket(S1)이 깨져도 error-rate alert는 영향을 받지 않습니다.** surface 의존 표(S6.a는 S1 무관, S6.b는 S1 의존)가 이 동작을 예측합니다. 다만 빈 그래프 사건 때 대시보드의 Error Rate 패널도 "No data"였는데, 원인은 S1이 아니었습니다. 5xx 요청이 없는 구간에서 분자 시계열이 비어 계산 결과가 비었고, 이것은 분모가 0보다 클 때만 나누고 그 밖에는 0%를 표시하도록 PromQL을 고쳐 따로 해결했습니다.  
   
 모든 룰은 `datasourceUid: prometheus`로 datasource를 *명시 참조*합니다. 여기엔 함정이 하나 있습니다: 원래 이 UID는 kube-prometheus-stack Helm 차트가 *자동 프로비저닝*하는 기본값에 의존하고 있어, 차트 업그레이드로 UID가 바뀌면 그 UID를 참조하는 대시보드와 alert가 한꺼번에 datasource를 잃을 수 있었습니다(`uid: prometheus` 참조가 대시보드 JSON 14곳, alert 룰 4개의 쿼리 5곳). 그래서 values에 `grafana.sidecar.datasources.uid: prometheus`를 **명시 pin**해 차트 기본값 의존을 끊었습니다(dashboard/alert YAML은 0건 변경, 기존 `uid: prometheus` 참조를 그대로 살림).  
   
@@ -313,7 +313,7 @@ Phase 3 통합 테스트엔 Prometheus가 없습니다(Testcontainers로 MySQL/R
 - **Outbox 발행 메트릭 부재**: `OutboxPollingService`에 Micrometer 계측이 전무해 PENDING backlog 크기, 발행 지연, 실패율이 메트릭으로 안 나옵니다. 운영자의 유일한 신호는 MAX_RETRY 소진 시 Slack 단발 알림뿐(Outbox 글).  
 - **Slack 발송 가시성 부재**: 운영 알림 3종이 같은 Slack Webhook에 의존하는데 `SlackNotificationClient.send()`가 예외를 `log.error`로만 기록하고 전파하지 않아 발송 실패가 메트릭/알람으로 안 뜹니다(알림 실패 격리 글).  
   
-셋 다 surface 표에 **cache, outbox 행 자체가 빈 칸**이라는 같은 구조입니다. "관측성 옵션 가치" 형 부채, 지금은 문제가 드러나지 않지만 Phase 4에서 서비스 비교가 필요할 때 비로소 비용이 드러납니다.  
+셋 다 surface 표에 **cache, outbox에 해당하는 행이 아예 없다**는 같은 구조입니다. "관측성 옵션 가치" 형 부채, 지금은 문제가 드러나지 않지만 Phase 4에서 서비스 비교가 필요할 때 비로소 비용이 드러납니다.  
   
 ---  
   
@@ -321,9 +321,9 @@ Phase 3 통합 테스트엔 Prometheus가 없습니다(Testcontainers로 MySQL/R
   
 **보장하는 것**  
   
-- **메트릭 경로의 결정론적 진단.** "안 보인다"는 신고가 들어오면 S1~S6 6칸을 의존 순서대로 짚어 원인을 좁힙니다. error-rate는 멀쩡한데 latency만 NaN이면 S1, alert가 전부 죽었으면 S5. surface 표가 추측을 진단으로 바꿉니다.  
+- **메트릭 경로의 결정론적 진단.** "안 보인다"는 신고가 들어오면 S1~S6을 의존 순서대로 짚어 원인을 좁힙니다. error-rate는 멀쩡한데 latency만 NaN이면 S1, 다른 alert는 조용하고 scrape-absent만 뜨면 S5. surface 표가 추측을 진단으로 바꿉니다.  
 - **빈 그래프와 태그 누락 재발의 CI 차단.** `ObservabilityMetricsIntegrationTest`가 histogram bucket(S1), application 태그(S2), exposure(S3), health 무인증(S4)의 *동작 회귀*를 매 빌드 검사합니다.  
-- **병합 충돌의 구조적 차단.** 동작 규약을 Java Config/base로 격리해, `management.*` 트리의 YAML 병합 충돌이 다시 그래프를 표시하지 못하게 하는 경로를 없앴습니다.  
+- **병합 충돌 경로 제거.** bucket 설정을 Java Config로 옮겨 YAML 병합의 영향을 받지 않게 했고, 나머지 `management.*` 키는 base 한 곳에만 두고 정적 lint로 프로파일 재선언을 막습니다.  
 - **두 실패의 분리 감지.** `up==0`(앱/네트워크)과 `absent(up)`(설정/배포)을 별 alert로 나눠, 새벽 호출 시 어디를 볼지가 알림 자체에 담겨 있습니다.  
 - **비동기 경계를 건너는 traceId.** HTTP, Outbox, Kafka, Consumer, DLQ 5단계가 한 traceId로 묶여 로그 grep으로 한 요청을 따라갈 수 있습니다.  
   
@@ -332,7 +332,7 @@ Phase 3 통합 테스트엔 Prometheus가 없습니다(Testcontainers로 MySQL/R
 - **런타임 PromQL 의미**: 정적 lint(selector, PromQL 라벨)는 매칭, 라벨, 설정값을 보지만 Prometheus를 띄워 실제 쿼리 *결과*가 맞는지는 검증하지 않습니다.  
 - **분산 추적**: MDC는 로그 상관관계지 span, sampling이 있는 OpenTelemetry가 아닙니다.  
 - **비즈니스/파이프라인 가시성**: 캐시 hit rate, Outbox backlog, Slack 발송 실패가 메트릭에 없습니다.  
-- **surface의 물리적 이전**: 9 surface는 아직 모놀리스 한 곳에 모여 있습니다. Phase 4 모듈/서비스로의 이전은 surface 표의 "Phase 4 owner"대로 그때 수행됩니다.  
+- **surface의 물리적 이전**: 9 surface는 아직 모놀리스 한 곳에 모여 있습니다. Phase 4 모듈/서비스로의 이전은 surface 표의 "Phase 4 위치" 열대로 그때 수행됩니다.  
   
 Kustomize 글에서 본 패턴이 여기서도 반복됩니다. 핵심 동작은 단단히 검증하고, 일부 보장은 공백으로 남겨 둡니다. *위치, 복제, 배선*의 공백은 lint/테스트로 이미 해소됐고 남은 공백은 "런타임 의미 검증, 분산 추적, 파이프라인 메트릭, Phase 4 물리 이전" 넷입니다.  
   
@@ -340,7 +340,7 @@ Kustomize 글에서 본 패턴이 여기서도 반복됩니다. 핵심 동작은
   
 ## Phase 4 MSA에서는 어떻게 바뀌는가  
   
-지금 관측성 계약은 **모놀리스 한 덩어리**의 것입니다. 9 surface가 한 앱, 한 ServiceMonitor, 한 alert 파일에 모여 있습니다. Phase 4에서 서비스가 N개로 갈라지면 이 계약이 *서비스 수만큼 복제*되는데 여기서 앞서 본 "계약 분산"이 모듈 경계를 따라 더 깊어질 위험이 있습니다. surface 표의 "Phase 4 owner"는 바로 이 복제를 *미리 설계*해 둔 것입니다.  
+지금 관측성 계약은 **모놀리스 한 덩어리**의 것입니다. 9 surface가 한 앱, 한 ServiceMonitor, 한 alert 파일에 모여 있습니다. Phase 4에서 서비스가 N개로 갈라지면 이 계약이 *서비스 수만큼 복제*되는데 여기서 앞서 본 "계약 분산"이 모듈 경계를 따라 더 깊어질 위험이 있습니다. surface 표의 "Phase 4 위치" 열은 바로 이 복제를 *미리 설계*해 둔 것입니다.  
   
 ```mermaid  
 flowchart LR  

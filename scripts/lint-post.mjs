@@ -26,7 +26,7 @@ const RULES = [
   // 기호
   { id: 'em-dash', level: 'error', re: /—/g, msg: 'em dash 대신 문장을 나누거나 쉼표를 씁니다' },
   { id: 'middle-dot', level: 'error', re: /·/g, msg: '`·` 대신 쉼표나 "와/과"를 씁니다' },
-  { id: 'icon-symbol', level: 'error', re: /[✓✔✕✗▶►①②③④⑤⑥⑦⑧⑨⑩→←↔⇒…÷′]/g, msg: '아이콘 같은 기호 대신 말로 씁니다 (에서 ~으로, 1, 2, 3)' },
+  { id: 'icon-symbol', level: 'error', re: /[✓✔✕✗❌✅▶►①②③④⑤⑥⑦⑧⑨⑩→←↔⇒…÷′≠≈]/g, msg: '아이콘 같은 기호 대신 말로 씁니다 (에서 ~으로, 1, 2, 3)' },
   { id: 'multiplier', level: 'error', re: /×\s?\d|\d\s?×/g, msg: '배수는 "2.31배"처럼 씁니다' },
 
   // 번호와 절차명
