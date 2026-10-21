@@ -43,6 +43,8 @@ slug: "peekcart-kustomize-base-overlays-gke"
 
 ---
 
+이 연재는 PeekCart를 네 단계로 진행했습니다. Phase 1은 단일 Spring Boot 모놀리스로 도메인을 구현한 단계, Phase 2는 캐시, 분산 락, Kafka와 Outbox로 성능과 정합성을 보강한 단계, Phase 3은 CI, Kubernetes, 관측성, 부하 테스트로 운영 환경을 검증한 단계, Phase 4는 서비스별로 나눈 MSA 단계입니다.
+
 이번 학습에서 확인하고 싶은 질문은 다음과 같습니다.
 
 1. 환경별로 매니페스트를 복사하는 대신 base/overlays로 나눈 이유는 무엇일까? 무엇을 base에 두고 무엇을 overlay에 둘까?
@@ -58,8 +60,8 @@ slug: "peekcart-kustomize-base-overlays-gke"
 
 Phase 1, 2까지 PeekCart의 인프라는 `docker-compose.yml` 하나였습니다. MySQL/Redis/Kafka를 컴포즈로 띄우고 Spring Boot는 로컬에서 `bootRun`으로 실행했습니다. Phase 3의 과제는 이것을 **K8s 위에 올리는 것**이고 여기서 "환경이 둘"이라는 문제가 처음 생깁니다.
 
-- **minikube (로컬)**: K8s 매니페스트는 한 번에 맞지 않습니다. `apply → describe → 로그 확인 → 수정 → 다시 apply`를 수십 번 왕복하며 다듬어야 합니다. 이 반복을 클라우드에서 하면 느리고 돈이 듭니다. 그래서 Task 3-1~3-3(CI, 매니페스트 작성, 관측성 스택)은 로컬 minikube에서 했습니다.
-- **GKE (클라우드)**: 부하 테스트(Task 3-4)와 HPA 검증(Task 3-5)은 *측정의 정확도*가 핵심입니다. minikube는 host 16GB 안에 앱, 인프라, Prometheus, 부하 도구가 전부 공존해 서로 간섭하고 부하 발생기 자체가 병목이 돼 수치를 왜곡합니다. 그래서 측정은 GKE로 옮겼습니다.
+- **minikube (로컬)**: K8s 매니페스트는 한 번에 맞지 않습니다. `apply → describe → 로그 확인 → 수정 → 다시 apply`를 수십 번 왕복하며 다듬어야 합니다. 이 반복을 클라우드에서 하면 느리고 돈이 듭니다. 그래서 CI, 매니페스트 작성, 관측성 스택 구성은 로컬 minikube에서 했습니다.
+- **GKE (클라우드)**: 부하 테스트와 HPA 검증은 *측정의 정확도*가 핵심입니다. minikube는 host 16GB 안에 앱, 인프라, Prometheus, 부하 도구가 전부 공존해 서로 간섭하고 부하 발생기 자체가 병목이 돼 수치를 왜곡합니다. 그래서 측정은 GKE로 옮겼습니다.
 
 두 환경은 다음이 다릅니다.
 
@@ -85,7 +87,7 @@ Kustomize는 템플릿 엔진(Helm의 Go template 같은)이 아닙니다. base 
 
 ```
 k8s/
-├── base/                          # 환경 무관 공통 (ADR-0005)
+├── base/                          # 환경 무관 공통
 │   ├── namespace.yml
 │   ├── infra/{mysql,redis,kafka}/ # 디렉토리당 단일 통합 파일
 │   ├── services/peekcart/         # Phase 3: 모놀리스 단일 서비스
@@ -103,7 +105,7 @@ k8s/
 │       ├── hpa.yml
 │       ├── README.md
 │       └── patches/               # LoadBalancer, 리소스 상향, PVC SC
-└── monitoring/                    # base에서 분리 (ADR-0006, 아래 3절)
+└── monitoring/                    # base에서 분리 (아래 3절)
 ```
 
 **환경이 달라도 똑같으면 base, 환경마다 달라야 하면 overlay patch** 로 나눕니다.  base의 `deployment.yml`을 보면 환경과 무관한 것만 들어 있습니다.
@@ -141,7 +143,7 @@ overlay의 `kustomization.yml`은 `resources: [../../base]`로 base를 통째로
 **minikube**: 로컬 빌드 이미지를 쓰고(레지스트리에서 pull하지 않음), `minikube service`로 접속할 NodePort를 엽니다.
 
 ```yaml
-# overlays/minikube/patches/peekcart-deployment.yml — JSON6902
+# overlays/minikube/patches/peekcart-deployment.yml (JSON6902)
 - op: add
   path: /spec/template/spec/containers/0/imagePullPolicy
   value: Never            # ← 로컬에 빌드된 이미지만 사용, pull 시도 안 함
@@ -158,7 +160,7 @@ overlay의 `kustomization.yml`은 `resources: [../../base]`로 base를 통째로
 **gke**: Artifact Registry 이미지, VPC 내부 전용 LoadBalancer, e2-standard-4에 맞춘 리소스 상향, 명시적 StorageClass, 그리고 HPA.
 
 ```yaml
-# overlays/gke/patches/peekcart-deployment.yml — strategic merge
+# overlays/gke/patches/peekcart-deployment.yml (strategic merge)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -173,7 +175,7 @@ spec:
             requests: { cpu: 500m,  memory: 1Gi }
             limits:   { cpu: 2000m, memory: 2Gi }
 
-# overlays/gke/patches/peekcart-service.yml — strategic merge
+# overlays/gke/patches/peekcart-service.yml (strategic merge)
 apiVersion: v1
 kind: Service
 metadata:
@@ -193,7 +195,7 @@ spec:
 gke patch 를 이 방식으로 쓴 의도는 다음과 같습니다. *"strategic merge: container는 name(`peekcart`)으로 매칭되므로 base에 sidecar가 추가되어도 잘못된 컨테이너에 resources가 붙지 않음 (과거 JSON6902 `containers/0` 인덱스 방식 대비 개선)."* 즉 **Phase 4에서 서비스 메시 사이드카 등이 추가될 가능성**을 내다보고 리소스와 노출처럼 구조가 진화할 부분은 인덱스 의존을 버린 것입니다. 반면 PVC의 StorageClass 일괄 적용은 "PVC 종류 전체"를 대상으로 해야 해서 JSON6902 + target이 더 맞습니다.
 
 ```yaml
-# overlays/gke/patches/pvc-storageclass.yml — JSON6902 + target
+# overlays/gke/patches/pvc-storageclass.yml (JSON6902 + target)
 - op: add
   path: /spec/storageClassName
   value: standard-rwo
@@ -215,8 +217,8 @@ base/overlays를 처음 도입했을 때, monitoring 스택(Prometheus Helm valu
 
 ```
 k8s/monitoring/
-├── namespace.yml          # monitoring NS 생성의 단일 주체 (ADR-0006 불변식 5)
-├── shared/                # 환경 무관 — 대시보드 JSON, Grafana Alert
+├── namespace.yml          # monitoring NS 생성의 단일 주체
+├── shared/                # 환경 무관: 대시보드 JSON, Grafana Alert
 │   └── kustomization.yml  # configMapGenerator가 *.json → ConfigMap
 ├── minikube/
 │   ├── values-prometheus.yml   # retention 6h, NodePort 30030, 경량 limits
@@ -313,7 +315,7 @@ monitoring 스택(kube-prometheus-stack)은 Helm으로, 앱/인프라는 Kustomi
 GKE는 측정할 때만 띄우고 끝나면 지웁니다(비용 최소화). 그런데 클러스터를 지워도 **PD(영구 디스크)나 예약 IP는 orphan으로 남아** 계속 과금될 수 있습니다. GKE 운영 체크리스트로 이것을 막지만 전부 수동입니다.
 
 ```bash
-# 실제 정리 스크립트(loadtest/cleanup.sh) 기준 — zone/이름은 asia-northeast3-a 단일 zone
+# 실제 정리 스크립트 기준, zone/이름은 asia-northeast3-a 단일 zone
 gcloud container clusters delete peekcart-loadtest --zone=asia-northeast3-a
 gcloud compute instances delete peekcart-loadgen   --zone=asia-northeast3-a
 gcloud compute disks list     --filter="zone:(asia-northeast3-a)"   # orphan PD 확인
@@ -324,14 +326,14 @@ billing alert를 ₩50,000에 걸어 안전망을 두긴 했지만 체크리스�
 
 ---
 
-## 이 구조가 보장한 것 (과 못한 것)
+## 이 구조가 보장한 것과 못한 것
 
 배포 구조가 무엇을 보장하고 무엇을 보장하지 못하는지 나눠 보겠습니다.
 
 **보장하는 것**
 
 - **공통 매니페스트의 단일 소스.** probe, 포트, 환경변수 같은 공통 설정은 base 한 곳에만 있습니다. minikube/gke를 따로 고칠 일이 없으니 복제 drift가 구조적으로 차단됩니다. 환경 차이는 overlay patch에 국소화돼 "이 환경이 base와 무엇이 다른가"를 patch 파일만 보면 압니다. 리뷰와 롤백 단위가 명확합니다.
-- **두 환경의 실제 배포 검증.** minikube에서 Task 3-1~3-3(CI, 매니페스트, 관측성 스택)을 끝까지 돌렸고 GKE에서 부하 테스트와 HPA 검증을 수행했습니다. base/overlays로 **두 환경에서 실제로 떠봤습니다**.
+- **두 환경의 실제 배포 검증.** minikube에서 CI, 매니페스트, 관측성 스택을 끝까지 돌렸고 GKE에서 부하 테스트와 HPA 검증을 수행했습니다. base/overlays로 **두 환경에서 실제로 떠봤습니다**.
 - **Phase 4 확장이 파일 추가로 끝나는 구조.** 서비스를 늘릴 때 `base/services/` 아래 형제 디렉토리를 추가하고 `base/kustomization.yml`에 경로 한 줄만 더하면 됩니다. 기존 파일 수정이 없어 PR 리뷰가 단순합니다.
 
 **보장하지 못하는 것**
@@ -342,19 +344,6 @@ billing alert를 ₩50,000에 걸어 안전망을 두긴 했지만 체크리스�
 - **자동 정리**: orphan 리소스 정리가 수동 체크리스트에 의존합니다.
 
 CI 글에서 본 패턴이 여기서도 반복됩니다. 핵심 동작은 단단히 검증하고, 일부 보장은 공백으로 남겨 둡니다. 배포 구조의 공백은 "self-contained 자동화, GitOps, 자동 정리" 세 가지입니다.
-
----
-
-## 자료는 어떤 질문에 연결해서 읽을까
-
-| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |
-| --- | --- | --- |
-| base/overlays와 patch(strategic merge vs JSON6902)의 동작 | Kustomize 공식 가이드, *Introduction / Patches* | "base/overlays", patch 방식 선택 절 |
-| Service 노출 방식(ClusterIP/NodePort/LoadBalancer)의 차이 | Kubernetes 공식 문서, *Service* | minikube NodePort vs GKE Internal LB |
-| HPA가 지표로 Pod 수를 조절하는 원리와 stabilization window | Kubernetes 공식 문서, *Horizontal Pod Autoscaling* | gke `hpa.yml` scaleUp/scaleDown 비대칭 |
-| CRD와 Operator 패턴, ServiceMonitor의 CRD 의존 | Prometheus Operator 문서, *Design / ServiceMonitor* | 4단계 배포 순서, self-contained 해석 |
-| GitOps에서 "선언 = 상태"가 의미하는 것 | Argo CD 문서, *Core Concepts* | 이미지 수동 치환이 GitOps가 아닌 이유 |
-| GKE의 Internal LoadBalancer와 StorageClass(`standard-rwo`) | Google Cloud 문서, *GKE Networking / Storage* | gke patch의 LB annotation, PVC SC |
 
 ---
 
@@ -390,3 +379,16 @@ flowchart LR
 - **`metadata.namespace` 누락 lint를 도입하고 가야 한다.** 서비스가 N개면 수동 리뷰로 default 네임스페이스 누출을 막는 건 비현실적입니다. `kubectl apply --dry-run=server -k overlays/<env>`(서버 검증)나 `kubectl kustomize overlays/<env> | kubeconform`(렌더 결과를 스키마 검사)처럼 렌더 산출물을 자동 검증하는 단계를 게이트에 넣는 게 부채 점검 글의 항목입니다.
 - **이미지 운반과 치환을 자동화해야 한다.** 수동 `crane copy` + `kustomize edit set image` + `git restore`의 3단 수동은 서비스 1개라 견딘 것입니다. N개에선 GitOps로 "선언 = 상태"를 회복하는 게 배포 안정성의 전제가 됩니다.
 - **base의 "공통 인프라" 경계를 다시 그어야 한다.** 서비스별 DB 분리가 시작되면 mysql 하나를 base에 두는 가정이 맞지 않습니다. 무엇을 끝까지 공통으로 두고 무엇을 서비스 안으로 넣을지는, Phase 4에서 `common` 모듈에 무엇을 둘지(CI 글과 부채 점검 글)와 같은 결의 질문입니다.
+
+---
+
+## 자료는 어떤 질문에 연결해서 읽을까
+
+| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |
+| --- | --- | --- |
+| base/overlays와 patch(strategic merge vs JSON6902)의 동작 | Kustomize 공식 가이드, *Introduction / Patches* | "base/overlays", patch 방식 선택 절 |
+| Service 노출 방식(ClusterIP/NodePort/LoadBalancer)의 차이 | Kubernetes 공식 문서, *Service* | minikube NodePort vs GKE Internal LB |
+| HPA가 지표로 Pod 수를 조절하는 원리와 stabilization window | Kubernetes 공식 문서, *Horizontal Pod Autoscaling* | gke `hpa.yml` scaleUp/scaleDown 비대칭 |
+| CRD와 Operator 패턴, ServiceMonitor의 CRD 의존 | Prometheus Operator 문서, *Design / ServiceMonitor* | 4단계 배포 순서, self-contained 해석 |
+| GitOps에서 "선언 = 상태"가 의미하는 것 | Argo CD 문서, *Core Concepts* | 이미지 수동 치환이 GitOps가 아닌 이유 |
+| GKE의 Internal LoadBalancer와 StorageClass(`standard-rwo`) | Google Cloud 문서, *GKE Networking / Storage* | gke patch의 LB annotation, PVC SC |

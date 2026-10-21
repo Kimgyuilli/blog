@@ -9,6 +9,8 @@ draft: false
 slug: "peekcart-ci-docker-image-build"
 ---
 
+이 연재는 PeekCart를 네 단계로 진행했습니다. Phase 1은 단일 Spring Boot 모놀리스로 도메인을 구현한 단계, Phase 2는 캐시, 분산 락, Kafka와 Outbox로 성능과 정합성을 보강한 단계, Phase 3은 CI, Kubernetes, 관측성, 부하 테스트로 운영 환경을 검증한 단계, Phase 4는 서비스별로 나눈 MSA 단계입니다.
+
 지금까지의 글(도메인 구현, 이어서 성능과 정합성 보강)은 "무엇을 어떻게 구현했는가"가 주제였습니다. 인프라를 본격적으로 다루는 Phase 3부터는 질문이 바뀝니다. **"이 코드가 정말 동작하는지를 내 노트북 바깥에서 어떻게 증명하는가"**, 그리고 **"검증된 코드를 어떻게 배포 가능한 한 덩어리로 만드는가"** 를 다룹니다.
 
 확인할 문제는 분명합니다. 로컬에서 `./gradlew build`(프로젝트를 빌드, 테스트하는 명령)가 성공해도 그건 *내 머신의 JDK, 내 Docker 데몬*에서 성공한 것일 뿐입니다. 동료의 머신이나 깨끗한 서버에서도 같다는 보장은 없습니다. 게다가 빌드의 산출물인 `app.jar`(실행 가능한 자바 패키지 한 개)은 그 자체로는 "어디서나 똑같이 뜨는 무언가"가 아닙니다. 실행에 필요한 JRE 버전, OS 라이브러리, 실행 계정이 환경마다 다르기 때문입니다.
@@ -106,7 +108,7 @@ PeekCart 의 통합 테스트(앞선 글들의 `ProductCacheIntegrationTest`, `O
 이미지를 만드는 가장 단순한 방법은 "JDK 이미지 하나에서 빌드하고 그대로 실행"하는 것입니다. 단일 stage 에서 `./gradlew bootJar` 를 실행한 뒤 같은 이미지에 `ENTRYPOINT` 를 거는 식입니다. 하지만 그러면 최종 이미지에 **Gradle, 소스코드, JDK 컴파일러, 빌드 캐시**가 모두 남습니다. 실행에는 필요 없지만 이미지 크기와 공격 표면을 키웁니다. (참고로 JDK 베이스에 jar *만* COPY하면 Gradle, 소스는 남지 않지만 JRE 대신 JDK 를 사용하므로 컴파일러 등 런타임에 불필요한 요소는 여전히 남습니다.) 멀티스테이지는 빌드와 런타임을 두 stage로 나눕니다.
 
 ```dockerfile
-# Stage 1: Build — JDK로 jar를 만든다
+# Stage 1: Build, JDK로 jar를 만든다
 FROM eclipse-temurin:17-jdk AS build
 WORKDIR /app
 COPY gradlew settings.gradle build.gradle ./
@@ -115,7 +117,7 @@ RUN chmod +x gradlew && ./gradlew dependencies --no-daemon   # ← 의존성만 
 COPY src/ src/
 RUN ./gradlew bootJar -x test --no-daemon
 
-# Stage 2: Runtime — JRE로 jar만 실행한다
+# Stage 2: Runtime, JRE로 jar만 실행한다
 FROM eclipse-temurin:17-jre
 WORKDIR /app
 COPY --from=build /app/build/libs/app.jar app.jar           # ← stage 1 산출물만 가져옴
@@ -255,7 +257,7 @@ jobs:
 
 ### 이미지가 "실제로 뜨는가"는 CI가 검증하지 않는다
 
-CI 는 이미지를 **빌드하고 레지스트리에 올리기(push)**까지만 합니다. 그 이미지를 실제로 실행해 `/actuator/health`(앱이 살아 있는지 알려주는 상태 점검 엔드포인트)가 200을 응답하는지, 앱이 정말 부팅되는지는 **확인하지 않는다.** 작업 기록에도 "이미지 기능성 미검증, 실제 환경에서 뜨는지는 한참 뒤 부하 테스트 때 처음으로 확인"이라고 남아 있습니다. 즉 빌드 성공 ≠ 런타임 정상입니다. ENTRYPOINT 가 틀렸거나 런타임에만 필요한 설정이 빠져도 이미지 빌드는 성공합니다. smoke test(컨테이너를 띄우고 health 를 한 번 호출하기)를 CI 에 넣으면 이 공백을 보완할 수 있지만 지금은 그 책임이 배포 시점으로 미뤄져 있습니다.
+CI 는 이미지를 **빌드하고 레지스트리에 올리기(push)**까지만 합니다. 그 이미지를 실제로 실행해 `/actuator/health`(앱이 살아 있는지 알려주는 상태 점검 엔드포인트)가 200을 응답하는지, 앱이 정말 부팅되는지는 **확인하지 않는다.** 작업 당시에도 "이미지 기능성 미검증, 실제 환경에서 뜨는지는 한참 뒤 부하 테스트 때 처음으로 확인"이라고 남아 있습니다. 즉 빌드 성공 ≠ 런타임 정상입니다. ENTRYPOINT 가 틀렸거나 런타임에만 필요한 설정이 빠져도 이미지 빌드는 성공합니다. smoke test(컨테이너를 띄우고 health 를 한 번 호출하기)를 CI 에 넣으면 이 공백을 보완할 수 있지만 지금은 그 책임이 배포 시점으로 미뤄져 있습니다.
 
 ### Testcontainers의 편의성이 만든 부채
 
@@ -269,8 +271,10 @@ CI 는 이미지를 **빌드하고 레지스트리에 올리기(push)**까지만
 | SlackPort mock 공통화 | **Spring 컨텍스트 캐시 hit**: `@Import`/`@TestPropertySource` 차이로 miss |
 | 신규 테스트 작성 규약 확립 | unit/integration job 분리, 병렬 전략 |
 
-이 작업을 시작하기 전 "지금 손볼 가치가 있는가"를 검토한 내부 리뷰 문서에 한 원칙을 명시했습니다. **"컨테이너 재사용과 컨텍스트 재사용을 한 번에 하지 말 것."** 
-테스트마다 설정과 정리(cleanup) 방식이 달라서 처음부터 모든 테스트를 하나의 완전 공유 구조로 밀어붙이면 속도를 얻기는커녕 flaky 테스트(실행할 때마다 결과가 달라지는 불안정 테스트) 위험만 커집니다. 
+이 작업을 시작하기 전 "지금 손볼 가치가 있는가"를 검토하면서 한 원칙을 정했습니다. **"컨테이너 재사용과 컨텍스트 재사용을 한 번에 하지 말 것."**
+
+테스트마다 설정과 정리(cleanup) 방식이 달라서 처음부터 모든 테스트를 하나의 완전 공유 구조로 밀어붙이면 속도를 얻기는커녕 flaky 테스트(실행할 때마다 결과가 달라지는 불안정 테스트) 위험만 커집니다.
+
 그래서 1차에서는 *규약 표준화*만 하고 *공유 최적화*는 2차로 미뤘습니다. **불안정을 피하기 위해 의도적으로 단계를 나눈 것**입니다. [ShedLock 글](/blog/peekcart-shedlock-multi-pod-scheduler/)에서도 ShedLock 테스트가 "락이 배선돼 동작한다"까지만 검증하고 "여러 인스턴스 중 하나만 실행된다"는 핵심 보장은 공백으로 남겼습니다. 여기서도 마찬가지로 "표준화됨"은 달성하되 "최적화됨"은 후속 과제로 놔두었습니다.
 
 ### 단일 job의 비용: fail-fast가 약하다
@@ -283,7 +287,7 @@ CI 는 이미지를 **빌드하고 레지스트리에 올리기(push)**까지만
 
 ---
 
-## CI가 증명한 것 (과 못한 것)
+## CI가 증명한 것과 못한 것
 
 CI 파이프라인이 테스트로 무엇을 확인하는지 보면, 보장하는 것과 보장하지 못하는 것이 갈립니다.
 
@@ -300,16 +304,6 @@ CI 파이프라인이 테스트로 무엇을 확인하는지 보면, 보장하�
 - **통합 테스트의 효율적 구조**: 통과는 하지만 per-class 컨테이너, 컨텍스트 캐시 miss 로, 테스트가 늘면 시간이 비선형으로 악화될 여지(2차 정리 대상).
 
 Consumer 멱등성 글(중복 메시지를 한 번만 처리), ShedLock 글(스케줄러 중복 실행 방지)에서도 본 패턴이 여기서 반복됩니다: **핵심 동작은 단단히 검증하되, 가장 중요한 보장의 일부는 테스트 공백으로 정직하게 남겨 둔다.** CI 에서 그 공백은 "Dockerfile, 런타임, 테스트 효율" 세 가지입니다.
-
----
-
-## 자료는 어떤 질문에 연결해서 읽을까
-
-| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |
-| --- | --- | --- |
-| CI 워크플로우 문법(트리거/job/step/if) | GitHub Actions 공식 문서, *Workflow syntax* | `ci.yml` 전반 |
-| 멀티스테이지 빌드와 레이어 캐싱 | Docker 공식 *Multi-stage builds* / *Build cache* | Dockerfile 절 |
-| Testcontainers + `@ServiceConnection` | Spring Boot Reference, *Testcontainers at Development Time* | "추가 설정 없이 실행한다" 절 |
 
 ---
 
@@ -347,3 +341,13 @@ flowchart TD
 - **Dockerfile, 런타임 검증 공백을 메우고 가야 한다.** 모놀리스 하나일 때는 "main이 깨지면 바로 안다"로 대응할 수 있었지만 서비스가 N개일 때는 한 서비스 이미지가 뜨지 않아도 다른 서비스에 가려 늦게 발견됩니다. PR 에서 `docker build`(push 없이) + smoke test(health 200 확인)를 게이트에 넣는 것이 부채 점검 글에서 챙길 항목입니다.
 - **통합 테스트 2차 정리(컨텍스트 재사용)를 멀티모듈 전환과 묶는다.** 모듈이 갈라지면 각 모듈의 통합 테스트도 갈라지므로 지금 per-class 컨테이너, 컨텍스트 캐시 miss 를 그대로 가져가면 서비스 수만큼 CI 시간이 급증합니다. 멀티모듈 분리 시점이 컨텍스트 재사용 구조를 도입할 자연스러운 지점입니다.
 - **`common` 모듈 변경의 폭발 반경을 관리한다.** `common` 을 한 줄 바꿀 때마다 모든 서비스가 다시 빌드, 배포되면 모놀리스보다 나을 게 없습니다. 무엇을 `common` 에 넣고 무엇을 서비스 안에 두는가가 곧 CI 빌드 시간과 배포 단위를 결정합니다. Phase 4 진입 전 부채를 정리하는 부채 점검 글의 핵심 질문과 직결됩니다.
+
+---
+
+## 자료는 어떤 질문에 연결해서 읽을까
+
+| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |
+| --- | --- | --- |
+| CI 워크플로우 문법(트리거/job/step/if) | GitHub Actions 공식 문서, *Workflow syntax* | `ci.yml` 전반 |
+| 멀티스테이지 빌드와 레이어 캐싱 | Docker 공식 *Multi-stage builds* / *Build cache* | Dockerfile 절 |
+| Testcontainers + `@ServiceConnection` | Spring Boot Reference, *Testcontainers at Development Time* | "추가 설정 없이 실행한다" 절 |

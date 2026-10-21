@@ -9,7 +9,9 @@ draft: false
 slug: "peekcart-observability-contract"
 ---
 
-이 글의 출발점은 한 장의 빈 그래프입니다. Phase 3 부하 테스트 중 Grafana의 API Response Time p95/p99 패널이 **"No data"**로 떴습니다. scrape는 정상이었고 HTTP 메트릭 일부(`_count`/`_sum`)도 들어오고 있었는데 하필 **p95 계산에 필요한 입력 series만 비어 있었다**. 원인은 **설정을 YAML 어디에 두느냐**였습니다. 같은 설정이 커맨드라인에선 동작하는데 YAML 경로에선 런타임에 적용되지 않았습니다. 이 사건이 이 글의 두 축 (**YAML 설정 배치 원칙**과 **관측성 계약을 한 곳에서 관리하는 법**)의 계기가 됐고 "관측성은 *계약*을 지키는 일"이라는 관점을 만들었습니다.  
+이 글의 출발점은 한 장의 빈 그래프입니다. Phase 3 부하 테스트 중 Grafana의 API Response Time p95/p99 패널이 "**No data**"로 떴습니다. scrape는 정상이었고 HTTP 메트릭 일부(`_count`/`_sum`)도 들어오고 있었는데 하필 **p95 계산에 필요한 입력 series만 비어 있었다**. 원인은 **설정을 YAML 어디에 두느냐**였습니다. 같은 설정이 커맨드라인에선 동작하는데 YAML 경로에선 런타임에 적용되지 않았습니다. 이 사건이 이 글의 두 축 (**YAML 설정 배치 원칙**과 **관측성 계약을 한 곳에서 관리하는 법**)의 계기가 됐고 "관측성은 *계약*을 지키는 일"이라는 관점을 만들었습니다.  
+  
+이 연재는 PeekCart를 네 단계로 진행했습니다. Phase 1은 단일 Spring Boot 모놀리스로 도메인을 구현한 단계, Phase 2는 캐시, 분산 락, Kafka와 Outbox로 성능과 정합성을 보강한 단계, Phase 3은 CI, Kubernetes, 관측성, 부하 테스트로 운영 환경을 검증한 단계, Phase 4는 서비스별로 나눈 MSA 단계입니다.  
   
 이번 글은 (1) **애플리케이션 메트릭이 Grafana 알림까지 도달하는 경로**를 끝까지 따라가고 (2) 그 경로의 각 지점이 **어느 파일에 단일 출처(SSOT)로 자리잡고 있는지**를 9개 지점으로 쪼개 정리하고 (3) 메트릭과 짝을 이루는 **로그 추적(MDC) 경로**가 Outbox, Kafka를 건너 어떻게 이어지는지를 봅니다. 마지막으로 이 계약이 Phase 4에서 서비스마다 복제될 때 무엇이 위험한지를 짚습니다.  
   
@@ -160,7 +162,7 @@ YAML 원칙은 *값을 어디에 두나*를 풀었지만 더 큰 질문이 남�
   
 이 표의 가치는 **의존 방향**에 있습니다. 예를 들어 "error-rate alert는 멀쩡한데 latency alert만 NaN"이면 S1(bucket)만 의심하면 됩니다. error-rate는 `_count`를 쓰므로 S1과 무관하기 때문입니다. 반대로 "alert가 *전부* 안 뜬다"면 공통 의존인 S5(scrape)를 먼저 봅니다. 흩어진 계약을 *통합하지 않고도* "어디를 보면 되는지"를 결정론적으로 만든 게 이 표입니다.  
   
-이 SSOT 표는 앞의 YAML 원칙을 **대체하는 게 아니라 확장**합니다. YAML 원칙이 "동작 정책은 Java Config로"라는 *일반 규칙*이라면, 이 표는 그 규칙을 관측성의 9 surface에 *구체화*하고 특히 일반 규칙만으론 도출되지 않는 **manifest 측 surface(S5 ServiceMonitor, S6 Grafana alert)**의 위치까지 정합니다.  
+이 SSOT 표는 앞의 YAML 원칙을 **대체하는 게 아니라 확장**합니다. YAML 원칙이 "동작 정책은 Java Config로"라는 *일반 규칙*이라면, 이 표는 그 규칙을 관측성의 9 surface에 *구체화*하고 특히 일반 규칙만으론 도출되지 않는 **manifest 측 surface**(S5 ServiceMonitor, S6 Grafana alert)의 위치까지 정합니다.  
   
 ### 4. 메트릭의 짝: 로그 추적(MDC)이 Outbox, Kafka를 건너는 법  
   
@@ -196,7 +198,7 @@ flowchart LR
 폴링 스레드엔 MDC가 없으므로 **MDC를 캡처하는 시점**을 앞당겨, *원본 HTTP 요청 스레드*에서 Outbox 이벤트를 저장할 때 `MdcSnapshot.current()`로 traceId/userId를 떠서 **엔티티 컬럼(`outbox_events.trace_id`, `user_id`)에 같은 트랜잭션으로 영속**합니다(`V4__outbox_trace_context.sql`). 나중에 폴링 스레드는 MDC 대신 *컬럼에 저장된 값*을 읽어 Kafka 헤더에 싣습니다.  
   
 ```java  
-// global/outbox/OutboxPollingService.java — 폴링 스레드는 컬럼에서 읽어 헤더로  
+// global/outbox/OutboxPollingService.java: 폴링 스레드는 컬럼에서 읽어 헤더로  
 private ProducerRecord<String, String> buildRecord(OutboxEvent event) {  
     ProducerRecord<String, String> record = new ProducerRecord<>(...);
     addHeaderIfPresent(record, KafkaTraceHeaders.TRACE_ID, event.getTraceId()); // X-Trace-Id
@@ -215,7 +217,7 @@ if (traceId == null) traceId = UUID.randomUUID()...;               // ③ 방어
 MDC.put(MDC_TRACE_ID, traceId);  
 ```  
   
-이 설계에서 눈여겨볼 결정 두 가지. (1) **헤더가 null이면 헤더 자체를 안 넣는다**(빈 문자열 헤더 금지), Consumer의 `value.isBlank() ? null` 분기와 정합시켜, "있다"와 "비었다"가 같은 의미가 되게 했습니다. (2) **payload envelope을 안 건드렸다**, trace를 메시지 본문(JSON)에 넣었으면(Alt B) Consumer 파서를 고쳐야 하고 기존 메시지 호환이 깨집니다. 헤더 경로를 택해 **스키마 불변 + 기존 Consumer 인프라 재활용**을 동시에 얻었습니다. 그리고 이것이 Phase 4 OpenTelemetry 도입 시 표준 헤더 `traceparent`를 *한 단계 더 추가하기만* 하면 되는 forward-compatible 구조입니다.  
+이 설계에서 눈여겨볼 결정 두 가지. (1) **헤더가 null이면 헤더 자체를 안 넣는다**(빈 문자열 헤더 금지), Consumer의 `value.isBlank() ? null` 분기와 정합시켜, "있다"와 "비었다"가 같은 의미가 되게 했습니다. (2) **payload envelope을 안 건드렸다**, trace를 메시지 본문(JSON)에 넣었으면 Consumer 파서를 고쳐야 하고 기존 메시지 호환이 깨집니다. 헤더 경로를 택해 **스키마 불변 + 기존 Consumer 인프라 재활용**을 동시에 얻었습니다. 그리고 이것이 Phase 4 OpenTelemetry 도입 시 표준 헤더 `traceparent`를 *한 단계 더 추가하기만* 하면 되는 forward-compatible 구조입니다.  
   
 > 짚을 점: 이 MDC 추적은 **로그 상관관계**다. Prometheus/Grafana엔 안 보인다. 진짜 분산 추적(span, sampling, 서비스 간 전파)은 Phase 4에서 micrometer-tracing/OpenTelemetry로 별도 도입한다. 지금은 "모놀리스 안에서 로그를 한 traceId로 묶는" 최소 추적이고, 위 작업은 그 *컬럼과 헤더 인프라*를 미리 깔아 둔 것이다.  
   
@@ -336,20 +338,6 @@ Kustomize 글에서 본 패턴이 여기서도 반복됩니다. 핵심 동작은
   
 ---  
   
-## 자료는 어떤 질문에 연결해서 읽을까  
-  
-| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |  
-| --- | --- | --- |  
-| Micrometer/Actuator가 메트릭을 노출하는 원리 | Spring Boot Reference, *Actuator / Metrics* | 경로 (1), (2), `MetricsConfig` |  
-| histogram bucket과 `histogram_quantile()`의 관계 | Prometheus 문서, *Histograms and summaries* | 빈 그래프, S1 |  
-| Spring Boot YAML 프로파일 병합 규칙 | Spring Boot Reference, *Externalized Configuration: Merging YAML* | 문제 상황, YAML 원칙 |  
-| ServiceMonitor가 scrape 대상을 매칭하는 방식 | Prometheus Operator 문서, *ServiceMonitor* | 경로 (3), S5 |  
-| `up` 메트릭과 `absent()`의 의미 | Prometheus 문서, *Querying / up* | target-down vs scrape-absent |  
-| MDC 기반 로그 상관관계와 분산 추적의 차이 | Micrometer Tracing 문서, *Introduction* | MDC 절, Phase 4 OTel |  
-| SSOT/계약을 한 곳에서 강제하는 패턴 | Google SRE Book, *Monitoring Distributed Systems* | 9 surface 표 |  
-  
----  
-  
 ## Phase 4 MSA에서는 어떻게 바뀌는가  
   
 지금 관측성 계약은 **모놀리스 한 덩어리**의 것입니다. 9 surface가 한 앱, 한 ServiceMonitor, 한 alert 파일에 모여 있습니다. Phase 4에서 서비스가 N개로 갈라지면 이 계약이 *서비스 수만큼 복제*되는데 여기서 앞서 본 "계약 분산"이 모듈 경계를 따라 더 깊어질 위험이 있습니다. surface 표의 "Phase 4 owner"는 바로 이 복제를 *미리 설계*해 둔 것입니다.  
@@ -380,3 +368,17 @@ flowchart LR
 - **이미 있는 SSOT lint를 서비스별로 확장해야 한다.** 지금의 정적 lint는 모놀리스 한 곳을 검사하도록 짜여 있습니다. 서비스 N개에서 "MeterFilter가 공통 모듈 1개소에만 있는가", "`application=`가 각 서비스 base 외에 재선언 안 됐는가"를 보려면 lint의 검사 범위를 모듈 트리에 맞춰 넓혀야 합니다. 과제는 *기존 lint의 확장*입니다.  
 - **공통 관측성 모듈의 경계를 surface 표대로 그어야 한다.** 무엇이 `peekcart-common-observability`로 가고(S1/S3/S4) 무엇이 서비스에 남는가(S2/S5)는 이미 표에 정해져 있습니다: Phase 4 계획은 이 모듈을 *자기 결정 항목에서 제외*하고 표를 그대로 따릅니다. 이것은 CI 글과 부채 점검 글의 "`common` 모듈에 무엇을 둘 것인가"와 같은 결의 질문입니다.  
 - **정적 lint를 넘어 런타임 검증으로 갈지 결정해야 한다.** 서비스가 늘수록 selector 미스매치와 PromQL *결과* 오류가 생길 범위가 N배가 됩니다. 지금의 정적 lint가 *구조*는 막지만 Prometheus를 띄워 실제 쿼리 결과까지 보는 통합 검증을 어디까지 도입할지가 부채 점검 글에서 정할 항목입니다.
+
+---
+
+## 자료는 어떤 질문에 연결해서 읽을까  
+  
+| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |  
+| --- | --- | --- |  
+| Micrometer/Actuator가 메트릭을 노출하는 원리 | Spring Boot Reference, *Actuator / Metrics* | 경로 (1), (2), `MetricsConfig` |  
+| histogram bucket과 `histogram_quantile()`의 관계 | Prometheus 문서, *Histograms and summaries* | 빈 그래프, S1 |  
+| Spring Boot YAML 프로파일 병합 규칙 | Spring Boot Reference, *Externalized Configuration: Merging YAML* | 문제 상황, YAML 원칙 |  
+| ServiceMonitor가 scrape 대상을 매칭하는 방식 | Prometheus Operator 문서, *ServiceMonitor* | 경로 (3), S5 |  
+| `up` 메트릭과 `absent()`의 의미 | Prometheus 문서, *Querying / up* | target-down vs scrape-absent |  
+| MDC 기반 로그 상관관계와 분산 추적의 차이 | Micrometer Tracing 문서, *Introduction* | MDC 절, Phase 4 OTel |  
+| SSOT/계약을 한 곳에서 강제하는 패턴 | Google SRE Book, *Monitoring Distributed Systems* | 9 surface 표 |  

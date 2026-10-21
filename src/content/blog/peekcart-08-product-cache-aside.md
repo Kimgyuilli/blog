@@ -9,7 +9,9 @@ draft: false
 slug: "peekcart-product-cache-aside"
 ---
 
-Phase 1을 끝낸 시점의 PeekCart 는 모든 요청이 MySQL 을 조회합니다. 상품 목록도, 상품 상세도, 그 안에 들어있는 카테고리 조인도 매번 DB로 갑니다. 부하가 낮을 때는 문제가 아니지만 상품 페이지는 이커머스에서 가장 자주 호출되는 엔드포인트입니다. 한 명의 사용자가 한 번 구매하기 전까지 목록과 상세를 수십 번씩 왔다 갔다 합니다. Phase 2의 첫 번째 과제(Task 2-1)는 이 트래픽을 Redis 뒤로 옮기는 일이었습니다. 이번 글에서는 그 작업이 어떤 결정의 연속이었는지를 정리합니다.
+이 연재는 PeekCart를 네 단계로 진행했습니다. Phase 1은 단일 Spring Boot 모놀리스로 도메인을 구현한 단계, Phase 2는 캐시, 분산 락, Kafka와 Outbox로 성능과 정합성을 보강한 단계, Phase 3은 CI, Kubernetes, 관측성, 부하 테스트로 운영 환경을 검증한 단계, Phase 4는 서비스별로 나눈 MSA 단계입니다.
+
+Phase 1을 끝낸 시점의 PeekCart 는 모든 요청이 MySQL 을 조회합니다. 상품 목록도, 상품 상세도, 그 안에 들어있는 카테고리 조인도 매번 DB로 갑니다. 부하가 낮을 때는 문제가 아니지만 상품 페이지는 이커머스에서 가장 자주 호출되는 엔드포인트입니다. 한 명의 사용자가 한 번 구매하기 전까지 목록과 상세를 수십 번씩 왔다 갔다 합니다. Phase 2의 첫 번째 과제는 이 트래픽을 Redis 뒤로 옮기는 일이었습니다. 이번 글에서는 그 작업이 어떤 결정의 연속이었는지를 정리합니다.
 
 이 글에서 사용하는 용어의 뜻은 다음과 같습니다.
 
@@ -29,7 +31,7 @@ Phase 1을 끝낸 시점의 PeekCart 는 모든 요청이 MySQL 을 조회합니
 2. 같은 빈 안에서 `@Cacheable` 을 호출하면 왜 동작하지 않을까? 그 해결책으로 빈을 분리한 의미는 무엇일까?
 3. 목록 캐시를 "키 하나씩" 무효화하지 않고 `allEntries = true` 로 통째로 비운 이유는 무엇일까?
 4. `Page<T>` 를 Redis 에 직렬화하지 못해서 등장한 `CachedPage` 래퍼는 어떤 트레이드오프일까?
-5. 캐시 ON 에서 목표 3배에 못 미친 2.31배이 왜 실패가 아닐까?
+5. 캐시 ON 에서 목표 3배에 못 미친 2.31배가 왜 실패가 아닐까?
 
 ---
 
@@ -289,19 +291,6 @@ Redis 가 다운되면 `@Cacheable` 호출이 `RedisConnectionFailureException` 
 
 ---
 
-## 자료는 어떤 질문에 연결해서 읽을까
-
-| 질문                                          | 같이 읽을 자료                                                                                                                | 이 글에서 연결되는 지점                       |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| Spring `@Cacheable`이 내부 호출에서 동작하지 않는 이유?    | Spring Framework 공식 문서, [Understanding AOP Proxies](https://docs.spring.io/spring-framework/reference/core/aop/proxying.html) | `ProductCacheService` 별도 빈 분리     |
-| Cache Aside / Read-Through / Write-Behind 패턴 비교? | Martin Kleppmann, *Designing Data-Intensive Applications* Ch.1 "Caching" 절 / AWS Caching Best Practices | "Cache Aside를 선택한 이유" 전체           |
-| `RedisCacheManager`의 키 직렬화, TTL, prefix 옵션?   | Spring Data Redis 공식 문서, [Cache Configuration](https://docs.spring.io/spring-data/redis/reference/redis/redis-cache.html) | `CacheConfig`의 `defaultConfig` 구성 |
-| `Page<T>`를 Redis에 직렬화하는 표준 방법?              | Spring Data Commons 이슈 트래커의 `PageImpl` 직렬화 관련 PR 논의                                                                    | `CachedPage` 래퍼 결정                |
-| cache hit rate 를 실시간으로 볼 메트릭 만들기?                    | Micrometer `CacheMeterBinder` 문서, Spring Boot Actuator `cache.*` 메트릭                                                    | "cache hit rate 를 메트릭으로 보지 않는다" 절          |
-| 캐시 무효화의 두 가지 어려움(naming / invalidation)?    | Phil Karlton, "There are only two hard things..." 인용 맥락 / Mnesia, Hibernate cache invalidation 문서                       | `allEntries = true` 결정 정당화        |
-
----
-
 ## Phase 4 MSA에서는 어떻게 바뀌는가
 
 상품 캐시는 Phase 4에서 Product Service 의 안쪽으로 이동합니다. 핵심 데이터(`products`, `categories`)가 Product Service 의 DB로 옮겨지고 그 서비스가 자기 캐시를 관리합니다.
@@ -343,5 +332,18 @@ flowchart LR
 **그래서 Phase 4 진입 전 짚을 점**
 
 - 상품 캐시 코드 자체는 분리하기 쉽습니다. 캐시 어노테이션은 도메인 로직과 결합되지 않은 횡단 관심사라 패키지 이동만으로 따라옵니다.
-- 결정할 것은 "상세 페이지 조립을 누가 하는가"입니다. Product + Inventory 의 합성 책임은 ADR로 남겨둘 필요가 있습니다. 같이 검토할 자료: `docs/02-architecture.md` Phase 4 섹션, `docs/adr/0002-monolith-to-msa-evolution.md`.
+- 결정할 것은 "상세 페이지 조립을 누가 하는가"입니다. Product + Inventory 의 합성 책임은 설계 결정 기록으로 남겨둘 필요가 있습니다.
 - cache hit rate 메트릭 부재(`CacheMeterBinder` 미등록)는 Phase 4 전에 해소하는 게 좋습니다. 서비스가 늘어나면 어느 서비스의 캐시가 효과적인지 비교해야 하는데 그 비교의 기본 지표가 hit rate입니다.
+
+---
+
+## 자료는 어떤 질문에 연결해서 읽을까
+
+| 질문                                          | 같이 읽을 자료                                                                                                                | 이 글에서 연결되는 지점                       |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| Spring `@Cacheable`이 내부 호출에서 동작하지 않는 이유?    | Spring Framework 공식 문서, [Understanding AOP Proxies](https://docs.spring.io/spring-framework/reference/core/aop/proxying.html) | `ProductCacheService` 별도 빈 분리     |
+| Cache Aside / Read-Through / Write-Behind 패턴 비교? | Martin Kleppmann, *Designing Data-Intensive Applications* Ch.1 "Caching" 절 / AWS Caching Best Practices | "Cache Aside를 선택한 이유" 전체           |
+| `RedisCacheManager`의 키 직렬화, TTL, prefix 옵션?   | Spring Data Redis 공식 문서, [Cache Configuration](https://docs.spring.io/spring-data/redis/reference/redis/redis-cache.html) | `CacheConfig`의 `defaultConfig` 구성 |
+| `Page<T>`를 Redis에 직렬화하는 표준 방법?              | Spring Data Commons 이슈 트래커의 `PageImpl` 직렬화 관련 PR 논의                                                                    | `CachedPage` 래퍼 결정                |
+| cache hit rate 를 실시간으로 볼 메트릭 만들기?                    | Micrometer `CacheMeterBinder` 문서, Spring Boot Actuator `cache.*` 메트릭                                                    | "cache hit rate 를 메트릭으로 보지 않는다" 절          |
+| 캐시 무효화의 두 가지 어려움(naming / invalidation)?    | Phil Karlton, "There are only two hard things..." 인용 맥락 / Mnesia, Hibernate cache invalidation 문서                       | `allEntries = true` 결정 정당화        |

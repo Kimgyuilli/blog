@@ -15,6 +15,8 @@ Redis, Kafka, Kubernetes, MSA 같은 키워드가 많지만 이 기술들을 각
 
 이번 학습에서는 PeekCart를 "MSA 프로젝트"로 바로 보지 않고 모놀리스에서 어떤 문제를 먼저 확인했고 그 문제들이 어떻게 Phase 4의 분리 근거가 되는지 따라가 보려고 합니다.
 
+이 연재는 PeekCart를 네 단계로 진행했습니다. Phase 1은 단일 Spring Boot 모놀리스로 도메인을 구현한 단계, Phase 2는 캐시, 분산 락, Kafka와 Outbox로 성능과 정합성을 보강한 단계, Phase 3은 CI, Kubernetes, 관측성, 부하 테스트로 운영 환경을 검증한 단계, Phase 4는 서비스별로 나눈 MSA 단계입니다.
+
 ![PeekCart phase overview](/images/blog/peekcart-monolith-to-msa-flow/phase-overview.png)
 
 ## 처음에 가정했던 프로젝트 상황
@@ -45,11 +47,11 @@ PeekCart는 대용량 트래픽 환경을 고려한 이커머스 플랫폼을 �
 2. Phase 1~3에서 어떤 문제를 먼저 해결했을까요?
 3. Phase 4에서 분리하려는 경계는 앞 단계에서 어떻게 드러났을까요?
 
-이 질문을 따라 문서를 읽으면 기술 스택을 용도와 함께 볼 수 있습니다. Redis는 캐시이면서 재고 동시성 제어의 도구이고, Kafka는 비동기 메시지 브로커이면서 Outbox와 함께 이벤트 유실을 줄이는 장치입니다. Kubernetes도 배포 도구로 쓰이면서 HPA와 관측성 검증의 전제가 됩니다.
+이 질문을 따라 프로젝트를 읽으면 기술 스택을 용도와 함께 볼 수 있습니다. Redis는 캐시이면서 재고 동시성 제어의 도구이고, Kafka는 비동기 메시지 브로커이면서 Outbox와 함께 이벤트 유실을 줄이는 장치입니다. Kubernetes도 배포 도구로 쓰이면서 HPA와 관측성 검증의 전제가 됩니다.
 
 ## 먼저 프로젝트의 목표부터 보기
 
-`docs/01-project-overview.md`에서 소개하는 PeekCart는 대용량 트래픽 환경을 고려한 이커머스 플랫폼입니다.
+PeekCart는 대용량 트래픽 환경을 고려한 이커머스 플랫폼입니다.
 
 회원, 상품, 주문, 결제를 CRUD로 구현하고 트래픽 증가 상황에서 성능과 정합성을 어떻게 지킬지까지 다룹니다.
 

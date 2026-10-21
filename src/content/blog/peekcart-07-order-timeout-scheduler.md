@@ -9,7 +9,9 @@ draft: false
 slug: "peekcart-order-timeout-scheduler"
 ---
 
-주문은 만들었는데 결제는 끝내지 않은 사용자가 있습니다. 결제 위젯을 열어둔 채 탭을 닫았을 수도 있고 결제 도중 카드사 인증에서 막혔을 수도 있습니다. 문제는 이 미완료 주문이 살아 있는 동안 재고가 묶여 있다는 점입니다. [주문 생성 트랜잭션 글](/blog/peekcart-order-transaction-flow/)에서 본 "전략 A, 주문 생성 시점에 재고를 즉시 차감"을 선택한 순간부터, "그러면 결제를 안 끝낸 주문의 재고는 누가 풀어주는가"라는 질문이 따라붙습니다. 그 질문에 답하는 결제 타임아웃 스케줄러가 이번 글의 주제입니다.
+주문은 만들었는데 결제는 끝내지 않은 사용자가 있습니다. 결제 위젯을 열어둔 채 탭을 닫았을 수도 있고 결제 도중 카드사 인증에서 막혔을 수도 있습니다. 문제는 이 미완료 주문이 살아 있는 동안 재고가 묶여 있다는 점입니다. [주문 생성 트랜잭션 글](/blog/peekcart-order-transaction-flow/)에서 본 "주문 생성 시점에 재고를 즉시 차감"하는 전략을 선택한 순간부터, "그러면 결제를 안 끝낸 주문의 재고는 누가 풀어주는가"라는 질문이 따라붙습니다. 그 질문에 답하는 결제 타임아웃 스케줄러가 이번 글의 주제입니다.
+
+이 연재는 PeekCart를 네 단계로 진행했습니다. Phase 1은 단일 Spring Boot 모놀리스로 도메인을 구현한 단계, Phase 2는 캐시, 분산 락, Kafka와 Outbox로 성능과 정합성을 보강한 단계, Phase 3은 CI, Kubernetes, 관측성, 부하 테스트로 운영 환경을 검증한 단계, Phase 4는 서비스별로 나눈 MSA 단계입니다.
 
 이 글에서 사용하는 용어의 뜻은 다음과 같습니다.
 
@@ -220,7 +222,7 @@ KEY idx_orders_status_ordered_at (status, ordered_at),
 
 복합 인덱스의 컬럼 순서가 `(status, ordered_at)` 이지 `(ordered_at, status)` 가 아니라는 점에 의도가 있습니다. `status` 는 카디널리티가 낮지만(8개 enum 값) 가장 선택적으로 좁혀줍니다. 전체 주문의 대부분은 `PAYMENT_COMPLETED` 이후 상태이고 `PAYMENT_REQUESTED` 만 골라내면 후보 집합이 급격히 줄어듭니다. 그 뒤에 `ordered_at < cutoff` 로 범위 스캔을 하면 인덱스 트리 한쪽 끝만 훑으면 됩니다.
 
-JOIN FETCH 는 N+1 회피용입니다. `Order` 한 건당 `OrderItem` 이 평균 N개 있는데 JOIN FETCH 없이 `for (var item : order.getOrderItems())` 를 돌리면 주문 수 1배번의 추가 쿼리가 발생합니다. 만료 주문이 100건이면 101개의 SELECT 가 나갑니다. JOIN FETCH로 1개로 압축합니다.
+JOIN FETCH 는 N+1 회피용입니다. `Order` 한 건당 `OrderItem` 이 평균 N개 있는데 JOIN FETCH 없이 `for (var item : order.getOrderItems())` 를 돌리면 주문 수만큼의 추가 쿼리가 발생합니다. 만료 주문이 100건이면 101개의 SELECT 가 나갑니다. JOIN FETCH로 1개로 압축합니다.
 
 > JOIN FETCH는 페이징과 함께 쓰면 메모리에서 페이징하는 함정이 있지만, 이 쿼리는 페이징이 없다. "지금까지 만료된 모든 주문"을 한 번에 가져온다. 컷오프가 15분이고 1분 주기라 정상 운영 시 한 번에 누적되는 건수가 많지 않다는 가정에 기댄 선택이다. 운영 부하가 커지면 LIMIT을 두는 페이지네이션이 필요해질 수 있다.
 
@@ -248,7 +250,7 @@ JOIN FETCH 는 N+1 회피용입니다. `Order` 한 건당 `OrderItem` 이 평균
 
 ShedLock 은 DB 의 `shedlock` 테이블에 락 행을 INSERT/UPDATE해서 "지금 이 작업은 한 인스턴스만 들고 있다"는 사실을 보장합니다. `lockAtMostFor` 는 그 인스턴스가 죽었을 때 락이 풀리는 최대 시간이고 `lockAtLeastFor` 는 작업이 빨리 끝나더라도 최소한 이 시간 동안은 다른 인스턴스가 다시 잡지 못하게 막아줍니다. 후자가 왜 필요한지는 이후 깊이 다룹니다.
 
-여기서 짚을 점은 시간 순서입니다. **이 스케줄러는 Phase 1에서 ShedLock 없이 먼저 도입되었고, Phase 2에서 ShedLock이 덧붙여졌다**(2026-03-26 Task 1-7, 그 뒤 Phase 2의 Task 2-6). 다시 말해 코드 한 줄(`@SchedulerLock`)을 추가하는 작업이 Phase 2의 별도 태스크였습니다. 단일 인스턴스에서는 ShedLock 이 노옵이라 동작에 차이가 없지만 Phase 3 분산 환경에 진입할 때 추가 비용 없이 그대로 동작하게 하려는 의도입니다.
+여기서 짚을 점은 시간 순서입니다. **이 스케줄러는 Phase 1에서 ShedLock 없이 먼저 도입되었고, Phase 2에서 ShedLock이 덧붙여졌다**. 다시 말해 코드 한 줄(`@SchedulerLock`)을 추가하는 작업이 Phase 2의 별도 태스크였습니다. 단일 인스턴스에서는 ShedLock 이 노옵이라 동작에 차이가 없지만 Phase 3 분산 환경에 진입할 때 추가 비용 없이 그대로 동작하게 하려는 의도입니다.
 
 ---
 
@@ -295,19 +297,6 @@ LocalDateTime cutoff = LocalDateTime.now().minusMinutes(15);
 
 ---
 
-## 자료는 어떤 질문에 연결해서 읽을까
-
-| 질문                                  | 같이 읽을 자료                                                                                | 이 글에서 연결되는 지점                  |
-| ----------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------- |
-| Spring `@Scheduled`의 fixedDelay와 fixedRate, cron의 차이는? | Spring Framework 공식 문서, [Task Execution and Scheduling](https://docs.spring.io/spring-framework/reference/integration/scheduling.html) | 60초 주기 선택의 의미                 |
-| `Propagation.REQUIRES_NEW`는 정확히 어떻게 동작하는가?                | Spring Framework 공식 문서, [Transaction Propagation](https://docs.spring.io/spring-framework/reference/data-access/transaction/declarative/tx-propagation.html) | 건별 독립 트랜잭션 절                  |
-| 결제 PSP의 세션 만료 정책은 어떻게 설계되는가?           | Toss Payments 개발자 문서, [결제 위젯 가이드](https://docs.tosspayments.com/guides/v2/payment-widget/integration) | 15분 컷오프의 근거                   |
-| 배치 작업의 "건별 격리" 패턴은 어떤 책에서 다루는가?      | Robert C. Martin, *Clean Code*, Error Handling 장 / Spring Batch 공식 문서의 skip/retry 정책 | `cancelSafely`의 try-catch 구조  |
-| 다중 인스턴스 스케줄러 락 패턴 비교 (DB / Redis / ZooKeeper)? | ShedLock 공식 README, [Distributed Lock Comparison](https://github.com/lukas-krecan/ShedLock) | "단일 인스턴스 가정과 그것이 깨질 때" 절       |
-| 복합 인덱스 컬럼 순서 결정 기준?                  | High Performance MySQL (Schwartz et al.): Indexing for High Performance 장            | `idx_orders_status_ordered_at`의 컬럼 순서 |
-
----
-
 ## Phase 4 MSA에서는 어떻게 바뀌는가
 
 타임아웃 스케줄러는 Phase 4에서 가장 자연스럽게 Order Service로 이동합니다. 핵심 데이터(`orders.status`, `orders.ordered_at`)가 Order Service 의 DB로 옮겨지고 스케줄러는 그 DB 를 1분마다 폴링하면 됩니다.
@@ -347,3 +336,16 @@ flowchart LR
 
 - 스케줄러 자체는 분리하기 쉽습니다. 의존하는 외부 도메인이 사실상 재고(Inventory)뿐이고 그 호출은 이벤트로 대체 가능합니다.
 - 주의해야 할 부분은 **타임아웃 컷오프의 일관성**입니다. Order Service 의 컷오프(15분)와 Payment Service 가 들고 있는 결제 세션 타임아웃이 어긋나면, "결제 세션은 살아있는데 주문은 이미 취소됨" 또는 그 반대의 상태가 만들어질 수 있습니다. 분리 후에는 두 서비스가 공유하는 계약 상수로 끌어내거나 ADR로 명시할 필요가 있습니다.
+
+---
+
+## 자료는 어떤 질문에 연결해서 읽을까
+
+| 질문                                  | 같이 읽을 자료                                                                                | 이 글에서 연결되는 지점                  |
+| ----------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------- |
+| Spring `@Scheduled`의 fixedDelay와 fixedRate, cron의 차이는? | Spring Framework 공식 문서, [Task Execution and Scheduling](https://docs.spring.io/spring-framework/reference/integration/scheduling.html) | 60초 주기 선택의 의미                 |
+| `Propagation.REQUIRES_NEW`는 정확히 어떻게 동작하는가?                | Spring Framework 공식 문서, [Transaction Propagation](https://docs.spring.io/spring-framework/reference/data-access/transaction/declarative/tx-propagation.html) | 건별 독립 트랜잭션 절                  |
+| 결제 PSP의 세션 만료 정책은 어떻게 설계되는가?           | Toss Payments 개발자 문서, [결제 위젯 가이드](https://docs.tosspayments.com/guides/v2/payment-widget/integration) | 15분 컷오프의 근거                   |
+| 배치 작업의 "건별 격리" 패턴은 어떤 책에서 다루는가?      | Robert C. Martin, *Clean Code*, Error Handling 장 / Spring Batch 공식 문서의 skip/retry 정책 | `cancelSafely`의 try-catch 구조  |
+| 다중 인스턴스 스케줄러 락 패턴 비교 (DB / Redis / ZooKeeper)? | ShedLock 공식 README, [Distributed Lock Comparison](https://github.com/lukas-krecan/ShedLock) | "단일 인스턴스 가정과 그것이 깨질 때" 절       |
+| 복합 인덱스 컬럼 순서 결정 기준?                  | High Performance MySQL (Schwartz et al.): Indexing for High Performance 장            | `idx_orders_status_ordered_at`의 컬럼 순서 |

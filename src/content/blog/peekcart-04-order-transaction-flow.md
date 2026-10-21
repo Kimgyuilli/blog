@@ -23,6 +23,8 @@ slug: "peekcart-order-transaction-flow"
 | 보상 트랜잭션 (Compensating Transaction) | 이미 커밋된 변경을 되돌리기 위한 별도 트랜잭션. 결제 실패 시 재고를 복구하는 것이 예시        |
 | Outbox 이벤트                         | DB 트랜잭션과 함께 저장되어 이벤트 유실을 방지하는 패턴. 뒤의 Outbox 글에서 상세히 다룰 예정 |
 
+이 연재는 PeekCart를 네 단계로 진행했습니다. Phase 1은 단일 Spring Boot 모놀리스로 도메인을 구현한 단계, Phase 2는 캐시, 분산 락, Kafka와 Outbox로 성능과 정합성을 보강한 단계, Phase 3은 CI, Kubernetes, 관측성, 부하 테스트로 운영 환경을 검증한 단계, Phase 4는 서비스별로 나눈 MSA 단계입니다.
+
 이번 학습에서는 다음 질문을 확인하려고 합니다.
 
 1. 장바구니에서 주문까지의 전체 흐름은 어떻게 이어질까?
@@ -543,7 +545,7 @@ private void cancelSafely(Long orderId, String orderNumber) {
 }
 ```
 
-상품과 재고 글에서 다룬 "재고 묶임" 문제의 해결책이 여기 있습니다. 주문 생성 시 즉시 재고를 차감하면(전략 A) 결제가 되지 않아도 재고가 묶여 있습니다. 스케줄러가 60초마다 `PAYMENT_REQUESTED` 상태가 15분을 초과한 주문을 찾아 자동 취소합니다.
+상품과 재고 글에서 다룬 "재고 묶임" 문제의 해결책이 여기 있습니다. 주문 생성 시 즉시 재고를 차감하면 결제가 되지 않아도 재고가 묶여 있습니다. 스케줄러가 60초마다 `PAYMENT_REQUESTED` 상태가 15분을 초과한 주문을 찾아 자동 취소합니다.
 
 여기서 두 가지 설계 포인트가 있습니다.
 
@@ -692,19 +694,6 @@ UUID의 앞 8자리를 사용하므로 충돌 확률은 매우 낮지만 0은 �
 
 ---
 
-## 자료는 어떤 질문에 연결해서 읽을까
-
-| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |
-| --- | --- | --- |
-| 애그리거트는 어떤 기준으로 나누는가? | Vaughn Vernon, [Effective Aggregate Design](https://www.dddcommunity.org/library/vernon_2011/) | Order-OrderItem, Cart-CartItem의 경계를 왜 이렇게 잡았는가 |
-| 상태 머신을 도메인에서 어떻게 모델링하는가? | Martin Fowler, [State Machine](https://www.martinfowler.com/eaaDev/state.html) | OrderStatus enum의 상태 전이 설계를 볼 때 |
-| 이벤트 기반 보상 트랜잭션은 어떻게 동작하는가? | AWS, [Saga Pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-data-persistence/saga-pattern.html), Chris Richardson, [Sagas](https://microservices.io/patterns/data/saga.html) | 결제 실패에서 재고 복구로 이어지는 흐름을 Saga로 볼 때 |
-| Outbox 패턴은 왜 필요한가? | Chris Richardson, [Transactional Outbox](https://microservices.io/patterns/data/transactional-outbox.html) | 주문 생성과 이벤트 저장이 같은 트랜잭션인 이유 |
-| 가격 스냅샷은 언제 필요한가? | Martin Fowler, [Temporal Patterns](https://www.martinfowler.com/eaaDev/timeNarrative.html) | order_items.unit_price가 왜 products.price를 복사하는가 |
-| 스케줄러 중복 실행은 어떻게 막는가? | ShedLock, [GitHub README](https://github.com/lukas-krecan/ShedLock) | 타임아웃 스케줄러가 다중 Pod에서 안전하게 동작하는 이유 |
-
----
-
 ## Phase 4 MSA에서는 어떻게 바뀌는가
 
 Phase 4에서 Order Service는 독립 배포 단위가 됩니다. 현재 모놀리스 안에서 `ProductPort`와 `OrderPort`로 분리해둔 경계가 서비스 간 통신으로 바뀝니다.
@@ -750,3 +739,16 @@ flowchart TD
 - **장바구니 소유권**: `carts`와 `cart_items`는 Order DB에 남습니다. 장바구니에서 상품 정보(이름, 가격)를 보여주려면 Product Service API를 호출하거나 CQRS 로컬 캐시를 유지해야 합니다.
 - **`OrderPort`를 HTTP API로**: Payment Service가 주문 상태를 `PAYMENT_REQUESTED`로 전이할 때, `OrderPortAdapter`의 메서드 호출이 HTTP API 호출로 바뀝니다.
 - **이벤트 계약 강화**: `order.created`, `order.cancelled`의 payload가 서비스 간 계약이 됩니다. 현재 `OrderOutboxEventPublisher`가 정의하는 payload 구조가 그대로 API 계약의 출발점입니다.
+
+---
+
+## 자료는 어떤 질문에 연결해서 읽을까
+
+| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |
+| --- | --- | --- |
+| 애그리거트는 어떤 기준으로 나누는가? | Vaughn Vernon, [Effective Aggregate Design](https://www.dddcommunity.org/library/vernon_2011/) | Order-OrderItem, Cart-CartItem의 경계를 왜 이렇게 잡았는가 |
+| 상태 머신을 도메인에서 어떻게 모델링하는가? | Martin Fowler, [State Machine](https://www.martinfowler.com/eaaDev/state.html) | OrderStatus enum의 상태 전이 설계를 볼 때 |
+| 이벤트 기반 보상 트랜잭션은 어떻게 동작하는가? | AWS, [Saga Pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-data-persistence/saga-pattern.html), Chris Richardson, [Sagas](https://microservices.io/patterns/data/saga.html) | 결제 실패에서 재고 복구로 이어지는 흐름을 Saga로 볼 때 |
+| Outbox 패턴은 왜 필요한가? | Chris Richardson, [Transactional Outbox](https://microservices.io/patterns/data/transactional-outbox.html) | 주문 생성과 이벤트 저장이 같은 트랜잭션인 이유 |
+| 가격 스냅샷은 언제 필요한가? | Martin Fowler, [Temporal Patterns](https://www.martinfowler.com/eaaDev/timeNarrative.html) | order_items.unit_price가 왜 products.price를 복사하는가 |
+| 스케줄러 중복 실행은 어떻게 막는가? | ShedLock, [GitHub README](https://github.com/lukas-krecan/ShedLock) | 타임아웃 스케줄러가 다중 Pod에서 안전하게 동작하는 이유 |

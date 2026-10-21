@@ -11,6 +11,8 @@ slug: "peekcart-notification-failure-isolation"
 
 알림 도메인이 흥미로운 이유는, 비즈니스적으로 "꼭 성공해야 하는 일"이 아니라는 점입니다. 결제는 실패하면 안 됩니다. 재고는 틀리면 안 됩니다. 그런데 알림은 한 번쯤 늦게 가거나 못 가도 주문이 잘못되지는 않습니다. 이 비대칭이 설계에 그대로 드러납니다. Notification 도메인은 "다른 도메인의 트랜잭션을 절대 방해하지 않는다"는 제약 위에서 만들어집니다.
 
+이 연재는 PeekCart를 네 단계로 진행했습니다. Phase 1은 단일 Spring Boot 모놀리스로 도메인을 구현한 단계, Phase 2는 캐시, 분산 락, Kafka와 Outbox로 성능과 정합성을 보강한 단계, Phase 3은 CI, Kubernetes, 관측성, 부하 테스트로 운영 환경을 검증한 단계, Phase 4는 서비스별로 나눈 MSA 단계입니다.
+
 이 글에서 사용하는 용어는 다음 뜻으로 읽으면 됩니다.
 
 | 용어                     | 이 글에서의 의미                                                                          |
@@ -114,7 +116,7 @@ public class Notification {
 }
 ```
 
-주문 생성 글의 `Order`(8개 상태, 11개 전이)나 결제 실패 글의 `Payment`(3개 상태, 2개 전이)와 비교하면 Notification에는 사실상 상태 전이가 없습니다. `is_read` 플래그가 있지만 이를 토글하는 도메인 메서드(`markAsRead()`)는 Phase 2에서 호출처가 없어 제거됐습니다(PHASE2.md 기록). 명세상 알림 읽음 처리 API가 정의되지 않았기 때문입니다.
+주문 생성 글의 `Order`(8개 상태, 11개 전이)나 결제 실패 글의 `Payment`(3개 상태, 2개 전이)와 비교하면 Notification에는 사실상 상태 전이가 없습니다. `is_read` 플래그가 있지만 이를 토글하는 도메인 메서드(`markAsRead()`)는 Phase 2에서 호출처가 없어 제거됐습니다. 명세상 알림 읽음 처리 API가 정의되지 않았기 때문입니다.
 
 이 단순함은 Notification이 "쓰여진 뒤로는 거의 바뀌지 않는" 로그성 데이터에 가깝다는 것을 보여줍니다. 도메인 규칙이 거의 없으니 `create()` 정적 팩토리 하나로 끝납니다.
 
@@ -377,7 +379,7 @@ Kafka는 기본적으로 at-least-once delivery입니다. 같은 메시지가 �
 
 ## 통합 테스트로 검증된 것
 
-PHASE2.md의 E2E 통합 테스트가 검증하는 시나리오 중 알림과 직접 연결된 것은 다음과 같습니다.
+Phase 2의 E2E 통합 테스트가 검증하는 시나리오 중 알림과 직접 연결된 것은 다음과 같습니다.
 
 1. `order.created` E2E: Outbox 저장, Kafka 발행, Payment(PENDING) 생성 + `Notification(ORDER_CREATED)` 생성
 2. `payment.completed` E2E: 주문 상태 PAYMENT_COMPLETED 전이 + `Notification(PAYMENT_COMPLETED)` 생성
@@ -421,19 +423,6 @@ Notification 엔티티에 `is_read` 컬럼이 있지만 이를 갱신하는 API/
 - **알림 우선순위/필터링**: 사용자별 "결제 알림만 받기" 같은 환경설정
 - **Slack 메시지 템플릿화**: 현재는 String.format 인라인. 외부 템플릿 엔진 미도입
 - **운영자 알림과 사용자 알림 채널 분리**: 같은 Slack 채널을 공유
-
----
-
-## 자료는 어떤 질문에 연결해서 읽을까
-
-| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |
-| --- | --- | --- |
-| 도메인 이벤트는 무엇이고 왜 쓰는가? | Vaughn Vernon, *Implementing Domain-Driven Design*, Domain Events 장 | Notification이 Order/Payment에 직접 의존하지 않는 이유 |
-| Spring의 `@TransactionalEventListener`는 어떻게 동작하는가? | Spring Framework 공식 문서, Transaction-bound Events | Phase 1 `NotificationEventListener`의 `AFTER_COMMIT + REQUIRES_NEW` 조합 |
-| Kafka Consumer Group은 어떻게 동작하는가? | Confluent, [Consumer Group Protocol](https://docs.confluent.io/platform/current/clients/consumer.html) | "왜 토픽마다 Group을 따로 두는가" 절 |
-| at-least-once delivery는 어떻게 안전하게 받아들이는가? | Martin Kleppmann, *Designing Data-Intensive Applications*, 메시지 처리 챕터 | `executeIfNew(eventId, group)` 멱등성 처리 |
-| Hexagonal Architecture에서 Port의 위치 결정 기준은? | Alistair Cockburn, [Hexagonal Architecture](https://alistair.cockburn.us/hexagonal-architecture/) | `SlackPort`가 `global/port/`로 이동한 이유 |
-| Slack Incoming Webhook의 스펙과 한계는? | Slack API 공식, [Incoming Webhooks](https://api.slack.com/messaging/webhooks) | `SlackNotificationClient` 구현 디테일 |
 
 ---
 
@@ -495,3 +484,16 @@ Phase 4 분리 시 변하는 것과 안 변하는 것을 정리하면 다음과 
 **왜 가장 먼저 떼낼 후보인가**
 
 MSA 분리는 "도메인 간 결합도가 낮은 곳"부터 시작하는 게 안전합니다. Notification은 (a) 다른 도메인의 데이터를 동기 조회하지 않고 (b) 다른 도메인을 동기 호출하지 않으며 (c) 자기 실패가 다른 도메인 트랜잭션에 영향을 주지 않습니다. 이 세 조건 덕분에 Notification Service를 분리한다고 해서 Order/Payment 코드를 손댈 필요가 거의 없습니다.
+
+---
+
+## 자료는 어떤 질문에 연결해서 읽을까
+
+| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |
+| --- | --- | --- |
+| 도메인 이벤트는 무엇이고 왜 쓰는가? | Vaughn Vernon, *Implementing Domain-Driven Design*, Domain Events 장 | Notification이 Order/Payment에 직접 의존하지 않는 이유 |
+| Spring의 `@TransactionalEventListener`는 어떻게 동작하는가? | Spring Framework 공식 문서, Transaction-bound Events | Phase 1 `NotificationEventListener`의 `AFTER_COMMIT + REQUIRES_NEW` 조합 |
+| Kafka Consumer Group은 어떻게 동작하는가? | Confluent, [Consumer Group Protocol](https://docs.confluent.io/platform/current/clients/consumer.html) | "왜 토픽마다 Group을 따로 두는가" 절 |
+| at-least-once delivery는 어떻게 안전하게 받아들이는가? | Martin Kleppmann, *Designing Data-Intensive Applications*, 메시지 처리 챕터 | `executeIfNew(eventId, group)` 멱등성 처리 |
+| Hexagonal Architecture에서 Port의 위치 결정 기준은? | Alistair Cockburn, [Hexagonal Architecture](https://alistair.cockburn.us/hexagonal-architecture/) | `SlackPort`가 `global/port/`로 이동한 이유 |
+| Slack Incoming Webhook의 스펙과 한계는? | Slack API 공식, [Incoming Webhooks](https://api.slack.com/messaging/webhooks) | `SlackNotificationClient` 구현 디테일 |

@@ -23,6 +23,8 @@ PeekCart 코드를 읽기 전에 이 갈림길들을 먼저 정리하고 싶었�
 |리프레시 토큰 (Refresh Token)|액세스 토큰을 다시 발급받기 위한 긴 수명의 토큰|
 |토큰 회수 (Revocation)|발급된 토큰을 강제로 무효화하는 동작. 로그아웃, 탈취 대응이 대표 예|
 
+이 연재는 PeekCart를 네 단계로 진행했습니다. Phase 1은 단일 Spring Boot 모놀리스로 도메인을 구현한 단계, Phase 2는 캐시, 분산 락, Kafka와 Outbox로 성능과 정합성을 보강한 단계, Phase 3은 CI, Kubernetes, 관측성, 부하 테스트로 운영 환경을 검증한 단계, Phase 4는 서비스별로 나눈 MSA 단계입니다.
+
 이번 학습에서는 다음 질문을 확인하려고 합니다.
 
 1. 인증과 인가는 어떻게 구분해서 봐야 할까?
@@ -388,7 +390,7 @@ private TokenResult rotateToken(RefreshToken token, String oldRefreshToken) {
     tokenBlacklistPort.addGracePeriod(oldRefreshToken, user.getId(), 10);
     boolean deleted = refreshTokenRepository.deleteByToken(oldRefreshToken);
     if (!deleted) {
-        // 동시 요청이 먼저 처리됨 — 이중 발급 방지
+        // 동시 요청이 먼저 처리됨: 이중 발급 방지
         throw new UserException(ErrorCode.USR_004);
     }
     return issueTokens(user);
@@ -597,7 +599,7 @@ public class TokenBlacklistRepository implements TokenBlacklistPort {
 
 PeekCart의 인증 구조에서 의도적으로 안 한 것, 미해결로 남은 것을 정리합니다.
 
-**Redis SPOF**. 분산 락은 Redis 장애 시 DB 낙관적 락이 fallback이 되지만 JWT 블랙리스트와 grace period에는 fallback이 없습니다(deep-dive §10-6). Redis가 다운되면 로그아웃된 토큰이 만료 전까지 일시적으로 유효해질 수 있고 동시 재발급 요청에서 한쪽이 튕깁니다. Phase 4의 Redis Sentinel/Cluster 도입 동기 중 하나입니다.
+**Redis SPOF**. 분산 락은 Redis 장애 시 DB 낙관적 락이 fallback이 되지만 JWT 블랙리스트와 grace period에는 fallback이 없습니다. Redis가 다운되면 로그아웃된 토큰이 만료 전까지 일시적으로 유효해질 수 있고 동시 재발급 요청에서 한쪽이 튕깁니다. Phase 4의 Redis Sentinel/Cluster 도입 동기 중 하나입니다.
 
 **DB와 Redis의 정합성 윈도우**. `rotateToken`은 grace period를 먼저 저장하고 DB를 삭제합니다. 그 사이 프로세스가 죽으면 grace period 키만 남는 고아 상태가 됩니다. 다만 이 키도 TTL=10s로 자동 정리되므로 영향이 짧습니다. 트랜잭션으로 두 저장소를 묶을 방법이 없다는 한계를 짧은 TTL로 무력화한 패턴입니다.
 
@@ -614,28 +616,6 @@ PeekCart의 인증 구조에서 의도적으로 안 한 것, 미해결로 남은
 - **보안 감사 로그와 이상 행동 탐지**: 발급/회전/실패 이력을 별도 저장. Phase 3에서 일부 Prometheus 메트릭으로 들어왔지만 본격적인 보안 감사 로그와 IP/디바이스/지역 기반 이상 행동 탐지(risk-based authentication)는 없습니다. OWASP [ASVS](https://owasp.org/www-project-application-security-verification-standard/)의 인증 관련 요구사항을 체크리스트로 사용하면 어느 위치에 있는지 측정 가능합니다.
 
 이 항목들은 모두 "추가하면 더 강해진다"는 게 자명합니다. Phase 1의 목표는 인증 구조의 골격과 동시성 절충안을 구현해보는 것이고 위 항목들은 Phase 4에서 같이 다뤄질 후보입니다.
-
----
-
-## 자료는 어떤 질문에 연결해서 읽을까
-
-|질문|같이 읽을 자료|이 글에서 연결되는 지점|
-|---|---|---|
-|비밀번호는 어떻게 저장해야 안전한가?|OWASP, [Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), Troy Hunt, [Have I Been Pwned: Pwned Passwords](https://haveibeenpwned.com/Passwords)|bcrypt/Argon2id 선택과 유출 비밀번호 차단을 볼 때|
-|평문 전송은 왜 모든 결정을 무력화하는가?|IETF, [RFC 6797: HSTS](https://datatracker.ietf.org/doc/html/rfc6797), OWASP, [Transport Layer Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Transport_Layer_Protection_Cheat_Sheet.html)|HTTPS 강제와 인증서 핀닝 정책을 볼 때|
-|JWT는 무엇이고 어떤 한계가 있는가?|IETF, [RFC 7519: JSON Web Token](https://datatracker.ietf.org/doc/html/rfc7519), Sven Slootweg, [Stop using JWT for sessions](http://cryto.net/~joepie91/blog/2016/06/13/stop-using-jwt-for-sessions/)|stateless의 매력과 회수 불가의 함정을 동시에 보고 싶을 때|
-|JWT 서명과 암호화는 어떻게 동작하는가?|IETF, [RFC 7515: JWS](https://datatracker.ietf.org/doc/html/rfc7515), [RFC 7516: JWE](https://datatracker.ietf.org/doc/html/rfc7516), [RFC 7518: JWA](https://datatracker.ietf.org/doc/html/rfc7518), Auth0, [Critical Vulnerabilities in JWT Libraries](https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/)|HS256/RS256 선택과 알고리즘 confusion 위협을 볼 때|
-|비대칭 키와 키 회전은 어떻게 운용하는가?|OpenID Foundation, [OIDC Discovery (JWKS)](https://openid.net/specs/openid-connect-discovery-1_0.html), IETF, [RFC 7517: JWK](https://datatracker.ietf.org/doc/html/rfc7517)|MSA에서 공개키 배포와 키 회전 흐름을 설계할 때|
-|OAuth2와 OIDC의 차이는?|IETF, [RFC 6749: OAuth 2.0](https://datatracker.ietf.org/doc/html/rfc6749), OpenID Foundation, [OIDC Core](https://openid.net/specs/openid-connect-core-1_0.html)|자체 인증과 표준 위임의 갈림길을 볼 때|
-|토큰을 어디에 저장해야 하는가?|OWASP, [Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html), Auth0, [Token Storage](https://auth0.com/docs/secure/security-guidance/data-security/token-storage)|헤더 vs 쿠키 트레이드오프를 비교할 때|
-|Refresh Token Rotation은 왜 권고되는가?|Auth0, [Refresh Token Rotation](https://auth0.com/docs/secure/tokens/refresh-tokens/refresh-token-rotation), IETF, [OAuth 2.0 Security BCP](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics)|회전과 재사용 감지의 위협 모델을 이해할 때|
-|토큰을 클라이언트 키에 묶으려면?|IETF, [RFC 9449: DPoP](https://datatracker.ietf.org/doc/html/rfc9449), Curity, [Phantom Token Pattern](https://curity.io/resources/learn/phantom-token-pattern/)|Bearer 토큰의 탈취 위험을 줄이는 강한 대안을 볼 때|
-|비밀번호 없는 인증은 어떻게 동작하는가?|W3C, [Web Authentication API](https://www.w3.org/TR/webauthn/), FIDO Alliance, [Passkeys](https://fidoalliance.org/passkeys/)|자체 인증의 다음 단계 후보를 볼 때|
-|인가는 어떤 모델로 표현할 수 있는가?|OWASP, [Authorization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html), Google, [Zanzibar](https://research.google/pubs/pub48190/), OpenPolicyAgent, [Rego](https://www.openpolicyagent.org/docs/latest/policy-language/)|RBAC을 넘어 ABAC/ReBAC/Policy as Code를 볼 때|
-|서비스 간 인증은 어떻게 세우는가?|Istio, [Security](https://istio.io/latest/docs/concepts/security/), Cloud Native Computing Foundation, [Workload Identity](https://github.com/spiffe/spiffe)|mTLS, SPIFFE, Service Mesh의 위치를 볼 때|
-|운영 보안 요구사항은 어디까지인가?|OWASP, [Application Security Verification Standard](https://owasp.org/www-project-application-security-verification-standard/)|"이 구조에 무엇이 빠져 있는가"를 체크리스트로 점검할 때|
-
-이 자료들을 다 읽어야 PeekCart의 선택을 이해할 수 있다는 뜻은 아닙니다. 다만 갈림길마다 정리된 위협 모델이 이미 잘 알려져 있으므로 자체 인증을 짤 때도 이 자료들의 결론을 참고해서 "어디까지 갔고 어디는 안 갔는지"를 분명히 의식하는 게 학습에 도움이 됩니다.
 
 ---
 
@@ -676,3 +656,25 @@ flowchart LR
 핵심은, 계층 구조 글에서 본 도메인/레이어 경계가 Phase 4에서 서비스 경계로 옮겨갈 때 **`TokenBlacklistPort` 인터페이스가 그대로 살아남는다**는 점입니다. 구현체만 "로컬 Redis 호출"에서 "공유 Redis 호출" 또는 "Gateway가 검증한 결과를 신뢰"로 바뀝니다. Application 코드는 같은 계약에 의존합니다.
 
 [4-Layered + DDD 구조 글](/blog/peekcart-layered-ddd/)에서 강조했던 학습 효과가 여기서 드러납니다. 이 구조 덕분에 **나중에 서비스를 나눌 때 어떤 책임이 어디로 가야 하는지 추적할 수 있습니다.**
+
+---
+
+## 자료는 어떤 질문에 연결해서 읽을까
+
+|질문|같이 읽을 자료|이 글에서 연결되는 지점|
+|---|---|---|
+|비밀번호는 어떻게 저장해야 안전한가?|OWASP, [Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), Troy Hunt, [Have I Been Pwned: Pwned Passwords](https://haveibeenpwned.com/Passwords)|bcrypt/Argon2id 선택과 유출 비밀번호 차단을 볼 때|
+|평문 전송은 왜 모든 결정을 무력화하는가?|IETF, [RFC 6797: HSTS](https://datatracker.ietf.org/doc/html/rfc6797), OWASP, [Transport Layer Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Transport_Layer_Protection_Cheat_Sheet.html)|HTTPS 강제와 인증서 핀닝 정책을 볼 때|
+|JWT는 무엇이고 어떤 한계가 있는가?|IETF, [RFC 7519: JSON Web Token](https://datatracker.ietf.org/doc/html/rfc7519), Sven Slootweg, [Stop using JWT for sessions](http://cryto.net/~joepie91/blog/2016/06/13/stop-using-jwt-for-sessions/)|stateless의 매력과 회수 불가의 함정을 동시에 보고 싶을 때|
+|JWT 서명과 암호화는 어떻게 동작하는가?|IETF, [RFC 7515: JWS](https://datatracker.ietf.org/doc/html/rfc7515), [RFC 7516: JWE](https://datatracker.ietf.org/doc/html/rfc7516), [RFC 7518: JWA](https://datatracker.ietf.org/doc/html/rfc7518), Auth0, [Critical Vulnerabilities in JWT Libraries](https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/)|HS256/RS256 선택과 알고리즘 confusion 위협을 볼 때|
+|비대칭 키와 키 회전은 어떻게 운용하는가?|OpenID Foundation, [OIDC Discovery (JWKS)](https://openid.net/specs/openid-connect-discovery-1_0.html), IETF, [RFC 7517: JWK](https://datatracker.ietf.org/doc/html/rfc7517)|MSA에서 공개키 배포와 키 회전 흐름을 설계할 때|
+|OAuth2와 OIDC의 차이는?|IETF, [RFC 6749: OAuth 2.0](https://datatracker.ietf.org/doc/html/rfc6749), OpenID Foundation, [OIDC Core](https://openid.net/specs/openid-connect-core-1_0.html)|자체 인증과 표준 위임의 갈림길을 볼 때|
+|토큰을 어디에 저장해야 하는가?|OWASP, [Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html), Auth0, [Token Storage](https://auth0.com/docs/secure/security-guidance/data-security/token-storage)|헤더 vs 쿠키 트레이드오프를 비교할 때|
+|Refresh Token Rotation은 왜 권고되는가?|Auth0, [Refresh Token Rotation](https://auth0.com/docs/secure/tokens/refresh-tokens/refresh-token-rotation), IETF, [OAuth 2.0 Security BCP](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics)|회전과 재사용 감지의 위협 모델을 이해할 때|
+|토큰을 클라이언트 키에 묶으려면?|IETF, [RFC 9449: DPoP](https://datatracker.ietf.org/doc/html/rfc9449), Curity, [Phantom Token Pattern](https://curity.io/resources/learn/phantom-token-pattern/)|Bearer 토큰의 탈취 위험을 줄이는 강한 대안을 볼 때|
+|비밀번호 없는 인증은 어떻게 동작하는가?|W3C, [Web Authentication API](https://www.w3.org/TR/webauthn/), FIDO Alliance, [Passkeys](https://fidoalliance.org/passkeys/)|자체 인증의 다음 단계 후보를 볼 때|
+|인가는 어떤 모델로 표현할 수 있는가?|OWASP, [Authorization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html), Google, [Zanzibar](https://research.google/pubs/pub48190/), OpenPolicyAgent, [Rego](https://www.openpolicyagent.org/docs/latest/policy-language/)|RBAC을 넘어 ABAC/ReBAC/Policy as Code를 볼 때|
+|서비스 간 인증은 어떻게 세우는가?|Istio, [Security](https://istio.io/latest/docs/concepts/security/), Cloud Native Computing Foundation, [Workload Identity](https://github.com/spiffe/spiffe)|mTLS, SPIFFE, Service Mesh의 위치를 볼 때|
+|운영 보안 요구사항은 어디까지인가?|OWASP, [Application Security Verification Standard](https://owasp.org/www-project-application-security-verification-standard/)|"이 구조에 무엇이 빠져 있는가"를 체크리스트로 점검할 때|
+
+이 자료들을 다 읽어야 PeekCart의 선택을 이해할 수 있다는 뜻은 아닙니다. 다만 갈림길마다 정리된 위협 모델이 이미 잘 알려져 있으므로 자체 인증을 짤 때도 이 자료들의 결론을 참고해서 "어디까지 갔고 어디는 안 갔는지"를 분명히 의식하는 게 학습에 도움이 됩니다.

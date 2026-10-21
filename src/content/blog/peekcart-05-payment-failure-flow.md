@@ -9,9 +9,11 @@ draft: false
 slug: "peekcart-payment-failure-flow"
 ---
 
-[주문 생성 트랜잭션 글](/blog/peekcart-order-transaction-flow/)에서는 주문 생성 트랜잭션의 다섯 단계와 세 가지 취소 경로를 학습했습니다. 그중 결제 실패 취소(경로 2)는 "Kafka Consumer가 `payment.failed` 이벤트를 소비해 주문을 취소한다"고만 언급했습니다. 이번 글에서는 그 이벤트가 어떻게 만들어지는지, 즉 Payment 도메인 쪽을 봅니다.
+[주문 생성 트랜잭션 글](/blog/peekcart-order-transaction-flow/)에서는 주문 생성 트랜잭션의 다섯 단계와 세 가지 취소 경로를 학습했습니다. 그중 결제 실패로 인한 취소는 "Kafka Consumer가 `payment.failed` 이벤트를 소비해 주문을 취소한다"고만 언급했습니다. 이번 글에서는 그 이벤트가 어떻게 만들어지는지, 즉 Payment 도메인 쪽을 봅니다.
 
 결제는 외부 시스템(Toss Payments)과의 경계에 있습니다. 주문이나 재고처럼 우리가 완전히 통제할 수 있는 도메인이 아닙니다. 외부 API가 실패할 수 있고 응답이 늦을 수 있고 같은 이벤트를 두 번 보낼 수도 있습니다. 그래서 Payment 도메인의 설계에서 반복적으로 등장하는 질문은 "실패했을 때 어떻게 되는가"와 "중복이 들어오면 어떻게 되는가"입니다.
+
+이 연재는 PeekCart를 네 단계로 진행했습니다. Phase 1은 단일 Spring Boot 모놀리스로 도메인을 구현한 단계, Phase 2는 캐시, 분산 락, Kafka와 Outbox로 성능과 정합성을 보강한 단계, Phase 3은 CI, Kubernetes, 관측성, 부하 테스트로 운영 환경을 검증한 단계, Phase 4는 서비스별로 나눈 MSA 단계입니다.
 
 이 글에서 사용하는 용어는 다음 뜻으로 읽으면 됩니다.
 
@@ -350,7 +352,7 @@ payment.fail();
 outboxEventPublisher.publishPaymentFailed(payment, userId);
 ```
 
-이 이벤트가 바로 주문 생성 글에서 다룬 "결제 실패 취소(경로 2)"의 출발점입니다.
+이 이벤트가 바로 주문 생성 글에서 다룬 "결제 실패 취소"의 출발점입니다.
 
 ```mermaid
 sequenceDiagram
@@ -864,19 +866,6 @@ void processWebhook_duplicateKey_skips() {
 
 ---
 
-## 자료는 어떤 질문에 연결해서 읽을까
-
-| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |
-| --- | --- | --- |
-| PG 연동의 일반적인 플로우는 어떻게 되는가? | Toss Payments, [결제 연동 가이드](https://docs.tosspayments.com/guides/v2/payment-widget/integration) | confirm API의 역할과 paymentKey 흐름을 이해할 때 |
-| 외부 API를 Infrastructure에 격리하는 이유는 무엇인가? | Alistair Cockburn, [Hexagonal Architecture](https://alistair.cockburn.us/hexagonal-architecture/) | TossPaymentClient의 위치와 Port 패턴을 비교할 때 |
-| 웹훅 보안은 어떻게 구현하는가? | OWASP, [Webhook Security](https://cheatsheetseries.owasp.org/cheatsheets/Webhook_Security_Cheat_Sheet.html) | HMAC-SHA256 서명 검증의 필요성을 이해할 때 |
-| 멱등성은 왜 필요하고 어떻게 구현하는가? | Stripe, [Idempotent Requests](https://docs.stripe.com/api/idempotent_requests) | webhook_logs.idempotency_key UK의 설계를 볼 때 |
-| Saga 보상 트랜잭션은 어떻게 동작하는가? | Chris Richardson, [Sagas](https://microservices.io/patterns/data/saga.html) | payment.failed, order.cancelled, inventory.restore로 이어지는 흐름을 볼 때 |
-| Outbox 패턴은 왜 필요한가? | Chris Richardson, [Transactional Outbox](https://microservices.io/patterns/data/transactional-outbox.html) | payment.completed/failed Outbox 이벤트의 필요성을 이해할 때 |
-
----
-
 ## Phase 4 MSA에서는 어떻게 바뀌는가
 
 Phase 4에서 Payment Service는 독립 배포 단위가 됩니다. 자체 DB를 갖고 Order Service와는 Kafka 이벤트와 HTTP API로만 소통합니다.
@@ -928,3 +917,16 @@ payment.failed 발행 (Payment Service)  → Order Service 소비 → 주문 CAN
 각 단계가 독립 서비스에서 실행되므로, 중간 단계가 실패했을 때의 처리가 더 복잡해집니다. 하지만 이미 Phase 2에서 Outbox + Kafka + 멱등성 처리를 갖추고 있어, Saga의 기반 인프라는 준비되어 있습니다.
 
 **웹훅 엔드포인트가 Payment Service로 이동한다.** 현재 모놀리스의 `/api/v1/payments/webhook`이 Payment Service의 엔드포인트가 됩니다. API Gateway를 통하지 않고 Toss에서 직접 Payment Service로 들어올 수도 있고 Gateway를 거칠 수도 있습니다. 이 결정은 보안 요구사항에 따라 달라집니다.
+
+---
+
+## 자료는 어떤 질문에 연결해서 읽을까
+
+| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |
+| --- | --- | --- |
+| PG 연동의 일반적인 플로우는 어떻게 되는가? | Toss Payments, [결제 연동 가이드](https://docs.tosspayments.com/guides/v2/payment-widget/integration) | confirm API의 역할과 paymentKey 흐름을 이해할 때 |
+| 외부 API를 Infrastructure에 격리하는 이유는 무엇인가? | Alistair Cockburn, [Hexagonal Architecture](https://alistair.cockburn.us/hexagonal-architecture/) | TossPaymentClient의 위치와 Port 패턴을 비교할 때 |
+| 웹훅 보안은 어떻게 구현하는가? | OWASP, [Webhook Security](https://cheatsheetseries.owasp.org/cheatsheets/Webhook_Security_Cheat_Sheet.html) | HMAC-SHA256 서명 검증의 필요성을 이해할 때 |
+| 멱등성은 왜 필요하고 어떻게 구현하는가? | Stripe, [Idempotent Requests](https://docs.stripe.com/api/idempotent_requests) | webhook_logs.idempotency_key UK의 설계를 볼 때 |
+| Saga 보상 트랜잭션은 어떻게 동작하는가? | Chris Richardson, [Sagas](https://microservices.io/patterns/data/saga.html) | payment.failed, order.cancelled, inventory.restore로 이어지는 흐름을 볼 때 |
+| Outbox 패턴은 왜 필요한가? | Chris Richardson, [Transactional Outbox](https://microservices.io/patterns/data/transactional-outbox.html) | payment.completed/failed Outbox 이벤트의 필요성을 이해할 때 |

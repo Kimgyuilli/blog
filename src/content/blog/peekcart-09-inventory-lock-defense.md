@@ -9,6 +9,8 @@ draft: false
 slug: "peekcart-inventory-lock-defense"
 ---
 
+이 연재는 PeekCart를 네 단계로 진행했습니다. Phase 1은 단일 Spring Boot 모놀리스로 도메인을 구현한 단계, Phase 2는 캐시, 분산 락, Kafka와 Outbox로 성능과 정합성을 보강한 단계, Phase 3은 CI, Kubernetes, 관측성, 부하 테스트로 운영 환경을 검증한 단계, Phase 4는 서비스별로 나눈 MSA 단계입니다.  
+  
 Phase 1의 주문은 단일 스레드를 가정했습니다. 재고 100개짜리 상품에 주문이 들어오면 `inventory.decrease()` 로 재고를 차감하는 것으로 끝났습니다. 테스트도 한 번에 한 건씩 주문하니 통과했습니다. 
 하지만 이커머스에서 위험한 상황은 그 가정이 깨지는 순간, 즉 한정 수량 상품에 동시 주문이 몰리는 플래시 세일 상황입니다. 재고가 1개 남았는데 동시에 들어온 두 요청이 둘 다 "1개 남았네, 깎아도 되겠다"를 읽으면, DB 재고는 0인데 주문은 2건 성공할 수 있습니다. 실제 판매 가능 수량보다 1개를 더 판매한 결과입니다. Phase 2의 두 번째 과제는 이 **오버셀링(overselling)** 을 막는 일이었습니다. 이번 글은 그 방어를 왜 두 겹으로 쌓았는지, 그리고 그 두 겹이 실제 주문 경로에서 어디까지 보장하고 어디서부터 보장하지 않는지를 정리합니다.  
   
@@ -111,7 +113,7 @@ public class Inventory {
 이 순서를 코드로 강제하기 위해 **락 관리와 트랜잭션 로직을 두 클래스로 분리**했습니다. 만약 `@Transactional` 메서드 안에서 락을 잡고 풀면 메서드가 끝나는 시점(=커밋 시점)에 자바 코드는 이미 락 해제 라인을 지난 뒤입니다. 즉 한 메서드 안에서는 "커밋 후 해제"를 표현할 수 없습니다. 그래서 트랜잭션이 없는 바깥 계층(Facade)이 락을 획득하고 그 안에서 트랜잭션 메서드(Service)를 호출하고 트랜잭션이 끝나(커밋되) 돌아온 **뒤에** 락을 풉니다.  
   
 ```java
-// InventoryLockFacade — 트랜잭션 없음. 락 → (트랜잭션) → 락 해제 순서를 강제
+// InventoryLockFacade: 트랜잭션 없음. 락 → (트랜잭션) → 락 해제 순서를 강제
 @Component
 public class InventoryLockFacade {
 
@@ -129,7 +131,7 @@ public class InventoryLockFacade {
     }
 }
 
-// InventoryService — @Transactional. DB 연산만, 락은 모른다
+// InventoryService: @Transactional. DB 연산만, 락은 모른다
 @Service
 @Transactional
 public class InventoryService {
@@ -211,10 +213,10 @@ sequenceDiagram
     participant TX as createOrder TX (바깥)
     Note over TX: 트랜잭션 시작
     F->>R: tryLock(p1) ✓
-    F->>TX: decreaseStock(p1) — 바깥 TX 합류 (커밋 안 함)
+    F->>TX: decreaseStock(p1): 바깥 TX 합류 (커밋 안 함)
     F->>R: unlock(p1) ✗ 커밋 전 해제
     Note over TX: orderRepository.save(order)
-    TX-->>TX: 커밋 — 재고 차감이 여기서야 DB 반영
+    TX-->>TX: 커밋, 재고 차감이 여기서야 DB 반영
 ```  
   
 Facade 가 의도했던 "커밋 후 해제"가, 바깥 트랜잭션 때문에 **"커밋 전 해제"로 뒤집힌다.** 결과적으로 주문 경로에서는 분산 락이 의도한 "깔끔한 직렬화"를 제공하지 못하고 같은 상품에 동시 주문이 몰리면 1차 방어선(분산 락)을 우회해 곧장 2차 방어선(낙관적 락) 충돌로 떨어질 수 있습니다.  
@@ -271,19 +273,6 @@ assertThat(result.getStock()).isEqualTo(100 - 50);       // 정확히 50 남음
   
 ---  
   
-## 자료는 어떤 질문에 연결해서 읽을까  
-  
-| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |  
-| --- | --- | --- |  
-| 분산 락은 왜 한 겹으로 부족한가 (장애 시나리오) | Martin Kleppmann, "How to do distributed locking" / Redlock 논쟁 | "왜 두 겹인가" 절 |  
-| Redisson `RLock`의 wait/lease/watchdog 동작 | Redisson 공식 위키, *Distributed locks and synchronizers* | `tryLock` / leaseTime 5초 한계 |  
-| `@Transactional` 전파(`REQUIRED` vs `REQUIRES_NEW`) | Spring 공식 문서, *Transaction Propagation* | 주문 경로 불변식 위반 절 |  
-| 낙관적 락 충돌이 애플리케이션에 던지는 예외 계층 | Spring Data JPA, `ObjectOptimisticLockingFailureException` / Hibernate `StaleObjectStateException` | Redis 장애 fallback 테스트 보강 |  
-| 데드락과 락 정렬(global ordering) | *Operating Systems* - Coffman 조건(hold-and-wait) | 다중 락 동시 보유 대안 |  
-| fail-open vs fail-closed 가용성 트레이드오프 | Release It! (Nygard), Stability Patterns | Redis 장애 fallback 결정 |  
-  
----  
-  
 ## Phase 4 MSA에서는 어떻게 바뀌는가  
   
 지금은 Order 와 Inventory 가 같은 프로세스, 같은 DB, 같은 트랜잭션 안에 있습니다. 그래서 `@Version` 낙관적 락이 "최후 방어선"으로 동작합니다. 차감이 한 트랜잭션 안에서 커밋되기 때문입니다. Phase 4에서 Inventory 가 별도 서비스, 별도 DB로 떨어지면 이 구조가 통째로 바뀝니다.  
@@ -324,3 +313,16 @@ flowchart LR
 - 「한계」 절에서 발견한 불변식 위반(결함)은 **모놀리스 특유의 문제**이고 MSA 분리로 해소되는 쪽입니다. 다만 Phase 4까지 모놀리스로 운영하는 동안에도 동시 주문 충돌률이 문제가 되면, `REQUIRES_NEW` 분리로 먼저 막을지 결정해야 합니다. 이 결함은 기술 부채로 남겨 두었고 추후 수정할 예정입니다.  
 - 분산 락의 의미가 "한 프로세스 안 스레드 직렬화"에서 "여러 Inventory Pod 간 직렬화"로 확장됩니다. 단일 Pod일 땐 사실 JVM 락으로도 충분했지만 HPA로 Pod 가 늘면([동시 주문 부하 테스트 글](/blog/peekcart-order-concurrency-hpa/)) 분산 락이 본질적으로 필요해집니다.  
 - `@Version` 낙관적 락은 Saga 보상까지 포함한 정합성 모델의 토대입니다. "분산 환경에서 진실의 원자 단위는 한 서비스의 한 DB"라는 원칙을, 지금의 두 겹 방어로 미리 익히고 있습니다.
+
+---
+
+## 자료는 어떤 질문에 연결해서 읽을까  
+  
+| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |  
+| --- | --- | --- |  
+| 분산 락은 왜 한 겹으로 부족한가 (장애 시나리오) | Martin Kleppmann, "How to do distributed locking" / Redlock 논쟁 | "왜 두 겹인가" 절 |  
+| Redisson `RLock`의 wait/lease/watchdog 동작 | Redisson 공식 위키, *Distributed locks and synchronizers* | `tryLock` / leaseTime 5초 한계 |  
+| `@Transactional` 전파(`REQUIRED` vs `REQUIRES_NEW`) | Spring 공식 문서, *Transaction Propagation* | 주문 경로 불변식 위반 절 |  
+| 낙관적 락 충돌이 애플리케이션에 던지는 예외 계층 | Spring Data JPA, `ObjectOptimisticLockingFailureException` / Hibernate `StaleObjectStateException` | Redis 장애 fallback 테스트 보강 |  
+| 데드락과 락 정렬(global ordering) | *Operating Systems* - Coffman 조건(hold-and-wait) | 다중 락 동시 보유 대안 |  
+| fail-open vs fail-closed 가용성 트레이드오프 | Release It! (Nygard), Stability Patterns | Redis 장애 fallback 결정 |

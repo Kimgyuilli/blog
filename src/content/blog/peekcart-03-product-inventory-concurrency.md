@@ -15,13 +15,15 @@ slug: "peekcart-product-inventory-concurrency"
   
 이 글에서 사용하는 용어는 다음 뜻으로 읽으면 됩니다.  
   
-| 용어                       | 이 글에서의 의미                                          |     |
-| ------------------------ | -------------------------------------------------- | --- |
-| 낙관적 락 (Optimistic Lock)  | 충돌이 드물다고 가정하고 커밋 시점에 버전을 비교하여 충돌을 감지하는 방식          |     |
-| 비관적 락 (Pessimistic Lock) | 충돌이 잦다고 가정하고 데이터를 읽을 때 미리 잠그는 방식                   |     |
-| 분산 락 (Distributed Lock)  | 여러 프로세스/서버가 동일 자원에 접근할 때 외부 저장소(Redis 등)로 동기화하는 방식 |     |
-| 오버셀링 (Overselling)       | 실제 재고보다 많은 수량이 판매되어 재고가 음수가 되는 상황                  |     |
-| lost update              | 두 트랜잭션이 같은 데이터를 읽고 각각 수정해서 한쪽 변경이 사라지는 현상          |     |
+| 용어                       | 이 글에서의 의미                                          |
+| ------------------------ | -------------------------------------------------- |
+| 낙관적 락 (Optimistic Lock)  | 충돌이 드물다고 가정하고 커밋 시점에 버전을 비교하여 충돌을 감지하는 방식          |
+| 비관적 락 (Pessimistic Lock) | 충돌이 잦다고 가정하고 데이터를 읽을 때 미리 잠그는 방식                   |
+| 분산 락 (Distributed Lock)  | 여러 프로세스/서버가 동일 자원에 접근할 때 외부 저장소(Redis 등)로 동기화하는 방식 |
+| 오버셀링 (Overselling)       | 실제 재고보다 많은 수량이 판매되어 재고가 음수가 되는 상황                  |
+| lost update              | 두 트랜잭션이 같은 데이터를 읽고 각각 수정해서 한쪽 변경이 사라지는 현상          |
+  
+이 연재는 PeekCart를 네 단계로 진행했습니다. Phase 1은 단일 Spring Boot 모놀리스로 도메인을 구현한 단계, Phase 2는 캐시, 분산 락, Kafka와 Outbox로 성능과 정합성을 보강한 단계, Phase 3은 CI, Kubernetes, 관측성, 부하 테스트로 운영 환경을 검증한 단계, Phase 4는 서비스별로 나눈 MSA 단계입니다.  
   
 이번 학습에서는 다음 질문을 확인하려고 합니다.  
   
@@ -125,13 +127,20 @@ public class Product extends BaseTimeEntity {
   
     public void update(Category category, String name,  
             String description, long price, String imageUrl) {  
-        this.category = category;        this.name = name;        this.description = description;        this.price = price;        this.imageUrl = imageUrl;    }  
+        this.category = category;  
+        this.name = name;  
+        this.description = description;  
+        this.price = price;  
+        this.imageUrl = imageUrl;  
+    }  
   
     public void discontinue() {  
-        this.status = ProductStatus.DISCONTINUED;    }  
+        this.status = ProductStatus.DISCONTINUED;  
+    }  
   
     public boolean isOnSale() {  
-        return this.status == ProductStatus.ON_SALE;    }  
+        return this.status == ProductStatus.ON_SALE;  
+    }  
 }  
 ```  
   
@@ -175,19 +184,22 @@ public class Inventory {
         if (this.stock < quantity) {  
             throw new ProductException(ErrorCode.PRD_002);  
         }  
-        this.stock -= quantity;    }  
+        this.stock -= quantity;  
+    }  
   
     public void restore(int quantity) {  
         if (quantity <= 0)  
             throw new IllegalArgumentException("복구 수량은 1 이상이어야 합니다.");  
-        this.stock += quantity;    }  
+        this.stock += quantity;  
+    }  
 }  
 ```  
   
 여기서 살펴볼 필드는 `@Version`입니다. JPA의 낙관적 락은 이 필드 하나로 동작합니다. Hibernate가 UPDATE 쿼리를 날릴 때 `WHERE version = ?`을 자동으로 붙이고 영향 받은 row가 0이면 `OptimisticLockException`을 던집니다.  
   
 ```sql  
--- Hibernate가 생성하는 실제 SQLUPDATE inventories  
+-- Hibernate가 생성하는 실제 SQL
+UPDATE inventories  
 SET stock = ?, version = version + 1, updated_at = ?  
 WHERE id = ? AND version = ?  
 ```  
@@ -201,7 +213,11 @@ WHERE id = ? AND version = ?
 @Test  
 void decrease_insufficientStock_throwsPRD002() {  
     Inventory inventory = Inventory.create(product(), 10);  
-    assertThatThrownBy(() -> inventory.decrease(11))            .isInstanceOf(ProductException.class)            .extracting(e -> ((ProductException) e).getErrorCode())            .isEqualTo(ErrorCode.PRD_002);}  
+    assertThatThrownBy(() -> inventory.decrease(11))  
+            .isInstanceOf(ProductException.class)  
+            .extracting(e -> ((ProductException) e).getErrorCode())  
+            .isEqualTo(ErrorCode.PRD_002);  
+}  
 ```  
   
 도메인 규칙이 Entity에 있으면 단위 테스트가 가벼워집니다. Mock 없이 `Inventory.create(product(), 10)`만으로 테스트 대상을 만들 수 있습니다.  
@@ -214,14 +230,14 @@ void decrease_insufficientStock_throwsPRD002() {
   
 이 문제를 해결하는 방법을 정리하면 다음과 같습니다.  
   
-| 전략                             | 핵심 아이디어                                         | 장점                       | 단점                           |     |
-| ------------------------------ | ----------------------------------------------- | ------------------------ | ---------------------------- | --- |
-| DB 낙관적 락 (`@Version`)          | 읽을 때 잠그지 않고 커밋 시 version 비교                     | 락 없이 높은 처리량, 경합 적을 때 효율적 | 충돌 시 재시도 필요, 경합 높으면 실패율 증가   |     |
-| DB 비관적 락 (`SELECT FOR UPDATE`) | 읽을 때 row를 잠그고 트랜잭션 끝날 때까지 유지                    | 충돌 자체를 예방, 구현 단순         | 데드락 위험, 동시 처리량 저하, 커넥션 점유    |     |
-| Redis 분산 락 (Redisson)          | 외부 Redis로 애플리케이션 수준에서 직렬화                       | DB 부하 감소, 다중 Pod에서도 동작   | Redis SPOF, 네트워크 지연, 락 만료 이슈 |     |
-| DB 원자적 UPDATE                  | `UPDATE SET stock = stock - ? WHERE stock >= ?` | 가장 단순, 별도 락 불필요          | 비즈니스 로직이 SQL에 묶임, 도메인 모델 약화  |     |
-| Kafka + 이벤트 직렬화                | 파티션 키로 순차 처리 보장                                 | 높은 확장성, 비동기              | 응답 지연, 복잡한 보상 로직             |     |
-| 재고를 Redis에 유지                  | `DECRBY`로 원자적 차감, 주기적으로 DB 동기화                  | 극히 빠른 차감                 | Redis/DB 정합성 관리, 장애 시 유실 위험  |     |
+| 전략                             | 핵심 아이디어                                         | 장점                       | 단점                           |
+| ------------------------------ | ----------------------------------------------- | ------------------------ | ---------------------------- |
+| DB 낙관적 락 (`@Version`)          | 읽을 때 잠그지 않고 커밋 시 version 비교                     | 락 없이 높은 처리량, 경합 적을 때 효율적 | 충돌 시 재시도 필요, 경합 높으면 실패율 증가   |
+| DB 비관적 락 (`SELECT FOR UPDATE`) | 읽을 때 row를 잠그고 트랜잭션 끝날 때까지 유지                    | 충돌 자체를 예방, 구현 단순         | 데드락 위험, 동시 처리량 저하, 커넥션 점유    |
+| Redis 분산 락 (Redisson)          | 외부 Redis로 애플리케이션 수준에서 직렬화                       | DB 부하 감소, 다중 Pod에서도 동작   | Redis SPOF, 네트워크 지연, 락 만료 이슈 |
+| DB 원자적 UPDATE                  | `UPDATE SET stock = stock - ? WHERE stock >= ?` | 가장 단순, 별도 락 불필요          | 비즈니스 로직이 SQL에 묶임, 도메인 모델 약화  |
+| Kafka + 이벤트 직렬화                | 파티션 키로 순차 처리 보장                                 | 높은 확장성, 비동기              | 응답 지연, 복잡한 보상 로직             |
+| 재고를 Redis에 유지                  | `DECRBY`로 원자적 차감, 주기적으로 DB 동기화                  | 극히 빠른 차감                 | Redis/DB 정합성 관리, 장애 시 유실 위험  |
   
 여기서 트레이드오프를 두 축으로 볼 수 있습니다.  
 ```mermaid
@@ -335,7 +351,9 @@ sequenceDiagram
 단일 인스턴스에서는 DB 락만으로도 충분할 수 있습니다. 그러나 다중 Pod 환경에서는 다른 문제가 생깁니다.  
   
 ```  
-Pod A: 트랜잭션 시작 → 재고 조회 (stock=10)Pod B: 트랜잭션 시작 → 재고 조회 (stock=10)Pod A: stock = 10 - 1 = 9 → 커밋  
+Pod A: 트랜잭션 시작 → 재고 조회 (stock=10)
+Pod B: 트랜잭션 시작 → 재고 조회 (stock=10)
+Pod A: stock = 10 - 1 = 9 → 커밋  
 Pod B: stock = 10 - 1 = 9 → 커밋 (version이 같으면 lost update, 다르면 충돌)  
 ```  
   
@@ -414,7 +432,7 @@ public class InventoryLockFacade {
 2. Redis 분산 락 획득
 3. InventoryService 진입 → 외부 트랜잭션에 참여 (REQUIRED, 기존 있으므로)
 4. 재고 조회 → 차감
-5. InventoryService 반환 — 트랜잭션은 아직 커밋되지 않음
+5. InventoryService 반환: 트랜잭션은 아직 커밋되지 않음
 6. Redis 분산 락 해제                ← DB 반영 전에 락이 풀림!
 7. ... 주문 저장, 장바구니 비우기, Outbox 이벤트 저장 ...
 8. OrderCommandService 반환 → 외부 트랜잭션 커밋 (여기서야 DB 반영)
@@ -480,7 +498,8 @@ public class DistributedLockManager {
             return lock.tryLock(waitTime, leaseTime, unit);  
         } catch (InterruptedException e) {  
             Thread.currentThread().interrupt();  
-            return false;        } catch (Exception e) {  
+            return false;  
+        } catch (Exception e) {  
             log.warn("Redis 분산 락 획득 실패 (Redis 장애), DB 낙관적 락으로 fallback: {}", key, e);  
             return true;  // ← 핵심  
         }  
@@ -540,7 +559,8 @@ PeekCart는 동시성을 두 가지 수준에서 테스트합니다.
 @Test  
 @DisplayName("동시 재고 차감 시 낙관적 락으로 충돌이 발생하고, 최종 재고가 성공 횟수만큼만 차감된다")  
 void concurrentDecrease_optimisticLock_preventsLostUpdate() throws InterruptedException {  
-    int threadCount = 10;    // ...10개 스레드가 동시에 재고를 1씩 차감  
+    int threadCount = 10;  
+    // ...10개 스레드가 동시에 재고를 1씩 차감  
   
     // 성공 + 충돌 = 전체 스레드 수  
     assertThat(successCount.get() + conflictCount.get()).isEqualTo(threadCount);  
@@ -561,7 +581,8 @@ void concurrentDecrease_optimisticLock_preventsLostUpdate() throws InterruptedEx
 @Test  
 @DisplayName("50스레드 동시 차감 시 분산 락으로 오버셀링 없이 전부 성공한다")  
 void concurrentDecrease_distributedLock_preventsOverselling() throws InterruptedException {  
-    int threadCount = 50;    // ...50개 스레드가 동시에 InventoryLockFacade를 통해 차감  
+    int threadCount = 50;  
+    // ...50개 스레드가 동시에 InventoryLockFacade를 통해 차감  
   
     // 50스레드 전부 성공 (분산 락이 순차 실행을 보장)  
     assertThat(successCount.get()).isEqualTo(threadCount);  
@@ -588,11 +609,11 @@ void concurrentDecrease_distributedLock_preventsOverselling() throws Interrupted
   
 재고를 언제 차감하느냐도 큰 갈림길입니다. 이것은 동시성 제어와는 별개의 비즈니스 결정입니다.  
   
-| 전략                  | 재고 차감 시점                       | 장점              | 단점                       |     |
-| ------------------- | ------------------------------ | --------------- | ------------------------ | --- |
-| 전략 A: 주문 생성 시 즉시 차감 | 주문 트랜잭션 안에서 차감                 | 이중 주문 방지, 구현 단순 | 결제 실패 시 재고가 묶임           |     |
-| 전략 B: 결제 완료 후 확정 차감 | 주문 시 예약(soft lock), 결제 성공 시 확정 | 재고 묶임 최소화       | 예약 상태 관리, 예약 만료 처리 복잡    |     |
-| 전략 C: 결제 시도 시 차감    | 결제 요청 직전에 차감                   | 묶임 시간 중간        | 결제 실패 시 복구 필요 + 차감 시점 애매 |     |
+| 전략                  | 재고 차감 시점                       | 장점              | 단점                       |
+| ------------------- | ------------------------------ | --------------- | ------------------------ |
+| 전략 A: 주문 생성 시 즉시 차감 | 주문 트랜잭션 안에서 차감                 | 이중 주문 방지, 구현 단순 | 결제 실패 시 재고가 묶임           |
+| 전략 B: 결제 완료 후 확정 차감 | 주문 시 예약(soft lock), 결제 성공 시 확정 | 재고 묶임 최소화       | 예약 상태 관리, 예약 만료 처리 복잡    |
+| 전략 C: 결제 시도 시 차감    | 결제 요청 직전에 차감                   | 묶임 시간 중간        | 결제 실패 시 복구 필요 + 차감 시점 애매 |
   
 각 전략의 시간 흐름을 비교하면 이렇습니다.  
   
@@ -619,7 +640,8 @@ PeekCart는 **전략 A**를 선택했습니다. 주문 생성 트랜잭션 안�
   
 ```  
 주문 생성 트랜잭션:  
-    재고 차감 (Inventory.decrease) + 주문 저장 (Order.create)    + Outbox 이벤트 저장 — 모두 단일 트랜잭션  
+    재고 차감 (Inventory.decrease) + 주문 저장 (Order.create)
+    + Outbox 이벤트 저장: 모두 단일 트랜잭션  
 ```  
   
 이 방식의 가장 큰 장점은 **재고 차감과 주문 생성이 원자적**이라는 것입니다. 둘 중 하나만 성공하는 상황이 없습니다. 전략 B는 "예약"과 "확정"이라는 두 단계가 생기면서 중간 상태 관리가 복잡해집니다.  
@@ -631,14 +653,21 @@ Order 도메인이 재고 차감을 요청할 때는 `ProductPort`를 통합니�
 ```java  
 // ProductPort.java (Order 도메인의 application/port에 정의)  
 public interface ProductPort {  
-    void verifyProductExists(Long productId);    long decreaseStockAndGetUnitPrice(Long productId, int quantity);    void restoreStock(Long productId, int quantity);}  
+    void verifyProductExists(Long productId);  
+    long decreaseStockAndGetUnitPrice(Long productId, int quantity);  
+    void restoreStock(Long productId, int quantity);  
+}  
 ```  
   
 ```java  
 // ProductPortAdapter.java (Product 도메인의 infrastructure에 구현)  
 @Override  
 public long decreaseStockAndGetUnitPrice(Long productId, int quantity) {  
-    Product product = productRepository.findById(productId)            .orElseThrow(() -> new ProductException(ErrorCode.PRD_001));    inventoryLockFacade.decreaseStock(productId, quantity);    return product.getPrice();}  
+    Product product = productRepository.findById(productId)  
+            .orElseThrow(() -> new ProductException(ErrorCode.PRD_001));  
+    inventoryLockFacade.decreaseStock(productId, quantity);  
+    return product.getPrice();  
+}  
 ```  
   
 `decreaseStockAndGetUnitPrice`는 이름 그대로 재고를 차감하면서 동시에 주문 시점의 상품 가격을 반환합니다. 이 가격은 `order_items.unit_price`에 스냅샷으로 저장되어, 나중에 상품 가격이 바뀌더라도 주문 당시 가격이 보존됩니다.  
@@ -657,7 +686,9 @@ PeekCart의 `ProductCacheService`는 상품 정보만 캐시하고 재고는 항
 // ProductCacheService.java  
 @Cacheable(cacheNames = "product", key = "#productId")  
 public ProductInfoDto getProductInfo(Long productId) {  
-    Product product = productRepository.findById(productId)            .orElseThrow(() -> new ProductException(ErrorCode.PRD_001));    return ProductInfoDto.of(product);  // 재고 미포함  
+    Product product = productRepository.findById(productId)  
+            .orElseThrow(() -> new ProductException(ErrorCode.PRD_001));  
+    return ProductInfoDto.of(product);  // 재고 미포함  
 }  
 ```  
   
@@ -666,8 +697,14 @@ public ProductInfoDto getProductInfo(Long productId) {
 public ProductDetailDto getProduct(Long productId) {  
     ProductInfoDto info = productCacheService.getProductInfo(productId);  // 캐시 히트  
   
-    int stock = inventoryRepository.findByProductId(productId)            // 항상 DB            .map(Inventory::getStock)            .orElse(0);  
-    return new ProductDetailDto(            info.id(), info.categoryId(), info.categoryName(),            info.name(), info.description(), info.price(),            info.imageUrl(), info.status(), stock);}  
+    int stock = inventoryRepository.findByProductId(productId)  // 항상 DB  
+            .map(Inventory::getStock)  
+            .orElse(0);  
+    return new ProductDetailDto(  
+            info.id(), info.categoryId(), info.categoryName(),  
+            info.name(), info.description(), info.price(),  
+            info.imageUrl(), info.status(), stock);  
+}  
 ```  
   
 캐시에 재고를 포함하면 어떤 문제가 생길까?  
@@ -681,9 +718,11 @@ public ProductDetailDto getProduct(Long productId) {
 ```java  
 // ProductCommandService.java  
 @Caching(evict = {  
-        @CacheEvict(cacheNames = "product", key = "#productId"),        @CacheEvict(cacheNames = "products", allEntries = true)})  
+        @CacheEvict(cacheNames = "product", key = "#productId"),  
+        @CacheEvict(cacheNames = "products", allEntries = true)})  
 public ProductDetailDto update(Long productId, UpdateProductCommand command) {  
-    // ...}  
+    // ...  
+}  
 ```  
   
 결국 상품과 재고를 별도 엔티티로 분리한 것이 캐싱 전략에서도 자연스러운 분리를 만들어줍니다. 상품 정보는 캐시, 재고는 실시간 DB 조회. 이 패턴은 Phase 2의 캐시 부하 테스트(뒤의 상품 캐시 글에서 다룰 예정)에서 캐시 ON/OFF TPS 차이를 측정하는 기반이 됩니다.  
@@ -703,19 +742,6 @@ public ProductDetailDto update(Long productId, UpdateProductCommand command) {
   
 - **분산 락 lease time(5초) 초과**: 트랜잭션이 5초 안에 끝나지 않으면 락이 풀리고 다른 요청이 들어옵니다. 그때 낙관적 락이 방어하지만 정상 시나리오에서 5초를 넘기면 설계를 재점검해야 합니다.  
 - **Redis 장애 fallback의 UX 영향**: Redis 장애 시 모든 요청이 낙관적 락 경쟁으로 전환되면 충돌 실패율이 급등합니다. 사용자에게 "일시적으로 주문이 어렵습니다"를 보여줄지, 재시도를 할지는 아직 결정되지 않았습니다.  
-  
----  
-  
-## 참고 자료
-  
-| 질문                          | 같이 읽을 자료                                                                                                                                                                                                                       | 이 글에서 연결되는 지점                                        |     |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- | --- |
-| 낙관적 락과 비관적 락은 어떻게 다른가?      | Martin Fowler, [Optimistic Offline Lock](https://martinfowler.com/eaaCatalog/optimisticOfflineLock.html), [Pessimistic Offline Lock](https://martinfowler.com/eaaCatalog/pessimisticOfflineLock.html)                          | `@Version`과 `SELECT FOR UPDATE`의 트레이드오프를 비교          |     |
-| JPA의 낙관적 락은 내부에서 어떻게 동작하는가? | Vlad Mihalcea, [A beginner's guide to database locking and the lost update phenomena](https://vladmihalcea.com/a-beginners-guide-to-database-locking-and-the-lost-update-phenomena/)                                           | Hibernate가 `version`을 어떻게 붙이는지, lost update를 어떻게 막는지 |     |
-| 분산 락은 어떤 보장을 하고 어떤 한계가 있는가? | Martin Kleppmann, [How to do distributed locking](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html), Redis, [Distributed Locks with Redis](https://redis.io/docs/manual/patterns/distributed-locks/) | Redlock의 위험성과 단일 Redis 락의 트레이드오프                     |     |
-| 재고 차감 시점은 언제가 좋은가?          | 쿠팡 기술 블로그 등 이커머스 사례, AWS, [Saga Pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-data-persistence/saga-pattern.html)                                                                            | 전략 A/B 선택과 보상 트랜잭션의 관계                               |     |
-| 캐시 전략은 어떻게 설계하는가?           | Martin Fowler, [Two Hard Things](https://martinfowler.com/bliki/TwoHardThings.html), AWS, [Caching Best Practices](https://aws.amazon.com/caching/best-practices/)                                                             | 상품 정보 캐시와 재고 실시간 조회의 분리 설계                           |     |
-| 엔티티 분리와 애그리거트 설계의 기준은 무엇인가? | Vaughn Vernon, [Effective Aggregate Design](https://www.dddcommunity.org/library/vernon_2011/)                                                                                                                                 | Product와 Inventory를 왜 별도 애그리거트로 볼 수 있는가를 따질 때       |     |
   
 ---  
   
@@ -748,3 +774,16 @@ flowchart LR
 - **Product DB가 독립되면 FK가 사라진다**: 현재 `cart_items.product_id`나 `order_items.product_id`가 Product DB를 직접 FK로 참조합니다. MSA에서는 이 FK가 사라지고 논리적 ID로만 연결됩니다. 존재하지 않는 상품을 참조하는 경우를 애플리케이션 레벨에서 처리해야 합니다.  
   
 핵심은, Product/Inventory 분리와 `ProductPort` 추상화가 이미 서비스 경계의 후보를 보여준다는 점입니다. 지금은 같은 JVM 안에서 메서드 호출로 연결되지만 그 호출 계약(인터페이스)이 나중에 HTTP API나 이벤트 계약으로 변환될 수 있습니다.
+
+---
+
+## 참고 자료
+  
+| 질문                          | 같이 읽을 자료                                                                                                                                                                                                                       | 이 글에서 연결되는 지점                                        |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| 낙관적 락과 비관적 락은 어떻게 다른가?      | Martin Fowler, [Optimistic Offline Lock](https://martinfowler.com/eaaCatalog/optimisticOfflineLock.html), [Pessimistic Offline Lock](https://martinfowler.com/eaaCatalog/pessimisticOfflineLock.html)                          | `@Version`과 `SELECT FOR UPDATE`의 트레이드오프를 비교          |
+| JPA의 낙관적 락은 내부에서 어떻게 동작하는가? | Vlad Mihalcea, [A beginner's guide to database locking and the lost update phenomena](https://vladmihalcea.com/a-beginners-guide-to-database-locking-and-the-lost-update-phenomena/)                                           | Hibernate가 `version`을 어떻게 붙이는지, lost update를 어떻게 막는지 |
+| 분산 락은 어떤 보장을 하고 어떤 한계가 있는가? | Martin Kleppmann, [How to do distributed locking](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html), Redis, [Distributed Locks with Redis](https://redis.io/docs/manual/patterns/distributed-locks/) | Redlock의 위험성과 단일 Redis 락의 트레이드오프                     |
+| 재고 차감 시점은 언제가 좋은가?          | 쿠팡 기술 블로그 등 이커머스 사례, AWS, [Saga Pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-data-persistence/saga-pattern.html)                                                                            | 전략 A/B 선택과 보상 트랜잭션의 관계                               |
+| 캐시 전략은 어떻게 설계하는가?           | Martin Fowler, [Two Hard Things](https://martinfowler.com/bliki/TwoHardThings.html), AWS, [Caching Best Practices](https://aws.amazon.com/caching/best-practices/)                                                             | 상품 정보 캐시와 재고 실시간 조회의 분리 설계                           |
+| 엔티티 분리와 애그리거트 설계의 기준은 무엇인가? | Vaughn Vernon, [Effective Aggregate Design](https://www.dddcommunity.org/library/vernon_2011/)                                                                                                                                 | Product와 Inventory를 왜 별도 애그리거트로 볼 수 있는가를 따질 때       |

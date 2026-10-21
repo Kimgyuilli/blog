@@ -19,6 +19,8 @@ slug: "peekcart-phase4-debt-checklist"
   
 그렇게 쌓인 결함이 스물두 개입니다. 이 글은 이 22개를 정리합니다. 동시에 Phase 3에서 부하와 리뷰가 찾아 **대부분 해소한** 부채와 비교하고 Phase 4 MSA 진입 전에 무엇을 가져가고 무엇을 바꾸는지 체크리스트로 만듭니다.  
   
+이 연재는 PeekCart를 네 단계로 진행했습니다. Phase 1은 단일 Spring Boot 모놀리스로 도메인을 구현한 단계, Phase 2는 캐시, 분산 락, Kafka와 Outbox로 성능과 정합성을 보강한 단계, Phase 3은 CI, Kubernetes, 관측성, 부하 테스트로 운영 환경을 검증한 단계, Phase 4는 서비스별로 나눈 MSA 단계입니다.  
+  
 이 글의 결론을 먼저 적으면 이렇습니다. 부채는 발견 경로에 따라 성격이 갈립니다.  
   
 | 부채를 찾은 것 | 성격 | Phase 3 시점 상태 |  
@@ -76,13 +78,13 @@ Phase 3을 종결할 때 개발 부채 표는 거의 정리돼 있었습니다. 
 - 부하 도구의 JDK 버전 미지원: 운영 지식으로 수용 + 자동화 권장  
 ```  
   
-이것들의 공통점은 **발견 경로**입니다. 전부 부하 테스트(세션 B/C), 종합 리뷰, CI 분석에서 나왔습니다. 즉 "돌려보니 터진 것", "리뷰어가 짚은 것"입니다.  
+이것들의 공통점은 **발견 경로**입니다. 전부 부하 테스트(캐시 효과 측정, 동시 주문 측정), 종합 리뷰, CI 분석에서 나왔습니다. 즉 "돌려보니 터진 것", "리뷰어가 짚은 것"입니다.  
   
 그런데 학습 글을 쓰기 시작하자 **다른 종류의 부채**가 나오기 시작했습니다. 부하를 준 것도 아니고 리뷰를 받은 것도 아닌데, **남에게 설명하려고 코드를 정독하는 행위 자체가** 결함을 드러냈습니다.  
   
 ```mermaid
 flowchart LR
-    LT["부하 테스트<br/>세션 B/C"] --> DD["메트릭/정합성<br/>운영 이슈"]
+    LT["부하 테스트"] --> DD["메트릭/정합성<br/>운영 이슈"]
     RV["리뷰/CI 분석"] --> DR["관측성/CI<br/>구조 이슈"]
     WR["설명하려고<br/>코드 정독"] --> LL["22개<br/>코드 레벨 결함"]
 
@@ -261,12 +263,15 @@ flowchart LR
 가장 구체적으로 이해하기 쉬운 건 위 가지 (a) "재고 예약 실패 후 주문 취소"입니다. 모놀리스에서 이것은 한 트랜잭션의 자동 rollback이었습니다. 서비스가 쪼개지면 같은 일이 여러 네트워크 홉으로 흩어집니다.  
   
 ```text  
-[Phase 3 — 단일 트랜잭션]  
+[Phase 3: 단일 트랜잭션]  
 BEGIN → 주문 생성 → 재고 차감(낙관적 락) → COMMIT  
         (어디서 실패하든 한 번에 rollback)  
-[Phase 4 — Choreography Saga, 가지 (a) 재고 예약 실패]  
-Order      주문 PENDING 저장 + outbox(order.created)        ┐ 한 DB 트랜잭션  
-Inventory  order.created 수신 → 재고 예약(차감) 시도           │           실패 → outbox(inventory.reserve.failed)        │ 각자 다른 DBOrder      inventory.reserve.failed 수신 → 주문 CANCELLED   ┘  
+  
+[Phase 4: Choreography Saga, 가지 (a) 재고 예약 실패]  
+Order      주문 PENDING 저장 + outbox(order.created)          (Order DB 트랜잭션)  
+Inventory  order.created 수신 → 재고 예약(차감) 시도  
+           실패 → outbox(inventory.reserve.failed)            (Inventory DB 트랜잭션)  
+Order      inventory.reserve.failed 수신 → 주문 CANCELLED     (Order DB 트랜잭션)  
 ```  
   
 가지 (b) 결제 실패 후 복구는 이와 대칭입니다. `payment.failed`를 수신한 Order가 주문을 `CANCELLED`로 바꾸고 `order.cancelled`를 발행하면, Inventory가 그것을 받아 이미 차감한 재고를 `inventory.restore`로 되돌립니다.  
@@ -367,7 +372,7 @@ flowchart LR
 | 전수 해소 일정 | 일부는 Phase 4에서 형태 소멸, 일부는 필수화. 일정은 구조 결정 후 |  
 | 검증 갭의 측정 방법 | chaos/상호배제 측정은 Phase 4 분산 환경이 전제 |  
   
-이 글의 목적은 **"무엇이 있는지 알고 들어가자"**입니다. 지금 다 고치려는 것은 아닙니다. 22개를 인지한 상태로 Phase 4에 진입하는 것과, 모르고 진입해 다시 발견하는 것은 다릅니다.  
+이 글의 목적은 "**무엇이 있는지 알고 들어가자**"입니다. 지금 다 고치려는 것은 아닙니다. 22개를 인지한 상태로 Phase 4에 진입하는 것과, 모르고 진입해 다시 발견하는 것은 다릅니다.  
   
 ---  
   

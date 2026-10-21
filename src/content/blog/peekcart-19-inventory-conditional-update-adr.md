@@ -24,6 +24,8 @@ slug: "peekcart-inventory-conditional-update-adr"
 | 일관 읽기(snapshot read) | 평범한 `SELECT`. 트랜잭션 시작 시점의 스냅샷을 본다(REPEATABLE READ) |
 | 자원 토폴로지 | 한 연산이 건드리는 자원의 형태 - 단일 행 / 다중 행과 다중 자원 / 핫 로우 등 |
 
+이 연재는 PeekCart를 네 단계로 진행했습니다. Phase 1은 단일 Spring Boot 모놀리스로 도메인을 구현한 단계, Phase 2는 캐시, 분산 락, Kafka와 Outbox로 성능과 정합성을 보강한 단계, Phase 3은 CI, Kubernetes, 관측성, 부하 테스트로 운영 환경을 검증한 단계, Phase 4는 서비스별로 나눈 MSA 단계입니다.
+
 이번 재검토에서 답하고 싶은 질문은 다음과 같습니다.
 
 1. `@Transactional`만으로는 왜 오버셀링을 못 막는데 조건부 UPDATE는 락 없이도 막을까?
@@ -187,18 +189,7 @@ PeekCart의 차감 경로는 영상 방식과 다릅니다. 세 겹으로 쌓여
 
 하지만 **`restoreStock`은 여전히 read-modify-write** 입니다(조건부 UPDATE 없이 `inventory.restore()`, 엔티티 변경, flush 순서). 거기서는 `@Version`이 유지되어야 합니다. 그래서 만약 전환해도 `@Version`을 전부 제거할 수는 없고, **"차감 경로에서는 중복, 복구 경로에선 잔존"** 이라는 비대칭으로 끝납니다. 앞에서 미리 짚은 그 비대칭이 여기서 결론을 맺습니다. (지금은 전환하지 않으므로 `@Version`은 양쪽 다 그대로 둡니다.)
 
-## 10. 이 글은 어떤 질문에 연결해서 읽을까
-
-| 개념 | 연결해 읽을 자료 |
-| --- | --- |
-| 원자성 ≠ 직렬화 | *Designing Data-Intensive Applications* (Kleppmann) - Weak Isolation / Lost Update |
-| snapshot read vs current read | MySQL Reference - *Consistent Nonlocking Reads* / *Locking Reads* |
-| over-engineering 인정과 결정 기록 | ADR 방법론 (Michael Nygard) |
-| 핫 로우 분산 (카운터/샤딩) | Redis 원자 연산 / sharding 패턴 |
-
----
-
-## 11. Phase 4 MSA에서는 어떻게 바뀌는가
+## 10. Phase 4 MSA에서는 어떻게 바뀌는가
 
 지금 이 결정은 "한 프로세스, 한 DB, 한 트랜잭션" 위에 서 있습니다. Phase 4에서 Inventory가 별도 서비스와 별도 DB로 분리되면 그림이 바뀝니다.
 
@@ -212,5 +203,18 @@ PeekCart의 차감 경로는 영상 방식과 다릅니다. 세 겹으로 쌓여
 - **분산 락 글에서 본 "주문 경로가 락 ⊃ 트랜잭션 불변식을 깬다"는 결함이 자연 소멸한다.** Order와 Inventory가 다른 서비스가 되면 Order 트랜잭션이 Inventory 차감 트랜잭션을 더 이상 감쌀 수 없습니다. 그러면 유지하기로 한 분산 락이 *비로소 설계대로* 동작합니다. 모놀리스 단계에선 사실 그 직렬화가 무력화된 채 `@Version`이 일하고 있었다는 점이, 분산 락 유지 결정의 가장 솔직한 한계입니다.
 - **재배치 트리거가 현실이 될 수 있다.** Phase 4에서 쿠폰과 포인트 같은 도메인이 추가되고 "주문 시 재고+쿠폰+포인트 묶음 차감" 경로가 생기면 앞서 정한 그대로 차감은 조건부 UPDATE로 내리고 분산 락을 그 다중 자원 경로로 옮기는 게 가장 적절한 구조가 됩니다.
 - **단일 Pod에서 다중 Pod로의 의미 확장.** 모놀리스 단일 Pod에선 분산 락이 사실 JVM 락으로도 충분했지만 HPA로 Inventory Pod가 늘면([동시 주문 부하 테스트 글](/blog/peekcart-order-concurrency-hpa/)) 분산 락이 비로소 *본질적으로* 필요해집니다. 단, 그 필요는 위 다중 자원 경로에서 생기고, 단일 행 차감에는 해당하지 않습니다.
+
+---
+
+## 11. 이 글은 어떤 질문에 연결해서 읽을까
+
+| 개념 | 연결해 읽을 자료 |
+| --- | --- |
+| 원자성 ≠ 직렬화 | *Designing Data-Intensive Applications* (Kleppmann) - Weak Isolation / Lost Update |
+| snapshot read vs current read | MySQL Reference - *Consistent Nonlocking Reads* / *Locking Reads* |
+| over-engineering 인정과 결정 기록 | ADR 방법론 (Michael Nygard) |
+| 핫 로우 분산 (카운터/샤딩) | Redis 원자 연산 / sharding 패턴 |
+
+---
 
 정리하면 이 보론은 "분산 락 vs 조건부 UPDATE"라는 이분법으로 시작했지만 도착한 곳은 **동시성 제어의 적정 구간을 트래픽 강도와 자원 토폴로지로 계층화** 하는 기준이었습니다. 그리고 그 기준에서 PeekCart의 현재 위치는 "기술적으론 조건부 UPDATE가 맞지만 포트폴리오 맥락에선 알고 남긴 분산 락"입니다. 코드 대신 *결정* 을 남기는 것이 재검토의 결과물입니다.

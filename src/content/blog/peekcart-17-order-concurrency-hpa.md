@@ -9,7 +9,9 @@ draft: false
 slug: "peekcart-order-concurrency-hpa"
 ---
 
-[캐시 효과 측정 글](/blog/peekcart-cache-effect-measurement/)(세션 B)은 상품 **조회** 워크로드였습니다. 캐시 ON/OFF만 토글해 TPS 2.31배을 측정했고 목표 3배 미달의 원인을 "CPU 병목 가설"까지만 좁힌 뒤 그대로 남겼습니다.  
+[캐시 효과 측정 글](/blog/peekcart-cache-effect-measurement/)(세션 B)은 상품 **조회** 워크로드였습니다. 캐시 ON/OFF만 토글해 TPS 2.31배를 측정했고 목표 3배 미달의 원인을 "CPU 병목 가설"까지만 좁힌 뒤 그대로 남겼습니다.  
+  
+이 연재는 PeekCart를 네 단계로 진행했습니다. Phase 1은 단일 Spring Boot 모놀리스로 도메인을 구현한 단계, Phase 2는 캐시, 분산 락, Kafka와 Outbox로 성능과 정합성을 보강한 단계, Phase 3은 CI, Kubernetes, 관측성, 부하 테스트로 운영 환경을 검증한 단계, Phase 4는 서비스별로 나눈 MSA 단계입니다. 이 글의 측정은 Phase 3에서 했습니다. 측정 작업은 과금 범위를 나누려고 세 세션으로 쪼갰습니다. 세션 A는 로컬 준비, 세션 B는 상품 조회 캐시 TPS 측정, 세션 C는 동시 주문 정합성, HPA, Kafka Lag 측정이고, 이 글은 세션 C를 다룹니다.  
   
 조회는 읽기만 합니다. 같은 데이터를 100명이 동시에 읽어도 서로의 결과를 망가뜨리지 않습니다.  
   
@@ -19,7 +21,7 @@ slug: "peekcart-order-concurrency-hpa"
   
 이 한 문장이 세션 C(2026-04-29)의 핵심 질문입니다. 1,001번 상품부터 1,010번까지, 각 재고 100개(총 1,000개)에 1,000명의 가상 사용자가 동시에 주문을 시도합니다. 이 테스트가 검증하려는 것은 **정합성**입니다.  
   
-결과를 먼저 보면 두 가지를 동시에 얻었습니다. 하나는 성공이고 하나는 목표 미달입니다.  
+결과를 먼저 보면 두 가지를 동시에 얻었습니다. 하나는 성공이고 하나는 목표 미달입니다. 아래 표의 Run 1은 Pod 1개(cold-start)에서 출발한 측정, Run 2는 Pod 3개를 미리 띄워 두고 출발한 측정입니다.  
   
 | 축                                    | 결과                                   | 판정   |
 | ------------------------------------ | ------------------------------------ | ---- |
@@ -100,13 +102,13 @@ slug: "peekcart-order-concurrency-hpa"
 세션 C: 동시 주문 정합성 + HPA + Kafka Lag (2026-04-29): 이 글  
 ```  
   
-세션 C는 시나리오 1(상품 조회)을 **재측정하지 않는다**. 세션 B 수치를 인용만 합니다. 같은 측정을 두 번 하면 과금만 늘 뿐, 새로 알게 되는 것이 없기 때문입니다. 대신 세션 C는 네 가지를 한 번의 과금으로 묶었습니다.  
+세션 C는 상품 조회 부하를 **재측정하지 않는다**. 세션 B 수치를 인용만 합니다. 같은 측정을 두 번 하면 과금만 늘 뿐, 새로 알게 되는 것이 없기 때문입니다. 대신 세션 C는 네 가지를 한 번의 과금으로 묶었습니다.  
   
 | 대상       | 내용                               |
 | -------- | -------------------------------- |
-| 시나리오 2   | 1,000 VUser 동시 주문 정합성            |
-| 시나리오 3   | Kafka Consumer Lag               |
-| Task 3-5 | HPA 1에서 3으로 런타임 검증                   |
+| 동시 주문 정합성 | 1,000 VUser 동시 주문 정합성            |
+| Kafka Lag 측정 | Kafka Consumer Lag               |
+| HPA 검증 | HPA 1에서 3으로 런타임 검증                   |
 | 병목 분석    | 세션 B의 3배 미달 원인(CPU 병목) 보강 데이터 수집 |
   
 ---  
@@ -120,8 +122,11 @@ slug: "peekcart-order-concurrency-hpa"
 ```javascript  
 // loadtest/scripts/order-concurrency.js  
 export default function () {  
-  if (__ITER > 0) {    sleep(10);   // 1m hold 구간 동안 추가 주문 없이 VU만 살려둠  
-    return;  }  // ...login → cart → order (단 1회)  
+  if (__ITER > 0) {  
+    sleep(10);   // 1m hold 구간 동안 추가 주문 없이 VU만 살려둠  
+    return;  
+  }  
+  // ...login → cart → order (단 1회)  
 }  
 ```  
   
@@ -203,7 +208,7 @@ CASE WHEN SUM(oi.quantity) <= 1000 THEN 'OK' ELSE 'OVERSELL' END
 | 출발 | replicas=1 (cold-start), HPA 활성 | replicas=3 (pre-warmed), HPA 일시 제거 |  
 | 보려는 것 | 단일 Pod가 부하를 받으면 무슨 일이 나는가 + HPA가 반응하는가 | CPU를 미리 분산하면 병목이 사라지는가 |  
   
-변수를 하나만 바꿨습니다. **Pod 수(=CPU capacity)**입니다. 나머지(이미지, 시드, 시나리오, VU 수)는 고정했습니다. 세션 B의 "단일 변수 실험" 규율을 그대로 가져왔습니다.  
+변수를 하나만 바꿨습니다. **Pod 수**(=CPU capacity)입니다. 나머지(이미지, 시드, 시나리오, VU 수)는 고정했습니다. 세션 B의 "단일 변수 실험" 규율을 그대로 가져왔습니다.  
   
 ### Run 1: 단일 Pod cold-start  
   
@@ -224,17 +229,17 @@ login조차 46.3%만 성공했습니다. 절반 이상의 사용자가 로그인
   
 > **Run 1 수치 신뢰 등급**: Run 1의 k6 원본 측정 파일(요약 JSON, 실행 로그)은 Run 2 시작 직전 백업 단계에서 디렉토리 미생성으로 이동에 실패해 보존되지 못했다. 위 표의 k6 메트릭(60.59%, 537, 24.74s 등)은 **측정 중 콘솔에 출력된 값을 라이브로 받아 적은 것**이며 원본 파일로 재검증되지 않는다. 반면 정합성 검증 결과와 HPA 타임라인(`kubectl get hpa -w` 로그 + 스크린샷)은 별도로 보존돼 검증 가능하다. 따라서 throughput 판정의 1차 근거는 보존된 Run 2 측정 파일을 쓰고, Run 1 수치는 보조 증거로만 쓴다.  
   
-### Run 2~3 pods pre-warmed  
+### Run 2: Pod 3개 pre-warmed  
   
-| 지표                          | Run 1 (1 pod) | Run 2 (3 pods) |              변화 |     |
-| --------------------------- | ------------: | -------------: | --------------: | --- |
-| http_reqs                   |         1,609 |          2,479 |            +54% |     |
-| http_req_failed{contention} |        60.59% |         35.90% | -24.7pp (여전히 ❌) |     |
-| peekcart_auth_failures      |           537 |             33 |    -94% (여전히 ❌) |     |
-| http_req_duration p95       |        24.74s |         30.21s |      +5.5s (악화) |     |
-| login 성공                    |         46.3% |      **96.7%** |       +50.4pp ✅ |     |
-| 처리 완료 주문 (DB PENDING)       |            25 |        **110** |            4.4배 |     |
-| 정합성 (오버셀링)                  |       OK (0건) |        OK (0건) |            유지 ✅ |     |
+| 지표                          | Run 1 (1 pod) | Run 2 (3 pods) |              변화 |
+| --------------------------- | ------------: | -------------: | --------------: |
+| http_reqs                   |         1,609 |          2,479 |            +54% |
+| http_req_failed{contention} |        60.59% |         35.90% | -24.7pp (여전히 ❌) |
+| peekcart_auth_failures      |           537 |             33 |    -94% (여전히 ❌) |
+| http_req_duration p95       |        24.74s |         30.21s |      +5.5s (악화) |
+| login 성공                    |         46.3% |      **96.7%** |       +50.4pp ✅ |
+| 처리 완료 주문 (DB PENDING)       |            25 |        **110** |            4.4배 |
+| 정합성 (오버셀링)                  |       OK (0건) |        OK (0건) |            유지 ✅ |
   
 CPU capacity를 미리 3배로 확보했더니 login 성공률이 46.3%에서 96.7%로 뛰었습니다. **로그인 실패의 1차 원인은 CPU capacity 부족이었습니다**. (다만 Pod 수 증가는 CPU뿐 아니라 endpoint 수, readiness, LB 분산도 함께 바꾸므로, CPU만의 단일 효과로 단정하지는 않습니다.) 처리 완료 주문도 25에서 110건으로 4.4배 늘었습니다.  
   
@@ -278,7 +283,7 @@ flowchart LR
   
 엄밀히는 **아니다.**  
   
-분산 락(`InventoryLockFacade`)은 "트랜잭션 바깥에서 락 획득, 안쪽 트랜잭션 커밋, 락 해제" 순서를 전제로 설계됐습니다. 그런데 실제 주문 경로에서는 `OrderCommandService`가 클래스 레벨 `@Transactional`이라, 그 안에서 호출되는 재고 차감이 **바깥 주문 트랜잭션에 합류(`REQUIRED`)**합니다. 그 결과 facade의 `finally` 락 해제가 **바깥 커밋 이전에** 실행됩니다. 즉 "락 해제 후 커밋" 순서가 되어, 분산 락의 1차 방어선(직렬화와 충돌 예방)이 주문 경로에서는 사실상 무력화됩니다.  
+분산 락(`InventoryLockFacade`)은 "트랜잭션 바깥에서 락 획득, 안쪽 트랜잭션 커밋, 락 해제" 순서를 전제로 설계됐습니다. 그런데 실제 주문 경로에서는 `OrderCommandService`가 클래스 레벨 `@Transactional`이라, 그 안에서 호출되는 재고 차감이 **바깥 주문 트랜잭션에 합류**(`REQUIRED`)합니다. 그 결과 facade의 `finally` 락 해제가 **바깥 커밋 이전에** 실행됩니다. 즉 "락 해제 후 커밋" 순서가 되어, 분산 락의 1차 방어선(직렬화와 충돌 예방)이 주문 경로에서는 사실상 무력화됩니다.  
   
 그러면 무엇이 오버셀링을 막았을까? **`@Version` 낙관적 락**입니다. 동시에 같은 재고 행을 갱신하려는 요청 중 하나만 성공하고 나머지는 버전 충돌로 실패(`OptimisticLockingFailureException` 에서 `PRD-004`, 409)합니다. 세션 C의 오버셀링 0건은 이 **최후 방어선이 실제로 작동했다**는 증거입니다.  
   
@@ -291,7 +296,7 @@ flowchart LR
   
 ---  
   
-## Task 3-5: HPA가 실제로 1에서 3으로 늘었나  
+## HPA가 실제로 1에서 3으로 늘었나  
   
 Run 1은 HPA 검증을 겸했습니다. `kubectl get hpa peekcart -w` 로그가 scale-out의 순간을 그대로 찍었습니다.  
   
@@ -333,7 +338,7 @@ behavior:
   scaleDown: { stabilizationWindowSeconds: 300 }  # 천천히 줄인다  
 ```  
   
-**Task 3-5 PASS.** replicas 1에서 3으로 전이가 로그와 Grafana 스크린샷 양쪽으로 확인됐습니다.  
+**HPA 검증 PASS.** replicas 1에서 3으로 전이가 로그와 Grafana 스크린샷 양쪽으로 확인됐습니다.  
   
 ### 하지만 HPA가 처리량을 "해결"하진 못했다  
   
@@ -377,7 +382,7 @@ CPU 제약을 완화했더니 병목이 뒤로 이동했습니다. Run 2에서 l
   
 ## Kafka Consumer Lag: 비동기 흐름은 밀리지 않았나  
   
-동시 주문이 집중되면 `order_created`, `payment_completed` 같은 이벤트도 급증합니다. consumer가 이를 제때 못 따라가면 Lag(밀림)이 쌓입니다. 시나리오 3은 시나리오 2 부하 구간에 별도 부하 없이 Prometheus로 Lag을 측정했습니다.  
+동시 주문이 집중되면 `order_created`, `payment_completed` 같은 이벤트도 급증합니다. consumer가 이를 제때 못 따라가면 Lag(밀림)이 쌓입니다. Kafka Lag 측정은 동시 주문 부하 구간에 별도 부하 없이 Prometheus로 Lag을 측정했습니다.  
   
 ```promql  
 # steady-state 합격 검증 (k6 종료 후 5분 시점)  
@@ -391,7 +396,7 @@ kafka_consumer_fetch_manager_records_lag_max{
 | Run 1/2 부하 구간 | 일부 client에서 작은 spike |  
 | k6 종료 후 5분 (`... > 0`) | **빈 결과**: ✅ 모든 lag 0 또는 NaN |  
   
-**시나리오 3 PASS.** peak 때 잠깐 밀렸지만 5분 내 0으로 복귀했습니다. 이것이 보장하는 것은 "consumer 처리 속도가 발행 속도를 장기적으로 따라잡는다"는 점입니다. 즉 비동기 이벤트 파이프라인이 부하 spike를 처리하고 회복할 수 있습니다.  
+**Kafka Lag 측정 PASS.** peak 때 잠깐 밀렸지만 5분 내 0으로 복귀했습니다. 이것이 보장하는 것은 "consumer 처리 속도가 발행 속도를 장기적으로 따라잡는다"는 점입니다. 즉 비동기 이벤트 파이프라인이 부하 spike를 처리하고 회복할 수 있습니다.  
   
 측정에서 배운 운영 디테일도 있습니다.  
   
@@ -435,19 +440,6 @@ kafka_consumer_fetch_manager_records_lag_max{
   
 ---  
   
-## 관련 자료를 읽는 순서  
-  
-| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |  
-| --- | --- | --- |  
-| 조회 부하는 어떻게 쟀나 | [캐시 효과 측정 글](/blog/peekcart-cache-effect-measurement/) (세션 B) | 세션 분할 / CPU 병목 가설 |  
-| 오버셀링을 막는 이중 방어 | [분산 락 글](/blog/peekcart-inventory-lock-defense/) | 정합성을 지킨 것의 정체 |  
-| 단일 행 차감에 분산 락이 과방어인가 | 학습 기록 09a편 | `@Version` vs 분산 락 |  
-| 트랜잭션 전파가 락 순서를 바꾸는 원리 | Spring `@Transactional` Propagation 문서 | 정합성을 지킨 것의 정체 |  
-| 작은 인프라 / 큰 부하의 의미 | Google SRE Book, Load Testing | throughput 미달 해석 |  
-| HPA 반응 지연과 spike | k8s HPA 문서 (behavior) | HPA가 spike를 못 막는 이유 |  
-| Consumer Lag 측정 | Micrometer Kafka client metrics | kafka-exporter 미배포 대안 |  
----  
-  
 ## Phase 4 MSA에서는 어떻게 바뀌나  
   
 세션 C는 **모놀리스 한 덩어리**의 동시 주문을 쟀습니다. Phase 4에서 서비스가 쪼개지면 측정 단위도, 정합성 보장 방식도 바뀝니다.  
@@ -481,6 +473,22 @@ Phase 4 진입 전 준비해야 할 것은 명확합니다.
 2. 2차 병목 분리를 위해 HikariCP wait / 분산 락 latency / Pod readiness 전이를 기본 측정 세트에 넣습니다(병목 분석 후속).  
 3. Saga 기반 보상 흐름의 정합성을, 단일 DB `@Version`을 대체하는 새 기준으로 검증합니다.  
   
+---
+
+## 관련 자료를 읽는 순서  
+  
+| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |  
+| --- | --- | --- |  
+| 조회 부하는 어떻게 쟀나 | [캐시 효과 측정 글](/blog/peekcart-cache-effect-measurement/) (세션 B) | 세션 분할 / CPU 병목 가설 |  
+| 오버셀링을 막는 이중 방어 | [분산 락 글](/blog/peekcart-inventory-lock-defense/) | 정합성을 지킨 것의 정체 |  
+| 단일 행 차감에 분산 락이 과방어인가 | [조건부 UPDATE 글](/blog/peekcart-inventory-conditional-update-adr/) | `@Version` vs 분산 락 |  
+| 트랜잭션 전파가 락 순서를 바꾸는 원리 | Spring `@Transactional` Propagation 문서 | 정합성을 지킨 것의 정체 |  
+| 작은 인프라 / 큰 부하의 의미 | Google SRE Book, Load Testing | throughput 미달 해석 |  
+| HPA 반응 지연과 spike | k8s HPA 문서 (behavior) | HPA가 spike를 못 막는 이유 |  
+| Consumer Lag 측정 | Micrometer Kafka client metrics | kafka-exporter 미배포 대안 |  
+
+---
+
 세션 C의 결론은 다음과 같습니다.  
   
 > 1,000명이 같은 소수 상품에 동시에 주문 플로우로 진입했고, 재고 차감까지 도달한 요청 중 오버셀링은 0건이었다.  

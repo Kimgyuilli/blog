@@ -9,6 +9,8 @@ draft: false
 slug: "peekcart-shedlock-multi-pod-scheduler"
 ---
 
+이 연재는 PeekCart를 네 단계로 진행했습니다. Phase 1은 단일 Spring Boot 모놀리스로 도메인을 구현한 단계, Phase 2는 캐시, 분산 락, Kafka와 Outbox로 성능과 정합성을 보강한 단계, Phase 3은 CI, Kubernetes, 관측성, 부하 테스트로 운영 환경을 검증한 단계, Phase 4는 서비스별로 나눈 MSA 단계입니다.
+
 문제는 단순합니다. `@Scheduled` 는 **각 JVM 프로세스 안에서** 타이머를 돌립니다. Pod 이 하나일 땐 타이머도 하나라 아무 문제가 없습니다. 그런데 Phase 3에서 HPA 가 Pod 을 1에서 3으로 늘리면(`k8s/overlays/gke/hpa.yml`), 똑같은 `@Scheduled` 메서드가 **세 Pod에서 각자의 타이머로 동시에** 깨어납니다. 60초마다 한 번 돌아야 할 주문 취소가 세 번 돌고 5초마다 한 번이어야 할 Outbox 폴링이 세 번 실행됩니다. "한 번만 일어나야 하는 일"이 인스턴스 수만큼 중복됩니다.
 
 ShedLock 은 이걸 DB 테이블 한 개와 락 레코드 한 행으로 풉니다. "여러 주체가 한 자원에 동시에 손대지 못하게 한다"는 발상은 [분산 락 글](/blog/peekcart-inventory-lock-defense/)과 같습니다. 다만 락을 거는 대상은 *재고 같은 도메인 자원*에서 **주기 작업 그 자체**로, 락 제공자는 *Redis(Redisson)*에서 **DB(JDBC)**로 바뀝니다. 왜 같은 프로젝트가 한쪽은 Redis 락, 한쪽은 DB 락을 쓰는지도 이 글에서 짚습니다.
@@ -47,7 +49,7 @@ ShedLock 은 이걸 DB 테이블 한 개와 락 레코드 한 행으로 풉니�
 
 여기서 **Pod**이 무엇인지 한 줄로 짚어두겠습니다(자세한 건 이어지는 CI와 Kustomize 글). Kubernetes 에서 Pod 은 *애플리케이션의 실행 단위*입니다. PeekCart 맥락에선 **"우리 jar를 돌리는 컨테이너 하나 = JVM 프로세스 하나"**라고 보면 됩니다. 같은 앱을 여러 Pod으로 띄우는 걸 **replica(복제본)**라 하고 그 수가 곧 "지금 몇 개의 JVM이 같은 코드를 동시에 돌리고 있나"입니다. 앞 문단의 "JVM 프로세스 하나에 타이머 하나"를 여기 겹치면 **Pod이 N개면 같은 `@Scheduled` 타이머도 N개**라는 결론이 바로 나옵니다.
 
-Pod 이 하나인 Phase 2까지는 이게 정확히 의도대로입니다 replica 가 1이라 타이머도 하나. 문제는 Phase 3에서 **HPA(Horizontal Pod Autoscaler)**가 들어오면서 생깁니다. HPA 는 Kubernetes 가 **부하(여기선 CPU 사용률)를 보고 Pod 수를 자동으로 늘렸다 줄였다** 하는 컨트롤러입니다. "트래픽이 몰리면 인스턴스를 더 띄워 분산 처리한다"는, 대용량을 다루는 서비스라면 당연히 켜는 기능입니다.
+Pod 이 하나인 Phase 2까지는 이게 정확히 의도대로입니다. replica 가 1이라 타이머도 하나입니다. 문제는 Phase 3에서 **HPA(Horizontal Pod Autoscaler)**가 들어오면서 생깁니다. HPA 는 Kubernetes 가 **부하(여기선 CPU 사용률)를 보고 Pod 수를 자동으로 늘렸다 줄였다** 하는 컨트롤러입니다. "트래픽이 몰리면 인스턴스를 더 띄워 분산 처리한다"는, 대용량을 다루는 서비스라면 당연히 켜는 기능입니다.
 
 ```yaml
 # k8s/overlays/gke/hpa.yml
@@ -63,7 +65,7 @@ spec:
           averageUtilization: 60   # Pod 평균 CPU가 60%를 넘으면 증설
 ```
 
-즉 평상시 1개로 돌다가, Pod 평균 CPU 가 60%를 넘으면 Kubernetes 가 알아서 Pod 을 최대 3개까지 늘립니다(부하가 가라앉으면 다시 줄입니다). 부하 테스트 세션 C([동시 주문 부하 테스트 글](/blog/peekcart-order-concurrency-hpa/))에서 실제로 이 설정으로 1에서 3으로 scale-out 이 확인됐습니다. 그런데 HPA 는 **요청 처리량을 분산하려고** Pod 을 늘리는 것이지, "백그라운드 스케줄러는 하나만 돌려야 한다"는 사정은 전혀 모릅니다. HPA 에게 Pod 은 다 똑같은 복제본이고 복제본은 *코드 전체*를 복제하므로 `@Scheduled` 도 함께 복제됩니다. 그래서 처리량을 위해 Pod 을 늘린 부수효과로, **의도치 않게 스케줄러까지 3중으로 돌게** 됩니다. Pod 이 3개가 되는 순간 두 스케줄러는 이렇게 됩니다.
+즉 평상시 1개로 돌다가, Pod 평균 CPU 가 60%를 넘으면 Kubernetes 가 알아서 Pod 을 최대 3개까지 늘립니다(부하가 가라앉으면 다시 줄입니다). 부하 테스트([동시 주문 부하 테스트 글](/blog/peekcart-order-concurrency-hpa/))에서 실제로 이 설정으로 1에서 3으로 scale-out 이 확인됐습니다. 그런데 HPA 는 **요청 처리량을 분산하려고** Pod 을 늘리는 것이지, "백그라운드 스케줄러는 하나만 돌려야 한다"는 사정은 전혀 모릅니다. HPA 에게 Pod 은 다 똑같은 복제본이고 복제본은 *코드 전체*를 복제하므로 `@Scheduled` 도 함께 복제됩니다. 그래서 처리량을 위해 Pod 을 늘린 부수효과로, **의도치 않게 스케줄러까지 3중으로 돌게** 됩니다. Pod 이 3개가 되는 순간 두 스케줄러는 이렇게 됩니다.
 
 ```mermaid
 flowchart TD
@@ -185,7 +187,7 @@ CREATE TABLE shedlock (
 - `name`: 락 식별자이자 **PK**. `@SchedulerLock(name = ...)` 의 값이 그대로 들어갑니다. PK라서 **락 이름 하나당 행은 영원히 하나**입니다. 행이 새로 쌓이지 않고 같은 행이 계속 갱신됩니다(Consumer 멱등성 글의 `processed_events` 가 처리마다 행이 쌓이는 것과 대조적입니다).
 - `lock_until`: **이 시각까지 락이 유효하다.** 다른 노드는 `lock_until <= now`일 때만 락을 빼앗을 수 있습니다. `TIMESTAMP(3)` 로 밀리초 정밀도를 둔 건 5초 주기처럼 짧은 작업에서 시각 비교가 거칠면 안 되기 때문입니다.
 - `locked_at`: 락을 마지막으로 잡은 시각. `lockAtLeastFor` 계산의 기준점입니다.
-- `locked_by`: 누가 잡았는지(호스트명/Pod명). 사람이 "지금 어느 Pod이 쥐고 있나"를 보는 디버깅 용도이기도 하지만 **기능적 역할도 있다**. 해제 SQL 의 `WHERE` 에 `locked_by` 가 들어가, 노드는 **자기가 잡은 락만 풀 수 있다**(§4). 락이 `lockAtMostFor` 만료로 다른 Pod 에 넘어간 뒤 원래 Pod 이 뒤늦게 해제를 시도해도, `locked_by` 가 안 맞아 남의 락을 풀지 못합니다.
+- `locked_by`: 누가 잡았는지(호스트명/Pod명). 사람이 "지금 어느 Pod이 쥐고 있나"를 보는 디버깅 용도이기도 하지만 **기능적 역할도 있다**. 해제 SQL 의 `WHERE` 에 `locked_by` 가 들어가, 노드는 **자기가 잡은 락만 풀 수 있다**(4절). 락이 `lockAtMostFor` 만료로 다른 Pod 에 넘어간 뒤 원래 Pod 이 뒤늦게 해제를 시도해도, `locked_by` 가 안 맞아 남의 락을 풀지 못합니다.
 
 ### 2. `ShedLockConfig`: 한 번의 설정
 
@@ -217,12 +219,12 @@ public class ShedLockConfig {
 ### 3. 두 스케줄러에 `@SchedulerLock` 한 줄
 
 ```java
-// OrderTimeoutScheduler — 60초 주기
+// OrderTimeoutScheduler: 60초 주기
 @Scheduled(fixedDelay = 60_000)
 @SchedulerLock(name = "orderTimeoutCancelJob", lockAtMostFor = "PT10M", lockAtLeastFor = "PT30S")
 public void cancelExpiredOrders() { ... }
 
-// OutboxPollingScheduler — 5초 주기
+// OutboxPollingScheduler: 5초 주기
 @Scheduled(fixedDelay = 5000)
 @SchedulerLock(name = "outboxPollingJob", lockAtMostFor = "PT5M", lockAtLeastFor = "PT4S")
 public void pollAndPublish() { ... }
@@ -268,7 +270,7 @@ UPDATE shedlock
    AND locked_by = :lockedBy;            -- ← 자기가 잡은 락만 푼다
 ```
 
-두 가지를 짚습니다. (1) `IF(...)` 는 "작업이 `lockAtLeastFor`보다 빨리 끝났으면 `locked_at + lockAtLeastFor` 시각까지 락을 유지하고, 그보다 오래 걸렸으면 지금 즉시 푼다"입니다. `lockAtLeastFor` 가 이렇게 강제됩니다. (2) `WHERE` 의 `AND locked_by = :lockedBy` 가 §1에서 말한 "자기 락만 해제" 보호입니다. 만약 이 작업이 `lockAtMostFor` 를 넘겨 락이 이미 다른 Pod으로 넘어갔다면(`locked_by` 가 바뀜), 뒤늦은 이 해제는 0행을 affect해 **남의 락을 풀지 못한다.** 해제가 행을 지우지 않고 `lock_until` 만 갱신하는 덕에 행은 영구히 재사용됩니다.
+두 가지를 짚습니다. (1) `IF(...)` 는 "작업이 `lockAtLeastFor`보다 빨리 끝났으면 `locked_at + lockAtLeastFor` 시각까지 락을 유지하고, 그보다 오래 걸렸으면 지금 즉시 푼다"입니다. `lockAtLeastFor` 가 이렇게 강제됩니다. (2) `WHERE` 의 `AND locked_by = :lockedBy` 가 1절에서 말한 "자기 락만 해제" 보호입니다. 만약 이 작업이 `lockAtMostFor` 를 넘겨 락이 이미 다른 Pod으로 넘어갔다면(`locked_by` 가 바뀜), 뒤늦은 이 해제는 0행을 affect해 **남의 락을 풀지 못한다.** 해제가 행을 지우지 않고 `lock_until` 만 갱신하는 덕에 행은 영구히 재사용됩니다.
 
 ### 5. `lockAtMostFor`와 `lockAtLeastFor`: 막는 실패가 다르다
 
@@ -284,7 +286,7 @@ UPDATE shedlock
 
 이쪽이 덜 직관적입니다. 작업이 아주 빨리 끝나는 경우를 생각해 보겠습니다. Outbox 폴링이 `PENDING` 이벤트가 하나도 없어 10ms 만에 끝났다고 하겠습니다. `lockAtLeastFor` 가 없으면 락이 10ms 만에 풀립니다. 그런데 Pod A의 5초 타이머와 Pod B의 5초 타이머는 시작 시각이 미세하게 어긋나 있습니다(시계 오차 + 스케줄링 지터). Pod A가 락을 잡아 10ms 만에 끝내고 풀었는데 50ms 뒤 Pod B의 타이머가 깨어나 보니 락이 비어 있습니다. 그래서 Pod B가 또 같은 주기 작업을 합니다. **같은 5초 구간에 두 번 실행**된 것입니다. `lockAtLeastFor` 는 "아무리 빨리 끝나도 최소 이만큼은 락을 쥐고 있어라"라고 해서 이 시계 오차 창을 덮습니다.
 
-그래서 `lockAtLeastFor` 는 **같은 주기 안의 예상 지터를 덮되 정상적인 다음 주기는 막지 않는 값**으로 잡습니다. PHASE2에서 정한 근거와 같습니다. 주문 취소는 60초 주기에 `PT30S`, Outbox 는 5초 주기에 `PT4S`. 주기 전체를 잠그는 게 아니라, 작업이 너무 빨리 끝난 직후 다른 Pod 이 뒤늦게 들어오는 시간 차이로 인한 중복 실행을 막는 값입니다.
+그래서 `lockAtLeastFor` 는 **같은 주기 안의 예상 지터를 덮되 정상적인 다음 주기는 막지 않는 값**으로 잡습니다. Phase 2에서 정한 근거와 같습니다. 주문 취소는 60초 주기에 `PT30S`, Outbox 는 5초 주기에 `PT4S`. 주기 전체를 잠그는 게 아니라, 작업이 너무 빨리 끝난 직후 다른 Pod 이 뒤늦게 들어오는 시간 차이로 인한 중복 실행을 막는 값입니다.
 
 | | 막는 실패 | 방향 | PeekCart 값 |
 | --- | --- | --- | --- |
@@ -301,7 +303,7 @@ UPDATE shedlock
 
 먼저 짚어야 할 점입니다. Phase 2는 **단일 인스턴스**입니다. Pod 이 하나면 스케줄러 중복 실행 자체가 일어날 수 없으니, ShedLock 이 막을 문제가 없습니다. 그런데도 Phase 2에 ShedLock 을 넣었습니다. `shedlock` 행을 잡고 푸는 SQL 이 5초, 60초마다 도는데 그게 막아주는 사고는 Phase 2엔 존재하지 않습니다. 순수하게 보면 **부하만 더하고 이득은 0인 코드**입니다.
 
-설계 단계에서는 이걸 명시적 선택으로 두었습니다. "Phase 2에서는 단일 인스턴스이므로 ShedLock의 분산 락 기능이 즉시 필요하지 않다. 그러나 스케줄러 구현 시점(Phase 2)에 함께 적용하여 Phase 3~4 분산 환경 전환 시 추가 작업 비용을 제거한다." 즉 **마이그레이션 비용의 선지급**입니다. 결제 타임아웃 스케줄러 글 말미의 "지금은 단일 인스턴스지만, 분산을 가정한 형태로 미리 염두에둔다"와 같은 논리입니다. 이게 정당한지는 갈립니다. (1) 적용 비용이 애너테이션 한 줄 + 설정 한 클래스로 극히 작고 (2) Phase 3 HPA 가 **확정된 로드맵**이라 "곧 반드시 필요한 것"이며 (3) 나중에 분산 사고가 터진 뒤 붙이면 이미 중복 실행된 데이터를 수습해야 합니다. **예정된 부채를 미리 갚는 쪽**에 가깝습니다. 그래도 "Phase 2 시점엔 끄고 Phase 3 overlay에서 켜는" 선택지도 있었다는 건 인정해야 합니다.
+설계 단계에서는 이걸 명시적 선택으로 두었습니다. "Phase 2에서는 단일 인스턴스이므로 ShedLock의 분산 락 기능이 즉시 필요하지 않다. 그러나 스케줄러 구현 시점(Phase 2)에 함께 적용하여 Phase 3~4 분산 환경 전환 시 추가 작업 비용을 제거한다." 즉 **마이그레이션 비용의 선지급**입니다. 결제 타임아웃 스케줄러 글 말미의 "지금은 단일 인스턴스지만, 분산을 가정한 형태로 미리 염두에 둔다"와 같은 논리입니다. 이게 정당한지는 갈립니다. (1) 적용 비용이 애너테이션 한 줄 + 설정 한 클래스로 극히 작고 (2) Phase 3 HPA 가 **확정된 로드맵**이라 "곧 반드시 필요한 것"이며 (3) 나중에 분산 사고가 터진 뒤 붙이면 이미 중복 실행된 데이터를 수습해야 합니다. **예정된 부채를 미리 갚는 쪽**에 가깝습니다. 그래도 "Phase 2 시점엔 끄고 Phase 3 overlay에서 켜는" 선택지도 있었다는 건 인정해야 합니다.
 
 ### `lockAtMostFor`는 작업 시간을 *추측*한 값이다.
 
@@ -323,7 +325,7 @@ UPDATE shedlock
 
 ---
 
-## 통합 테스트로 검증된 것 (과 못한 것)
+## 통합 테스트로 검증된 것과 못한 것
 
 `ShedLockIntegrationTest` 는 Testcontainers로 MySQL + Redis + Kafka 를 띄우고 실제 스케줄러가 도는 걸 관찰합니다. `spring.task.scheduling.pool.size=1` 로 스케줄러 스레드를 묶어두고 두 가지를 assert 합니다.
 
@@ -355,21 +357,6 @@ await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofSeconds(1))
 - **`usingDbTime()`의 시계 오차 방어를 검증하지 않는다.** 노드 간 시계를 어긋나게 만드는 시나리오가 없으니, DB 시각 사용이 실제로 무엇을 막는지는 논증으로만 남습니다.
 
 상호 배제를 통합 테스트로 확인하려면 **두 개의 독립된 락 제공자(또는 두 컨텍스트)가 같은 `shedlock` 테이블을 두고 경쟁**하게 만들어, 동시에 작업을 트리거했을 때 한쪽만 실행 카운터를 올리는 걸 assert 해야 합니다. 지금은 그게 없습니다. 정리하면, 테스트는 **"ShedLock이 배선되어 락을 기록한다"**는 검증하지만 **"경쟁 시 하나만 이긴다"**는 설계의 본질은 검증 공백으로 남아 있습니다.
-
----
-
-## 자료는 어떤 질문에 연결해서 읽을까
-
-| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |
-| --- | --- | --- |
-| `@Scheduled`는 어느 범위에서 도는가 | Spring Framework Reference, *Task Execution and Scheduling* | "문제 상황" 절 |
-| 분산 환경 스케줄러 중복 실행과 ShedLock | ShedLock 공식 README, `04-design-deep-dive.md` §9-10 | 전반 |
-| `lockAtMostFor`/`lockAtLeastFor` 의미 | ShedLock README, *Lock at most/least for* | §5 두 값 비교 |
-| `usingDbTime()`과 시계 오차 | ShedLock README, *Caveats / using database time* | §2 설정 절 |
-| DB 락 vs Redis 락 선택 | 분산 락 글(Redisson), `docs/progress/PHASE2.md` Task 2-6 | "왜 DB인가" 절 |
-| 스케줄러가 푸는 두 작업의 원형 | 결제 타임아웃 스케줄러 글, Outbox 글(폴링) | "문제 상황" 두 작업 |
-| 중복 발행을 받아내는 하위 방어선 | Consumer 멱등성 글(`processed_events`) | Outbox 중복 / lockAtMostFor 초과 |
-| HPA scale-out 실측 | `loadtest/reports/2026-04-29/REPORT.md`, 동시 주문 부하 테스트 글 | HPA 1에서 3으로 절 |
 
 ---
 
@@ -408,3 +395,18 @@ flowchart LR
 - **retention 청소 스케줄러도 ShedLock으로 묶인다.** Outbox 글(`outbox_events` 누적)과 Consumer 멱등성 글(`processed_events` 누적)에서 미뤄둔 청소 정책을 실제 구현할 때, 그 배치 삭제 스케줄러 역시 다중 Pod 에서 한 번만 돌아야 합니다. 이 글의 `@SchedulerLock` 패턴을 그대로 재사용하면 됩니다. 두 누적 테이블 청소를 한 작업 단위로 묶고 그 위에 ShedLock 을 입히는 게 자연스러운 경로입니다.
 - **상호 배제를 카오스/멀티노드 테스트로 박아야 한다.** 지금 통합 테스트는 단일 컨텍스트라 "경쟁 시 하나만 이긴다"를 증명하지 못합니다(앞 「검증」절). 분산에선 이게 필수 검증이 됩니다. Consumer 멱등성 글의 동시 중복, 실패 재처리 검증 공백과 함께, Phase 4 전에 "두 인스턴스가 같은 락을 두고 경쟁할 때 정말 하나만 실행되는가"를 검증하는 게 부채 점검 글에서 챙길 항목입니다.
 - **`lockAtMostFor`와 producer/작업 타임아웃의 결합을 명시화한다.** `.get()` 에 타임아웃이 없는 문제를 고칠 때, Outbox 폴링의 `lockAtMostFor` 와 producer `delivery.timeout.ms` 를 정합하는 상한으로 함께 잡아야 "작업이 락보다 오래 살아 중복 실행"되는 경로가 차단됩니다.
+
+---
+
+## 자료는 어떤 질문에 연결해서 읽을까
+
+| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |
+| --- | --- | --- |
+| `@Scheduled`는 어느 범위에서 도는가 | Spring Framework Reference, *Task Execution and Scheduling* | "문제 상황" 절 |
+| 분산 환경 스케줄러 중복 실행과 ShedLock | ShedLock 공식 README | 전반 |
+| `lockAtMostFor`/`lockAtLeastFor` 의미 | ShedLock README, *Lock at most/least for* | 5절 두 값 비교 |
+| `usingDbTime()`과 시계 오차 | ShedLock README, *Caveats / using database time* | 2절 설정 |
+| DB 락 vs Redis 락 선택 | 분산 락 글(Redisson) | "왜 DB인가" 절 |
+| 스케줄러가 푸는 두 작업의 원형 | 결제 타임아웃 스케줄러 글, Outbox 글(폴링) | "문제 상황" 두 작업 |
+| 중복 발행을 받아내는 하위 방어선 | Consumer 멱등성 글(`processed_events`) | Outbox 중복 / lockAtMostFor 초과 |
+| HPA scale-out 실측 | 동시 주문 부하 테스트 글 | HPA 1에서 3으로 절 |

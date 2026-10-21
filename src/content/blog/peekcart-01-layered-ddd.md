@@ -110,24 +110,6 @@ PeekCart의 현재 선택은 이 중에서 `레이어 분리`, `도메인 중심
 
 ---
 
-## 자료는 어떤 질문에 연결해서 읽을까
-
-아키텍처 자료는 이름만 외우면 금방 섞입니다. 그래서 이번 글에서는 각 자료를 "어떤 질문에 답하기 위해 읽는가"에 연결해서 봅니다.
-
-|질문|같이 읽을 자료|이 글에서 연결되는 지점|
-|---|---|---|
-|전통적인 레이어 구조는 무엇을 나누려는가?|Martin Fowler, [Presentation Domain Data Layering](https://martinfowler.com/bliki/PresentationDomainDataLayering.html)|Controller, Application, Domain, Infrastructure의 책임을 비교할 때|
-|DDD에서 경계는 왜 중요한가?|Eric Evans, [DDD Reference](https://www.domainlanguage.com/ddd/reference/), Martin Fowler, [Bounded Context](https://martinfowler.com/bliki/BoundedContext.html)|`user`, `product`, `order`, `payment`가 단순 패키지인지 서비스 후보인지 구분할 때|
-|Hexagonal은 왜 Port와 Adapter를 강조하는가?|Alistair Cockburn, [Hexagonal Architecture](https://alistair.cockburn.us/hexagonal-architecture)|`ProductPort`, Repository 인터페이스, Toss/Slack/Kafka 연동을 해석할 때|
-|Clean Architecture와 Onion은 무엇이 다른가?|Robert C. Martin, [The Clean Architecture](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html), Jeffrey Palermo, [The Onion Architecture: Part 1](https://jeffreypalermo.com/2008/07/the-onion-architecture-part-1/)|JPA Entity와 Domain Entity를 분리하지 않은 절충안을 평가할 때|
-|레이어가 아니라 유스케이스별로 묶으면 어떨까?|Jimmy Bogard, [Vertical Slice Architecture](https://www.jimmybogard.com/vertical-slice-architecture/)|`CreateOrder`, `CancelOrder`처럼 기능 흐름 중심 구조를 비교할 때|
-|CQRS와 Event Sourcing은 언제 필요한가?|Martin Fowler, [CQRS](https://martinfowler.com/bliki/CQRS.html), [Event Sourcing](https://www.martinfowler.com/eaaDev/EventSourcing.html), [What do you mean by “Event-Driven”?](https://martinfowler.com/articles/201701-event-driven.html)|서비스 분리 후 조회 모델, 이벤트, 로컬 캐시를 고민할 때|
-|모놀리스 안에서 모듈 경계를 어떻게 강제할까?|Spring, [Spring Modulith Reference](https://docs.spring.io/spring-modulith/reference/index.html), Gradle, [Java Library Plugin](https://docs.gradle.org/current/userguide/java_library_plugin.html)|패키지 분리와 Gradle 멀티모듈의 차이를 볼 때|
-|왜 처음부터 MSA로 가지 않을까?|Martin Fowler, [Monolith First](https://martinfowler.com/bliki/MonolithFirst.html), [Microservice Trade-Offs](https://martinfowler.com/articles/microservice-trade-offs.html)|첫 단계에서 모놀리스로 시작한 이유를 설명할 때|
-|모놀리스를 서비스로 나눌 때 무엇을 기준으로 삼을까?|Martin Fowler, [How to break a Monolith into Microservices](https://martinfowler.com/articles/break-monolith-into-microservices.html), AWS, [Decompose by subdomain](https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-decomposing-monoliths/decompose-subdomain.html), Microsoft Learn, [CQRS and DDD in a microservice](https://learn.microsoft.com/en-us/dotnet/architecture/microservices/microservice-ddd-cqrs-patterns/eshoponcontainers-cqrs-ddd-microservice)|Order, Payment, Notification을 독립 서비스 후보로 볼 때|
-
----
-
 ## 의존성 흐름으로 비교하기
 
 구조를 비교할 때 가장 먼저 볼 것은 "어느 코드가 어느 코드를 알아도 되는가"입니다. 아래 도식은 각 아키텍처가 통제하려는 의존 방향만 단순화해 그렸습니다.
@@ -770,3 +752,21 @@ MSA
 ```
 
 현재 PeekCart는 첫 번째 단계에 가깝습니다. MSA로 바로 가기 전에 멀티모듈 모놀리스라는 학습 지점을 두면 "서비스를 나눈다"는 말을 더 구체적으로 이해할 수 있습니다. 서비스 분리는 이미 통제하고 있던 의존성과 책임 경계를 더 강한 운영 경계로 올리는 일이기 때문입니다.
+
+---
+
+## 자료는 어떤 질문에 연결해서 읽을까
+
+아키텍처 자료는 이름만 외우면 금방 섞입니다. 그래서 이번 글에서는 각 자료를 "어떤 질문에 답하기 위해 읽는가"에 연결해서 봅니다.
+
+|질문|같이 읽을 자료|이 글에서 연결되는 지점|
+|---|---|---|
+|전통적인 레이어 구조는 무엇을 나누려는가?|Martin Fowler, [Presentation Domain Data Layering](https://martinfowler.com/bliki/PresentationDomainDataLayering.html)|Controller, Application, Domain, Infrastructure의 책임을 비교할 때|
+|DDD에서 경계는 왜 중요한가?|Eric Evans, [DDD Reference](https://www.domainlanguage.com/ddd/reference/), Martin Fowler, [Bounded Context](https://martinfowler.com/bliki/BoundedContext.html)|`user`, `product`, `order`, `payment`가 단순 패키지인지 서비스 후보인지 구분할 때|
+|Hexagonal은 왜 Port와 Adapter를 강조하는가?|Alistair Cockburn, [Hexagonal Architecture](https://alistair.cockburn.us/hexagonal-architecture)|`ProductPort`, Repository 인터페이스, Toss/Slack/Kafka 연동을 해석할 때|
+|Clean Architecture와 Onion은 무엇이 다른가?|Robert C. Martin, [The Clean Architecture](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html), Jeffrey Palermo, [The Onion Architecture: Part 1](https://jeffreypalermo.com/2008/07/the-onion-architecture-part-1/)|JPA Entity와 Domain Entity를 분리하지 않은 절충안을 평가할 때|
+|레이어가 아니라 유스케이스별로 묶으면 어떨까?|Jimmy Bogard, [Vertical Slice Architecture](https://www.jimmybogard.com/vertical-slice-architecture/)|`CreateOrder`, `CancelOrder`처럼 기능 흐름 중심 구조를 비교할 때|
+|CQRS와 Event Sourcing은 언제 필요한가?|Martin Fowler, [CQRS](https://martinfowler.com/bliki/CQRS.html), [Event Sourcing](https://www.martinfowler.com/eaaDev/EventSourcing.html), [What do you mean by “Event-Driven”?](https://martinfowler.com/articles/201701-event-driven.html)|서비스 분리 후 조회 모델, 이벤트, 로컬 캐시를 고민할 때|
+|모놀리스 안에서 모듈 경계를 어떻게 강제할까?|Spring, [Spring Modulith Reference](https://docs.spring.io/spring-modulith/reference/index.html), Gradle, [Java Library Plugin](https://docs.gradle.org/current/userguide/java_library_plugin.html)|패키지 분리와 Gradle 멀티모듈의 차이를 볼 때|
+|왜 처음부터 MSA로 가지 않을까?|Martin Fowler, [Monolith First](https://martinfowler.com/bliki/MonolithFirst.html), [Microservice Trade-Offs](https://martinfowler.com/articles/microservice-trade-offs.html)|첫 단계에서 모놀리스로 시작한 이유를 설명할 때|
+|모놀리스를 서비스로 나눌 때 무엇을 기준으로 삼을까?|Martin Fowler, [How to break a Monolith into Microservices](https://martinfowler.com/articles/break-monolith-into-microservices.html), AWS, [Decompose by subdomain](https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-decomposing-monoliths/decompose-subdomain.html), Microsoft Learn, [CQRS and DDD in a microservice](https://learn.microsoft.com/en-us/dotnet/architecture/microservices/microservice-ddd-cqrs-patterns/eshoponcontainers-cqrs-ddd-microservice)|Order, Payment, Notification을 독립 서비스 후보로 볼 때|

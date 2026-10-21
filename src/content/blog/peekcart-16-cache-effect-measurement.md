@@ -22,7 +22,9 @@ slug: "peekcart-cache-effect-measurement"
 | 상품 목록 API 응답시간 | p99 <= 100 ms | nGrinder 부하 테스트 |  
 | Redis 캐싱 개선 효과 | 캐시 미적용 대비 **TPS 3배 이상** | 캐싱 전/후 TPS 비교 (동일 GKE 환경) |  
   
-이 글은 부하 테스트 **세션 B(2026-04-09)**에서 위 요구사항을 숫자로 검증하려 한 기록입니다.  
+이 연재는 PeekCart를 네 단계로 진행했습니다. Phase 1은 단일 Spring Boot 모놀리스로 도메인을 구현한 단계, Phase 2는 캐시, 분산 락, Kafka와 Outbox로 성능과 정합성을 보강한 단계, Phase 3은 CI, Kubernetes, 관측성, 부하 테스트로 운영 환경을 검증한 단계, Phase 4는 서비스별로 나눈 MSA 단계입니다. 캐시는 Phase 2에서 붙였고, 이 글의 측정은 Phase 3에서 했습니다.  
+  
+이 글은 부하 테스트 **세션 B**(2026-04-09)에서 위 요구사항을 숫자로 검증하려 한 기록입니다. 측정 작업은 과금 범위를 나누려고 세 세션으로 쪼갰습니다. 세션 A는 로컬 준비, 세션 B는 상품 조회 캐시 TPS 측정, 세션 C는 동시 주문과 Kafka Lag 측정입니다.  
   
 결과를 먼저 보면 목표에는 못 미쳤습니다.  
   
@@ -62,7 +64,7 @@ slug: "peekcart-cache-effect-measurement"
   
 1. "캐시가 효과 있다"를 어떻게 숫자로 바꿀 수 있을까요?  
 2. 무엇을 고정하고 무엇만 바꿔야 측정이라고 부를 수 있을까요?  
-3. 왜 절대 TPS가 아니라 **개선 배율(x2.31)**을 중심으로 해석했을까요?  
+3. 왜 절대 TPS가 아니라 **개선 배율**(x2.31)을 중심으로 해석했을까요?  
 4. 캐시를 켰는데도 목표 x3에 못 미친 원인은 어디까지 좁혔을까요?  
 5. 왜 측정 결과에 환경 스펙을 같이 기록해야 할까요?  
 6. p95/p99 패널이 No data였는데 응답시간 근거는 어떻게 다뤘을까요?  
@@ -298,7 +300,7 @@ Grafana `PeekCart - API & JVM` 대시보드의 API Response Time p95/p99 패널�
 - histogram metric 미활성화  
 - PromQL label 불일치  
   
-세션 B에서는 이 문제를 클러스터에서 고치지 않았습니다. 가드레일에 따라 별도 작업으로 분리했습니다. 대신 nGrinder가 제공한 **MTT(평균 테스트시간)**를 응답시간의 간접 근거로 사용했습니다.  
+세션 B에서는 이 문제를 클러스터에서 고치지 않았습니다. 가드레일에 따라 별도 작업으로 분리했습니다. 대신 nGrinder가 제공한 **MTT**(평균 테스트시간)를 응답시간의 간접 근거로 사용했습니다.  
   
 다만 MTT에는 한계가 있습니다.  
   
@@ -403,21 +405,6 @@ flowchart LR
   
 ---  
   
-## 관련 자료를 읽는 순서  
-  
-| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |  
-| --- | --- | --- |  
-| `@ConditionalOnProperty`로 빈을 토글하는 법 | Spring Boot Reference, Condition Annotations | 단일 변수 실험 |  
-| `NoOpCacheManager`의 동작 | Spring Framework Reference, Cache Abstraction | 캐시 OFF 구현 |  
-| Cache Aside와 무효화 결정 | [상품 캐시 글](/blog/peekcart-product-cache-aside/) | 캐시 설계 배경 |  
-| p95/p99 패널이 왜 비었나 | [관측성 글](/blog/peekcart-observability-contract/) | No data와 histogram bucket |  
-| 캐시 hit rate를 메트릭으로 보는 법 | Micrometer `CacheMeterBinder` 문서 | 측정하지 못한 것 |  
-| 평균과 p95/p99의 차이 | Google SRE Book, Monitoring Percentiles | MTT 대체의 한계 |  
-| steady-state와 warm-up | nGrinder 문서 / Google SRE Book Load Testing | 부하 시나리오 |  
-| 동시 주문/HPA/2차 병목 | [동시 주문 부하 테스트 글](/blog/peekcart-order-concurrency-hpa/) | x3 미달 분석 보강 |  
-  
----  
-  
 ## Phase 4 MSA에서는 어떻게 바뀌나  
   
 세션 B는 모놀리스 한 덩어리의 처리량을 잰 것입니다. Phase 4에서 서비스가 분리되면 측정 단위도 서비스별로 쪼개집니다.  
@@ -450,6 +437,23 @@ Phase 4에 들어가기 전에는 다음 세 가지를 준비해야 합니다.
 2. `CacheMeterBinder`로 캐시 hit/miss를 수집합니다.  
 3. HikariCP wait, Redisson lock latency, Pod readiness 전이를 함께 수집해 2차 병목을 분리합니다.  
   
+---
+
+## 관련 자료를 읽는 순서  
+  
+| 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |  
+| --- | --- | --- |  
+| `@ConditionalOnProperty`로 빈을 토글하는 법 | Spring Boot Reference, Condition Annotations | 단일 변수 실험 |  
+| `NoOpCacheManager`의 동작 | Spring Framework Reference, Cache Abstraction | 캐시 OFF 구현 |  
+| Cache Aside와 무효화 결정 | [상품 캐시 글](/blog/peekcart-product-cache-aside/) | 캐시 설계 배경 |  
+| p95/p99 패널이 왜 비었나 | [관측성 글](/blog/peekcart-observability-contract/) | No data와 histogram bucket |  
+| 캐시 hit rate를 메트릭으로 보는 법 | Micrometer `CacheMeterBinder` 문서 | 측정하지 못한 것 |  
+| 평균과 p95/p99의 차이 | Google SRE Book, Monitoring Percentiles | MTT 대체의 한계 |  
+| steady-state와 warm-up | nGrinder 문서 / Google SRE Book Load Testing | 부하 시나리오 |  
+| 동시 주문/HPA/2차 병목 | [동시 주문 부하 테스트 글](/blog/peekcart-order-concurrency-hpa/) | x3 미달 분석 보강 |  
+
+---
+
 세션 B의 결론은 다음과 같습니다.  
   
 > 캐시 효과는 있었다. 평균 TPS는 x2.31 증가했다.    
