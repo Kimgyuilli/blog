@@ -9,7 +9,7 @@ draft: false
 slug: "peekcart-order-concurrency-hpa"
 ---
 
-16편(세션 B)은 상품 **조회** 워크로드였습니다. 캐시 ON/OFF만 토글해 TPS 2.31배을 측정했고 목표 3배 미달의 원인을 "CPU 병목 가설"까지만 좁힌 뒤 그대로 남겼습니다.  
+[캐시 효과 측정 글](/blog/peekcart-cache-effect-measurement/)(세션 B)은 상품 **조회** 워크로드였습니다. 캐시 ON/OFF만 토글해 TPS 2.31배을 측정했고 목표 3배 미달의 원인을 "CPU 병목 가설"까지만 좁힌 뒤 그대로 남겼습니다.  
   
 조회는 읽기만 합니다. 같은 데이터를 100명이 동시에 읽어도 서로의 결과를 망가뜨리지 않습니다.  
   
@@ -79,7 +79,7 @@ slug: "peekcart-order-concurrency-hpa"
 [사고]   101개 이상 판매 → 오버셀링 → 팔 수 없는 물건을 팔아버림  
 ```  
   
-오버셀링은 "성능이 좀 느린" 수준의 문제가 아닙니다. 이미 결제된 주문을 취소해야 하고 고객 신뢰를 잃는 **데이터 정합성 사고**입니다. Phase 2에서 분산 락과 낙관적 락을 이중으로 둔 이유가 바로 이것을 막기 위해서였습니다(9편).  
+오버셀링은 "성능이 좀 느린" 수준의 문제가 아닙니다. 이미 결제된 주문을 취소해야 하고 고객 신뢰를 잃는 **데이터 정합성 사고**입니다. Phase 2에서 분산 락과 낙관적 락을 이중으로 둔 이유가 바로 이것을 막기 위해서였습니다([분산 락 글](/blog/peekcart-inventory-lock-defense/)).  
   
 문제는 이중 방어선이 **실제 동시 부하에서도 버티는지**는 단위 테스트로 증명되지 않는다는 점입니다. `InventoryConcurrencyTest`는 스레드 몇십 개로 경합을 흉내 내지만 1,000 VUser가 실제 GKE 클러스터의 단일 Pod에 HTTP로 동시에 요청하는 상황과는 다릅니다. CPU 포화, Pod readiness 전이, 커넥션 풀 고갈 같은 운영 변수는 통합 테스트에 없습니다.  
   
@@ -107,7 +107,7 @@ slug: "peekcart-order-concurrency-hpa"
 | 시나리오 2   | 1,000 VUser 동시 주문 정합성            |
 | 시나리오 3   | Kafka Consumer Lag               |
 | Task 3-5 | HPA 1에서 3으로 런타임 검증                   |
-| D-002    | 세션 B의 3배 미달 원인(CPU 병목) 보강 데이터 수집 |
+| 병목 분석    | 세션 B의 3배 미달 원인(CPU 병목) 보강 데이터 수집 |
   
 ---  
   
@@ -196,7 +196,7 @@ CASE WHEN SUM(oi.quantity) <= 1000 THEN 'OK' ELSE 'OVERSELL' END
   
 ## 두 번 측정한 이유: Run 1 vs Run 2  
   
-세션 C는 동일 시나리오를 **두 가지 출발 조건**으로 측정했습니다. 이 분할이 D-002(병목 분석)의 핵심 도구입니다.  
+세션 C는 동일 시나리오를 **두 가지 출발 조건**으로 측정했습니다. 이 분할이 병목 분석의 핵심 도구입니다.  
   
 | | Run 1 | Run 2 |  
 | --- | --- | --- |  
@@ -346,9 +346,9 @@ HPA는 **지속적인 부하 상승**에는 좋은 답이지만 **순간 spike**
   
 ---  
   
-## D-002~1차 병목은 CPU, 2차 병목은?  
+## 1차 병목은 CPU, 2차 병목은?  
   
-세션 B는 3배 미달의 원인을 "CPU 병목 가설"로 남겼습니다(16편). 세션 C는 이를 데이터로 보강했습니다.  
+세션 B는 3배 미달의 원인을 "CPU 병목 가설"로 남겼습니다(캐시 효과 측정 글). 세션 C는 이를 데이터로 보강했습니다.  
   
 ### 1차 병목: CPU saturation (확증)  
   
@@ -368,7 +368,7 @@ CPU 제약을 완화했더니 병목이 뒤로 이동했습니다. Run 2에서 l
   
 여기서 후보가 둘로 갈립니다.  
   
-- **(a) DB 커넥션 풀 / Redis 분산 락 contention**: 깊은 단계(cart insert, 재고 차감)까지 도달한 요청들이 자원 경합으로 오래 대기함. D-002 원본 가설에 부합.  
+- **(a) DB 커넥션 풀 / Redis 분산 락 contention**: 깊은 단계(cart insert, 재고 차감)까지 도달한 요청들이 자원 경합으로 오래 대기함. 세션 B의 원래 가설에 부합.  
 - **(b) Pod readiness / 연결 안정성**: `connection refused`/`dial timeout`이 다수. Pod가 overload되면 readinessProbe가 일시 fail 해 endpoint에서 빠지는 패턴 가능.  
   
 세션 C만으로는 둘을 분리하지 못합니다. 분리하려면 HikariCP wait time, Redisson lock acquisition latency, Pod readiness 전이 로그를 **동시에** 수집해야 하는데 이는 본 세션 범위 밖입니다. 그래서 결론은 "2차 병목 후보 2종으로 좁힘, 단정 보류"로 남겼습니다. 세션 B가 3배 미달을 튜닝으로 덮지 않았던 것과 같은 규율입니다.  
@@ -398,7 +398,7 @@ kafka_consumer_fetch_manager_records_lag_max{
 - kafka-exporter를 배포하지 않아 `kafka_consumergroup_lag`(exporter 패턴)은 없었습니다. 대신 **Micrometer-Kafka client metric** `kafka_consumer_fetch_manager_records_lag_max`를 썼습니다.  
 - consumer group 정보가 별도 label이 아니라 `client_id`에 임베디드돼 있었습니다(`consumer-order-svc-payment-completed-group-4` 식). 그래서 계획서의 placeholder PromQL을 당일 실제 metric/label로 치환해야 했습니다. 대시보드 legend `{{kafka_consumer_group_id}}`는 해당 label 부재로 빈 문자열로 렌더됐습니다(별도 수정 안건).  
   
-계획과 실제 metric이 다른 것은 흔합니다. 측정 당일 `/actuator/prometheus`로 실제 노출되는 이름을 확인하는 절차를 세션 C가 한 번 더 검증한 셈입니다.  
+계획과 실제 metric이 다른 것은 흔합니다. 측정 당일 `/actuator/prometheus`로 실제 노출되는 이름을 확인하는 절차를 세션 C가 한 번 더 검증했습니다.  
   
 ---  
   
@@ -439,8 +439,8 @@ kafka_consumer_fetch_manager_records_lag_max{
   
 | 질문 | 같이 읽을 자료 | 이 글에서 연결되는 지점 |  
 | --- | --- | --- |  
-| 조회 부하는 어떻게 쟀나 | 학습 기록 16편 (세션 B) | 세션 분할 / CPU 병목 가설 |  
-| 오버셀링을 막는 이중 방어 | 학습 기록 9편 | 정합성을 지킨 것의 정체 |  
+| 조회 부하는 어떻게 쟀나 | [캐시 효과 측정 글](/blog/peekcart-cache-effect-measurement/) (세션 B) | 세션 분할 / CPU 병목 가설 |  
+| 오버셀링을 막는 이중 방어 | [분산 락 글](/blog/peekcart-inventory-lock-defense/) | 정합성을 지킨 것의 정체 |  
 | 단일 행 차감에 분산 락이 과방어인가 | 학습 기록 09a편 | `@Version` vs 분산 락 |  
 | 트랜잭션 전파가 락 순서를 바꾸는 원리 | Spring `@Transactional` Propagation 문서 | 정합성을 지킨 것의 정체 |  
 | 작은 인프라 / 큰 부하의 의미 | Google SRE Book, Load Testing | throughput 미달 해석 |  
@@ -478,7 +478,7 @@ flowchart LR
 Phase 4 진입 전 준비해야 할 것은 명확합니다.  
   
 1. 동시 주문 정합성 검증을 Order/Inventory **서비스 경계**에 맞춰 다시 설계합니다.  
-2. 2차 병목 분리를 위해 HikariCP wait / 분산 락 latency / Pod readiness 전이를 기본 측정 세트에 넣습니다(D-002 후속).  
+2. 2차 병목 분리를 위해 HikariCP wait / 분산 락 latency / Pod readiness 전이를 기본 측정 세트에 넣습니다(병목 분석 후속).  
 3. Saga 기반 보상 흐름의 정합성을, 단일 DB `@Version`을 대체하는 새 기준으로 검증합니다.  
   
 세션 C의 결론은 다음과 같습니다.  

@@ -152,7 +152,7 @@ public class NotificationCommandService {
 }
 ```
 
-UseCase는 두 줄입니다. 알림 엔티티를 저장하고 Slack으로 메시지를 보냅니다. 4편/5편에서 본 `OrderCommandService.createOrder()`나 `PaymentCommandService.confirmPayment()`와 비교하면 훨씬 단순합니다.
+UseCase는 두 줄입니다. 알림 엔티티를 저장하고 Slack으로 메시지를 보냅니다. [주문 생성](/blog/peekcart-order-transaction-flow/)과 [결제 실패](/blog/peekcart-payment-failure-flow/) 글에서 본 `OrderCommandService.createOrder()`나 `PaymentCommandService.confirmPayment()`와 비교하면 훨씬 단순합니다.
 
 여기서 짚을 점은 의존하는 대상이 `SlackPort` 인터페이스라는 것입니다. 구현체인 `SlackNotificationClient`가 아닙니다. 이 의존 역전이 의도하는 효과는 두 가지입니다.
 
@@ -300,7 +300,7 @@ public void handleOrderCreated(OrderCreatedEvent event) {
 
 **`@Transactional(propagation = REQUIRES_NEW)`**: 리스너가 자기만의 새 트랜잭션을 엽니다. `AFTER_COMMIT` 시점에는 원본 트랜잭션이 이미 커밋되어 종료된 상태이므로, 리스너에서 DB 쓰기를 하려면 어떤 식으로든 새 트랜잭션이 필요합니다. `REQUIRED`만 붙여도 새 트랜잭션이 열리는 경우가 있지만 `REQUIRES_NEW`는 "원본과 분리된 독립 트랜잭션 경계"를 명시적으로 보장합니다. 알림 저장의 성공/실패가 원본 흐름의 후처리와 섞이지 않게 하려는 의도입니다.
 
-이 조합은 4편/5편의 `Order`나 `Payment`가 자기 도메인의 모든 일을 한 트랜잭션 안에 묶었던 것과 정확히 반대입니다. 알림은 "주문 트랜잭션과 분리된 별개의 트랜잭션"으로 처리됩니다. 알림 저장이 실패해도 주문은 살아남습니다.
+이 조합은 주문 생성과 결제 실패 글의 `Order`나 `Payment`가 자기 도메인의 모든 일을 한 트랜잭션 안에 묶었던 것과 정확히 반대입니다. 알림은 "주문 트랜잭션과 분리된 별개의 트랜잭션"으로 처리됩니다. 알림 저장이 실패해도 주문은 살아남습니다.
 
 ### 그런데 왜 부족했는가
 
@@ -399,7 +399,7 @@ PHASE2.md의 E2E 통합 테스트가 검증하는 시나리오 중 알림과 직
 
 ### Slack 실패가 정말 안전한가
 
-`SlackNotificationClient.send()`에서 예외를 전파하지 않는 결정은 "Slack은 보조 채널"이라는 가정에 기댑니다. 그런데 현재 운영에서는 `OutboxPollingService`가 발행 5회 실패 시, 그리고 Kafka Consumer가 DLQ에 메시지를 보낼 때 모두 Slack으로 알림을 보냅니다. 즉, 운영자가 비동기 파이프라인 장애를 감지하는 1차 경로가 Slack인 셈입니다.
+`SlackNotificationClient.send()`에서 예외를 전파하지 않는 결정은 "Slack은 보조 채널"이라는 가정에 기댑니다. 그런데 현재 운영에서는 `OutboxPollingService`가 발행 5회 실패 시, 그리고 Kafka Consumer가 DLQ에 메시지를 보낼 때 모두 Slack으로 알림을 보냅니다. 즉, 운영자가 비동기 파이프라인 장애를 감지하는 1차 경로는 Slack입니다.
 
 만약 (a) Outbox가 망가지고 (b) Slack도 동시에 다운되면, 운영자는 두 알림을 모두 받지 못합니다. 현재는 Grafana Alert이 백업 채널이지만 "Slack 발송 실패 자체를 메트릭으로 노출하고 별도 알람 룰을 두는" 안전망은 아직 없습니다. Phase 4에서 운영 알림 채널을 다중화할 때 검토할 항목입니다.
 

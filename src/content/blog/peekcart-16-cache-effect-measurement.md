@@ -72,7 +72,7 @@ slug: "peekcart-cache-effect-measurement"
   
 ## 문제 상황: 캐시는 깔았지만 효과는 아직 추정이었다  
   
-Phase 2의 첫 작업으로 상품 목록/상세 조회를 Redis Cache Aside 뒤로 옮겼습니다(8편). 로컬에서는 빨라졌다는 느낌이 있었지만 느낌은 포트폴리오의 근거가 되기 어렵습니다.  
+Phase 2의 첫 작업으로 상품 목록/상세 조회를 Redis Cache Aside 뒤로 옮겼습니다([상품 캐시 글](/blog/peekcart-product-cache-aside/)). 로컬에서는 빨라졌다는 느낌이 있었지만 느낌은 포트폴리오의 근거가 되기 어렵습니다.  
   
 요구사항은 명확했습니다.  
   
@@ -409,12 +409,12 @@ flowchart LR
 | --- | --- | --- |  
 | `@ConditionalOnProperty`로 빈을 토글하는 법 | Spring Boot Reference, Condition Annotations | 단일 변수 실험 |  
 | `NoOpCacheManager`의 동작 | Spring Framework Reference, Cache Abstraction | 캐시 OFF 구현 |  
-| Cache Aside와 무효화 결정 | 학습 기록 8편 | 캐시 설계 배경 |  
-| p95/p99 패널이 왜 비었나 | 학습 기록 15편 | No data와 histogram bucket |  
+| Cache Aside와 무효화 결정 | [상품 캐시 글](/blog/peekcart-product-cache-aside/) | 캐시 설계 배경 |  
+| p95/p99 패널이 왜 비었나 | [관측성 글](/blog/peekcart-observability-contract/) | No data와 histogram bucket |  
 | 캐시 적중률을 메트릭으로 보는 법 | Micrometer `CacheMeterBinder` 문서 | 측정하지 못한 것 |  
 | 평균과 p95/p99의 차이 | Google SRE Book, Monitoring Percentiles | MTT 대체의 한계 |  
 | steady-state와 warm-up | nGrinder 문서 / Google SRE Book Load Testing | 부하 시나리오 |  
-| 동시 주문/HPA/2차 병목 | 학습 기록 17편(예정) | x3 미달 분석 보강 |  
+| 동시 주문/HPA/2차 병목 | [동시 주문 부하 테스트 글](/blog/peekcart-order-concurrency-hpa/) | x3 미달 분석 보강 |  
   
 ---  
   

@@ -94,7 +94,7 @@ flowchart LR
 발행은 트랜잭션 바깥으로 분리합니다. 별도 스케줄러가 `PENDING` 행을 주기적으로 읽어 Kafka 에 보내고 성공하면 그 행을 `PUBLISHED` 로 바꿉니다. 여기서 얻는 것과 내놓는 것이 갈립니다.
 
 - **얻는 것**: 이벤트는 일단 DB 에 안전하게 적혀 있으므로 발행이 한 번 실패해도 다음 폴링이 다시 시도합니다. 프로세스가 죽어도 행은 `PENDING`으로 남아 있다가 재기동 후 발행됩니다. **DB 커밋과 Kafka 발행 사이의 dual-write 창에서 이벤트가 사라지는 문제를 피한다.**
-- **내놓는 것**: (a) 발행이 폴링 주기만큼 **지연**됩니다(5초 주기 + 직전 폴링 처리 시간). (b) "발행은 성공했는데 `PUBLISHED` 표시 직전에 죽는" 창이 있어, 같은 이벤트가 **두 번 발행될 수 있다**(at-least-once). 이 중복은 Consumer 멱등성으로 받아야 하고 그게 11편 주제입니다.
+- **내놓는 것**: (a) 발행이 폴링 주기만큼 **지연**됩니다(5초 주기 + 직전 폴링 처리 시간). (b) "발행은 성공했는데 `PUBLISHED` 표시 직전에 죽는" 창이 있어, 같은 이벤트가 **두 번 발행될 수 있다**(at-least-once). 이 중복은 Consumer 멱등성으로 받아야 하고 그게 [다음 글](/blog/peekcart-consumer-idempotency-dlq/)의 주제입니다.
 
 **왜 polling인가. Debezium CDC와의 갈림길**
 
@@ -179,7 +179,7 @@ public class OutboxEvent {
 }
 ```
 
-`event_id` 의 `UNIQUE` 제약과 `aggregate_id`(파티션 키)는 11편(Consumer 멱등성)과 파티션 순서 보장에서 다시 등장합니다. 지금 단계에서 기억할 것은 `idx_outbox_status_created` 인덱스입니다. 폴링이 매번 `status='PENDING' ORDER BY created_at` 으로 조회하므로 이 인덱스가 없으면 테이블이 커질수록 폴링이 풀스캔이 됩니다. 한 가지 덧붙이면, 정렬이 `created_at ASC` 단독이라 `created_at`(마이크로초)이 동률인 두 이벤트의 상대 순서는 비결정적입니다. 같은 aggregate 에 거의 동시에 쌓인 이벤트의 파티션 내 순서를 엄밀히 보장하려면 `ORDER BY created_at, id` 처럼 `id` 를 tiebreaker로 더해야 합니다(현재는 미적용, 동일 트랜잭션당 이벤트가 대개 1건이라 충돌 빈도가 낮습니다).
+`event_id` 의 `UNIQUE` 제약과 `aggregate_id`(파티션 키)는 Consumer 멱등성 글과 파티션 순서 보장에서 다시 등장합니다. 지금 단계에서 기억할 것은 `idx_outbox_status_created` 인덱스입니다. 폴링이 매번 `status='PENDING' ORDER BY created_at` 으로 조회하므로 이 인덱스가 없으면 테이블이 커질수록 폴링이 풀스캔이 됩니다. 한 가지 덧붙이면, 정렬이 `created_at ASC` 단독이라 `created_at`(마이크로초)이 동률인 두 이벤트의 상대 순서는 비결정적입니다. 같은 aggregate 에 거의 동시에 쌓인 이벤트의 파티션 내 순서를 엄밀히 보장하려면 `ORDER BY created_at, id` 처럼 `id` 를 tiebreaker로 더해야 합니다(현재는 미적용, 동일 트랜잭션당 이벤트가 대개 1건이라 충돌 빈도가 낮습니다).
 
 ### 2. Publisher: 이벤트 저장이 도메인 트랜잭션에 합류한다
 
@@ -228,7 +228,7 @@ public class OrderCommandService {
 
 ### 3. Polling Publisher. 트랜잭션 바깥에서 발행하고 표시한다
 
-저장과 발행을 분리했으니, 발행은 별도 스케줄러가 맡습니다. `OutboxPollingScheduler` 는 5초마다 깨어나고 ShedLock으로 다중 Pod 중복 실행을 막습니다(12편 주제).
+저장과 발행을 분리했으니, 발행은 별도 스케줄러가 맡습니다. `OutboxPollingScheduler` 는 5초마다 깨어나고 ShedLock으로 다중 Pod 중복 실행을 막습니다(ShedLock 글에서 다룹니다).
 
 ```java
 @Component
@@ -280,13 +280,13 @@ public void pollAndPublish() {
 
 ### at-least-once. 중복 발행은 버그가 아니라 설계의 일부다
 
-위에서 본 "발행 성공 후 `markPublished` 직전 다운" 창 때문에, 같은 이벤트가 두 번 나갈 수 있습니다. 이건 Outbox + polling 조합의 **불가피한 성질**이지 결함이 아닙니다. DB 쓰기와 Kafka 발행을 하나의 원자적 커밋으로 묶으려면 2PC 같은 분산 트랜잭션이 필요한데, 그 비용이 중복을 Consumer 에서 흡수하는 비용보다 훨씬 큽니다. 멱등 Consumer로 중복을 걸러 effectively-once 에 도달하는 편이 실용적입니다. 그래서 "Producer는 최소 한 번 보낸다, Consumer가 중복을 거른다"로 책임을 나눴습니다. **이 글이 막은 건 유실이고, 중복 방어는 11편(`processed_events` 멱등성)이 받는다.**
+위에서 본 "발행 성공 후 `markPublished` 직전 다운" 창 때문에, 같은 이벤트가 두 번 나갈 수 있습니다. 이건 Outbox + polling 조합의 **불가피한 성질**이지 결함이 아닙니다. DB 쓰기와 Kafka 발행을 하나의 원자적 커밋으로 묶으려면 2PC 같은 분산 트랜잭션이 필요한데, 그 비용이 중복을 Consumer 에서 흡수하는 비용보다 훨씬 큽니다. 멱등 Consumer로 중복을 걸러 effectively-once 에 도달하는 편이 실용적입니다. 그래서 "Producer는 최소 한 번 보낸다, Consumer가 중복을 거른다"로 책임을 나눴습니다. **이 글이 막은 건 유실이고, 중복 방어는 다음 글의 `processed_events` 멱등성이 받는다.**
 
 ### `FAILED`가 되면 자동 복구가 멈춘다. 발행 실패와 처리 실패는 다른 문제
 
 `retry_count` 가 5에 도달하면 `markFailed()` 로 `FAILED` 전이하고 Slack으로 알립니다. 그런데 `FAILED` 는 더 이상 `PENDING` 이 아니므로 **폴링 대상에서 빠진다.** 즉 자동 재시도가 거기서 끝나고 운영자의 수동 개입을 기다립니다. 여기서 Phase 4 전 꼭 구분해야 할 두 실패가 갈립니다.
 
-| | Outbox `FAILED` | DLQ (11편) |
+| | Outbox `FAILED` | DLQ (다음 글) |
 | --- | --- | --- |
 | 발생 단계 | **Producer** 발행 실패 | **Consumer** 처리 실패 |
 | 원인 | Kafka 브로커 장애, 네트워크 단절 | 비즈니스 로직 에러, 데이터 정합성 위반 |
@@ -407,13 +407,13 @@ flowchart LR
 
 **바뀌는 것**
 
-- **`outbox_events`가 서비스별로 분산된다.** 단일 테이블이 N개가 되고 폴러도 N개가 됩니다. ShedLock 락 이름도 서비스별로 분리돼야 합니다(12편). 한 서비스의 폴러 장애가 그 서비스 이벤트만 지연시키도록 격리되는 건 장점입니다.
+- **`outbox_events`가 서비스별로 분산된다.** 단일 테이블이 N개가 되고 폴러도 N개가 됩니다. ShedLock 락 이름도 서비스별로 분리돼야 합니다(ShedLock 글). 한 서비스의 폴러 장애가 그 서비스 이벤트만 지연시키도록 격리되는 건 장점입니다.
 - **Choreography Saga의 발행 지점이 된다.** `payment.failed`, `order.cancelled`, `inventory restore` 로 이어지는 보상 흐름(§8-5)에서, 각 단계의 이벤트가 바로 이 outbox 를 거쳐 나갑니다. 지금 모놀리스에서 한 트랜잭션 안의 메서드 호출로 처리되는 보상이, Phase 4에선 outbox 발행, Kafka, 다른 서비스 소비로 나뉩니다. **Outbox가 Saga의 신뢰성 토대**가 되는 것입니다.
-- **trace context가 cross-service로 확장된다.** ADR-0008이 모놀리스 단계에서 미리 깔아둔 `trace_id`/`user_id` 헤더 전파는, Phase 4에서 W3C `traceparent` 주입, 추출과 OpenTelemetry 계측을 붙일 수 있는 기반이 됩니다. "HTTP 요청, outbox 저장, 발행, 다른 서비스 소비, DLQ"를 단일 traceId로 묶기 위한 선결 작업 일부가 끝나 있습니다.
+- **trace context가 cross-service로 확장된다.** 모놀리스 단계에서 미리 깔아둔 `trace_id`/`user_id` 헤더 전파는, Phase 4에서 W3C `traceparent` 주입, 추출과 OpenTelemetry 계측을 붙일 수 있는 기반이 됩니다. "HTTP 요청, outbox 저장, 발행, 다른 서비스 소비, DLQ"를 단일 traceId로 묶기 위한 선결 작업 일부가 끝나 있습니다.
 - **CDC 전환이 현실적 선택지가 된다.** 서비스가 많아지고 발행 지연이 누적되면, 서비스별 polling 을 Debezium Outbox Event Router로 갈아탈 수 있습니다. payload 스키마(`KafkaEventEnvelope`)와 outbox 컬럼을 안 바꾸고 발행 메커니즘만 교체하도록 설계해둔 게 여기서 도움이 됩니다.
 
 **그래서 Phase 4 진입 전 짚을 점**
 
-- **`FAILED`/DLQ 구분이 운영의 기본 어휘가 된다.** 서비스가 늘면 "어느 단계에서 멈췄나"를 빠르게 가르는 게 장애 대응 속도를 좌우합니다. Producer 발행 실패(`FAILED`)와 Consumer 처리 실패(DLQ)를 같은 Slack 채널에 섞어 보내는 현재 구조(L-004)는 그 전에 분리하는 게 좋습니다.
+- **`FAILED`/DLQ 구분이 운영의 기본 어휘가 된다.** 서비스가 늘면 "어느 단계에서 멈췄나"를 빠르게 가르는 게 장애 대응 속도를 좌우합니다. Producer 발행 실패(`FAILED`)와 Consumer 처리 실패(DLQ)를 같은 Slack 채널에 섞어 보내는 현재 구조는 그 전에 분리하는 게 좋습니다.
 - **`outbox_events` 청소 정책**을 서비스별로 정해야 합니다. 모놀리스에선 미뤄도 됐지만 서비스마다 쌓이는 `PUBLISHED` 행은 폴링 비용으로 직결됩니다.
 - **유실/중복을 장애 주입으로 증명하는 테스트**가 Phase 4에선 선택이 아니라 필수가 됩니다. 지금은 정상 경로만 검증하지만 분산 환경에선 "브로커를 끊었다 살리면 PENDING이 발행되는가", "중복 창에서 같은 이벤트가 두 번 나가도 Consumer가 한 번만 처리하는가"를 카오스 테스트로 확인해야 합니다. 그 절반(Consumer 멱등성)이 바로 다음 11편입니다.

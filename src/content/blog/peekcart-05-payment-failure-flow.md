@@ -9,7 +9,7 @@ draft: false
 slug: "peekcart-payment-failure-flow"
 ---
 
-[4편](/blog/peekcart-order-transaction-flow/)에서는 주문 생성 트랜잭션의 다섯 단계와 세 가지 취소 경로를 학습했습니다. 그중 결제 실패 취소(경로 2)는 "Kafka Consumer가 `payment.failed` 이벤트를 소비해 주문을 취소한다"고만 언급했습니다. 이번 글에서는 그 이벤트가 어떻게 만들어지는지, 즉 Payment 도메인 쪽을 봅니다.
+[주문 생성 트랜잭션 글](/blog/peekcart-order-transaction-flow/)에서는 주문 생성 트랜잭션의 다섯 단계와 세 가지 취소 경로를 학습했습니다. 그중 결제 실패 취소(경로 2)는 "Kafka Consumer가 `payment.failed` 이벤트를 소비해 주문을 취소한다"고만 언급했습니다. 이번 글에서는 그 이벤트가 어떻게 만들어지는지, 즉 Payment 도메인 쪽을 봅니다.
 
 결제는 외부 시스템(Toss Payments)과의 경계에 있습니다. 주문이나 재고처럼 우리가 완전히 통제할 수 있는 도메인이 아닙니다. 외부 API가 실패할 수 있고 응답이 늦을 수 있고 같은 이벤트를 두 번 보낼 수도 있습니다. 그래서 Payment 도메인의 설계에서 반복적으로 등장하는 질문은 "실패했을 때 어떻게 되는가"와 "중복이 들어오면 어떻게 되는가"입니다.
 
@@ -236,7 +236,7 @@ public void validateAmount(long requestedAmount) {
 }
 ```
 
-4편에서 Order는 범용 `transitionTo()`와 특화된 `cancel()`을 함께 제공했습니다. Payment는 `approve()`와 `fail()`이라는 도메인 언어에 가까운 메서드만 있습니다. 전이가 2개뿐이므로 범용 메서드가 필요하지 않습니다. Order에서 개선 후보로 남겨둔 "도메인 언어화"가 Payment에서는 이미 적용된 셈입니다.
+4편에서 Order는 범용 `transitionTo()`와 특화된 `cancel()`을 함께 제공했습니다. Payment는 `approve()`와 `fail()`이라는 도메인 언어에 가까운 메서드만 있습니다. 전이가 2개뿐이므로 범용 메서드가 필요하지 않습니다. Order에서 개선 후보로 남겨둔 "도메인 언어화"가 Payment에서는 이미 적용되어 있습니다.
 
 `validateAmount()`는 클라이언트가 보낸 금액과 서버에 저장된 금액이 일치하는지 확인합니다. 이 검증은 클라이언트가 금액을 조작해서 더 적은 금액으로 결제를 승인받는 것을 방지하기 위한 것입니다. 금액 검증은 Toss API 호출 전에 서버 측에서 먼저 수행합니다.
 

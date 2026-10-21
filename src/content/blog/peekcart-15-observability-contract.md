@@ -23,7 +23,7 @@ slug: "peekcart-observability-contract"
 | histogram bucket | 응답시간을 구간(le=0.1s, 0.5s 등)별 누적 카운트로 쪼갠 시계열. p95/p99는 이 bucket이 있어야 *계산*된다 |
 | Prometheus | 메트릭을 주기적으로 긁어와(scrape) 시계열 DB에 저장하고 PromQL로 질의하게 해 주는 도구 |
 | scrape | Prometheus가 대상의 `/metrics`(여기선 `/actuator/prometheus`)를 주기적으로 HTTP GET 해 수치를 가져오는 것 |
-| ServiceMonitor | Prometheus Operator의 CRD. "이 Service를 이 주기와 경로로 scrape 하라"를 K8s 리소스로 선언(14편) |
+| ServiceMonitor | Prometheus Operator의 CRD. "이 Service를 이 주기와 경로로 scrape 하라"를 K8s 리소스로 선언(Kustomize 글) |
 | Grafana | Prometheus의 시계열을 *그래프*로 그리고 *임계 초과 시 알림(Alert)*을 발화하는 시각화/경보 도구 |
 | PromQL | Prometheus 질의 언어. `histogram_quantile(0.95, ...)`처럼 시계열을 가공해 p95 등을 계산 |
 | MDC | Mapped Diagnostic Context. SLF4J가 스레드마다 들고 다니는 키-값 가방. 로그 한 줄마다 `traceId`를 적어 두는 데 쓴다 |
@@ -58,7 +58,7 @@ slug: "peekcart-observability-contract"
   
 ## 문제 상황: 수집은 됐는데 그래프가 비어 있다  
   
-Phase 3에서 kube-prometheus-stack을 띄우고(14편) 대시보드를 붙였을 때, 대부분의 패널은 정상이었습니다. 그런데 **API Response Time의 p95/p99 패널만 "No data"** 였습니다. 직관과 어긋납니다. Prometheus를 열어 보면 `http_server_requests_seconds_count`, `_sum`은 분명히 들어와 있었습니다. scrape 대상이 막힌 것도, HTTP 메트릭 전체가 안 들어온 것도 아닙니다.  
+Phase 3에서 kube-prometheus-stack을 띄우고([Kustomize 글](/blog/peekcart-kustomize-base-overlays-gke/)) 대시보드를 붙였을 때, 대부분의 패널은 정상이었습니다. 그런데 **API Response Time의 p95/p99 패널만 "No data"** 였습니다. 직관과 어긋납니다. Prometheus를 열어 보면 `http_server_requests_seconds_count`, `_sum`은 분명히 들어와 있었습니다. scrape 대상이 막힌 것도, HTTP 메트릭 전체가 안 들어온 것도 아닙니다.  
   
 원인은 **메트릭의 *타입***이었습니다. p95/p99는 "95%의 요청이 몇 초 안에 끝났나"인데, 이것을 계산하려면 응답시간을 구간별로 쪼갠 **histogram bucket**(`..._seconds_bucket{le="0.1"}`, `le="0.5"` 등)이 있어야 합니다. PromQL `histogram_quantile()`은 이 bucket을 입력으로 받아 분위수를 *역산*합니다. 그런데 우리 앱은 `http_server_requests_seconds`를 **bucket 없는 `summary` 타입**으로만 내보내고 있었습니다. 입력 시계열 자체가 없으니 `histogram_quantile()`은 NaN을 반환하고 Grafana는 그것을 "No data"로 표시합니다.  
   
@@ -177,7 +177,7 @@ if (auth != null && auth.getPrincipal() instanceof Long userId) {
 }  
 ```  
   
-이러면 그 요청이 (필터 통과 이후) 동기적으로 찍는 로그 줄에 같은 `traceId`가 붙어, 로그를 `traceId`로 grep 하면 한 요청의 처리 흐름이 모입니다. **문제는 비동기 경계다.** PeekCart의 핵심 흐름(주문, 결제, 알림)은 Outbox + Kafka로 도메인을 건넙니다(10, 11편). 그런데:  
+이러면 그 요청이 (필터 통과 이후) 동기적으로 찍는 로그 줄에 같은 `traceId`가 붙어, 로그를 `traceId`로 grep 하면 한 요청의 처리 흐름이 모입니다. **문제는 비동기 경계다.** PeekCart의 핵심 흐름(주문, 결제, 알림)은 Outbox + Kafka로 도메인을 건넙니다([Outbox](/blog/peekcart-transactional-outbox/), [Consumer 멱등성](/blog/peekcart-consumer-idempotency-dlq/) 글). 그런데:  
   
 1. `OutboxPollingService`는 `@Scheduled` *별도 스레드*에서 실행됩니다. 그 스레드의 MDC는 비어 있습니다(`MDC.get("traceId")`는 항상 null).  
 2. Consumer가 메시지를 받을 땐 원본 HTTP 요청의 MDC가 이미 사라진 지 오래됐습니다.  
@@ -307,9 +307,9 @@ Phase 3 통합 테스트엔 Prometheus가 없습니다(Testcontainers로 MySQL/R
   
 지금 메트릭은 HTTP(`http.server.requests`)와 JVM 중심이고 **비즈니스/파이프라인 내부 메트릭이 비어 있다.** 학습 부채 후보로 이미 등록된 것만:  
   
-- **캐시 적중률 부재**: `RedisCacheManager`가 `CacheMeterBinder`에 안 붙어 `cache.gets{result=hit/miss}`가 없습니다. 캐시 효과를 부하 TPS로 *간접* 측정할 뿐 운영 중 실시간 적중률이 안 보입니다(8편).  
-- **Outbox 발행 메트릭 부재**: `OutboxPollingService`에 Micrometer 계측이 전무해 PENDING backlog 크기, 발행 지연, 실패율이 메트릭으로 안 나옵니다. 운영자의 유일한 신호는 MAX_RETRY 소진 시 Slack 단발 알림뿐(10편).  
-- **Slack 발송 가시성 부재**: 운영 알림 3종이 같은 Slack Webhook에 의존하는데 `SlackNotificationClient.send()`가 예외를 `log.error`로만 기록하고 전파하지 않아 발송 실패가 메트릭/알람으로 안 뜹니다(6편).  
+- **캐시 적중률 부재**: `RedisCacheManager`가 `CacheMeterBinder`에 안 붙어 `cache.gets{result=hit/miss}`가 없습니다. 캐시 효과를 부하 TPS로 *간접* 측정할 뿐 운영 중 실시간 적중률이 안 보입니다(상품 캐시 글).  
+- **Outbox 발행 메트릭 부재**: `OutboxPollingService`에 Micrometer 계측이 전무해 PENDING backlog 크기, 발행 지연, 실패율이 메트릭으로 안 나옵니다. 운영자의 유일한 신호는 MAX_RETRY 소진 시 Slack 단발 알림뿐(Outbox 글).  
+- **Slack 발송 가시성 부재**: 운영 알림 3종이 같은 Slack Webhook에 의존하는데 `SlackNotificationClient.send()`가 예외를 `log.error`로만 기록하고 전파하지 않아 발송 실패가 메트릭/알람으로 안 뜹니다(알림 실패 격리 글).  
   
 셋 다 surface 표에 **cache, outbox 행 자체가 빈 칸**이라는 같은 구조입니다. "관측성 옵션 가치" 형 부채, 지금은 문제가 드러나지 않지만 Phase 4에서 서비스 비교가 필요할 때 비로소 비용이 드러납니다.  
   
@@ -332,7 +332,7 @@ Phase 3 통합 테스트엔 Prometheus가 없습니다(Testcontainers로 MySQL/R
 - **비즈니스/파이프라인 가시성**: 캐시 적중률, Outbox backlog, Slack 발송 실패가 메트릭에 없습니다.  
 - **surface의 물리적 이전**: 9 surface는 아직 모놀리스 한 곳에 모여 있습니다. Phase 4 모듈/서비스로의 이전은 surface 표의 "Phase 4 owner"대로 그때 수행됩니다.  
   
-14편 K8s에서 본 패턴("핵심은 단단히, 가장 중요한 보장의 일부는 공백으로 정직하게")이 여기서도 반복됩니다. *위치, 복제, 배선*의 공백은 lint/테스트로 이미 해소됐고 남은 공백은 "런타임 의미 검증, 분산 추적, 파이프라인 메트릭, Phase 4 물리 이전" 넷입니다.  
+Kustomize 글에서 본 패턴("핵심은 단단히, 가장 중요한 보장의 일부는 공백으로 정직하게")이 여기서도 반복됩니다. *위치, 복제, 배선*의 공백은 lint/테스트로 이미 해소됐고 남은 공백은 "런타임 의미 검증, 분산 추적, 파이프라인 메트릭, Phase 4 물리 이전" 넷입니다.  
   
 ---  
   
@@ -366,7 +366,7 @@ flowchart LR
 **그대로 가는 것**  
   
 - **9 surface의 의존 구조.** "S6은 S5에 의존, latency는 S1에 의존" 같은 의존 방향은 서비스가 늘어도 동일합니다. 진단 표가 서비스마다 한 장씩 늘 뿐 논리는 같습니다.  
-- **모니터링 스택의 위치 분담.** S5(ServiceMonitor)는 앱 레포 `base/services/<svc>/`, S6(alert)는 `monitoring/shared/`로 가는 분담이 유지됩니다. ServiceMonitor를 서비스 디렉토리에 동봉하는 14편 패턴이 그대로 N배로 확장됩니다.  
+- **모니터링 스택의 위치 분담.** S5(ServiceMonitor)는 앱 레포 `base/services/<svc>/`, S6(alert)는 `monitoring/shared/`로 가는 분담이 유지됩니다. ServiceMonitor를 서비스 디렉토리에 동봉하는 Kustomize 글의 패턴이 그대로 N배로 확장됩니다.  
 - **헤더 기반 trace 사다리.** Consumer 측 헤더 우선순위와 Outbox Producer 측 헤더 주입의 `헤더 → eventId → UUID` 우선순위가 cross-service에서 `traceparent`를 맨 위에 추가하는 것만으로 확장됩니다.  
   
 **바뀌는 것**  
@@ -379,4 +379,4 @@ flowchart LR
   
 - **이미 있는 SSOT lint를 서비스별로 확장해야 한다.** 지금의 정적 lint는 모놀리스 한 곳을 검사하도록 짜여 있습니다. 서비스 N개에서 "MeterFilter가 공통 모듈 1개소에만 있는가", "`application=`가 각 서비스 base 외에 재선언 안 됐는가"를 보려면 lint의 검사 범위를 모듈 트리에 맞춰 넓혀야 합니다. *새로 도입*이 아니라 *기존 lint의 확장*이 과제입니다.  
 - **공통 관측성 모듈의 경계를 surface 표대로 그어야 한다.** 무엇이 `peekcart-common-observability`로 가고(S1/S3/S4) 무엇이 서비스에 남는가(S2/S5)는 이미 표에 정해져 있습니다: Phase 4 계획은 이 모듈을 *자기 결정 항목에서 제외*하고 표를 그대로 따릅니다. 이것은 13, 18편의 "`common` 모듈에 무엇을 둘 것인가"와 같은 결의 질문입니다.  
-- **정적 lint를 넘어 런타임 검증으로 갈지 결정해야 한다.** 서비스가 늘수록 selector 미스매치와 PromQL *결과* 오류가 생길 범위가 N배가 됩니다. 지금의 정적 lint가 *구조*는 막지만 Prometheus를 띄워 실제 쿼리 결과까지 보는 통합 검증을 어디까지 도입할지가 부채 정리(18편)의 판단 항목입니다.
+- **정적 lint를 넘어 런타임 검증으로 갈지 결정해야 한다.** 서비스가 늘수록 selector 미스매치와 PromQL *결과* 오류가 생길 범위가 N배가 됩니다. 지금의 정적 lint가 *구조*는 막지만 Prometheus를 띄워 실제 쿼리 결과까지 보는 통합 검증을 어디까지 도입할지가 부채 점검 글에서 정할 항목입니다.

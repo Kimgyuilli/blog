@@ -23,7 +23,7 @@ import SagaFalseGreenSummary from '@/components/blog/peekcart/saga-e2e/SagaFalse
 
 PeekCart 의 주문 하나는 네 서비스를 거쳐야 끝납니다. Order 가 주문을 만들고 Product 가 재고를 예약하고 Payment 가 결제를 승인하고 Notification 이 사용자에게 알립니다. 네 서비스는 서로를 직접 호출하지 않습니다. 각자 자기 DB 를 갖고 Kafka 토픽으로만 메시지를 주고받습니다.
 
-결제 실패 경로에서는 Payment 가 `payment.failed` 를 발행하면 Order 는 주문을 `CANCELLED` 로 바꾸고 `order.cancelled` 를 발행합니다. Product 는 같은 `payment.failed` 를 받아 재고 예약을 `RELEASED` 로 되돌리고 재고를 원복합니다. Notification 은 실패 알림을 남깁니다. 이미 결제된 주문이 취소되면 환불까지 이어지는데, 이 경로는 [24편](/blog/peekcart-saga-refund-exactly-once/)에서 자세히 다뤘습니다. 이 흐름에 쓰이는 업무 토픽은 10종이고 토픽마다 `.dlq` 토픽이 하나씩 더 있어 모두 20종입니다.
+결제 실패 경로에서는 Payment 가 `payment.failed` 를 발행하면 Order 는 주문을 `CANCELLED` 로 바꾸고 `order.cancelled` 를 발행합니다. Product 는 같은 `payment.failed` 를 받아 재고 예약을 `RELEASED` 로 되돌리고 재고를 원복합니다. Notification 은 실패 알림을 남깁니다. 이미 결제된 주문이 취소되면 환불까지 이어지는데, 이 경로는 [환불 호출 글](/blog/peekcart-saga-refund-exactly-once/)에서 자세히 다뤘습니다. 이 흐름에 쓰이는 업무 토픽은 10종이고 토픽마다 `.dlq` 토픽이 하나씩 더 있어 모두 20종입니다.
 
 <SagaEventMap />
 
@@ -201,7 +201,7 @@ A 에서는 실패를 어떻게 만들지도 정해야 합니다. 결제 승인 
 
 ### 시작: 운영 진입점을 그대로 씁니다
 
-테스트용 진입점을 새로 만들지 않고 이미 있는 진입점을 쓰는 방법이 남아 있었습니다. 서비스들은 원래 gateway 가 서명한 내부 토큰([23편](/blog/peekcart-gateway-signed-internal-token/))만 신원으로 받습니다. gateway 를 도입하면서 둔 전환 기간 때문에 평문 `X-User-Id`, `X-User-Role` 같은 헤더도 함께 받는 `DUAL_ACCEPT` 모드가 운영 코드에 남아 있었습니다. E2E 는 네 서비스를 이 모드로 띄우고 테스트 runner 가 평문 헤더로 실제 컨트롤러를 호출합니다.
+테스트용 진입점을 새로 만들지 않고 이미 있는 진입점을 쓰는 방법이 남아 있었습니다. 서비스들은 원래 gateway 가 서명한 내부 토큰([서명 토큰 글](/blog/peekcart-gateway-signed-internal-token/))만 신원으로 받습니다. gateway 를 도입하면서 둔 전환 기간 때문에 평문 `X-User-Id`, `X-User-Role` 같은 헤더도 함께 받는 `DUAL_ACCEPT` 모드가 운영 코드에 남아 있었습니다. E2E 는 네 서비스를 이 모드로 띄우고 테스트 runner 가 평문 헤더로 실제 컨트롤러를 호출합니다.
 
 A 의 시작은 이렇게 바뀌었습니다.
 
@@ -485,7 +485,7 @@ def expect_timeout_at(stage, fn):
 - 환불 결과 세 종류(`SUCCEEDED`, `FAILED`, `UNRESOLVED`) × 세 소비자의 아홉 조합은 서비스별 통합테스트로 고정했지만 E2E 로는 관측하지 않았습니다.
 - DLQ 는 원장 한 행과 식별자 여섯 개가 채워지는 것까지 확인합니다. 같은 메시지를 다시 소비할 때 새 행 없이 `attempt_count = 2` 가 되는지는 E2E 에서 보지 않습니다.
 - 실제 Toss 를 호출하는 승인, 취소, 조회 경로는 stub 으로만 확인했습니다.
-- E2E 는 평문 헤더 모드로 돌기 때문에 gateway 서명 토큰 경로는 이 E2E 밖에 있습니다. 그 경로는 [23편](/blog/peekcart-gateway-signed-internal-token/)의 클러스터 smoke 테스트가 따로 검증합니다.
+- E2E 는 평문 헤더 모드로 돌기 때문에 gateway 서명 토큰 경로는 이 E2E 밖에 있습니다. 그 경로는 [서명 토큰 글](/blog/peekcart-gateway-signed-internal-token/)의 클러스터 smoke 테스트가 따로 검증합니다.
 - canary 대조군은 다른 네트워크의 호스트에 연결할 수 없다는 것까지만 증명합니다. 실제 외부 PG 호출이 막힌 것을 실행에서 확인한 사례는 앞에서 본 `UnknownHostException` 한 건입니다.
 - 대기를 실행 ID 에 묶는 규칙은 아직 헬퍼가 강제하지 않는 관례입니다.
 - 실패한 메시지를 다시 흘려보내는 replay 는 이 작업 뒤에 별도 계약과 함께 만들었습니다.

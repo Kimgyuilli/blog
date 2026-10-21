@@ -6,9 +6,9 @@ import '@/styles/scene.css';
 
 const steps = [
   { name: '공유 DB', detail: '교차 FK 6' },
-  { name: 'PR1', detail: '교차 FK 0' },
-  { name: 'PR2', detail: '스키마 5' },
-  { name: 'PR3', detail: '정리 잡 7' },
+  { name: '1단계', detail: '교차 FK 0' },
+  { name: '2단계', detail: '스키마 5' },
+  { name: '3단계', detail: '정리 잡 7' },
 ];
 ---
 
@@ -19,7 +19,7 @@ const steps = [
   </div>
   <SceneLegend items={[{ kind: 'danger', label: '교차 FK' }, { kind: 'dep', label: '같은 도메인 FK' }, { kind: 'flow', label: 'ID 값으로만 참조' }]} />
   <p class="scene-note" data-separation-note role="status"></p>
-  <p class="db-demo-disclaimer">FK에 걸린 테이블과 이벤트 기록 테이블만 그렸습니다. inventories, stock_reservations, product_price_cache, payment_cancellations와 Flyway 이력 테이블은 생략했습니다. PR3 당시 구성이라 이후 생긴 notification outbox는 없습니다. 다섯 스키마는 모두 같은 MySQL 인스턴스 안에 있습니다. 스키마 권한 격리를 실행으로 검증했다는 뜻은 아닙니다.</p>
+  <p class="db-demo-disclaimer">FK에 걸린 테이블과 이벤트 기록 테이블만 그렸습니다. inventories, stock_reservations, product_price_cache, payment_cancellations와 Flyway 이력 테이블은 생략했습니다. 3단계 당시 구성이라 이후 생긴 notification outbox는 없습니다. 다섯 스키마는 모두 같은 MySQL 인스턴스 안에 있습니다. 스키마 권한 격리를 실행으로 검증했다는 뜻은 아닙니다.</p>
 </InteractiveDemoFrame>
 
 <script>
@@ -36,7 +36,7 @@ const steps = [
     payment: 'var(--scene-hue-cyan)', notification: 'var(--scene-hue-gray)',
   };
 
-  // 칩 하나가 테이블 하나. 공유하던 기록 테이블은 서비스별 사본을 같은 자리에 겹쳐 두었다가 PR2에서 갈라 보냅니다.
+  // 칩 하나가 테이블 하나. 공유하던 기록 테이블은 서비스별 사본을 같은 자리에 겹쳐 두었다가 2단계에서 갈라 보냅니다.
   type ChipDef = { key: string; label: string; owner: Id; shared?: 'processed' | 'outbox' };
   const CHIPS: ChipDef[] = [
     { key: 'users', label: 'users', owner: 'user' },
@@ -107,9 +107,9 @@ const steps = [
   const smooth = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
   const NOTES = [
     '다섯 서비스가 같은 <strong>peekcart</strong> 스키마와 계정을 씁니다. Flyway는 Order만 돌리고 나머지는 꺼 두었습니다. 도메인을 가로지르는 FK 여섯 개(빨간 호)가 테이블을 묶고 있습니다.',
-    '<strong>PR1</strong>: 교차 FK 여섯 개만 걷어 냈습니다. ID 컬럼은 남아 값으로만 가리키고(점선), 같은 도메인 안의 FK(회색 호)도 그대로입니다. 스키마는 아직 하나입니다.',
-    '<strong>PR2</strong>: 테이블이 주인 스키마로 옮겨 갑니다. 함께 쓰던 processed_events, outbox_events는 필요한 서비스마다 따로 생겼습니다. 계정과 Flyway 이력도 서비스마다 하나씩입니다.',
-    '<strong>PR3</strong>: 기록 테이블마다 정리 잡(↻)이 붙었습니다. processed_events 네 곳, outbox_events 세 곳입니다. 기록 테이블이 없는 User에는 잡이 없습니다.',
+    '<strong>1단계</strong>: 교차 FK 여섯 개만 걷어 냈습니다. ID 컬럼은 남아 값으로만 가리키고(점선), 같은 도메인 안의 FK(회색 호)도 그대로입니다. 스키마는 아직 하나입니다.',
+    '<strong>2단계</strong>: 테이블이 주인 스키마로 옮겨 갑니다. 함께 쓰던 processed_events, outbox_events는 필요한 서비스마다 따로 생겼습니다. 계정과 Flyway 이력도 서비스마다 하나씩입니다.',
+    '<strong>3단계</strong>: 기록 테이블마다 정리 잡(↻)이 붙었습니다. processed_events 네 곳, outbox_events 세 곳입니다. 기록 테이블이 없는 User에는 잡이 없습니다.',
   ];
 
   document.querySelectorAll<HTMLElement>('[data-blog-demo="db-separation"]').forEach((demo) => {

@@ -245,7 +245,7 @@ public CacheManager noOpCacheManager() {
 
 `peekcart.cache.enabled=false` 로 띄우면 Spring 의 `NoOpCacheManager` 가 주입됩니다. `@Cacheable` 어노테이션은 그대로 유효하지만 모든 호출이 pass-through 가 되어 매번 메서드 본문이 실행됩니다. 코드를 한 줄도 바꾸지 않고 캐시를 통째로 끄는 스위치입니다.
 
-이게 왜 필요했을까? Phase 3 부하 테스트(16편)에서 캐시 ON/OFF의 TPS 차이를 측정해야 했습니다. "캐시가 효과 있다"는 주장을 수치로 증명하려면, 그 주장의 반대 조건(캐시 없음)을 같은 환경에서 같은 부하로 측정해야 합니다. 코드를 분기하면 분기 자체가 변수가 됩니다. 같은 이미지에 환경변수만 바꿔서 rollout하는 방식이 비교 가능성을 보장합니다.
+이게 왜 필요했을까? Phase 3 부하 테스트(캐시 효과 측정 글)에서 캐시 ON/OFF의 TPS 차이를 측정해야 했습니다. "캐시가 효과 있다"는 주장을 수치로 증명하려면, 그 주장의 반대 조건(캐시 없음)을 같은 환경에서 같은 부하로 측정해야 합니다. 코드를 분기하면 분기 자체가 변수가 됩니다. 같은 이미지에 환경변수만 바꿔서 rollout하는 방식이 비교 가능성을 보장합니다.
 
 `@ConditionalOnProperty(matchIfMissing = true)` 로 두어 운영 기본값은 캐시 ON입니다. 환경변수가 누락된 사고로 캐시가 꺼지는 일은 없습니다.
 
@@ -259,7 +259,7 @@ public CacheManager noOpCacheManager() {
 
 ### 캐시 적중률을 메트릭으로 보지 않는다
 
-지금 코드에는 캐시 hit/miss 를 카운트하는 메트릭이 없습니다. Spring Boot Actuator 의 `cache.*` 메트릭을 활성화하면 `CacheMeterBinder` 가 자동으로 hit/miss 카운터를 만들어주지만 현재 `MetricsConfig`(15편)에는 등록되어 있지 않습니다. 부하 테스트에서는 nGrinder 의 TPS 차이로 캐시 효과를 보지만 운영 중인 캐시 적중률을 실시간으로 확인할 메트릭이 없습니다. Phase 4에서 캐시가 서비스 경계에 걸치게 되면 이 메트릭이 필요해집니다.
+지금 코드에는 캐시 hit/miss 를 카운트하는 메트릭이 없습니다. Spring Boot Actuator 의 `cache.*` 메트릭을 활성화하면 `CacheMeterBinder` 가 자동으로 hit/miss 카운터를 만들어주지만 현재 `MetricsConfig`(관측성 글에서 다룸)에는 등록되어 있지 않습니다. 부하 테스트에서는 nGrinder 의 TPS 차이로 캐시 효과를 보지만 운영 중인 캐시 적중률을 실시간으로 확인할 메트릭이 없습니다. Phase 4에서 캐시가 서비스 경계에 걸치게 되면 이 메트릭이 필요해집니다.
 
 ### Redis 장애에 무방비
 
@@ -337,7 +337,7 @@ flowchart LR
 **바뀌는 것**
 
 - **상세 페이지 조립이 Gateway 또는 BFF로 이동할 수 있다**. 현재는 `ProductQueryService.getProduct()` 가 캐시된 상품 정보와 라이브 재고를 한 메서드 안에서 조립합니다. 서비스 분리 후 이 조립을 어디서 할지는 별도 결정입니다. Gateway 에서 두 호출을 합치면 클라이언트 한 번에 응답을 줄 수 있지만 Gateway 에 도메인 결합이 생깁니다. Product Service 가 Inventory Service 를 동기 호출하면 책임은 분명하지만 한 서비스의 장애가 다른 서비스의 응답을 막습니다.
-- **캐시 인스턴스의 소유권**. 현재는 하나의 Redis 를 JWT 블랙리스트, 분산 락(9편), 상품 캐시가 공유합니다. `prefixCacheNameWith("cache:")` 로 네임스페이스만 분리한 상태입니다. Phase 4에서는 Product Service 전용 Redis로 분리하느냐, 공유하되 ACL 과 키 프리픽스로만 격리하느냐가 결정 사항입니다.
+- **캐시 인스턴스의 소유권**. 현재는 하나의 Redis 를 JWT 블랙리스트, 분산 락([다음 글](/blog/peekcart-inventory-lock-defense/)), 상품 캐시가 공유합니다. `prefixCacheNameWith("cache:")` 로 네임스페이스만 분리한 상태입니다. Phase 4에서는 Product Service 전용 Redis로 분리하느냐, 공유하되 ACL 과 키 프리픽스로만 격리하느냐가 결정 사항입니다.
 - **이벤트 기반 무효화 가능성**. 현재 무효화는 `ProductCommandService` 가 직접 `@CacheEvict` 로 합니다. 서비스가 분리되면 `product.updated` 이벤트를 받아서 다른 서비스의 캐시도 무효화하는 패턴이 가능해집니다. 다만 이는 캐시를 들고 있는 서비스가 둘 이상이 될 때만 의미가 있습니다.
 
 **그래서 Phase 4 진입 전 짚을 점**

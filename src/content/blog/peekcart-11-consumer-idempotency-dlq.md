@@ -42,7 +42,7 @@ slug: "peekcart-consumer-idempotency-dlq"
 
 ## 문제 상황: 두 번 받으면 두 번 한다
 
-10편 말미의 시퀀스를 다시 떠올려보겠습니다. Outbox 폴러가 이벤트를 Kafka 에 보내는 데 성공했는데 그 행을 `PUBLISHED` 로 바꾸기 직전에 프로세스가 죽습니다. 재기동하면 그 행은 여전히 `PENDING` 이라 폴러가 **같은 `event_id`를 다시 발행**합니다. Kafka 입장에서는 똑같이 생긴 메시지가 토픽에 두 번 들어온 것이고 Consumer 는 그걸 두 번 받습니다.
+[Transactional Outbox 글](/blog/peekcart-transactional-outbox/) 말미의 시퀀스를 다시 떠올려보겠습니다. Outbox 폴러가 이벤트를 Kafka 에 보내는 데 성공했는데 그 행을 `PUBLISHED` 로 바꾸기 직전에 프로세스가 죽습니다. 재기동하면 그 행은 여전히 `PENDING` 이라 폴러가 **같은 `event_id`를 다시 발행**합니다. Kafka 입장에서는 똑같이 생긴 메시지가 토픽에 두 번 들어온 것이고 Consumer 는 그걸 두 번 받습니다.
 
 문제는 PeekCart 의 Consumer 가 하는 일이 하나같이 **부수효과(side effect)를 일으키는 일**이라는 데 있습니다. 멱등성 장치가 *없다고 가정하면*, 같은 이벤트를 두 번 받을 때 아래가 **시도**됩니다.
 
@@ -267,7 +267,7 @@ public CommonErrorHandler kafkaErrorHandler(KafkaTemplate<String, String> kafkaT
 
 ### 6. DLQ로 가도 추적 끈은 끊기지 않는다
 
-`DeadLetterPublishingRecoverer` 는 원본 레코드를 DLQ로 옮길 때 **헤더를 자동 복사**합니다. 그래서 10편에서 Outbox 가 발행 시 심어둔 `X-Trace-Id`/`X-User-Id` 헤더(ADR-0008, D-010)가 DLQ 메시지에도 살아남습니다. "HTTP 요청, Outbox 저장, 발행, Consumer 처리 실패, DLQ"까지 **단일 traceId로 묶인다.** 장애 대응에서 "이 DLQ 메시지가 원래 어느 요청에서 비롯됐나"를 로그로 역추적할 수 있다는 뜻입니다. `DlqIntegrationTest.dlqPreservesTraceHeaders` 가 정확히 이걸 검증합니다.
+`DeadLetterPublishingRecoverer` 는 원본 레코드를 DLQ로 옮길 때 **헤더를 자동 복사**합니다. 그래서 Outbox 글에서 발행 시 심어둔 `X-Trace-Id`/`X-User-Id` 헤더가 DLQ 메시지에도 살아남습니다. "HTTP 요청, Outbox 저장, 발행, Consumer 처리 실패, DLQ"까지 **단일 traceId로 묶인다.** 장애 대응에서 "이 DLQ 메시지가 원래 어느 요청에서 비롯됐나"를 로그로 역추적할 수 있다는 뜻입니다. `DlqIntegrationTest.dlqPreservesTraceHeaders` 가 정확히 이걸 검증합니다.
 
 `MdcRecordInterceptor` 는 한 발 더 나갑니다. Consumer 진입 시 헤더의 traceId 를 MDC 에 넣고 **에러 핸들러(DLQ 발행 + Slack)가 다 끝난 뒤에야** MDC 를 정리합니다(`afterRecord`). Spring Kafka 호출 순서상 `failure()`, `CommonErrorHandler`(DLQ 발행), `afterRecord` 이므로 DLQ 발행 로그까지 traceId 가 살아 있게 의도적으로 맞춘 것입니다.
 
@@ -295,7 +295,7 @@ public void createNotification(Long userId, NotificationType type, String messag
 }
 ```
 
-그래서 좁지만 실재하는 틈이 있습니다. `slackPort.send` 가 나간 **뒤** 커밋이 실패하거나(예: 커밋 시점 DB 오류), 발송 직후 커밋 전에 프로세스가 죽으면, 트랜잭션은 미완으로 끝나 `processed_events` 행이 남지 않지만 **Slack 메시지는 이미 나갔다.** 이후 재시도가 그 이벤트를 다시 처리하면서 Slack 을 **또** 보냅니다. 알림 중복입니다. 다만 이게 무한 루프나 정합성 붕괴로 번지지는 않는데 Slack 클라이언트가 자기 예외를 내부에서 흡수하기 때문입니다(L-004). 즉 `send` 자체가 실패해도 예외를 던지지 않아 롤백을 유발하지는 않고 중복은 "커밋이 다른 이유로 깨지는" 드문 경로에서만 생깁니다. 그럼에도 결론은 분명합니다. effectively-once 는 **DB 상태에 대해서만** 성립하고 Slack 같은 외부 전달까지 정확히 한 번으로 만들어주지는 않습니다. DB 안의 결제, 주문, 재고는 멱등성이 보장되지만 알림 발송은 그 경계 밖에 있습니다.
+그래서 좁지만 실재하는 틈이 있습니다. `slackPort.send` 가 나간 **뒤** 커밋이 실패하거나(예: 커밋 시점 DB 오류), 발송 직후 커밋 전에 프로세스가 죽으면, 트랜잭션은 미완으로 끝나 `processed_events` 행이 남지 않지만 **Slack 메시지는 이미 나갔다.** 이후 재시도가 그 이벤트를 다시 처리하면서 Slack 을 **또** 보냅니다. 알림 중복입니다. 다만 이게 무한 루프나 정합성 붕괴로 번지지는 않는데 Slack 클라이언트가 자기 예외를 내부에서 흡수하기 때문입니다. 즉 `send` 자체가 실패해도 예외를 던지지 않아 롤백을 유발하지는 않고 중복은 "커밋이 다른 이유로 깨지는" 드문 경로에서만 생깁니다. 그럼에도 결론은 분명합니다. effectively-once 는 **DB 상태에 대해서만** 성립하고 Slack 같은 외부 전달까지 정확히 한 번으로 만들어주지는 않습니다. DB 안의 결제, 주문, 재고는 멱등성이 보장되지만 알림 발송은 그 경계 밖에 있습니다.
 
 ### DLQ 재시도가 파티션을 블록한다
 
@@ -321,7 +321,7 @@ DLQ 메시지를 **원본 토픽으로 재발행**한다고 하겠습니다. 같
 
 ### 관측성 공백: DLQ 적재량이 메트릭으로 안 보인다
 
-DLQ 도달은 Slack 단발 알림으로만 통지됩니다. "지금 DLQ에 몇 건이 쌓여 있나", "어느 토픽의 DLQ가 늘고 있나"를 보는 메트릭이 없습니다. 10편에서 본 Outbox `FAILED` 도 같은 Slack 채널을 씁니다(L-004). 운영자 입장에서 "발행이 안 된 건가(Outbox FAILED), 처리가 안 된 건가(DLQ)"를 알림 문구로만 구분해야 합니다. 둘은 대응이 정반대(전자는 브로커 복구 후 재발행, 후자는 데이터 수정 후 원본 토픽 재투입)라, Phase 4 전에 채널/메트릭 분리가 필요한 지점입니다.
+DLQ 도달은 Slack 단발 알림으로만 통지됩니다. "지금 DLQ에 몇 건이 쌓여 있나", "어느 토픽의 DLQ가 늘고 있나"를 보는 메트릭이 없습니다. Outbox 글에서 본 Outbox `FAILED` 도 같은 Slack 채널을 씁니다. 운영자 입장에서 "발행이 안 된 건가(Outbox FAILED), 처리가 안 된 건가(DLQ)"를 알림 문구로만 구분해야 합니다. 둘은 대응이 정반대(전자는 브로커 복구 후 재발행, 후자는 데이터 수정 후 원본 토픽 재투입)라, Phase 4 전에 채널/메트릭 분리가 필요한 지점입니다.
 
 ---
 
@@ -371,7 +371,7 @@ assertThat(dlqTestListener.records).allSatisfy(r -> {
 });
 ```
 
-`order.created` 를 받는 두 그룹(payment, notification)이 둘 다 파싱에 실패해 각자 DLQ로 가고 DLQ 메시지가 원본을 그대로 보존함을 확인합니다. **4. 트레이스 헤더 보존**(`dlqPreservesTraceHeaders`)은 §6에서 본 D-010 검증입니다.
+`order.created` 를 받는 두 그룹(payment, notification)이 둘 다 파싱에 실패해 각자 DLQ로 가고 DLQ 메시지가 원본을 그대로 보존함을 확인합니다. **4. 트레이스 헤더 보존**(`dlqPreservesTraceHeaders`)은 §6에서 본 트레이스 헤더 전파의 검증입니다.
 
 **이 테스트들이 증명하지 못하는 것**도 분명히 해야 합니다.
 
@@ -393,8 +393,8 @@ assertThat(dlqTestListener.records).allSatisfy(r -> {
 | save-first vs act-first 동시성 | `IdempotencyChecker` 코드 + `04-design-deep-dive.md` §9-7 | (2)(3) 선점 INSERT / UK 충돌 |
 | JPA IDENTITY 전략과 즉시 INSERT | Hibernate 문서, *Identifier generation strategies* | `ProcessedEvent` 엔티티 절 |
 | DLQ와 에러 핸들러 | Spring for Apache Kafka, *Dead-Letter Topics / DefaultErrorHandler* | DLQ 구현 절 |
-| DLQ 헤더 전파 / trace context | `docs/adr/0008-outbox-trace-context-propagation.md`, TASKS D-010 | §6 추적 끈 |
-| Producer 실패 vs Consumer 실패 | `04-design-deep-dive.md` §9-3, §8-3 / 10편 표 | `FAILED` vs DLQ 구분 |
+| DLQ 헤더 전파 / trace context | Outbox 트레이스 컨텍스트 전파 설계 | §6 추적 끈 |
+| Producer 실패 vs Consumer 실패 | `04-design-deep-dive.md` §9-3, §8-3 / Outbox 글의 표 | `FAILED` vs DLQ 구분 |
 | Saga DLQ 이후 정합성 | `04-design-deep-dive.md` §10-4 | "DLQ 이후 자동 복구 없음" 절 |
 
 ---
@@ -424,17 +424,17 @@ flowchart LR
 **그대로 가는 것**
 
 - **`(event_id, consumer_group)` 복합 키.** 서비스 분리는 곧 fan-out 증가입니다. 같은 이벤트를 더 많은 서비스가 각자 소비하므로 "그룹별 독립 처리 + 부분 재처리"를 가능케 하는 복합 키는 더 본질적이 됩니다. 모놀리스에서 미리 이렇게 잡아둔 게 그대로 유지됩니다.
-- **save-first + 같은 트랜잭션 = 실패 시 이력 롤백.** 서비스마다 자기 DB 안에서 "멱등성 INSERT + 비즈니스 로직"을 한 로컬 트랜잭션으로 묶는 원리는 변하지 않습니다. 분산 트랜잭션을 안 쓰기로 한 이상, 각 서비스의 로컬 원자성이 유일하게 믿을 수 있는 보장입니다(10편 Outbox 와 같은 논리).
+- **save-first + 같은 트랜잭션 = 실패 시 이력 롤백.** 서비스마다 자기 DB 안에서 "멱등성 INSERT + 비즈니스 로직"을 한 로컬 트랜잭션으로 묶는 원리는 변하지 않습니다. 분산 트랜잭션을 안 쓰기로 한 이상, 각 서비스의 로컬 원자성이 유일하게 믿을 수 있는 보장입니다(Outbox 글과 같은 논리).
 - **DLQ 토픽 네이밍과 수동 재처리 흐름.** `{원본토픽}.dlq` 규칙과 "고쳐서 원본 토픽 재투입"은 서비스 경계를 넘어도 동일합니다.
 
 **바뀌는 것**
 
 - **`processed_events`가 서비스별로 분산된다.** 단일 테이블이 N개가 됩니다. 각 서비스가 자기 consumer group 의 이력만 들고 있으면 되므로(다른 서비스 그룹 행을 가질 일이 없으니) 오히려 테이블이 가벼워지고 청소 정책도 서비스별로 정합니다.
 - **DLQ가 Saga 보상의 실패 지점이 된다.** Phase 4의 `payment.failed → order.cancelled → inventory restore` Choreography Saga(§8-5)에서, 한 단계가 DLQ로 빠지면 **보상 체인이 거기서 끊긴다.** §10-4의 "재고 정합성 검사 쿼리" 같은 감지 보완책이 모놀리스에선 미뤄도 됐지만 분산에선 사실상 필수가 됩니다. 어느 서비스의 어느 Consumer 가 멈췄는지 한곳에서 알 수 없기 때문입니다.
-- **Outbox `FAILED`와 DLQ의 채널 분리가 운영 어휘가 된다.** 서비스가 늘면 "발행이 막혔나(Producer/Outbox), 처리가 막혔나(Consumer/DLQ)"를 빠르게 가르는 게 장애 대응 속도를 좌우합니다. 지금처럼 둘을 같은 Slack 에 섞는 구조(L-004)는 그 전에 분리해야 합니다.
+- **Outbox `FAILED`와 DLQ의 채널 분리가 운영 어휘가 된다.** 서비스가 늘면 "발행이 막혔나(Producer/Outbox), 처리가 막혔나(Consumer/DLQ)"를 빠르게 가르는 게 장애 대응 속도를 좌우합니다. 지금처럼 둘을 같은 Slack 에 섞는 구조는 그 전에 분리해야 합니다.
 
 **그래서 Phase 4 진입 전 짚을 점**
 
-- **`processed_events` 청소 정책**을 실제로 구현해야 합니다(§9-7은 문서만, 코드는 없음). 보존 기간 = 멱등성 창이라는 트레이드오프를 명시적으로 정합니다. 12편의 ShedLock 스케줄러 패턴을 재사용하면 outbox 청소(L-008)와 한 작업으로 묶을 수 있습니다.
-- **DLQ 적재량을 메트릭으로** 노출해야 합니다. Slack 단발 알림만으로는 "지금 얼마나 밀렸나"가 안 보입니다(L-004와 같은 관측성 공백).
-- **동시 중복과 실패-재처리를 카오스 테스트로** 검증해야 합니다. 지금은 정상 재전송과 DLQ 라우팅만 검증하지만 분산에선 "리밸런스 중 동시 소비에서 UK가 정말 하나만 통과시키는가", "처리 실패 후 재시도가 깨끗이 재처리하는가"가 선택이 아니라 필수 검증이 됩니다. 10편 말미에서 "그 절반(Consumer 멱등성)이 11편"이라 했는데 그 검증의 절반은 여전히 카오스 테스트로 남아 있습니다.
+- **`processed_events` 청소 정책**을 실제로 구현해야 합니다(§9-7은 문서만, 코드는 없음). 보존 기간 = 멱등성 창이라는 트레이드오프를 명시적으로 정합니다. 다음 글의 ShedLock 스케줄러 패턴을 재사용하면 outbox 청소와 한 작업으로 묶을 수 있습니다.
+- **DLQ 적재량을 메트릭으로** 노출해야 합니다. Slack 단발 알림만으로는 "지금 얼마나 밀렸나"가 안 보입니다(Slack 채널을 섞어 쓰는 것과 같은 관측성 공백).
+- **동시 중복과 실패-재처리를 카오스 테스트로** 검증해야 합니다. 지금은 정상 재전송과 DLQ 라우팅만 검증하지만 분산에선 "리밸런스 중 동시 소비에서 UK가 정말 하나만 통과시키는가", "처리 실패 후 재시도가 깨끗이 재처리하는가"가 선택이 아니라 필수 검증이 됩니다. Outbox 글 말미에서 "그 절반(Consumer 멱등성)은 다음 글"이라 했는데 그 검증의 절반은 여전히 카오스 테스트로 남아 있습니다.
