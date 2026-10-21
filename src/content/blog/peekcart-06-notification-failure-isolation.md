@@ -22,15 +22,19 @@ slug: "peekcart-notification-failure-isolation"
 | Port / Adapter         | 외부 시스템과의 경계를 인터페이스로 추상화하는 패턴. Application은 Port를, Infrastructure가 Adapter(구현체)를 제공 |
 | Consumer Group         | 같은 Kafka 토픽을 소비하는 논리적 그룹. 그룹마다 오프셋이 독립적으로 관리된다                                     |
 | 멱등성 키                  | 같은 이벤트가 두 번 처리되지 않도록 식별하는 키. PeekCart에서는 `(event_id, consumer_group)`              |
+| Outbox                 | 이벤트를 곧장 Kafka로 보내지 않고 DB 테이블에 먼저 저장한 뒤, 별도 작업이 읽어 발행하는 방식                              |
+| DLQ                    | 처리에 거듭 실패한 메시지를 따로 보내 두는 큐(Dead Letter Queue)                                      |
 
 이번 학습에서는 다음 질문을 확인하려고 합니다.
 
 1. 알림 발송 실패가 주문/결제 트랜잭션을 망치면 왜 안 될까?
-2. Phase 1에서는 알림을 어떻게 격리했고 왜 그것만으로는 부족했을까?
-3. Phase 2에서 Kafka Consumer로 전환하면서 무엇이 어떻게 바뀌었을까?
-4. `SlackPort`는 왜 `notification/`이 아니라 `global/port`에 있을까?
-5. Slack Webhook 호출 실패는 어디서 어떻게 흡수될까?
+2. `SlackPort`는 왜 `notification/`이 아니라 `global/port`에 있을까?
+3. Slack Webhook 호출 실패는 어디서 어떻게 흡수될까?
+4. Phase 1에서는 알림을 어떻게 격리했고 왜 그것만으로는 부족했을까?
+5. Phase 2에서 Kafka Consumer로 전환하면서 무엇이 어떻게 바뀌었을까?
 6. Phase 4에서 Notification Service는 왜 가장 분리하기 쉬울까?
+
+첫 번째 질문의 답은 이 글의 첫 문단에서 먼저 밝혔고, 코드로는 `SlackNotificationClient` 절과 Phase 1 리스너 절에서 확인합니다. 나머지는 위 순서대로 각 절이 답합니다.
 
 ---
 
@@ -55,7 +59,8 @@ flowchart LR
     Consumer --> Service
     Service --> DB
     Service --> Slack
-    Slack -->|"실패는 로그로 흡수"| Slack
+    SlackNote(["Slack 실패는 로그로 흡수"])
+    Slack -.- SlackNote
 ```
 
 소비하는 이벤트는 네 개입니다.
@@ -79,7 +84,7 @@ public ResponseEntity<ApiResponse<Page<NotificationResponse>>> getNotifications(
 
 `GET /api/v1/notifications`: 내가 받은 알림 목록을 페이징 조회합니다. 알림 생성 API는 없습니다. 사용자가 직접 알림을 만들 일이 없기 때문입니다. 알림은 항상 다른 도메인의 이벤트에서 유래합니다.
 
-이 한정된 책임 범위가 Phase 4에서 Notification Service를 가장 쉽게 분리할 수 있는 이유가 됩니다. 다른 도메인의 상태를 읽거나 쓰지 않습니다.
+이 한정된 책임 범위, 즉 다른 도메인의 상태를 읽거나 쓰지 않는다는 점이 Phase 4에서 Notification Service를 가장 쉽게 분리할 수 있는 이유입니다. 구체적인 근거는 마지막 절에서 정리합니다.
 
 ---
 
@@ -116,7 +121,7 @@ public class Notification {
 }
 ```
 
-주문 생성 글의 `Order`(8개 상태, 11개 전이)나 결제 실패 글의 `Payment`(3개 상태, 2개 전이)와 비교하면 Notification에는 사실상 상태 전이가 없습니다. `is_read` 플래그가 있지만 이를 토글하는 도메인 메서드(`markAsRead()`)는 Phase 2에서 호출처가 없어 제거됐습니다. 명세상 알림 읽음 처리 API가 정의되지 않았기 때문입니다.
+주문 생성 글의 `Order`(8개 상태, 11개 전이)나 결제 실패 글의 `Payment`(3개 상태, 2개 전이)와 비교하면 Notification에는 사실상 상태 전이가 없습니다. `is_read` 플래그가 있지만 이를 토글하는 도메인 메서드(`markAsRead()`)는 Phase 2에서 호출처가 없어 제거됐습니다. 이 빈자리는 뒤의 한계 절에서 다시 봅니다.
 
 이 단순함은 Notification이 "쓰여진 뒤로는 거의 바뀌지 않는" 로그성 데이터에 가깝다는 것을 보여줍니다. 도메인 규칙이 거의 없으니 `create()` 정적 팩토리 하나로 끝납니다.
 
@@ -159,7 +164,7 @@ UseCase는 두 줄입니다. 알림 엔티티를 저장하고 Slack으로 메시
 여기서 짚을 점은 의존하는 대상이 `SlackPort` 인터페이스라는 것입니다. 구현체인 `SlackNotificationClient`가 아닙니다. 이 의존 역전으로 다음 효과를 노렸습니다.
 
 - **테스트 격리**: 단위 테스트에서 `SlackPort`를 Mock으로 교체하면 실제 Slack을 호출하지 않고도 "발송이 호출됐는가"만 검증할 수 있습니다.
-- **위치의 자유**: 구현체가 Slack이든, 이메일이든, 향후 SMS든 Application은 모릅니다.
+- **구현체 교체의 자유**: 구현체가 Slack이든, 이메일이든, 향후 SMS든 Application은 모릅니다.
 
 ```java
 @Test
@@ -196,16 +201,6 @@ public interface SlackPort {
 
 처음에는 실제로 `notification/application/port/SlackPort`로 만들었습니다(Phase 1). 그런데 Phase 2 작업 중 `OutboxPollingService`(`global/outbox/`)가 발행에 5회 이상 실패한 이벤트를 운영자에게 알리기 위해 `SlackPort`를 참조하면서 문제가 드러났습니다. `global`이 특정 도메인 패키지(`notification`)를 참조하게 된 것입니다. 4-Layered + DDD 원칙에서 의존 방향은 `domain → infrastructure ← infrastructure`이며 횡단 관심사를 담는 `global`은 어떤 도메인에도 의존하지 않아야 합니다.
 
-이동 이후 `SlackPort`의 호출처는 다음 세 곳으로 늘어났습니다.
-
-| 호출처 | 위치 | 목적 |
-| --- | --- | --- |
-| `NotificationCommandService` | `notification/application/` | 사용자에게 보내는 알림 |
-| `OutboxPollingService` | `global/outbox/` | Outbox 발행이 5회 실패한 이벤트의 운영자 통보 |
-| `KafkaConfig` | `global/config/` | DLQ 도달 메시지의 운영자 통보 |
-
-세 호출처 중 둘이 `global` 패키지에 있습니다. "Slack은 Notification의 전유물"이라는 초기 가정이 더 이상 유효하지 않다는 사실이 호출 분포로 드러납니다.
-
 해결은 두 가지 선택지였습니다.
 
 | 선택 | 효과 | 트레이드오프 |
@@ -214,6 +209,16 @@ public interface SlackPort {
 | (B) `SlackPort`를 `global/port/`로 끌어올린다 | 횡단 관심사라는 정체성을 인정 | "Slack은 Notification의 전유물"이라는 가정이 깨짐 |
 
 (B)를 택했습니다. Slack 메시지 발송이 한 도메인을 넘어 프로젝트 전체에서 쓰는 운영 통보 채널이 되었기 때문입니다.
+
+(B)로 옮긴 뒤 `SlackPort`의 호출처는 다음 세 곳으로 늘어났습니다.
+
+| 호출처 | 위치 | 목적 |
+| --- | --- | --- |
+| `NotificationCommandService` | `notification/application/` | 사용자에게 보내는 알림 |
+| `OutboxPollingService` | `global/outbox/` | Outbox 발행이 5회 실패한 이벤트의 운영자 통보 |
+| `KafkaConfig` | `global/config/` | DLQ 도달 메시지의 운영자 통보 |
+
+세 호출처 중 둘이 `global` 패키지에 있습니다. "Slack은 Notification의 전유물"이라는 초기 가정이 더 이상 유효하지 않다는 사실이 호출 분포로 드러납니다.
 
 일반화하면: **두 개 이상의 도메인이 같은 외부 시스템을 호출하기 시작하면 그 Port는 도메인 패키지를 떠나야 한다.** 그렇지 않으면 "왜 Outbox가 Notification에 의존하지?"라는 의문이 영원히 남습니다.
 
@@ -464,7 +469,8 @@ flowchart LR
     PF --> NC
     NC --> NotifDB
     NC --> SNC
-    SNC -->|"Slack/SMS/Email<br/>채널 다양화"| SNC
+    ChannelNote(["Slack/SMS/Email<br/>채널 다양화"])
+    SNC -.- ChannelNote
 ```
 
 Phase 4 분리 시 변하는 것과 안 변하는 것을 정리하면 다음과 같습니다.
@@ -478,12 +484,12 @@ Phase 4 분리 시 변하는 것과 안 변하는 것을 정리하면 다음과 
 **바뀌는 것**
 
 - `notifications` 테이블이 Notification Service의 전용 DB로 옮겨갑니다. `user_id` FK는 사라지고 사용자 존재 여부 검증은 Order/Payment 이벤트가 도착한 시점에 이미 끝나 있다는 신뢰로 대체됩니다(이벤트가 왔다는 건 유효한 user가 주문/결제를 했다는 뜻).
-- `SlackPort` 구현체 위치가 바뀝니다. Outbox는 자기 서비스에 따라 분리되고 Notification Service만 사용자 알림용으로 Slack을 씁니다. 두 책임이 분리되면 `SlackPort`를 다시 `notification/`으로 옮길지 검토할 가치가 있습니다.
+- `SlackPort`가 놓일 위치를 다시 검토하게 됩니다. Outbox는 자기 서비스에 따라 분리되고 Notification Service만 사용자 알림용으로 Slack을 씁니다. 두 책임이 분리되면 `SlackPort`를 다시 `notification/`으로 옮길지 검토할 가치가 있습니다.
 - 알림 채널이 늘어납니다. Phase 4에서 SMS/이메일을 도입하면 `SlackPort` 단일 추상이 `NotificationChannelPort`로 확장되거나, 채널별 Port 여러 개로 분화될 수 있습니다.
 
 **왜 가장 먼저 떼낼 후보인가**
 
-MSA 분리는 "도메인 간 결합도가 낮은 곳"부터 시작하는 게 안전합니다. Notification은 (a) 다른 도메인의 데이터를 동기 조회하지 않고 (b) 다른 도메인을 동기 호출하지 않으며 (c) 자기 실패가 다른 도메인 트랜잭션에 영향을 주지 않습니다. 이 세 조건 덕분에 Notification Service를 분리한다고 해서 Order/Payment 코드를 손댈 필요가 거의 없습니다.
+MSA 분리는 "도메인 간 결합도가 낮은 곳"부터 시작하는 게 안전합니다. 위 네 가지 이유에 더해 Notification은 다른 도메인을 동기 호출하지 않고 자기 실패가 다른 도메인 트랜잭션에 영향을 주지 않습니다. 그래서 Notification Service를 분리한다고 해서 Order/Payment 코드를 손댈 필요가 거의 없습니다.
 
 ---
 

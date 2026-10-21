@@ -17,21 +17,23 @@ Phase 1을 끝낸 시점의 PeekCart 는 모든 요청이 MySQL 을 조회합니
 
 | 용어                 | 이 글에서의 의미                                                                                       |
 | ------------------ | ---------------------------------------------------------------------------------------------- |
-| Cache Aside        | 애플리케이션이 "캐시 조회, 미스면 DB 조회, 결과를 캐시에 적재"의 순서로 캐시를 직접 다루는 패턴. Read-Through/Write-Through와 구분됨 |
+| Cache Aside        | 애플리케이션이 캐시를 직접 다루는 패턴. 읽기와 쓰기 순서, 다른 패턴과의 비교는 "Cache Aside를 선택한 이유" 절의 표에 있음 |
 | TTL                | Time To Live. 캐시 엔트리가 자동 만료되는 시간                                                                |
 | cache hit rate          | 전체 조회 중 캐시에서 응답된 비율 (cache hit / (cache hit + cache miss))                                     |
 | `@Cacheable`       | Spring Cache 추상화의 어노테이션. AOP 프록시가 호출을 가로채 캐시 조회/적재를 자동화                                       |
 | `@CacheEvict`      | 캐시 엔트리를 명시적으로 무효화하는 어노테이션. `allEntries = true`는 해당 캐시 전체 flush                                |
-| Self-invocation 문제 | 같은 빈 내부에서 메서드를 호출하면 AOP 프록시를 거치지 않아 `@Cacheable` 등이 동작하지 않는 Spring AOP의 구조적 한계               |
+| Self-invocation 문제 | 같은 빈 내부에서 메서드를 호출하면 AOP 프록시를 거치지 않아 `@Cacheable` 등이 동작하지 않는 Spring AOP의 구조적 한계. 자세한 설명은 "같은 빈에서 호출하면 왜 안 되는가" 절에 있음               |
 | `NoOpCacheManager` | Spring이 제공하는 "캐시처럼 행동하지만 아무것도 저장하지 않는" 캐시 매니저. 부하 테스트 baseline 측정에 사용                         |
 
 이번 학습에서는 다음 질문을 확인하려고 합니다.
 
-1. 왜 상품 캐시에 재고를 같이 넣지 않았을까?
-2. 같은 빈 안에서 `@Cacheable` 을 호출하면 왜 동작하지 않을까? 그 해결책으로 빈을 분리한 의미는 무엇일까?
-3. 목록 캐시를 "키 하나씩" 무효화하지 않고 `allEntries = true` 로 통째로 비운 이유는 무엇일까?
-4. `Page<T>` 를 Redis 에 직렬화하지 못해서 등장한 `CachedPage` 래퍼는 어떤 트레이드오프일까?
-5. 캐시 ON 에서 목표 3배에 못 미친 2.31배가 왜 실패가 아닐까?
+1. 여러 캐싱 패턴 중 왜 Cache Aside를 골랐을까?
+2. 왜 상품 캐시에 재고를 같이 넣지 않았을까?
+3. 같은 빈 안에서 `@Cacheable` 을 호출하면 왜 동작하지 않을까? 그 해결책으로 빈을 분리한 의미는 무엇일까?
+4. 캐시 키는 무엇으로 나눴고, TTL 은 왜 상세와 목록에서 다르게 뒀을까?
+5. 목록 캐시를 "키 하나씩" 무효화하지 않고 `allEntries = true` 로 통째로 비운 이유는 무엇일까?
+6. `Page<T>` 를 Redis 에 직렬화하지 못해서 등장한 `CachedPage` 래퍼는 어떤 트레이드오프일까?
+7. 캐시 ON/OFF 효과를 같은 조건에서 재려면 어떤 스위치가 필요했을까? (비교 결과인 캐시 ON 2.31배, 목표 3배는 [캐시 효과 측정 글](/blog/peekcart-cache-effect-measurement/)에서 다룹니다)
 
 ---
 
@@ -64,7 +66,7 @@ PeekCart 가 Cache Aside 를 택한 이유는 다음과 같습니다.
 
 PeekCart 의 워크로드는 **읽기 우세 + 무효화 도메인 의존 + 강한 정합성 요구**의 셋 조합이고 이 셋에 가장 잘 맞는 패턴이 Cache Aside입니다. Write-Around("쓰기는 DB만, 캐시는 다음 read로 채움")도 결과적으로 매우 비슷하지만 본격적으로 Write-Around로 부르려면 Read-Through 인프라가 깔려 있어야 합니다. 우리는 그 인프라를 끌어들이지 않았으므로 "Cache Aside + 쓰기 시 명시적 evict"로 분류하는 게 정확합니다.
 
-남은 결정 하나. **캐시 경계를 어디에 긋느냐**가 두 번째 절의 주제입니다.
+남은 결정 하나, **캐시 경계를 어디에 긋느냐**는 다음 절의 주제입니다.
 
 ---
 
@@ -247,31 +249,9 @@ public CacheManager noOpCacheManager() {
 
 `peekcart.cache.enabled=false` 로 띄우면 Spring 의 `NoOpCacheManager` 가 주입됩니다. `@Cacheable` 어노테이션은 그대로 유효하지만 모든 호출이 pass-through 가 되어 매번 메서드 본문이 실행됩니다. 코드를 한 줄도 바꾸지 않고 캐시를 통째로 끄는 스위치입니다.
 
-이게 왜 필요했을까? Phase 3 부하 테스트(캐시 효과 측정 글)에서 캐시 ON/OFF의 TPS 차이를 측정해야 했습니다. "캐시가 효과 있다"는 주장을 수치로 증명하려면, 그 주장의 반대 조건(캐시 없음)을 같은 환경에서 같은 부하로 측정해야 합니다. 코드를 분기하면 분기 자체가 변수가 됩니다. 같은 이미지에 환경변수만 바꿔서 rollout하는 방식이 비교 가능성을 보장합니다.
+이게 왜 필요했을까? Phase 3 부하 테스트([캐시 효과 측정 글](/blog/peekcart-cache-effect-measurement/))에서 캐시 ON/OFF의 TPS 차이를 측정해야 했습니다. "캐시가 효과 있다"는 주장을 수치로 증명하려면, 그 주장의 반대 조건(캐시 없음)을 같은 환경에서 같은 부하로 측정해야 합니다. 코드를 분기하면 분기 자체가 변수가 됩니다. 같은 이미지에 환경변수만 바꿔서 rollout하는 방식이 비교 가능성을 보장합니다.
 
 `@ConditionalOnProperty(matchIfMissing = true)` 로 두어 운영 기본값은 캐시 ON입니다. 환경변수가 누락된 사고로 캐시가 꺼지는 일은 없습니다.
-
----
-
-## 한계와 트레이드오프
-
-### "Stale read"가 가능한 짧은 창
-
-업데이트가 트랜잭션 안에서 일어나고 `@CacheEvict` 는 메서드 종료 시점에 동작합니다. 트랜잭션 커밋과 캐시 evict 사이에는 짧은 시간차가 있습니다. 그 사이에 다른 요청이 캐시를 채워 넣으면, 새로 채워진 엔트리는 곧바로 evict 대상이 됩니다. 결과적으로는 또 한 번의 조회가 DB로 가지만 사용자 입장에서 "갱신 직후 옛날 데이터를 본다"는 일은 거의 없습니다. 거의 모든 경우 evict 가 충분히 일찍 일어납니다. 이 부분은 `@Transactional` 과 `@CacheEvict` 의 순서를 정밀하게 통제하려면 `TransactionSynchronization` 을 끼워 넣어야 하는데 현재 규모에서는 그 복잡도가 정당화되지 않습니다.
-
-### cache hit rate 를 메트릭으로 보지 않는다
-
-지금 코드에는 캐시 hit/miss 를 카운트하는 메트릭이 없습니다. Spring Boot Actuator 의 `cache.*` 메트릭을 활성화하면 `CacheMeterBinder` 가 자동으로 hit/miss 카운터를 만들어주지만 현재 `MetricsConfig`(관측성 글에서 다룸)에는 등록되어 있지 않습니다. 부하 테스트에서는 nGrinder 의 TPS 차이로 캐시 효과를 보지만 운영 중인 cache hit rate 를 실시간으로 확인할 메트릭이 없습니다. Phase 4에서 캐시가 서비스 경계에 걸치게 되면 이 메트릭이 필요해집니다.
-
-### Redis 장애에 무방비
-
-Redis 가 다운되면 `@Cacheable` 호출이 `RedisConnectionFailureException` 을 던지고 그대로 위로 올라옵니다. 사용자는 상품 조회 자체가 실패합니다. 이상적으로는 캐시 장애 시 DB 직조회로 자동 fallback 이 있어야 하지만(다음 글의 분산 락 fallback 과 같은 구조), 조회 캐시에는 아직 그 안전장치가 없습니다. Redis 가 죽으면 트래픽이 통째로 DB로 떨어진다는 점도 같이 고려해야 합니다(thundering herd). 이 부분은 명시적으로 "남은 부채"로 두고 다음 Phase 에서 다룰 영역입니다.
-
-### 의도적으로 안 한 것
-
-- **재고 캐싱**: 변경 빈도 차이 때문에 의도적으로 제외. PK 단건 조회로 충분.
-- **목록 캐시의 정밀 무효화**: `allEntries = true` 로 단순화. 관리자 작업의 저빈도가 이 결정을 정당화합니다.
-- **2-level 캐시(로컬 + Redis)**: Caffeine 을 앞단에 두는 흔한 패턴. 현재 규모에서는 Redis 단일 계층이 충분하고 멀티 Pod 환경에서 로컬 캐시 일관성 문제를 새로 만들지 않습니다.
 
 ---
 
@@ -291,9 +271,31 @@ Redis 가 다운되면 `@Cacheable` 호출이 `RedisConnectionFailureException` 
 
 ---
 
+## 한계와 트레이드오프
+
+### "Stale read"가 가능한 짧은 창
+
+업데이트가 트랜잭션 안에서 일어나고 `@CacheEvict` 는 메서드 종료 시점에 동작합니다. 트랜잭션 커밋과 캐시 evict 사이에는 짧은 시간차가 있습니다. 그 사이에 다른 요청이 캐시를 채워 넣으면, 새로 채워진 엔트리는 곧바로 evict 대상이 됩니다. 결과적으로는 또 한 번의 조회가 DB로 가지만 사용자 입장에서 "갱신 직후 옛날 데이터를 본다"는 일은 거의 없습니다. 거의 모든 경우 evict 가 충분히 일찍 일어납니다. 이 부분은 `@Transactional` 과 `@CacheEvict` 의 순서를 정밀하게 통제하려면 `TransactionSynchronization` 을 끼워 넣어야 하는데 현재 규모에서는 그 복잡도가 정당화되지 않습니다.
+
+### cache hit rate 를 메트릭으로 보지 않는다
+
+지금 코드에는 캐시 hit/miss 를 카운트하는 메트릭이 없습니다. Spring Boot Actuator 의 `cache.*` 메트릭을 활성화하면 `CacheMeterBinder` 가 자동으로 hit/miss 카운터를 만들어주지만 현재 `MetricsConfig`(관측성 글에서 다룸)에는 등록되어 있지 않습니다. 부하 테스트에서는 nGrinder 의 TPS 차이로 캐시 효과를 보지만 운영 중인 cache hit rate 를 실시간으로 확인할 메트릭이 없습니다. Phase 4에서 캐시가 서비스 경계에 걸치게 되면 이 메트릭이 필요해집니다. 서비스가 늘어나면 어느 서비스의 캐시가 효과적인지 비교해야 하는데 그 비교의 기본 지표가 hit rate이므로, Phase 4 전에 해소하는 게 좋습니다.
+
+### Redis 장애에 무방비
+
+Redis 가 다운되면 `@Cacheable` 호출이 `RedisConnectionFailureException` 을 던지고 그대로 위로 올라옵니다. 사용자는 상품 조회 자체가 실패합니다. 이상적으로는 캐시 장애 시 DB 직조회로 자동 fallback 이 있어야 하지만(다음 글의 분산 락 fallback 과 같은 구조), 조회 캐시에는 아직 그 안전장치가 없습니다. Redis 가 죽으면 트래픽이 통째로 DB로 떨어진다는 점도 같이 고려해야 합니다(thundering herd). 이 부분은 명시적으로 "남은 부채"로 두고 다음 Phase 에서 다룰 영역입니다.
+
+### 의도적으로 안 한 것
+
+- **재고 캐싱**: 변경 빈도 차이 때문에 의도적으로 제외. PK 단건 조회로 충분.
+- **목록 캐시의 정밀 무효화**: `allEntries = true` 로 단순화. 관리자 작업의 저빈도가 이 결정을 정당화합니다.
+- **2-level 캐시(로컬 + Redis)**: Caffeine 을 앞단에 두는 흔한 패턴. 현재 규모에서는 Redis 단일 계층이 충분하고 멀티 Pod 환경에서 로컬 캐시 일관성 문제를 새로 만들지 않습니다.
+
+---
+
 ## Phase 4 MSA에서는 어떻게 바뀌는가
 
-상품 캐시는 Phase 4에서 Product Service 의 안쪽으로 이동합니다. 핵심 데이터(`products`, `categories`)가 Product Service 의 DB로 옮겨지고 그 서비스가 자기 캐시를 관리합니다.
+상품 캐시는 Phase 4에서 Product Service 의 안쪽으로 이동합니다. 핵심 데이터(`products`, `categories`)가 Product Service 의 DB로 옮겨지고 그 서비스가 자기 캐시를 관리합니다. 아래 그림은 상세 페이지 조립을 Gateway 가 하는 한 가지 배치 안입니다. 조립 위치는 아직 정하지 않았습니다(아래 "바뀌는 것" 참고).
 
 ```mermaid
 flowchart LR
@@ -321,19 +323,13 @@ flowchart LR
 **그대로 가는 것**
 
 - Cache Aside 패턴 자체. 캐시 hit 이 나도 재고는 별도 서비스 호출. 현재 `inventoryRepository` 호출이 `InventoryClient`(HTTP 또는 gRPC) 호출로 바뀔 뿐, "상품 캐시에 재고를 넣지 않는다"는 결정은 더 명확한 이유를 갖습니다. 이제는 다른 서비스의 데이터가 되었습니다.
-- `@Cacheable` + `@CacheEvict` 어노테이션 기반 구현, `CachedPage` 래퍼, TTL 설정. 다 그대로입니다.
+- `@Cacheable` + `@CacheEvict` 어노테이션 기반 구현, `CachedPage` 래퍼, TTL 설정. 캐시 어노테이션은 도메인 로직과 결합되지 않은 횡단 관심사라 패키지 이동만으로 따라옵니다. 상품 캐시 코드 자체는 분리하기 쉽습니다.
 
 **바뀌는 것**
 
-- **상세 페이지 조립이 Gateway 또는 BFF로 이동할 수 있다**. 현재는 `ProductQueryService.getProduct()` 가 캐시된 상품 정보와 라이브 재고를 한 메서드 안에서 조립합니다. 서비스 분리 후 이 조립을 어디서 할지는 별도 결정입니다. Gateway 에서 두 호출을 합치면 클라이언트 한 번에 응답을 줄 수 있지만 Gateway 에 도메인 결합이 생깁니다. Product Service 가 Inventory Service 를 동기 호출하면 책임은 분명하지만 한 서비스의 장애가 다른 서비스의 응답을 막습니다.
+- **상세 페이지 조립이 Gateway 또는 BFF로 이동할 수 있다**. 현재는 `ProductQueryService.getProduct()` 가 캐시된 상품 정보와 라이브 재고를 한 메서드 안에서 조립합니다. 서비스 분리 후 이 조립을 어디서 할지는 별도 결정입니다. Gateway 에서 두 호출을 합치면 클라이언트 한 번에 응답을 줄 수 있지만 Gateway 에 도메인 결합이 생깁니다. Product Service 가 Inventory Service 를 동기 호출하면 책임은 분명하지만 한 서비스의 장애가 다른 서비스의 응답을 막습니다. Product + Inventory 의 합성 책임은 설계 결정 기록으로 남겨둘 필요가 있습니다.
 - **캐시 인스턴스의 소유권**. 현재는 하나의 Redis 를 JWT 블랙리스트, 분산 락([다음 글](/blog/peekcart-inventory-lock-defense/)), 상품 캐시가 공유합니다. `prefixCacheNameWith("cache:")` 로 네임스페이스만 분리한 상태입니다. Phase 4에서는 Product Service 전용 Redis로 분리하느냐, 공유하되 ACL 과 키 프리픽스로만 격리하느냐가 결정 사항입니다.
 - **이벤트 기반 무효화 가능성**. 현재 무효화는 `ProductCommandService` 가 직접 `@CacheEvict` 로 합니다. 서비스가 분리되면 `product.updated` 이벤트를 받아서 다른 서비스의 캐시도 무효화하는 패턴이 가능해집니다. 다만 이는 캐시를 들고 있는 서비스가 둘 이상이 될 때만 의미가 있습니다.
-
-**그래서 Phase 4 진입 전 짚을 점**
-
-- 상품 캐시 코드 자체는 분리하기 쉽습니다. 캐시 어노테이션은 도메인 로직과 결합되지 않은 횡단 관심사라 패키지 이동만으로 따라옵니다.
-- 결정할 것은 "상세 페이지 조립을 누가 하는가"입니다. Product + Inventory 의 합성 책임은 설계 결정 기록으로 남겨둘 필요가 있습니다.
-- cache hit rate 메트릭 부재(`CacheMeterBinder` 미등록)는 Phase 4 전에 해소하는 게 좋습니다. 서비스가 늘어나면 어느 서비스의 캐시가 효과적인지 비교해야 하는데 그 비교의 기본 지표가 hit rate입니다.
 
 ---
 

@@ -310,6 +310,8 @@ public PaymentDetailDto confirmPayment(Long userId, ConfirmPaymentCommand comman
 }
 ```
 
+`confirmPayment()`는 하나의 `@Transactional` 안에서 Payment 조회, Order 상태 전이, Toss API 호출, Payment 상태 변경, Outbox 이벤트 저장을 모두 수행합니다. 이 범위가 넓다는 점은 한계 절에서 다룹니다.
+
 각 단계를 하나씩 보겠습니다.
 
 **1단계: 주문 소유권 검증.** `orderPort.verifyOrderOwner()`로 본인 주문인지 확인합니다. 다른 사용자의 주문에 대해 결제를 시도할 수 없습니다. [인증과 인가 글](/blog/peekcart-authn-authz-choices/)에서 본 데이터 레벨 인가가 여기서도 적용됩니다.
@@ -380,7 +382,7 @@ sequenceDiagram
     OEC->>DB: order.cancel() + 재고 복구
 ```
 
-Payment 도메인은 "결제가 실패했다"는 사실만 이벤트로 발행합니다. "그러면 주문을 취소하고 재고를 복구해야 한다"는 결정은 Order 도메인이 독립적으로 내립니다. 이것이 이벤트 기반 도메인 간 통신의 핵심입니다. Payment가 Order의 취소 로직을 알 필요가 없고 Order가 Toss API의 존재를 알 필요도 없습니다.
+Payment 도메인은 "결제가 실패했다"는 사실만 이벤트로 발행하고, 주문 취소와 재고 복구는 Order 도메인이 독립적으로 결정합니다. Payment 생성 때와 같은 구도여서 Payment가 Order의 취소 로직을 알 필요가 없고 Order가 Toss API의 존재를 알 필요도 없습니다.
 
 ### PaymentStatus와 OrderStatus의 연결
 
@@ -496,7 +498,7 @@ public record TossConfirmResponse(
 | Application 레이어 | Toss를 다른 PG로 교체 시 Application 코드가 변경됨. UseCase 흐름과 외부 연동 세부사항이 섞임 |
 | Infrastructure 레이어 (현재) | 도메인과 Application은 Toss의 존재를 모름. PG 교체 시 Infrastructure만 교체 |
 
-`PaymentCommandService`는 `TossPaymentClient.confirm()`을 직접 호출하고 있어, 현재는 Application이 Infrastructure 구현체에 의존하고 있습니다. 이 의존을 Port 인터페이스로 분리하면("결제를 승인해주세요") 테스트가 더 쉬워지고 PG 교체 시 영향 범위가 줄어듭니다. 상품과 재고 글, 주문 생성 글에서 본 `ProductPort`, `OrderPort`와 같은 패턴입니다. 현재 결제 PG가 하나뿐이어서 포트 분리의 실질적 필요성이 낮지만 개선 후보로 남겨둡니다.
+`PaymentCommandService`는 `TossPaymentClient.confirm()`을 직접 호출하고 있어, 현재는 Application이 Infrastructure 구현체에 의존하고 있습니다. 이 의존을 Port 인터페이스로 분리하면("결제를 승인해주세요") 테스트가 더 쉬워지고 PG 교체 시 영향 범위가 줄어듭니다. 지금은 테스트에서 `@Mock`으로 교체하고 있어 실질적 문제는 없지만, PG를 교체하거나 테스트 환경에서 Fake를 주입하려면 Port 분리가 필요합니다. 상품과 재고 글, 주문 생성 글에서 본 `ProductPort`, `OrderPort`와 같은 패턴입니다. 현재 결제 PG가 하나뿐이어서 포트 분리의 실질적 필요성이 낮지만 개선 후보로 남겨둡니다.
 
 `TossConfirmResponse`도 Infrastructure에 위치합니다. Toss API의 응답 구조가 바뀌어도 영향이 이 클래스에서 멈춥니다. `PaymentCommandService`는 응답에서 `method`와 `approvedAt`만 꺼내 쓰므로, Toss 응답의 다른 필드가 추가되거나 바뀌어도 영향을 받지 않습니다.
 
@@ -674,7 +676,7 @@ Toss가 `Idempotency-Key` 헤더를 보내면 그것을 사용하고 없으면 `
 
 현재 구현에서 웹훅은 로그 기록만 하고 비즈니스 로직을 실행하지 않습니다. 결제 상태 변경은 `confirmPayment()`에서 동기적으로 처리합니다. 웹훅은 Toss 측 이벤트를 수신하고 보존합니다.
 
-이 구조가 유효한 이유는, Toss Payments의 결제 플로우에서 결제 승인은 서버가 직접 API를 호출하는 것이고 웹훅은 추가적인 알림이기 때문입니다. 만약 결제 승인 API 호출이 실패했는데 실제로는 Toss에서 승인이 처리된 경우, 웹훅 로그가 그 사실을 확인할 수 있는 감사 기록이 됩니다.
+이 구조가 유효한 이유는, Toss Payments의 결제 플로우에서 결제 승인은 서버가 직접 API를 호출하는 것이고 웹훅은 추가적인 알림이기 때문입니다. 만약 결제 승인 API 호출이 실패했는데 실제로는 Toss에서 승인이 처리된 경우, 웹훅 로그가 그 사실을 확인할 수 있는 감사 기록이 됩니다. 이 구조의 한계는 한계 절의 "웹훅이 비즈니스 로직을 실행하지 않는다"에서 다룹니다.
 
 ---
 
@@ -805,7 +807,7 @@ void confirmPayment_tossFailure_failsPayment() {
 }
 ```
 
-두 테스트가 검증하는 것은 동일한 `confirmPayment()` 호출에서 Toss API 성공/실패에 따라 결과가 어떻게 갈리는지입니다. 성공 시 APPROVED + `publishPaymentCompleted`, 실패 시 FAILED + `publishPaymentFailed`. `TossPaymentClient`를 Mock으로 교체해서 외부 API 없이도 두 경로를 모두 테스트할 수 있습니다.
+두 테스트가 검증하는 것은 동일한 `confirmPayment()` 호출에서 Toss API 성공/실패에 따라 결과가 어떻게 갈리는지입니다. 성공하면 상태가 APPROVED가 되고 `publishPaymentCompleted`가 호출되며, 실패하면 FAILED가 되고 `publishPaymentFailed`가 호출됩니다. `TossPaymentClient`를 Mock으로 교체해서 외부 API 없이도 두 경로를 모두 테스트할 수 있습니다.
 
 ### WebhookService 테스트: 서명 검증과 멱등성
 
@@ -845,13 +847,13 @@ void processWebhook_duplicateKey_skips() {
 
 ### confirmPayment()의 트랜잭션 범위가 넓다
 
-현재 `confirmPayment()`는 하나의 `@Transactional` 안에서 Payment 조회, Order 상태 전이, Toss API 호출, Payment 상태 변경, Outbox 이벤트 저장을 모두 수행합니다. Toss API 호출은 외부 네트워크 I/O이므로 응답 시간이 가변적입니다. API 응답이 느리면 트랜잭션이 길어지고 DB 커넥션이 그만큼 점유됩니다.
+앞에서 본 것처럼 `confirmPayment()`는 모든 단계를 하나의 `@Transactional` 안에서 수행합니다. 그런데 Toss API 호출은 외부 네트워크 I/O이므로 응답 시간이 가변적입니다. API 응답이 느리면 트랜잭션이 길어지고 DB 커넥션이 그만큼 점유됩니다.
 
 이 문제를 완화하려면 Toss API 호출을 트랜잭션 밖으로 빼는 방법이 있습니다. 먼저 Toss API를 호출해 결과를 받고 그 결과를 바탕으로 트랜잭션을 열어 상태를 변경하는 것입니다. 그러나 이 경우 "API는 성공했는데 트랜잭션이 실패했다"는 새로운 불일치 시나리오가 생깁니다. 현재 트래픽 수준에서는 트랜잭션 안에서 처리하는 것이 더 단순합니다.
 
 ### TossPaymentClient에 Port 인터페이스가 없다
 
-상품과 재고 글의 `ProductPort`, 주문 생성 글의 `OrderPort`처럼 도메인 간 경계에는 Port 인터페이스가 있지만 `PaymentCommandService`와 `TossPaymentClient` 사이에는 인터페이스 없이 구현체를 직접 주입하고 있습니다. 테스트에서는 `@Mock`으로 교체하고 있어 실질적 문제는 없지만 PG를 교체하거나 테스트 환경에서 Fake를 주입하려면 Port 분리가 필요합니다.
+`PaymentCommandService`와 `TossPaymentClient` 사이에는 인터페이스 없이 구현체를 직접 주입하고 있습니다. 영향과 개선 방향은 외부 API 격리 절의 "왜 Infrastructure에 두는가"에서 설명한 대로입니다.
 
 ### 웹훅이 비즈니스 로직을 실행하지 않는다
 
@@ -861,7 +863,7 @@ void processWebhook_duplicateKey_skips() {
 
 - **환불/부분 취소**: `APPROVED` 이후의 상태 전이. 비즈니스적으로 중요하지만 현재 범위에서 미구현
 - **재시도 정책**: Toss API 호출 실패 시 즉시 FAILED로 처리합니다. 일시적 네트워크 오류에 대한 재시도 로직은 없음
-- **`payment_failures` 테이블**: 실패 사유를 상세히 기록하는 테이블. Phase 4에서 도입 예정
+- **`payment_failures` 테이블**: 실패 사유를 상세히 기록하는 테이블은 만들지 않았습니다. 도입은 Phase 4 절에서 다룹니다.
 - **웹훅 기반 상태 동기화**: 위에서 언급한 API/웹훅 불일치 해소
 
 ---
@@ -907,7 +909,7 @@ flowchart TD
 
 **`payment_failures` 테이블이 도입된다.** 현재는 `payments.status = 'FAILED'`로 실패를 표현하지만 실패 사유(잔액 부족, 카드 한도, 네트워크 오류 등)를 구분하지 않습니다. Phase 4에서는 별도 테이블에 상세 실패 이력을 기록합니다.
 
-**결제 실패 보상이 Choreography Saga가 된다.** 현재 모놀리스에서는 `payment.failed`를 받은 Order Consumer가 주문 취소 + 재고 복구를 하나의 서비스 안에서 처리합니다. MSA에서는 이 흐름이 서비스 경계를 넘습니다.
+**결제 실패 보상이 Choreography Saga가 된다.** 현재 모놀리스에서는 `payment.failed`를 받은 Order Consumer가 주문 취소와 재고 복구를 하나의 서비스 안에서 처리합니다. MSA에서는 이 흐름이 서비스 경계를 넘습니다.
 
 ```
 payment.failed 발행 (Payment Service)  → Order Service 소비 → 주문 CANCELLED + order.cancelled 발행

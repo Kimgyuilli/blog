@@ -29,6 +29,7 @@ slug: "peekcart-kustomize-base-overlays-gke"
 | HPA                                 | HorizontalPodAutoscaler. CPU 같은 지표로 Pod 수를 자동 조절                               |
 | ServiceMonitor                      | Prometheus Operator의 CRD. "이 서비스의 메트릭을 긁어가라"를 선언. CRD가 먼저 깔려 있어야 적용됨           |
 | CRD                                 | CustomResourceDefinition. K8s 기본에 없는 리소스 타입을 추가하는 정의. ServiceMonitor는 이 위에 산다  |
+| Helm                                | 여러 매니페스트를 한 묶음(차트)으로 설치해 주는 K8s 패키지 매니저. Prometheus/Grafana처럼 구성요소가 많은 도구를 통째로 깔 때 쓴다 |
 
 ### 쿠버네티스가 처음이라면
 
@@ -39,7 +40,7 @@ slug: "peekcart-kustomize-base-overlays-gke"
 - **Service**: Pod는 종료되고 다시 실행되며 IP가 계속 바뀝니다. 그 앞에 **고정된 주소 하나**를 세워 "이 이름으로 오는 요청을 살아있는 Pod 중 하나로 연결"해 주는 게 Service. 외부에 어떻게 노출하느냐(ClusterIP / NodePort / LoadBalancer)가 환경마다 갈리는 대표 지점입니다.
 - **PVC (PersistentVolumeClaim)**: Pod가 일회용이라 그 안에 쌓은 데이터도 Pod와 함께 사라집니다. MySQL 데이터처럼 살아남아야 하는 것은 **PVC**라는 별도 디스크에 둡니다. "디스크 한 장 주세요"라는 요청서라고 보면 됩니다.
 - **Namespace**: 리소스를 담는 *구획(폴더)*. PeekCart는 앱과 인프라를 `peekcart`, 모니터링 도구를 `monitoring` 구획에 나눠 담습니다.
-- **매니페스트(manifest)와 `kubectl apply`**: 위 모든 것을 YAML 파일(=매니페스트)에 "원하는 상태"로 적고 `kubectl apply`로 제출하면, K8s가 현재 상태를 그 선언에 *맞춥니다*. 명령형은 "이렇게 해라"라고 적고, 선언형은 "이런 상태였으면 좋겠다"라고 적습니다. K8s는 선언형입니다. 이 글의 base/overlays는 결국 **그 YAML을 환경별로 어떻게 조직하느냐**의 이야기입니다.
+- **선언형과 `kubectl apply`**: 위 모든 것을 매니페스트(위 용어 표 참고)에 "원하는 상태"로 적고 `kubectl apply`로 제출하면, K8s가 현재 상태를 그 선언에 *맞춥니다*. 명령형은 "이렇게 해라"라고 적고, 선언형은 "이런 상태였으면 좋겠다"라고 적습니다. K8s는 선언형입니다. 이 글의 base/overlays는 결국 **그 YAML을 환경별로 어떻게 조직하느냐**의 이야기입니다.
 
 ---
 
@@ -47,8 +48,8 @@ slug: "peekcart-kustomize-base-overlays-gke"
 
 이번 학습에서 확인하고 싶은 질문은 다음과 같습니다.
 
-1. 환경별로 매니페스트를 복사하는 대신 base/overlays로 나눈 이유는 무엇일까? 무엇을 base에 두고 무엇을 overlay에 둘까?
-2. minikube는 왜 초기 검증에는 충분했고 부하 측정에는 부족했을까?
+1. minikube는 왜 초기 검증에는 충분했고 부하 측정에는 부족했을까?
+2. 환경별로 매니페스트를 복사하는 대신 base/overlays로 나눈 이유는 무엇일까? 무엇을 base에 두고 무엇을 overlay에 둘까?
 3. minikube에서 GKE로 전환할 때 *실제로* 바뀌는 매니페스트는 어디일까? (이미지, 노출, 리소스, 스토리지)
 4. monitoring 스택을 base에서 떼어낸 이유는 무엇일까? base가 "환경 무관"이 아니었다는 건 무슨 뜻일까?
 5. "self-contained overlay"라면서 왜 `apply -k overlays/gke/` 단독 실행은 실패할까?
@@ -205,6 +206,25 @@ gke patch 를 이 방식으로 쓴 의도는 다음과 같습니다. *"strategic
 
 이미지 경로도 overlay가 바꿉니다. gke `kustomization.yml`의 `images:` 필드가 GHCR 경로를 Artifact Registry로 치환합니다(`PROJECT_ID_PLACEHOLDER`는 apply 직전 `kustomize edit set image`로 로컬에서만 채우고 커밋하지 않습니다. 「한계」절에서 다룹니다).
 
+GKE 전용으로 추가되는 `hpa.yml`은 overlay의 `resources:`에 더해집니다.
+
+```yaml
+# overlays/gke/hpa.yml (발췌)
+spec:
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 60 } }
+  behavior:
+    scaleUp:   { stabilizationWindowSeconds: 30 }    # 빨리 늘리고
+    scaleDown: { stabilizationWindowSeconds: 300 }   # 천천히 줄인다
+```
+
+이 선언을 풀면 "peekcart Pod의 평균 CPU 사용률이 **60%를 넘으면** Pod 수를 **최대 3개까지 자동으로 늘리고**(min=1), 부하가 빠지면 다시 줄여라"는 뜻입니다. 즉 트래픽에 따라 Pod 수가 스스로 1과 3 사이를 오갑니다.
+
+HPA가 gke overlay에만 있는 건 의도입니다. minikube는 8GB 예산상 max=3 scale-out을 받아낼 여유가 없어(Pod를 늘리다 메모리가 부족하면 기존 Pod가 쫓겨나는 eviction 위험), HPA 검증 자체가 GKE의 일이기 때문입니다. scaleUp 30초 / scaleDown 300초의 비대칭은 "부하엔 빠르게(30초) 대응해 늘리되, 줄일 땐 천천히(300초), 잠깐 부하가 출렁일 때마다 Pod를 늘렸다 줄였다 하는 flapping을 막는다"는 표준 운영 감각입니다. 이 HPA가 실제로 1에서 3으로 떴는지는 [동시 주문 부하 테스트 글](/blog/peekcart-order-concurrency-hpa/)(세션 C)에서 검증합니다.
+
 ### 3. monitoring을 base에서 떼어낸다. base의 "환경 무관"을 진짜로 만들기
 
 base/overlays를 처음 도입했을 때, monitoring 스택(Prometheus Helm values, Grafana 대시보드/Alert, ServiceMonitor)도 `base/monitoring/` 아래 있었습니다. 그런데 머지 직후 리뷰에서 **base가 사실은 환경 무관이 아니었다**는 게 드러났습니다.
@@ -244,9 +264,13 @@ flowchart TD
     D -.->|"CRD 충족 안 되면 실패"| B
 ```
 
-순서가 강제되는 이유는 **CRD 의존성**입니다. CRD(CustomResourceDefinition)는 쉽게 말해 **쿠버네티스에게 새로운 리소스 종류를 가르치는 일**입니다. `Deployment`, `Service`는 K8s가 처음부터 아는 단어지만 `ServiceMonitor`는 기본에 없는 단어, Prometheus가 추가하는 종류라, Prometheus 도구를 먼저 설치해야 K8s가 그 단어를 인식합니다. 그 설치를 2단계가 **Helm**으로 합니다. Helm은 여러 매니페스트를 한 묶음(차트)으로 설치해 주는 패키지 매니저로, Prometheus/Grafana처럼 구성요소가 많은 도구를 통째로 깔 때 씁니다(우리 앱과 인프라는 Kustomize로 직접 관리하고 구성 규모가 큰 모니터링 도구만 Helm에 맡깁니다. 이 도구 혼재의 트레이드오프는 「한계」절에서 다룹니다). 그래서 2단계를 건너뛰고 4단계를 치면, K8s가 `ServiceMonitor`라는 단어 자체를 몰라 `no matches for kind "ServiceMonitor"`로 실패합니다. GKE도 같은 4단계이고 install 진입점(`monitoring/gke/install.sh`)만 환경별로 다릅니다.
+순서가 강제되는 이유는 **CRD 의존성**입니다. CRD(CustomResourceDefinition)는 쉽게 말해 **쿠버네티스에게 새로운 리소스 종류를 가르치는 일**입니다. `Deployment`, `Service`는 K8s가 처음부터 아는 단어지만 `ServiceMonitor`는 기본에 없는 단어, Prometheus가 추가하는 종류라, Prometheus 도구를 먼저 설치해야 K8s가 그 단어를 인식합니다. 그래서 2단계를 건너뛰고 4단계를 치면, K8s가 `ServiceMonitor`라는 단어 자체를 몰라 `no matches for kind "ServiceMonitor"`로 실패합니다. GKE도 같은 4단계이고 install 진입점(`monitoring/gke/install.sh`)만 환경별로 다릅니다.
 
-여기서 "self-contained overlay"라는 말의 정확한 의미를 알 수 있습니다. overlay를 self-contained로 설계했지만 그것이 **`apply -k overlays/minikube/` 단독으로 fresh 클러스터에 성공한다는 뜻은 아니다.** ServiceMonitor의 CRD 선행 의존은 cert-manager, Istio, ArgoCD(각각 인증서, 서비스메시, 배포 자동화 도구로, 모두 자기 CRD를 먼저 깔아야 쓸 수 있습니다) 같은 K8s 생태계의 흔한 패턴과 똑같습니다. overlay가 self-contained라는 건 **"monitoring 네임스페이스 리소스를 포함하지 않고, 외부 상태를 만들거나 변형하지 않는다"**는 의미입니다. 즉 overlay를 적용해도 monitoring 스택을 건드리지 않는다는 *격리* 보장이지, *무의존* 보장이 아닙니다. 이 구분을 흐리면 "왜 단독 apply가 실패하지?"에서 헤맵니다.
+그 설치를 2단계가 **Helm**으로 합니다(Helm은 위 용어 표 참고). 우리 앱과 인프라는 Kustomize로 직접 관리하고 구성 규모가 큰 모니터링 도구만 Helm에 맡깁니다. 이 도구 혼재의 트레이드오프는 「한계」절에서 다룹니다.
+
+여기서 "self-contained overlay"라는 말의 정확한 의미를 알 수 있습니다. overlay를 self-contained로 설계했지만 그것이 **`apply -k overlays/minikube/` 단독으로 fresh 클러스터에 성공한다는 뜻은 아니다.** ServiceMonitor의 CRD 선행 의존은 cert-manager, Istio, ArgoCD(각각 인증서, 서비스메시, 배포 자동화 도구로, 모두 자기 CRD를 먼저 깔아야 쓸 수 있습니다) 같은 K8s 생태계의 흔한 패턴과 똑같습니다.
+
+overlay가 self-contained라는 건 **"monitoring 네임스페이스 리소스를 포함하지 않고, 외부 상태를 만들거나 변형하지 않는다"**는 의미입니다. 즉 overlay를 적용해도 monitoring 스택을 건드리지 않는다는 *격리* 보장이지, *무의존* 보장이 아닙니다. 이 구분을 흐리면 "왜 단독 apply가 실패하지?"에서 헤맵니다.
 
 base `kustomization.yml`에는 의도적으로 빠진 게 하나 있습니다: `namespace:` 필드입니다.
 
@@ -260,24 +284,9 @@ resources:
   - services/peekcart/servicemonitor.yml
 ```
 
-Kustomize의 `namespace:` 필드는 *모든* 리소스를 한 네임스페이스로 강제 변환합니다. 이 필드를 안 쓰기로 한 결정의 **출발점은 base/overlays를 처음 도입한 시점**입니다. 그때 base는 `peekcart`(앱 리소스)와 `monitoring`(Grafana ConfigMap/Alert) 두 네임스페이스에 걸쳐 있어서 한 NS로 강제하는 필드를 쓸 수 없었습니다. 이후 monitoring을 base에서 떼어내면서 **현재 base는 전부 `peekcart` 단일 네임스페이스**입니다(`base/kustomization.yml`도 "모든 리소스는 peekcart NS"라고 선언합니다). 즉 *지금은* `namespace:` 필드를 쓸 수도 있게 됐지만 base는 여전히 그 필드 대신 **각 매니페스트가 `metadata.namespace`를 직접 명시**하는 방식을 유지합니다. 이 선택이 「한계」절의 위험과 직결됩니다.
+Kustomize의 `namespace:` 필드는 *모든* 리소스를 한 네임스페이스로 강제 변환합니다. 이 필드를 안 쓰기로 한 결정의 **출발점은 base/overlays를 처음 도입한 시점**입니다. 그때 base는 `peekcart`(앱 리소스)와 `monitoring`(Grafana ConfigMap/Alert) 두 네임스페이스에 걸쳐 있어서 한 NS로 강제하는 필드를 쓸 수 없었습니다.
 
-GKE 전용으로 추가되는 `hpa.yml`은 overlay의 `resources:`에 더해집니다.
-
-```yaml
-# overlays/gke/hpa.yml (발췌)
-spec:
-  minReplicas: 1
-  maxReplicas: 3
-  metrics:
-    - type: Resource
-      resource: { name: cpu, target: { type: Utilization, averageUtilization: 60 } }
-  behavior:
-    scaleUp:   { stabilizationWindowSeconds: 30 }    # 빨리 늘리고
-    scaleDown: { stabilizationWindowSeconds: 300 }   # 천천히 줄인다
-```
-
-이 선언을 풀면 "peekcart Pod의 평균 CPU 사용률이 **60%를 넘으면** Pod 수를 **최대 3개까지 자동으로 늘리고**(min=1), 부하가 빠지면 다시 줄여라"는 뜻입니다. 즉 트래픽에 따라 Pod 수가 스스로 1과 3 사이를 오갑니다. HPA가 gke overlay에만 있는 건 의도입니다. minikube는 8GB 예산상 max=3 scale-out을 받아낼 여유가 없어(Pod를 늘리다 메모리가 부족하면 기존 Pod가 쫓겨나는 eviction 위험), HPA 검증 자체가 GKE의 일이기 때문입니다. scaleUp 30초 / scaleDown 300초의 비대칭은 "부하엔 빠르게(30초) 대응해 늘리되, 줄일 땐 천천히(300초), 잠깐 부하가 출렁일 때마다 Pod를 늘렸다 줄였다 하는 flapping을 막는다"는 표준 운영 감각입니다. 이 HPA가 실제로 1에서 3으로 떴는지는 [동시 주문 부하 테스트 글](/blog/peekcart-order-concurrency-hpa/)(세션 C)에서 검증합니다.
+이후 monitoring을 base에서 떼어내면서 **현재 base는 전부 `peekcart` 단일 네임스페이스**입니다(`base/kustomization.yml`도 "모든 리소스는 peekcart NS"라고 선언합니다). 즉 *지금은* `namespace:` 필드를 쓸 수도 있게 됐지만 base는 여전히 그 필드 대신 **각 매니페스트가 `metadata.namespace`를 직접 명시**하는 방식을 유지합니다. 이 선택이 「한계」절의 위험과 직결됩니다.
 
 ---
 
@@ -300,11 +309,7 @@ kubectl apply -k .                # ← 배포 순서 4단계 (cwd = overlays/gk
 git restore kustomization.yml     # ← apply 후 반드시 원복 (커밋하면 안 됨)
 ```
 
-게다가 이미지를 GHCR에서 Artifact Registry로 옮기는 것도 수동(`crane copy`)입니다. CI 글의 파이프라인은 GHCR까지만 push하고 거기서 GKE 레지스트리로 옮기는 작업은 파이프라인 밖입니다. README에 그 이유가 적혀 있습니다: *"Phase 3 부하 테스트는 측정 빈도가 낮아 CI 자동화 대신 수동 복사를 사용."* 측정이 드물고 일회성이라 자동화 우선순위를 낮춘 *의도된* 수동이지만 결과적으로 **이 구조는 GitOps가 아니다.** "git에 선언된 상태 = 클러스터 상태"가 맞지 않고 `git restore`를 깜빡하면 placeholder가 그대로 커밋되거나 로컬 치환이 누출될 여지가 있습니다. Phase 4에서 서비스가 N개면 N번의 수동 운반과 치환이 되므로, 여기서 ArgoCD/Flux 같은 GitOps 도구나 CI 자동 운반이 필요해집니다.
-
-### minikube 수치와 GKE 수치는 비교할 수 없다
-
-환경 진화 서사("로컬 검증에서 클라우드 측정으로")의 비용입니다. minikube와 GKE는 CPU, 메모리, 네트워크, 스토리지가 전부 달라, 같은 부하를 줘도 TPS를 **같은 축에서 비교할 수 없다.** 다만 minikube 단계에서 실제 부하 측정을 한 기록 자체가 없어(거긴 매니페스트 시행착오용이었습니다) 비교 대상이 애초에 없습니다. 실질 피해는 없지만 "환경을 바꾸면 이전 수치와 단절된다"는 건 측정 설계에서 늘 기억할 트레이드오프입니다. 그래서 이후 부하 테스트 글들의 리포트는 항상 "GKE / asia-northeast3 / e2-standard-4"라는 환경 스펙을 함께 박아 둡니다.
+게다가 이미지를 GHCR에서 Artifact Registry로 옮기는 것도 수동(`crane copy`)입니다. CI 글의 파이프라인은 GHCR까지만 push하고 거기서 GKE 레지스트리로 옮기는 작업은 파이프라인 밖입니다. README에 그 이유가 적혀 있습니다: *"Phase 3 부하 테스트는 측정 빈도가 낮아 CI 자동화 대신 수동 복사를 사용."* 측정이 드물고 일회성이라 자동화 우선순위를 낮춘 *의도된* 수동이지만 결과적으로 **이 구조는 GitOps가 아니다.** "git에 선언된 상태 = 클러스터 상태"가 맞지 않고 `git restore`를 깜빡하면 placeholder가 그대로 커밋되거나 로컬 치환이 누출될 여지가 있습니다. 서비스가 N개가 되면 이 수동 작업이 어떻게 되는지는 뒤의 Phase 4 절에서 봅니다.
 
 ### Helm과 Kustomize가 한 트리에 섞여 있다
 
@@ -338,9 +343,9 @@ billing alert를 ₩50,000에 걸어 안전망을 두긴 했지만 체크리스�
 
 **보장하지 못하는 것**
 
-- **단독 `apply -k`의 self-contained 배포**: ServiceMonitor의 CRD 선행 의존 때문에 4단계 순서를 지켜야 합니다. overlay는 *격리*는 보장하지만 *무의존*은 아닙니다.
+- **단독 `apply -k`의 self-contained 배포**: ServiceMonitor의 CRD 선행 의존 때문에 4단계 순서를 지켜야 합니다(「구현 구조」 절).
 - **선언 = 상태(GitOps)**: 이미지 경로 치환과 운반이 수동이라, git에 적힌 것이 곧 클러스터 상태인 모델이 아닙니다.
-- **환경 간 수치 비교**: minikube와 GKE는 다른 축이라 성능 수치를 잇대어 볼 수 없습니다.
+- **환경 간 수치 비교**: 로컬 검증에서 클라우드 측정으로 옮긴 환경 진화의 비용입니다. minikube와 GKE는 CPU, 메모리, 네트워크, 스토리지가 전부 달라 같은 부하를 줘도 TPS를 **같은 축에서 비교할 수 없습니다.** 다만 minikube 단계에는 실제 부하 측정 기록 자체가 없어(거긴 매니페스트 시행착오용이었습니다) 비교 대상이 애초에 없으니 실질 피해는 없습니다. 환경을 바꾸면 이전 수치와 단절된다는 점은 측정 설계에서 늘 기억할 트레이드오프이고, 그래서 이후 부하 테스트 글들의 리포트는 항상 "GKE / asia-northeast3 / e2-standard-4"라는 환경 스펙을 함께 적어 둡니다.
 - **자동 정리**: orphan 리소스 정리가 수동 체크리스트에 의존합니다.
 
 CI 글에서 본 패턴이 여기서도 반복됩니다. 핵심 동작은 단단히 검증하고, 일부 보장은 공백으로 남겨 둡니다. 배포 구조의 공백은 "self-contained 자동화, GitOps, 자동 정리" 세 가지입니다.
@@ -377,7 +382,7 @@ flowchart LR
 **그래서 Phase 4 진입 전 짚을 점**
 
 - **`metadata.namespace` 누락 lint를 도입하고 가야 한다.** 서비스가 N개면 수동 리뷰로 default 네임스페이스 누출을 막는 건 비현실적입니다. `kubectl apply --dry-run=server -k overlays/<env>`(서버 검증)나 `kubectl kustomize overlays/<env> | kubeconform`(렌더 결과를 스키마 검사)처럼 렌더 산출물을 자동 검증하는 단계를 게이트에 넣는 게 부채 점검 글의 항목입니다.
-- **이미지 운반과 치환을 자동화해야 한다.** 수동 `crane copy` + `kustomize edit set image` + `git restore`의 3단 수동은 서비스 1개라 견딘 것입니다. N개에선 GitOps로 "선언 = 상태"를 회복하는 게 배포 안정성의 전제가 됩니다.
+- **이미지 운반과 치환을 자동화해야 한다.** 위 「바뀌는 것」에서 본 수동 운반은 서비스 1개라 견딘 것이고, N개에선 GitOps로 "선언 = 상태"를 회복하는 게 배포 안정성의 전제가 됩니다.
 - **base의 "공통 인프라" 경계를 다시 그어야 한다.** 서비스별 DB 분리가 시작되면 mysql 하나를 base에 두는 가정이 맞지 않습니다. 무엇을 끝까지 공통으로 두고 무엇을 서비스 안으로 넣을지는, Phase 4에서 `common` 모듈에 무엇을 둘지(CI 글과 부채 점검 글)와 같은 결의 질문입니다.
 
 ---

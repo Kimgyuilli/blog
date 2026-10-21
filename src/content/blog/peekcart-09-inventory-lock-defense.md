@@ -178,6 +178,38 @@ PeekCart 는 fail-open 을 택했습니다. 근거는 "Redis는 가용성을 위
   
 ---  
   
+## 통합 테스트로 검증된 것과 검증하지 못한 것  
+  
+`InventoryConcurrencyTest` 는 Testcontainers로 MySQL + Redis + Kafka 를 띄우고 두 가지를 검증합니다.  
+  
+**1. 낙관적 락 단독 동작**: 분산 락을 거치지 않고 `EntityManager` 로 10스레드가 같은 재고를 동시에 깎습니다. `CountDownLatch` 로 10개 스레드를 동시에 시작하도록 맞춘 뒤 동시에 커밋시킵니다.  
+  
+```java  
+assertThat(successCount.get() + conflictCount.get()).isEqualTo(threadCount);  // 성공+충돌=전체  
+assertThat(conflictCount.get()).isGreaterThanOrEqualTo(1);                    // 충돌 최소 1건  
+assertThat(result.getStock()).isEqualTo(100 - successCount.get());           // lost update 없음  
+```  
+  
+이 테스트는 충돌이 **나야** 통과합니다. 충돌이 0건이면 낙관적 락이 일을 안 했거나 동시성이 재현되지 않은 것입니다. 그리고 최종 재고가 정확히 `100 - 성공 횟수` 라는 건, 실패한 차감이 재고를 건드리지 않았다는 뜻, lost update 가 없다는 증거입니다.  
+  
+**2. 분산 락으로 오버셀링 0건**: 50스레드가 `InventoryLockFacade.decreaseStock(productId, 1)` 을 동시에 호출합니다.  
+  
+```java
+assertThat(successCount.get()).isEqualTo(threadCount);   // 50건 전부 성공
+assertThat(failCount.get()).isZero();                    // 실패 0
+assertThat(result.getStock()).isEqualTo(100 - 50);       // 정확히 50 남음
+```  
+  
+분산 락이 50개 요청을 순서대로 처리했기 때문에 충돌 없이 전부 성공하고 재고가 정확히 50 남습니다. 1번 테스트(낙관적 락만)에서는 충돌이 났는데 2번(분산 락)에서는 충돌이 0이라는 대비가 "분산 락이 1차 방어선으로서 충돌을 예방한다"를 보여줍니다.  
+  
+**이 테스트가 증명하지 못하는 것**도 분명히 해야 합니다.  
+  
+- 두 테스트 모두 **주문 트랜잭션이 Facade를 감싸는 경로**를 건드리지 않습니다. 1번 테스트는 `InventoryLockFacade` 를 아예 거치지 않고 `EntityManager` 로 직접 차감하고 2번 테스트는 Facade 를 바깥 트랜잭션 없이 직접 호출합니다(Facade 가 의도한 이상적 경로). 뒤의 「한계」 절에서 다루는 "주문 경로의 바깥 트랜잭션" 시나리오는 둘 다 재현하지 않으므로, 테스트가 통과해도 실제 주문 경로의 불변식은 깨질 수 있습니다.  
+- Redis 장애 fallback(`tryLock` 이 `true` 를 반환하는 경로)은 이 테스트에 없습니다. Redis 를 강제로 끊고 낙관적 락만으로 오버셀링이 막히는지는 별도 시나리오가 필요합니다.  
+- 데드락은 한 개씩 잡고 푸는 현재 구조상 발생 조건이 없어 검증 대상이 아닙니다.  
+
+---
+
 ## 한계와 트레이드오프  
 
 ### 주문 경로의 바깥 트랜잭션이 "락 ⊃ 트랜잭션" 불변식을 깬다
@@ -221,7 +253,7 @@ sequenceDiagram
   
 Facade 가 의도했던 "커밋 후 해제"가, 바깥 트랜잭션 때문에 **"커밋 전 해제"로 뒤집힌다.** 결과적으로 주문 경로에서는 분산 락이 의도한 "깔끔한 직렬화"를 제공하지 못하고 같은 상품에 동시 주문이 몰리면 1차 방어선(분산 락)을 우회해 곧장 2차 방어선(낙관적 락) 충돌로 떨어질 수 있습니다.  
   
-다행히 **오버셀링이라는 결과는 여전히 막힌다**. `@Version` 이 받아주기 때문입니다. 이때 이중 방어가 효과를 냅니다. 하지만 "분산 락으로 충돌 자체를 예방한다"는 1차 방어선의 가치는 주문 경로에서 상당 부분 무력화됩니다. 정확히는, 단독 호출 경로(아래 동시성 테스트가 검증하는 경로)에서는 불변식이 지켜지지만 실 서비스의 주문 경로에서는 안 지켜집니다. **테스트가 통과하는 것과 프로덕션에서 보장되는 것이 다른** 전형적인 사례입니다.  
+다행히 **오버셀링이라는 결과는 여전히 막힌다**. `@Version` 이 받아주기 때문입니다. 이때 이중 방어가 효과를 냅니다. 하지만 "분산 락으로 충돌 자체를 예방한다"는 1차 방어선의 가치는 주문 경로에서 상당 부분 무력화됩니다. 정확히는, 단독 호출 경로(앞 절의 동시성 테스트가 검증하는 경로)에서는 불변식이 지켜지지만 실 서비스의 주문 경로에서는 안 지켜집니다. **테스트가 통과하는 것과 프로덕션에서 보장되는 것이 다른** 전형적인 사례입니다.  
   
 이 결함은 기술 부채로 남겨 두었고 추후 수정할 예정입니다. 해소 방향으로는 다음을 생각하고 있습니다. 
 
@@ -229,7 +261,7 @@ Facade 가 의도했던 "커밋 후 해제"가, 바깥 트랜잭션 때문에 **
 - (b) 주문 단위로 모든 상품 락을 먼저 잡고 한 트랜잭션으로 처리한 뒤 마지막에 모두 풉니다.
 
 (a)는 부분 커밋의 보상 문제가, (b)는 다중 락 동시 보유에 따른 데드락 문제가 새로 생깁니다. 
-다만 Phase 4에서 Order/Inventory 가 별도 서비스, 별도 DB로 분리되면 바깥 트랜잭션이 차감 트랜잭션을 감쌀 수 없어 이 결함은 자연 소멸하므로 모놀리스 단계에서 (a)/(b)를 선제 적용할지는 부하 테스트에서 충돌률이 실제로 문제가 되는지를 보고 결정합니다.  
+Phase 4에서 Order/Inventory 가 별도 서비스, 별도 DB로 분리되면 이 결함은 사라집니다(뒤의 Phase 4 절). 그래서 모놀리스 단계에서 (a)/(b)를 미리 적용할지는, 부하 테스트에서 충돌률이 실제로 문제가 되는지를 보고 결정합니다.  
   
 ### leaseTime 5초 < 트랜잭션 시간이면 락이 먼저 풀린다  
   
@@ -238,38 +270,6 @@ Facade 가 의도했던 "커밋 후 해제"가, 바깥 트랜잭션 때문에 **
 ### restoreStock에는 락이 없다. 의도된 비대칭  
   
 재고 복구(`restoreStock`)는 분산 락을 거치지 않고 `InventoryService` 로 직행합니다. 증가 연산이라 즉시 오버셀링을 만드는 위험 방향은 아니기 때문입니다. 복구 경로에도 `@Version` 은 그대로 걸려 있어 lost update 자체는 감지됩니다. 다만 낙관적 락 충돌이 난 복구 요청을 그대로 버리면 재고가 적게 복구되어 판매 가능 수량이 줄어듭니다. 따라서 복구 이벤트에는 재시도와 멱등성 보장이 필요합니다. 차감에만 분산 락을 거는 비대칭은 가능하지만 복구 실패를 무시해도 된다는 뜻은 아닙니다.  
-  
----  
-  
-## 통합 테스트로 검증된 것과 검증하지 못한 것  
-  
-`InventoryConcurrencyTest` 는 Testcontainers로 MySQL + Redis + Kafka 를 띄우고 두 가지를 검증합니다.  
-  
-**1. 낙관적 락 단독 동작**: 분산 락을 거치지 않고 `EntityManager` 로 10스레드가 같은 재고를 동시에 깎습니다. `CountDownLatch` 로 10개 스레드를 동시에 시작하도록 맞춘 뒤 동시에 커밋시킵니다.  
-  
-```java  
-assertThat(successCount.get() + conflictCount.get()).isEqualTo(threadCount);  // 성공+충돌=전체  
-assertThat(conflictCount.get()).isGreaterThanOrEqualTo(1);                    // 충돌 최소 1건  
-assertThat(result.getStock()).isEqualTo(100 - successCount.get());           // lost update 없음  
-```  
-  
-이 테스트는 충돌이 **나야** 통과합니다. 충돌이 0건이면 낙관적 락이 일을 안 했거나 동시성이 재현되지 않은 것입니다. 그리고 최종 재고가 정확히 `100 - 성공 횟수` 라는 건, 실패한 차감이 재고를 건드리지 않았다는 뜻, lost update 가 없다는 증거입니다.  
-  
-**2. 분산 락으로 오버셀링 0건**: 50스레드가 `InventoryLockFacade.decreaseStock(productId, 1)` 을 동시에 호출합니다.  
-  
-```java
-assertThat(successCount.get()).isEqualTo(threadCount);   // 50건 전부 성공
-assertThat(failCount.get()).isZero();                    // 실패 0
-assertThat(result.getStock()).isEqualTo(100 - 50);       // 정확히 50 남음
-```  
-  
-분산 락이 50개 요청을 순서대로 처리했기 때문에 충돌 없이 전부 성공하고 재고가 정확히 50 남습니다. 1번 테스트(낙관적 락만)에서는 충돌이 났는데 2번(분산 락)에서는 충돌이 0이라는 대비가 "분산 락이 1차 방어선으로서 충돌을 예방한다"를 보여줍니다.  
-  
-**이 테스트가 증명하지 못하는 것**도 분명히 해야 합니다.  
-  
-- 두 테스트 모두 **주문 트랜잭션이 Facade를 감싸는 경로**를 건드리지 않습니다. test 1은 `InventoryLockFacade` 를 아예 거치지 않고 `EntityManager` 로 직접 차감하고 test 2는 Facade 를 바깥 트랜잭션 없이 직접 호출합니다(Facade 가 의도한 이상적 경로). 「한계」 절에서 본 "주문 경로의 바깥 트랜잭션" 시나리오는 둘 다 재현하지 않습니다. 그래서 테스트는 통과했는데 실제 주문 경로의 불변식은 깨질 수 있습니다.  
-- Redis 장애 fallback(`tryLock` 이 `true` 를 반환하는 경로)은 이 테스트에 없습니다. Redis 를 강제로 끊고 낙관적 락만으로 오버셀링이 막히는지는 별도 시나리오가 필요합니다.  
-- 데드락은 한 개씩 잡고 푸는 현재 구조상 발생 조건이 없어 검증 대상이 아닙니다.  
   
 ---  
   
@@ -310,7 +310,7 @@ flowchart LR
   
 **그래서 Phase 4 진입 전 짚을 점**  
   
-- 「한계」 절에서 발견한 불변식 위반(결함)은 **모놀리스 특유의 문제**이고 MSA 분리로 해소되는 쪽입니다. 다만 Phase 4까지 모놀리스로 운영하는 동안에도 동시 주문 충돌률이 문제가 되면, `REQUIRES_NEW` 분리로 먼저 막을지 결정해야 합니다. 이 결함은 기술 부채로 남겨 두었고 추후 수정할 예정입니다.  
+- 「한계」 절에서 발견한 불변식 위반(결함)은 **모놀리스 특유의 문제**이고 MSA 분리로 해소되는 쪽입니다. 다만 Phase 4까지 모놀리스로 운영하는 동안에도 동시 주문 충돌률이 문제가 되면, 「한계」 절의 (a) `REQUIRES_NEW` 분리를 먼저 적용할지 결정해야 합니다.  
 - 분산 락의 의미가 "한 프로세스 안 스레드 직렬화"에서 "여러 Inventory Pod 간 직렬화"로 확장됩니다. 단일 Pod일 땐 사실 JVM 락으로도 충분했지만 HPA로 Pod 가 늘면([동시 주문 부하 테스트 글](/blog/peekcart-order-concurrency-hpa/)) 분산 락이 본질적으로 필요해집니다.  
 - `@Version` 낙관적 락은 Saga 보상까지 포함한 정합성 모델의 토대입니다. "분산 환경에서 진실의 원자 단위는 한 서비스의 한 DB"라는 원칙을, 지금의 두 겹 방어로 미리 익히고 있습니다.
 
@@ -323,6 +323,6 @@ flowchart LR
 | 분산 락은 왜 한 겹으로 부족한가 (장애 시나리오) | Martin Kleppmann, "How to do distributed locking" / Redlock 논쟁 | "왜 두 겹인가" 절 |  
 | Redisson `RLock`의 wait/lease/watchdog 동작 | Redisson 공식 위키, *Distributed locks and synchronizers* | `tryLock` / leaseTime 5초 한계 |  
 | `@Transactional` 전파(`REQUIRED` vs `REQUIRES_NEW`) | Spring 공식 문서, *Transaction Propagation* | 주문 경로 불변식 위반 절 |  
-| 낙관적 락 충돌이 애플리케이션에 던지는 예외 계층 | Spring Data JPA, `ObjectOptimisticLockingFailureException` / Hibernate `StaleObjectStateException` | Redis 장애 fallback 테스트 보강 |  
+| 낙관적 락 충돌이 애플리케이션에 던지는 예외 계층 | Spring Data JPA, `ObjectOptimisticLockingFailureException` / Hibernate `StaleObjectStateException` | fail-open 때 낙관적 락 충돌이 던지는 예외, 테스트에 없는 Redis 장애 시나리오 |  
 | 데드락과 락 정렬(global ordering) | *Operating Systems* - Coffman 조건(hold-and-wait) | 다중 락 동시 보유 대안 |  
 | fail-open vs fail-closed 가용성 트레이드오프 | Release It! (Nygard), Stability Patterns | Redis 장애 fallback 결정 |

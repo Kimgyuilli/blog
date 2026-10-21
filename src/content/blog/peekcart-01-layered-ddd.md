@@ -28,8 +28,8 @@ PeekCart는 이커머스 도메인을 예제로 삼아 회원, 상품, 재고, �
 이번 학습에서는 다음 질문을 확인하려고 합니다.
 
 1. 왜 전통적인 Controller-Service-Repository 구조가 아니라 4-Layered + DDD 구조를 선택했을까요?
-2. Application Service와 Domain Entity는 어떤 책임을 나눠 가질까?
-3. JPA Entity를 Domain Entity로 함께 쓰는 절충안은 어떤 장단점이 있을까?
+2. Application Service와 Domain Entity는 어떤 책임을 나눠 가질까요?
+3. JPA Entity를 Domain Entity로 함께 쓰는 절충안은 어떤 장단점이 있을까요?
 4. 멀티모듈, Clean Architecture, Hexagonal Architecture와 비교하면 현재 구조는 어디쯤에 있을까요?
 5. 이 구조가 나중에 서비스 분리 단계로 이어질 수 있을까요?
 
@@ -53,312 +53,9 @@ PeekCart는 이커머스 도메인을 예제로 삼아 회원, 상품, 재고, �
 
 ---
 
-## 다른 구조와 비교하며 읽기
-
-이번 글의 목적은 "PeekCart가 선택한 구조가 정답이다"를 주장하는 것이 아닙니다. 오히려 여러 구조가 어떤 문제를 해결하려고 생겼는지 비교하면서 지금 프로젝트 단계에 맞는 절충선을 찾는 것이 목표입니다.
-
-참고한 글 중 하나는 [지속 성장 가능한 소프트웨어를 만들어가는 방법](https://geminikims.medium.com/%EC%A7%80%EC%86%8D-%EC%84%B1%EC%9E%A5-%EA%B0%80%EB%8A%A5%ED%95%9C-%EC%86%8C%ED%94%84%ED%8A%B8%EC%9B%A8%EC%96%B4%EB%A5%BC-%EB%A7%8C%EB%93%A4%EC%96%B4%EA%B0%80%EB%8A%94-%EB%B0%A9%EB%B2%95-97844c5dab63)입니다. 이 글에서 특히 인상 깊었던 관점은 다음과 같습니다.
-
-- 비즈니스 로직은 상세 구현을 모두 읽지 않아도 흐름을 이해할 수 있어야 합니다.
-- 레이어는 참조 방향과 제약으로 통제되어야 합니다. 폴더 이름만으로는 막을 수 없습니다.
-- 모듈화는 기술 의존성을 상위 비즈니스 코드로 전파하지 않기 위한 장치가 될 수 있습니다.
-
-이 관점으로 PeekCart를 다시 보면 현재 구조는 다음 단계로 성장하기 위한 중간 형태입니다.
-
-|구조|핵심 관심사|PeekCart에 적용한다면|부담|
-|---|---|---|---|
-|전통적 3-Layered|빠른 CRUD 구현|Controller-Service-Repository로 단순하게 시작한다|Service가 비대해지기 쉽다|
-|Package by Feature|기능 단위 응집|`order`, `payment` 같은 도메인 패키지를 먼저 나눈다|패키지만 나누면 의존성 제약은 약하다|
-|Business 중심의 Layered Architecture|비즈니스 흐름 가시화와 구현 도구 분리|Presentation-Business-Implement-Data Access로 나누고 Business가 상세 기술을 모르게 한다|Implement 레이어를 어디까지 둘지 기준이 필요하다|
-|4-Layered + DDD|도메인 규칙 응집|상태 전이, 재고 차감 같은 규칙을 Entity/Domain Service에 모은다|레이어 책임을 계속 의식해야 한다|
-|Hexagonal Architecture|외부 시스템 격리|Toss, Slack, Kafka, Redis를 Port/Adapter로 감싼다|Port와 Adapter가 많아져 구조가 무거워질 수 있다|
-|Clean Architecture|프레임워크 독립성|UseCase와 Entity를 Spring/JPA 바깥에 두고 Adapter가 감싼다|엔티티/매퍼/DTO가 크게 늘 수 있다|
-|Onion Architecture|도메인 중심 의존 방향|Domain을 가장 안쪽에 두고 Application, Infrastructure가 바깥에서 의존한다|Clean/Hexagonal과 구분이 흐려질 수 있다|
-|Vertical Slice Architecture|유스케이스 단위 변경 용이성|`CreateOrder`, `CancelOrder`처럼 기능 흐름별로 코드를 묶는다|공통 도메인 규칙이 흩어질 수 있다|
-|CQRS|읽기와 쓰기 모델 분리|주문 생성 Command와 상품/주문 조회 Query를 다른 모델로 최적화한다|동기화 지연과 모델 중복이 생긴다|
-|Event Sourcing|상태 변경 이력 보존|주문 상태를 최종 row가 아니라 이벤트 흐름으로 복원한다|구현과 운영 난도가 높고 조회 모델이 별도로 필요하다|
-|멀티모듈 모놀리스|모듈 단위 의존성 통제|Gradle 의존성으로 기술 전파를 막고 도메인 경계를 강제한다|모듈 경계 설계와 빌드 관리 비용이 생긴다|
-|MSA|배포와 데이터까지 분리|Order, Payment, Notification을 독립 배포/DB 단위로 나눈다|분산 트랜잭션, 관측성, 운영 복잡도가 커진다|
-
-이 표를 기준으로 보면 PeekCart의 첫 단계 선택은 "MSA를 흉내 낸 구조"가 아닙니다. 단일 애플리케이션 안에서 도메인 책임과 기술 책임을 구분해두고 나중에 멀티모듈이나 MSA로 갈 때 어떤 경계를 분리할지 관찰하는 구조입니다.
-
----
-
-## 비교군을 어떻게 분류할 수 있을까
-
-아키텍처 이름이 많아지면 헷갈리기 쉽습니다. 그래서 이름보다 "무엇을 통제하려는가"로 나눠서 보는 편이 좋습니다.
-
-|분류 기준|대표 구조|통제하려는 것|
-|---|---|---|
-|레이어 분리|3-Layered, 4-Layered, 제미니 글의 Layered Architecture|요청 처리, 비즈니스 흐름, 상세 구현, 데이터 접근의 책임|
-|도메인 중심|DDD, Onion, Clean Architecture|비즈니스 규칙이 기술 세부사항에 끌려가지 않게 하는 것|
-|외부 연동 격리|Hexagonal Architecture, Ports & Adapters|DB, Kafka, Redis, Toss, Slack 같은 외부 시스템 의존성|
-|기능 흐름 중심|Vertical Slice Architecture|하나의 유스케이스를 변경할 때 건드리는 범위|
-|읽기/쓰기 분리|CQRS|쓰기 정합성과 읽기 성능을 서로 다른 모델로 최적화하는 것|
-|상태 이력 중심|Event Sourcing|현재 상태가 아니라 상태 변화의 원인과 순서|
-|모듈/배포 경계|멀티모듈 모놀리스, MSA|컴파일, 배포, 데이터, 장애, 확장 단위|
-
-PeekCart의 현재 선택은 이 중에서 `레이어 분리`, `도메인 중심`, `외부 연동 격리`를 가볍게 섞은 형태입니다.
-
-- 4-Layered로 요청 처리와 기술 구현 위치를 나눕니다.
-- DDD 전술 패턴으로 주문 상태 전이 같은 규칙을 도메인에 둡니다.
-- Repository 인터페이스, `ProductPort` 같은 포트 형태로 Hexagonal의 일부 장점을 가져옵니다.
-- 다만 Clean Architecture처럼 도메인과 JPA Entity를 완전히 분리하지는 않습니다.
-- 멀티모듈 모놀리스처럼 Gradle 수준의 강제력도 아직 없습니다.
-
-따라서 이 글에서 현재 구조를 평가할 때는 "왜 완전한 Clean Architecture가 아닌가", "왜 처음부터 Hexagonal이나 멀티모듈이 아닌가"까지 같이 질문해야 합니다. 그래야 지금 구조가 단순한 타협인지 단계에 맞춘 선택인지 구분할 수 있습니다.
-
----
-
-## 의존성 흐름으로 비교하기
-
-구조를 비교할 때 가장 먼저 볼 것은 "어느 코드가 어느 코드를 알아도 되는가"입니다. 아래 도식은 각 아키텍처가 통제하려는 의존 방향만 단순화해 그렸습니다.
-
-### 3-Layered
-
-```mermaid
-flowchart TD
-    C["Controller"]
-    S["Service"]
-    R["Repository"]
-    DB["Database"]
-
-    C --> S
-    S --> R
-    R --> DB
-```
-
-가장 익숙하고 단순합니다. 다만 이 구조를 Transaction Script 방식으로 사용하면 Service가 Repository 여러 개를 직접 알고 검증, 계산, 상태 변경까지 모두 처리하면서 Fat Service가 되기 쉽습니다.
-
-### Package by Feature
-
-```mermaid
-flowchart LR
-    subgraph Order["order package"]
-        OC["OrderController"]
-        OS["OrderService"]
-        OR["OrderRepository"]
-    end
-
-    subgraph Payment["payment package"]
-        PC["PaymentController"]
-        PS["PaymentService"]
-        PR["PaymentRepository"]
-    end
-
-    OC --> OS
-    OS --> OR
-    PC --> PS
-    PS --> PR
-    OS -. "필요 시 호출" .-> PS
-```
-
-도메인별 응집을 만들기 쉽습니다. 다만 단일 모듈 안에서는 `order`가 `payment` 내부 구현을 직접 호출해도 컴파일 수준에서 막기 어렵습니다.
-
-### Business 중심의 Layered Architecture
-
-```mermaid
-flowchart TD
-    P["Presentation<br/>Controller · Request/Response"]
-    B["Business<br/>비즈니스 흐름"]
-    I["Implement<br/>Reader · Processor · Client Wrapper"]
-    D["Data Access<br/>Repository · External Resource"]
-
-    P --> B
-    B --> I
-    I --> D
-```
-
-Business 레이어는 상세 구현을 직접 알지 않고 Implement 레이어의 협력 객체를 통해 흐름을 표현합니다. 비즈니스 흐름은 위에서 읽히고, 상세 구현은 아래로 숨겨집니다.
-
-### PeekCart의 4-Layered + DDD
-
-```mermaid
-flowchart TD
-    P["Presentation<br/>Controller · DTO"]
-    A["Application<br/>UseCase · Transaction"]
-    D["Domain<br/>Entity · VO · <br/>Repository Interface"]
-    I["Infrastructure<br/>JPA · Kafka · Redis · External API"]
-
-    P --> A
-    A --> D
-    I --> D
-    A -. "port/interface" .-> I
-```
-
-PeekCart의 현재 구조입니다. Application은 UseCase 흐름을 조율하고 Domain은 상태 전이와 핵심 규칙을 가집니다. Infrastructure는 Domain의 인터페이스를 구현합니다.
-
-### Hexagonal Architecture
-
-```mermaid
-flowchart LR
-    Http["HTTP Adapter"]
-    KafkaIn["Kafka Consumer Adapter"]
-    App["Application / Domain"]
-    RepoPort["Repository Port"]
-    PayPort["Payment Port"]
-    Jpa["JPA Adapter"]
-    Toss["Toss Adapter"]
-
-    Http --> App
-    KafkaIn --> App
-    App --> RepoPort
-    App --> PayPort
-    Jpa --> RepoPort
-    Toss --> PayPort
-```
-
-중심에는 Application/Domain이 있고 외부 입출력은 Adapter가 맡습니다. Toss, Slack, Kafka, Redis처럼 외부 연동이 많은 PeekCart에서는 일부 개념을 이미 사용하고 있습니다.
-
-### Clean Architecture
-
-```mermaid
-flowchart TD
-    FW["Frameworks & Drivers<br/>Spring · JPA · Web"]
-    AD["Interface Adapters<br/>Controller · Presenter · Gateway"]
-    UC["Use Cases"]
-    EN["Entities"]
-
-    FW --> AD
-    AD --> UC
-    UC --> EN
-```
-
-의존성은 안쪽으로만 향합니다. Entity와 UseCase가 Spring, JPA를 몰라야 하므로 순수성은 높지만 DTO와 매핑 코드가 늘어납니다.
-
-### Onion Architecture
-
-```mermaid
-flowchart TD
-    Infra["Infrastructure<br/>DB · Messaging · External API"]
-    App["Application Services"]
-    DomainSvc["Domain Services"]
-    Model["Domain Model"]
-
-    Infra --> App
-    App --> DomainSvc
-    DomainSvc --> Model
-```
-
-도메인 모델을 가장 안쪽에 둡니다. Clean Architecture와 비슷하게 기술은 바깥으로 밀어내지만 설명의 중심이 UseCase보다 Domain Model에 더 가깝습니다.
-
-### Vertical Slice Architecture
-
-```mermaid
-flowchart LR
-    subgraph CreateOrder["CreateOrder Slice"]
-        COReq["Request"]
-        COHandler["Handler"]
-        CORepo["Repository Access"]
-    end
-
-    subgraph CancelOrder["CancelOrder Slice"]
-        CAReq["Request"]
-        CAHandler["Handler"]
-        CARepo["Repository Access"]
-    end
-
-    COReq --> COHandler --> CORepo
-    CAReq --> CAHandler --> CARepo
-```
-
-레이어보다 유스케이스 단위 변경을 우선합니다. `CreateOrder`, `CancelOrder`처럼 흐름별 응집은 좋아지지만 주문 상태 전이 같은 공통 도메인 규칙을 어디에 둘지 별도 기준이 필요합니다.
-
-### CQRS
-
-```mermaid
-flowchart LR
-    Client["Client"]
-    Command["Command Model<br/>주문 생성 · 결제 승인"]
-    WriteDB["Write DB"]
-    Event["Domain/Event Stream"]
-    Query["Query Model<br/>주문 목록 · 상품 조회"]
-    ReadDB["Read DB / Cache"]
-
-    Client --> Command
-    Command --> WriteDB
-    Command --> Event
-    Event --> Query
-    Query --> ReadDB
-    Client --> Query
-```
-
-쓰기 모델과 읽기 모델을 분리합니다. 서비스 분리 이후 Order가 Product 정보를 직접 조회하지 않고 로컬 캐시나 조회 모델을 사용할 때 연결될 수 있습니다.
-
-### Event Sourcing
-
-```mermaid
-flowchart TD
-    Command["Command"]
-    Agg["Aggregate"]
-    Store["Event Store"]
-    Events["OrderCreated<br/>PaymentCompleted<br/>OrderCancelled"]
-    Projection["Projection / Read Model"]
-
-    Command --> Agg
-    Agg --> Events
-    Events --> Store
-    Store --> Projection
-```
-
-현재 상태를 row로 덮어쓰는 대신 상태 변경 이벤트를 저장합니다. 주문 상태 이력을 강하게 남길 수 있지만 일반 CRUD보다 구현과 운영 난도가 높습니다.
-
-### 멀티모듈 모놀리스
-
-```mermaid
-flowchart TD
-    Api["app-api"]
-    Order["domain-order"]
-    Product["domain-product"]
-    Payment["domain-payment"]
-    Common["common"]
-    Persistence["persistence-mysql"]
-    Messaging["messaging-kafka"]
-
-    Api --> Order
-    Api --> Product
-    Api --> Payment
-    Order --> Common
-    Product --> Common
-    Payment --> Common
-    Persistence --> Order
-    Persistence --> Product
-    Messaging --> Order
-```
-
-단일 배포는 유지하지만 Gradle 모듈로 의존성을 강제합니다. 패키지 규칙보다 강하게 "어떤 모듈이 어떤 기술을 알아도 되는가"를 통제할 수 있습니다.
-
-### MSA
-
-```mermaid
-flowchart LR
-    GW["Gateway"]
-    OrderSvc["Order Service"]
-    PaymentSvc["Payment Service"]
-    ProductSvc["Product Service"]
-    Kafka["Kafka"]
-    OrderDB["Order DB"]
-    PaymentDB["Payment DB"]
-    ProductDB["Product DB"]
-
-    GW --> OrderSvc
-    GW --> PaymentSvc
-    GW --> ProductSvc
-    OrderSvc --> OrderDB
-    PaymentSvc --> PaymentDB
-    ProductSvc --> ProductDB
-    OrderSvc --> Kafka
-    PaymentSvc --> Kafka
-    ProductSvc --> Kafka
-```
-
-배포, 데이터, 장애 경계까지 분리합니다. 대신 트랜잭션과 조회, 장애 대응을 네트워크와 이벤트 기반으로 다시 설계해야 합니다.
-
----
-
 ## PeekCart의 4개 레이어
 
-PeekCart에서 각 도메인은 아래 네 레이어로 나뉩니다.
+레이어별 패키지와 책임은 다음과 같습니다.
 
 |레이어|패키지|책임|
 |---|---|---|
@@ -587,7 +284,7 @@ Application Service에도 로직은 있습니다. UseCase 흐름과 도메인 �
 
 - 장바구니가 비어 있으면 주문을 만들 수 없다는 흐름 검증은 UseCase에 가깝습니다.
 - 주문 상태가 `DELIVERED`에서 `CANCELLED`로 갈 수 없다는 규칙은 Domain에 가깝습니다.
-- 재고 차감은 Product 도메인의 책임이므로 `ProductPort`를 통해 호출합니다.
+- 재고 차감은 Product 도메인의 책임이므로 Order가 정의한 `ProductPort` 인터페이스를 통해 호출합니다. 이 경계는 Product 도메인 절에서 다시 봅니다.
 
 ---
 
@@ -640,6 +337,199 @@ JPA 어노테이션이 붙었다고 DDD에서 벗어난 것은 아닙니다. 이
 
 ---
 
+## Product 도메인에서도 같은 구조가 반복된다
+
+Product 도메인도 비슷하게 읽을 수 있습니다.
+
+```
+src/main/java/com/peekcart/product/
+├── presentation/
+│   ├── ProductController.java
+│   └── AdminProductController.java
+├── application/
+│   ├── ProductCommandService.java
+│   ├── ProductQueryService.java
+│   ├── InventoryService.java
+│   └── InventoryLockFacade.java
+├── domain/
+│   ├── model/Product.java
+│   ├── model/Category.java
+│   ├── model/Inventory.java
+│   └── repository/*Repository.java
+└── infrastructure/
+    ├── ProductRepositoryImpl.java
+    ├── InventoryRepositoryImpl.java
+    └── adapter/ProductPortAdapter.java
+```
+
+여기서 `Inventory`는 재고 수량과 낙관적 락 버전을 가집니다. 이후 성능과 동시성 보강 단계에서 Redis 분산 락이 들어오더라도, 최종 재고 변경 규칙은 Product 도메인의 책임으로 남습니다.
+
+Order 도메인은 Product를 직접 구현체로 호출하지 않고 `ProductPort`를 통해 재고 차감과 가격 조회를 요청합니다. 지금은 모놀리스 안에서 adapter가 연결하지만 서비스 분리 이후에는 이 경계가 서비스 간 통신 또는 CQRS 로컬 캐시로 바뀔 수 있습니다. CQRS는 뒤의 비교 절에서 다룹니다.
+
+4-Layered + DDD 구조는 나중에 서비스 경계를 찾는 데도 쓰입니다.
+
+---
+
+## 다른 구조와 비교하며 읽기
+
+이번 글의 목적은 "PeekCart가 선택한 구조가 정답이다"를 주장하는 것이 아닙니다. 오히려 여러 구조가 어떤 문제를 해결하려고 생겼는지 비교하면서 지금 프로젝트 단계에 맞는 절충선을 찾는 것이 목표입니다.
+
+참고한 글 중 하나는 [지속 성장 가능한 소프트웨어를 만들어가는 방법](https://geminikims.medium.com/%EC%A7%80%EC%86%8D-%EC%84%B1%EC%9E%A5-%EA%B0%80%EB%8A%A5%ED%95%9C-%EC%86%8C%ED%94%84%ED%8A%B8%EC%9B%A8%EC%96%B4%EB%A5%BC-%EB%A7%8C%EB%93%A4%EC%96%B4%EA%B0%80%EB%8A%94-%EB%B0%A9%EB%B2%95-97844c5dab63)입니다. 이 글에서 특히 인상 깊었던 관점은 다음과 같습니다.
+
+- 비즈니스 로직은 상세 구현을 모두 읽지 않아도 흐름을 이해할 수 있어야 합니다.
+- 레이어는 참조 방향과 제약으로 통제되어야 합니다. 폴더 이름만으로는 막을 수 없습니다.
+- 모듈화는 기술 의존성을 상위 비즈니스 코드로 전파하지 않기 위한 장치가 될 수 있습니다.
+
+---
+
+## 비교군을 어떻게 분류할 수 있을까
+
+아키텍처 이름이 많아지면 헷갈리기 쉽습니다. 그래서 이름보다 "무엇을 통제하려는가"로 나눠서 보는 편이 좋습니다.
+
+|분류 기준|대표 구조|통제하려는 것|
+|---|---|---|
+|레이어 분리|3-Layered, 4-Layered, 제미니 글의 Layered Architecture|요청 처리, 비즈니스 흐름, 상세 구현, 데이터 접근의 책임|
+|도메인 중심|DDD, Onion, Clean Architecture|비즈니스 규칙이 기술 세부사항에 끌려가지 않게 하는 것|
+|외부 연동 격리|Hexagonal Architecture, Ports & Adapters|DB, Kafka, Redis, Toss, Slack 같은 외부 시스템 의존성|
+|기능 흐름 중심|Vertical Slice Architecture|하나의 유스케이스를 변경할 때 건드리는 범위|
+|읽기/쓰기 분리|CQRS|쓰기 정합성과 읽기 성능을 서로 다른 모델로 최적화하는 것|
+|상태 이력 중심|Event Sourcing|현재 상태가 아니라 상태 변화의 원인과 순서|
+|모듈/배포 경계|멀티모듈 모놀리스, MSA|컴파일, 배포, 데이터, 장애, 확장 단위|
+
+PeekCart의 현재 선택은 이 중에서 `레이어 분리`, `도메인 중심`, `외부 연동 격리`를 가볍게 섞은 형태입니다.
+
+- 4-Layered로 요청 처리와 기술 구현 위치를 나눕니다.
+- DDD 전술 패턴으로 주문 상태 전이 같은 규칙을 도메인에 둡니다.
+- Repository 인터페이스, `ProductPort` 같은 포트 형태로 Hexagonal의 일부 장점을 가져옵니다.
+- 다만 Clean Architecture처럼 도메인과 JPA Entity를 완전히 분리하지는 않습니다.
+- 멀티모듈 모놀리스처럼 Gradle 수준의 강제력도 아직 없습니다.
+
+따라서 이 글에서 현재 구조를 평가할 때는 "왜 완전한 Clean Architecture가 아닌가", "왜 처음부터 Hexagonal이나 멀티모듈이 아닌가"까지 같이 질문해야 합니다. 그래야 지금 구조가 단순한 타협인지 단계에 맞춘 선택인지 구분할 수 있습니다.
+
+---
+
+## 의존성 흐름으로 비교하기
+
+구조를 비교할 때 가장 먼저 볼 것은 "어느 코드가 어느 코드를 알아도 되는가"입니다. 아래 도식은 각 아키텍처가 통제하려는 의존 방향만 단순화해 그렸습니다.
+
+### 3-Layered
+
+```mermaid
+flowchart TD
+    C["Controller"]
+    S["Service"]
+    R["Repository"]
+    DB["Database"]
+
+    C --> S
+    S --> R
+    R --> DB
+```
+
+가장 익숙하고 단순합니다. 다만 이 구조를 Transaction Script 방식으로 사용하면 Service가 Repository 여러 개를 직접 알고 검증, 계산, 상태 변경까지 모두 처리하면서 Fat Service가 되기 쉽습니다.
+
+### PeekCart의 4-Layered + DDD
+
+PeekCart의 현재 구조는 앞의 "PeekCart의 4개 레이어" 절에서 정리한 대로 Presentation, Application, Domain, Infrastructure로 나뉩니다. Application은 UseCase 흐름을 조율하고 Domain은 상태 전이와 핵심 규칙을 가집니다. Infrastructure가 Domain의 인터페이스를 구현하는 방향은 그 절의 도식을 봅니다.
+
+### Hexagonal Architecture
+
+```mermaid
+flowchart LR
+    Http["HTTP Adapter"]
+    KafkaIn["Kafka Consumer Adapter"]
+    App["Application / Domain"]
+    RepoPort["Repository Port"]
+    PayPort["Payment Port"]
+    Jpa["JPA Adapter"]
+    Toss["Toss Adapter"]
+
+    Http --> App
+    KafkaIn --> App
+    App --> RepoPort
+    App --> PayPort
+    Jpa --> RepoPort
+    Toss --> PayPort
+```
+
+중심에는 Application/Domain이 있고 외부 입출력은 Adapter가 맡습니다. Toss, Slack, Kafka, Redis처럼 외부 연동이 많은 PeekCart에서는 일부 개념을 이미 사용하고 있습니다.
+
+### Clean Architecture
+
+```mermaid
+flowchart TD
+    FW["Frameworks & Drivers<br/>Spring · JPA · Web"]
+    AD["Interface Adapters<br/>Controller · Presenter · Gateway"]
+    UC["Use Cases"]
+    EN["Entities"]
+
+    FW --> AD
+    AD --> UC
+    UC --> EN
+```
+
+의존성은 안쪽으로만 향합니다. Entity와 UseCase가 Spring, JPA를 몰라야 하므로 순수성은 높지만 DTO와 매핑 코드가 늘어납니다.
+
+### 멀티모듈 모놀리스
+
+```mermaid
+flowchart TD
+    Api["app-api"]
+    Order["domain-order"]
+    Product["domain-product"]
+    Payment["domain-payment"]
+    Common["common"]
+    Persistence["persistence-mysql"]
+    Messaging["messaging-kafka"]
+
+    Api --> Order
+    Api --> Product
+    Api --> Payment
+    Order --> Common
+    Product --> Common
+    Payment --> Common
+    Persistence --> Order
+    Persistence --> Product
+    Messaging --> Order
+```
+
+단일 배포는 유지하지만 Gradle 모듈로 의존성을 강제합니다. 패키지 규칙보다 강하게 "어떤 모듈이 어떤 기술을 알아도 되는가"를 통제할 수 있습니다.
+
+### 다른 구조들
+
+아래 구조들은 비교 기준으로 짧게 소개합니다.
+
+- **Package by Feature**: 도메인별 응집을 만들기 쉽습니다. 다만 단일 모듈 안에서는 `order`가 `payment` 내부 구현을 직접 호출해도 컴파일 수준에서 막기 어렵습니다.
+- **Business 중심의 Layered Architecture**: Presentation, Business, Implement, Data Access 네 레이어로 나눕니다. Implement 레이어에는 Reader, Processor, Client Wrapper 같은 협력 객체가 들어가고 Data Access에는 Repository와 외부 리소스 접근이 있습니다. Business 레이어는 상세 구현을 직접 알지 않고 Implement 레이어의 협력 객체를 통해 흐름을 표현합니다. 비즈니스 흐름은 위에서 읽히고, 상세 구현은 아래로 숨겨집니다.
+- **Onion Architecture**: 도메인 모델을 가장 안쪽에 둡니다. Clean Architecture와 비슷하게 기술은 바깥으로 밀어내지만 설명의 중심이 UseCase보다 Domain Model에 더 가깝습니다.
+- **Vertical Slice Architecture**: 레이어보다 유스케이스 단위 변경을 우선합니다. `CreateOrder`, `CancelOrder`처럼 흐름별 응집은 좋아지지만 주문 상태 전이 같은 공통 도메인 규칙을 어디에 둘지 별도 기준이 필요합니다.
+- **CQRS**: 쓰기 모델(주문 생성, 결제 승인)과 읽기 모델(주문 목록, 상품 조회)을 분리합니다. 서비스 분리 이후 Order가 Product 정보를 직접 조회하지 않고 로컬 캐시나 조회 모델을 사용할 때 연결될 수 있습니다.
+- **Event Sourcing**: 현재 상태를 row로 덮어쓰는 대신 `OrderCreated`, `PaymentCompleted`, `OrderCancelled` 같은 상태 변경 이벤트를 저장합니다. 주문 상태 이력을 강하게 남길 수 있지만 일반 CRUD보다 구현과 운영 난도가 높습니다.
+- **MSA**: Gateway 뒤에서 각 서비스가 자기 DB를 갖고 Kafka에 연결됩니다. 배포, 데이터, 장애 경계까지 분리합니다. 대신 트랜잭션과 조회, 장애 대응을 네트워크와 이벤트 기반으로 다시 설계해야 합니다.
+
+---
+
+## 구조별로 정리하면 어떻게 다를까
+
+|구조|핵심 관심사|PeekCart에 적용한다면|부담|
+|---|---|---|---|
+|전통적 3-Layered|빠른 CRUD 구현|Controller-Service-Repository로 단순하게 시작한다|Service가 비대해지기 쉽다|
+|Package by Feature|기능 단위 응집|`order`, `payment` 같은 도메인 패키지를 먼저 나눈다|패키지만 나누면 의존성 제약은 약하다|
+|Business 중심의 Layered Architecture|비즈니스 흐름 가시화와 구현 도구 분리|Presentation-Business-Implement-Data Access로 나누고 Business가 상세 기술을 모르게 한다|Implement 레이어를 어디까지 둘지 기준이 필요하다|
+|4-Layered + DDD|도메인 규칙 응집|상태 전이, 재고 차감 같은 규칙을 Entity/Domain Service에 모은다|레이어 책임을 계속 의식해야 한다|
+|Hexagonal Architecture|외부 시스템 격리|Toss, Slack, Kafka, Redis를 Port/Adapter로 감싼다|Port와 Adapter가 많아져 구조가 무거워질 수 있다|
+|Clean Architecture|프레임워크 독립성|UseCase와 Entity를 Spring/JPA 바깥에 두고 Adapter가 감싼다|엔티티/매퍼/DTO가 크게 늘 수 있다|
+|Onion Architecture|도메인 중심 의존 방향|Domain을 가장 안쪽에 두고 Application, Infrastructure가 바깥에서 의존한다|Clean/Hexagonal과 구분이 흐려질 수 있다|
+|Vertical Slice Architecture|유스케이스 단위 변경 용이성|`CreateOrder`, `CancelOrder`처럼 기능 흐름별로 코드를 묶는다|공통 도메인 규칙이 흩어질 수 있다|
+|CQRS|읽기와 쓰기 모델 분리|주문 생성 Command와 상품/주문 조회 Query를 다른 모델로 최적화한다|동기화 지연과 모델 중복이 생긴다|
+|Event Sourcing|상태 변경 이력 보존|주문 상태를 최종 row가 아니라 이벤트 흐름으로 복원한다|구현과 운영 난도가 높고 조회 모델이 별도로 필요하다|
+|멀티모듈 모놀리스|모듈 단위 의존성 통제|Gradle 의존성으로 기술 전파를 막고 도메인 경계를 강제한다|모듈 경계 설계와 빌드 관리 비용이 생긴다|
+|MSA|배포와 데이터까지 분리|Order, Payment, Notification을 독립 배포/DB 단위로 나눈다|분산 트랜잭션, 관측성, 운영 복잡도가 커진다|
+
+이 표와 앞의 참고 글 관점으로 PeekCart를 다시 보면 현재 구조는 다음 단계로 성장하기 위한 중간 형태입니다. 그래서 PeekCart의 첫 단계 선택은 "MSA를 흉내 낸 구조"가 아닙니다. 단일 애플리케이션 안에서 도메인 책임과 기술 책임을 구분해두고 나중에 멀티모듈이나 MSA로 갈 때 어떤 경계를 분리할지 관찰하는 구조입니다.
+
+---
+
 ## 멀티모듈로 갔다면 무엇이 달라졌을까
 
 현재 PeekCart의 첫 단계 구조는 단일 Gradle 모듈입니다. `user`, `product`, `order`, `payment`, `notification`이 패키지로 나뉘어 있지만 빌드 단위로 보면 하나의 애플리케이션입니다.
@@ -675,7 +565,7 @@ peekcart/
 
 멀티모듈의 장점은 패키지 규칙보다 강한 제약을 걸 수 있다는 점입니다. 예를 들어 `app-api`가 `support-jpa`의 내부 구현을 직접 참조하지 못하게 만들 수 있고 `implementation` 의존성을 사용하면 하위 모듈의 기술 의존성이 상위 모듈로 전파되는 것도 막을 수 있습니다.
 
-이것은 위에서 말한 모듈화의 핵심과 관련이 있습니다. 상위 비즈니스 모듈은 "JPA를 쓰는지", "Feign을 쓰는지", "어떤 Kafka Client를 쓰는지"를 몰라도 되고 하위 모듈이 제공하는 개념과 인터페이스만 사용하게 됩니다.
+이것은 앞에서 소개한 참고 글의 모듈화 관점과 관련이 있습니다. 상위 비즈니스 모듈은 "JPA를 쓰는지", "Feign을 쓰는지", "어떤 Kafka Client를 쓰는지"를 몰라도 되고 하위 모듈이 제공하는 개념과 인터페이스만 사용하게 됩니다.
 
 하지만 첫 단계에서 바로 멀티모듈을 채택하지 않은 것도 이유가 있습니다.
 
@@ -686,39 +576,6 @@ peekcart/
 |MSA|독립 배포, 독립 DB, 장애 격리|네트워크, 이벤트 계약, 분산 트랜잭션, 운영 복잡도가 생긴다|
 
 따라서 현재 구조는 첫 단계의 목표에 맞춰 비용을 낮춘 출발점입니다. 먼저 패키지 레벨에서 레이어와 도메인 책임을 설계하고 이후 Gradle 멀티모듈로 넘어가며 그 경계를 더 강하게 고정하는 흐름입니다.
-
----
-
-## Product 도메인에서도 같은 구조가 반복된다
-
-Product 도메인도 비슷하게 읽을 수 있습니다.
-
-```
-src/main/java/com/peekcart/product/
-├── presentation/
-│   ├── ProductController.java
-│   └── AdminProductController.java
-├── application/
-│   ├── ProductCommandService.java
-│   ├── ProductQueryService.java
-│   ├── InventoryService.java
-│   └── InventoryLockFacade.java
-├── domain/
-│   ├── model/Product.java
-│   ├── model/Category.java
-│   ├── model/Inventory.java
-│   └── repository/*Repository.java
-└── infrastructure/
-    ├── ProductRepositoryImpl.java
-    ├── InventoryRepositoryImpl.java
-    └── adapter/ProductPortAdapter.java
-```
-
-여기서 `Inventory`는 재고 수량과 낙관적 락 버전을 가집니다. 이후 성능과 동시성 보강 단계에서 Redis 분산 락이 들어오더라도, 최종 재고 변경 규칙은 Product 도메인의 책임으로 남습니다.
-
-Order 도메인은 Product를 직접 구현체로 호출하지 않고 `ProductPort`를 통해 재고 차감과 가격 조회를 요청합니다. 지금은 모놀리스 안에서 adapter가 연결하지만 서비스 분리 이후에는 이 경계가 서비스 간 통신 또는 CQRS 로컬 캐시로 바뀔 수 있습니다.
-
-4-Layered + DDD 구조는 나중에 서비스 경계를 찾는 데도 쓰입니다.
 
 ---
 

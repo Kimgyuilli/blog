@@ -21,7 +21,7 @@ slug: "peekcart-order-transaction-flow"
 | 상태 전이 (State Transition)           | 주문 상태가 한 값에서 다른 값으로 바뀌는 것. 모든 전이가 허용되지는 않는다               |
 | 스냅샷 (Snapshot)                     | 특정 시점의 값을 복사해 보존하는 것. 주문 시점의 상품 가격을 저장하는 것이 예시            |
 | 보상 트랜잭션 (Compensating Transaction) | 이미 커밋된 변경을 되돌리기 위한 별도 트랜잭션. 결제 실패 시 재고를 복구하는 것이 예시        |
-| Outbox 이벤트                         | DB 트랜잭션과 함께 저장되어 이벤트 유실을 방지하는 패턴. 뒤의 Outbox 글에서 상세히 다룰 예정 |
+| Outbox 이벤트                         | DB 트랜잭션과 함께 저장되어 이벤트 유실을 방지하는 패턴. 뒤의 [Outbox 글](/blog/peekcart-transactional-outbox/)에서 상세히 다룰 예정 |
 
 이 연재는 PeekCart를 네 단계로 진행했습니다. Phase 1은 단일 Spring Boot 모놀리스로 도메인을 구현한 단계, Phase 2는 캐시, 분산 락, Kafka와 Outbox로 성능과 정합성을 보강한 단계, Phase 3은 CI, Kubernetes, 관측성, 부하 테스트로 운영 환경을 검증한 단계, Phase 4는 서비스별로 나눈 MSA 단계입니다.
 
@@ -121,6 +121,21 @@ public class CartCommandService {
 
 장바구니가 없으면 자동으로 생성합니다(`orElseGet`). 사용자가 처음 상품을 담을 때 별도로 "장바구니 생성" API를 호출할 필요가 없습니다.
 
+### ProductPort: Order에서 Product로
+
+`CartCommandService`와 뒤에서 볼 `OrderCommandService`는 둘 다 `ProductPort`를 주입받습니다. 인터페이스는 이렇게 생겼습니다.
+
+```java
+// Order 도메인의 application/port에 정의
+public interface ProductPort {
+    void verifyProductExists(Long productId);
+    long decreaseStockAndGetUnitPrice(Long productId, int quantity);
+    void restoreStock(Long productId, int quantity);
+}
+```
+
+아래 "도메인 간 경계" 절에서 이 Port가 만드는 의존 방향을 다시 봅니다.
+
 ---
 
 ## 주문 생성: 하나의 트랜잭션 안에서 일어나는 일
@@ -203,7 +218,9 @@ public class OrderCommandService {
 
 **1단계: 장바구니 조회와 검증.** 장바구니가 없거나 비어 있으면 주문을 만들 수 없습니다. 이 검증은 UseCase 흐름에 가깝기 때문에 Application Service에 있습니다.
 
-**2단계: 재고 차감과 가격 스냅샷.** 장바구니의 각 아이템마다 `productPort.decreaseStockAndGetUnitPrice()`를 호출합니다. 내부에서는 `InventoryLockFacade`가 Redis 분산 락을 잡고 `InventoryService.decreaseStock()`을 호출합니다. 이때 `InventoryService`의 `@Transactional`이 기본 `Propagation.REQUIRED`이므로 `createOrder()`의 외부 트랜잭션에 참여합니다. 분산 락은 `InventoryService` 반환 후 해제되지만 실제 DB 커밋은 `createOrder()` 전체가 끝나야 일어납니다. 따라서 분산 락 해제와 커밋 사이에 다른 스레드가 실행될 수 있고 이때 `@Version` 낙관적 락이 최종 방어선이 됩니다(상품과 재고 글에서 상세히 다뤘습니다). 동시에 이 호출은 주문 시점의 상품 가격을 반환합니다.
+**2단계: 재고 차감과 가격 스냅샷.** 장바구니의 각 아이템마다 `productPort.decreaseStockAndGetUnitPrice()`를 호출합니다. 내부에서는 `InventoryLockFacade`가 Redis 분산 락을 잡고 `InventoryService.decreaseStock()`을 호출합니다. 이때 `InventoryService`의 `@Transactional`이 기본 `Propagation.REQUIRED`이므로 `createOrder()`의 외부 트랜잭션에 참여합니다.
+
+분산 락은 `InventoryService` 반환 후 해제되지만 실제 DB 커밋은 `createOrder()` 전체가 끝나야 일어납니다. 따라서 분산 락 해제와 커밋 사이에 다른 스레드가 실행될 수 있고 이때 `@Version` 낙관적 락이 최종 방어선이 됩니다(상품과 재고 글에서 상세히 다뤘습니다). 동시에 이 호출은 주문 시점의 상품 가격을 반환합니다.
 
 가격은 장바구니에 담을 때 저장한 값을 쓰지 않고, 이 시점에 가져옵니다. 사용자가 장바구니에 상품을 담은 지 3일이 지났다면 그 사이에 가격이 바뀌었을 수 있습니다. 주문 시점의 최신 가격을 가져와야 정확합니다.
 
@@ -211,7 +228,7 @@ public class OrderCommandService {
 
 **4단계: 장바구니 비우기.** 주문이 성공적으로 만들어졌으므로 장바구니를 비웁니다. `orphanRemoval = true`가 설정돼 있어 `clear()` 호출 시 DB에서도 `cart_items`가 삭제됩니다.
 
-**5단계: Outbox 이벤트 저장.** `order.created` 이벤트를 `outbox_events` 테이블에 저장합니다. 이 이벤트는 별도 폴링 스케줄러가 Kafka로 발행합니다. DB 저장과 이벤트 저장이 같은 트랜잭션이므로, 주문은 저장됐는데 이벤트는 유실되는 상황이 방지됩니다. Outbox 패턴은 뒤의 Outbox 글에서 상세히 다룰 예정입니다.
+**5단계: Outbox 이벤트 저장.** `order.created` 이벤트를 `outbox_events` 테이블에 저장합니다. 이 이벤트는 별도 폴링 스케줄러가 Kafka로 발행합니다. DB 저장과 이벤트 저장이 같은 트랜잭션이므로, 주문은 저장됐는데 이벤트는 유실되는 상황이 방지됩니다.
 
 이 다섯 단계가 모두 하나의 `@Transactional` 안에 있습니다. 2단계에서 재고 부족으로 예외가 발생하면 3~5단계는 실행되지 않습니다. 재고 차감이 같은 트랜잭션에 참여하는 구조라면 이미 차감된 다른 상품의 재고도 롤백으로 함께 복원됩니다. 반대로 재고 차감을 별도 트랜잭션으로 분리한다면, 주문 저장 실패 시 보상 복구가 필요합니다. 이 차이는 상품과 재고 글에서 본 락 범위와 트랜잭션 범위 문제와 연결됩니다.
 
@@ -238,7 +255,7 @@ private long unitPrice;
 
 이 패턴은 Phase 4에서도 중요해집니다. MSA에서 Order Service와 Product Service가 별도 DB를 갖게 되면, FK 조인 자체가 불가능합니다. 스냅샷이 이미 저장되어 있으므로 Order Service는 Product Service 없이도 주문 금액을 조회할 수 있습니다.
 
-`cart_items`에는 가격 스냅샷이 없는 것과 대비됩니다. 장바구니는 "다음에 주문할 때 뭘 살지"를 기억하는 것이고 가격은 주문하는 순간에 확정되어야 합니다.
+장바구니에 가격이 없는 이유는 앞의 Cart 절에서 설명했습니다.
 
 ---
 
@@ -461,7 +478,7 @@ void cancelled_isTerminal(OrderStatus target) {
 
 ## 주문 취소: 세 가지 경로
 
-주문 취소는 하나의 결과(`CANCELLED`)에 도달하지만 경로는 아래처럼 갈립니다.
+주문 취소는 하나의 결과(`CANCELLED`)에 도달하지만 경로는 아래처럼 세 가지로 갈립니다.
 
 ```mermaid
 flowchart LR
@@ -517,7 +534,11 @@ Payment 도메인이 결제 실패 이벤트를 Kafka로 발행하면, Order의 
 
 여기서 도메인 간 통신 방식이 보입니다. Payment와 Order 사이에 직접 메서드 호출이 없습니다. Kafka 이벤트로 연결되어 있습니다. Payment 도메인은 "결제가 실패했다"는 사실만 발행하고 Order 도메인이 "그러면 주문을 취소해야 한다"는 결정을 독립적으로 내립니다.
 
-### 경로 3: 결제 타임아웃 (Scheduler)
+경로 3은 결제가 오지 않은 주문의 재고를 푸는 일이라 다음 절에서 따로 봅니다.
+
+---
+
+## 결제 타임아웃은 어떻게 처리할까
 
 ```java
 // OrderTimeoutScheduler.java
@@ -568,7 +589,9 @@ public void cancelExpiredOrder(Long orderId) {
 
 **ShedLock**: `@SchedulerLock`으로 다중 Pod에서 스케줄러가 동시에 실행되는 것을 방지합니다. 뒤의 ShedLock 글에서 상세히 다룰 예정입니다.
 
-### 세 경로의 비교
+---
+
+## 세 취소 경로의 비교
 
 | 경로 | 트리거 | 트랜잭션 | 멱등성 | 재고 복구 |
 | --- | --- | --- | --- | --- |
@@ -582,18 +605,7 @@ public void cancelExpiredOrder(Long orderId) {
 
 ## 도메인 간 경계: Port가 만드는 계약
 
-Order 도메인은 두 개의 Port를 통해 다른 도메인과 소통합니다.
-
-### ProductPort: Order에서 Product로
-
-```java
-// Order 도메인의 application/port에 정의
-public interface ProductPort {
-    void verifyProductExists(Long productId);
-    long decreaseStockAndGetUnitPrice(Long productId, int quantity);
-    void restoreStock(Long productId, int quantity);
-}
-```
+Order 도메인이 관여하는 Port는 둘입니다. 장바구니 절에서 본 `ProductPort`는 Order가 Product를 호출할 때 쓰고, `OrderPort`는 Payment가 Order를 호출할 때 씁니다.
 
 ### OrderPort: Payment에서 Order로
 
@@ -687,10 +699,10 @@ UUID의 앞 8자리를 사용하므로 충돌 확률은 매우 낮지만 0은 �
 
 ### 의도적으로 안 한 것
 
-- **부분 주문**: 일부 상품만 재고가 있을 때 부분 주문을 허용하는 기능
+- **부분 주문**: 일부 상품만 재고가 있을 때 허용하는 기능(위 "부분 실패" 절)
 - **주문 수정**: 주문 생성 후 수량이나 배송지를 변경하는 기능. 현재는 취소 후 재주문만 가능
 - **결제 완료 후 취소**: `PAYMENT_COMPLETED` 이후에는 `CANCELLED`로 전이할 수 없습니다. 환불은 별도 비즈니스 흐름으로, 포트폴리오 범위에서는 미구현
-- **`transitionTo()`의 도메인 언어화**: `order.requestPayment()`, `order.completePayment()` 같은 명시적 메서드로 전환하면 호출부 가독성이 올라가지만 현재 복잡도에서는 범용 `transitionTo()` + `cancel()`로 충분
+- **`transitionTo()`의 도메인 언어화**: 상태 전이 절에서 개선 후보로 남긴 `order.requestPayment()`, `order.completePayment()` 같은 명시적 메서드로의 전환
 
 ---
 
@@ -724,7 +736,7 @@ flowchart TD
     Kafka -->|"order.cancelled"| ProductSvc
 ```
 
-가장 크게 바뀌는 것은 **주문 생성 트랜잭션이 여러 서비스로 분산된다**는 점입니다.
+### 가장 크게 바뀌는 것: 주문 생성 트랜잭션이 여러 서비스로 분산된다
 
 현재 모놀리스에서는 재고 차감과 주문 저장이 하나의 DB 트랜잭션에 있습니다. MSA에서는 Order DB와 Product DB가 별도이므로 이것이 불가능합니다. 두 가지 접근이 가능합니다.
 
@@ -734,7 +746,7 @@ flowchart TD
 
 현재 코드에서 이미 `ProductPort` 인터페이스와 Outbox + Kafka Consumer 구조가 갖춰져 있어, 두 접근 모두로 전환할 수 있는 기반이 마련되어 있습니다.
 
-나머지 변화들
+### 나머지 변화들
 
 - **장바구니 소유권**: `carts`와 `cart_items`는 Order DB에 남습니다. 장바구니에서 상품 정보(이름, 가격)를 보여주려면 Product Service API를 호출하거나 CQRS 로컬 캐시를 유지해야 합니다.
 - **`OrderPort`를 HTTP API로**: Payment Service가 주문 상태를 `PAYMENT_REQUESTED`로 전이할 때, `OrderPortAdapter`의 메서드 호출이 HTTP API 호출로 바뀝니다.
