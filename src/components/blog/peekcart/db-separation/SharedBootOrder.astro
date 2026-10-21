@@ -168,7 +168,7 @@ import '@/styles/scene.css';
     const markReady = (id: Id) => {
       pods[id].flash('is-waiting', false);
       pods[id].flash('is-temp', false);
-      pods[id].setSub('Ready ✓');
+      pods[id].setSub('Ready');
       pods[id].flash('is-done');
       pods[id].flash('is-ok');
       setReady(readyCount + 1);

@@ -31,7 +31,7 @@ const shortOf = Object.fromEntries(steps.map((step) => [step.id, step.short]));
     <div class="rollout-grid">
       {orders.map((order) => (
         <button type="button" class="rollout-card" data-rollout-order={order.join(',')}>
-          <span class="rollout-card-order">{order.map((id) => shortOf[id]).join(' → ')}</span>
+          <span class="rollout-card-order">{order.map((id) => shortOf[id]).join(', ')}</span>
           <small class="rollout-card-result">아직 안 해 봄</small>
         </button>
       ))}
@@ -219,7 +219,7 @@ const shortOf = Object.fromEntries(steps.map((step) => [step.id, step.short]));
         if (!(await p.travel([{ x: last.x, y: last.y + 6 }], 340, ease.out)) || !alive()) return;
         await p.land(false);
         service.flash('is-done');
-        setVerdict(normalVerdict, '✓ 200', 'flow');
+        setVerdict(normalVerdict, '200', 'flow');
       } else {
         if (!(await p.bounce({ x: last.x, y: last.y + 4 }, 26)) || !alive()) return;
         service.flash('is-error');
@@ -325,7 +325,7 @@ const shortOf = Object.fromEntries(steps.map((step) => [step.id, step.short]));
       const card = cards.find((c) => c.dataset.rolloutOrder === order.join(','));
       if (!card) return;
       card.dataset.result = safe ? 'safe' : 'broken';
-      card.querySelector('small')!.textContent = `${safe ? '✓' : '✕'} ${text}`;
+      card.querySelector('small')!.textContent = text;
     };
     const markPlaying = (order: Step[] | null) => {
       cards.forEach((card) => card.setAttribute('aria-current', String(order !== null && card.dataset.rolloutOrder === order.join(','))));

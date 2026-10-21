@@ -56,7 +56,7 @@ import '@/styles/scene.css';
       x: svg('text', { class: 'scene-break' }, root),
       label: svg('text', { class: 'scene-label scene-label-danger' }, root),
     }));
-    links.forEach((k) => { k.x.textContent = '✕'; k.label.textContent = '연결 실패'; k.label.classList.add('is-sans'); });
+    links.forEach((k) => { k.x.textContent = ''; k.label.textContent = '연결 실패'; k.label.classList.add('is-sans'); });
     const tether = svg('path', { class: 'cbl-tether' }, root);
     const tetherText = svg('text', { class: 'scene-label is-sans scene-label-dep' }, root);
     tetherText.textContent = '수명';

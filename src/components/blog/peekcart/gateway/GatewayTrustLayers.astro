@@ -68,7 +68,7 @@ import '@/styles/scene.css';
       r.style.stroke = 'var(--scene-flow)';
       r.style.strokeWidth = '1.5';
       const t = svg('text', { y: 4, 'text-anchor': 'middle', class: 'scene-label scene-label-flow' }, g);
-      t.textContent = '✓';
+      t.textContent = '';
       g.style.display = sender.allowed ? '' : 'none';
       return g;
     });

@@ -8,7 +8,7 @@ draft: false
 slug: "spring-websocket-google-stt-2"
 ---
 > **이전 글 요약:**
-> 1편에서는 WebSocket 기반 구조 설계, SttSessionContext, SttSessionManager를 통해
+> [이전 글](/blog/spring-websocket-google-stt-1/)에서는 WebSocket 기반 구조 설계, SttSessionContext, SttSessionManager를 통해
 > 사용자 세션을 어떻게 분리하고 안전하게 유지할 수 있는지에 대해 다뤘다.
 
 이번 글에서는 \*\*Google Cloud Speech-to-Text API (Streaming)\*\*를
@@ -123,9 +123,9 @@ public class GoogleSttResponseObserver implements ResponseObserver<StreamingReco
 }
 ```
 
-#### ✅ 포인트
+#### 포인트
 
--   Google은 여러 번의 중간 결과 + 한 번의 final 결과를 보냄 → isFinal이 핵심
+-   Google은 여러 번의 중간 결과 + 한 번의 final 결과를 보냄. isFinal이 핵심
 -   우리는 isFinal == true일 때만 분석하고 피드백을 생성
 -   session이 닫힌 뒤 응답이 도착할 수 있으므로 예외 안전성 중요
 
@@ -162,7 +162,7 @@ start() → onResponse() → onResponse() ... → onComplete()
 
 **
 
-## 6\. 전체 메시지 흐름: WebSocket ↔ STT ↔ Client
+## 6\. 전체 메시지 흐름: WebSocket, STT, Client 사이의 양방향 흐름
 
 ### 📐 시퀀스 다이어그램
 
@@ -196,10 +196,10 @@ Client             WebSocketHandler       GoogleSTTClient         STT Server
 
 ### 📦 주요 메시지 포맷
 
-1.  **클라이언트 → 서버 (오디오 chunk)**
+1.  **클라이언트에서 서버로 (오디오 chunk)**
     -   BinaryMessage (byte\[\])
     -   일정 주기로 전송 (ex. 100ms)
-2.  **서버 → 클라이언트 (중간 결과)**
+2.  **서버에서 클라이언트로 (중간 결과)**
 
 ```json
 {
@@ -212,7 +212,7 @@ Client             WebSocketHandler       GoogleSTTClient         STT Server
 }
 ```
 
-**3\. 서버 → 클라이언트 (최종 결과)**
+**3\. 서버에서 클라이언트로 (최종 결과)**
 
 ```json
 {
@@ -225,7 +225,7 @@ Client             WebSocketHandler       GoogleSTTClient         STT Server
 }
 ```
 
-**4\. 서버 → 클라이언트 (전체 종료)**
+**4\. 서버에서 클라이언트로 (전체 종료)**
 
 ```json
 {
@@ -281,7 +281,7 @@ Google STT도 스트림 기반이다.
 -   isFinal일 때만 분석
 -   최종 결과가 도착하면 finished: true로 마무리
 
-## 7\. STT 결과 → 피드백 생성: 분석 알고리즘과 응답 구조 설계
+## 7\. STT 결과에서 피드백 생성까지: 분석 알고리즘과 응답 구조 설계
 
 Google STT는 문자열을 돌려줄 뿐이다.
 하지만 사용자가 기대하는 것은 **단어별 정확도 피드백, 틀린 부분 강조, 경험치 부여**다.
@@ -370,6 +370,6 @@ WebSocket 전송
 
 이 시스템은 나중에 다음과 같은 방향으로 확장할 수 있다:
 
--   WebRTC 기반 브라우저 오디오 송출 (MediaStream → WebSocket)
+-   WebRTC 기반 브라우저 오디오 송출 (MediaStream을 WebSocket으로)
 -   TTS 연동으로 대본 읽어주기
 -   LLM 기반 맞춤 피드백 생성
