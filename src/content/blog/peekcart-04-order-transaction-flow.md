@@ -459,7 +459,7 @@ void cancelled_isTerminal(OrderStatus target) {
 
 ## 주문 취소: 세 가지 경로
 
-주문 취소는 하나의 결과(`CANCELLED`)에 도달하지만 경로가 세 가지입니다.
+주문 취소는 하나의 결과(`CANCELLED`)에 도달하지만 경로는 아래처럼 갈립니다.
 
 ```mermaid
 flowchart LR
@@ -654,7 +654,7 @@ flowchart LR
     OrderPortI -.-> OPAdapter
 ```
 
-Port 인터페이스는 호출하는 쪽의 도메인에 정의되고 구현체는 호출받는 쪽의 infrastructure에 위치합니다. 이 방향이 중요합니다. Order가 Product를 호출하지만 Order가 Product의 구현에 의존하지 않습니다. Order는 "재고를 차감해주세요"라는 계약만 알고 그것이 분산 락으로 처리되는지, 비관적 락으로 처리되는지는 모릅니다.
+Port 인터페이스는 호출하는 쪽의 도메인에 정의되고 구현체는 호출받는 쪽의 infrastructure에 위치합니다. Order가 Product를 호출하지만 Order가 Product의 구현에 의존하지 않습니다. Order는 "재고를 차감해주세요"라는 계약만 알고 그것이 분산 락으로 처리되는지, 비관적 락으로 처리되는지는 모릅니다.
 
 ---
 
@@ -735,7 +735,7 @@ flowchart TD
     Kafka -->|"order.cancelled"| ProductSvc
 ```
 
-여기서 가장 큰 변화는 **주문 생성 트랜잭션이 분산된다**는 것입니다.
+가장 크게 바뀌는 것은 **주문 생성 트랜잭션이 여러 서비스로 분산된다**는 점입니다.
 
 현재 모놀리스에서는 재고 차감과 주문 저장이 하나의 DB 트랜잭션에 있습니다. MSA에서는 Order DB와 Product DB가 별도이므로 이것이 불가능합니다. 두 가지 접근이 가능합니다.
 

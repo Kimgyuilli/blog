@@ -10,7 +10,7 @@ slug: "peekcart-transactional-outbox"
 ---
 
 Phase 1의 도메인 간 통신은 한 프로세스 안에서 일어났습니다. 주문이 생성되면 `ApplicationEventPublisher` 로 `OrderCreatedEvent` 를 던지고 `@TransactionalEventListener(AFTER_COMMIT)` 를 단 리스너가 그 이벤트를 받아 결제 준비와 알림을 처리했습니다. 같은 JVM, 같은 스레드에서 호출이 이어지니 "메시지가 시스템 사이에서 사라진다"는 문제가 적어도 외부 전달만큼 명시적으로 드러나지는 않았습니다. (엄밀히는 커밋 직후 핸들러가 돌기 전에 프로세스가 죽으면 후속 처리가 유실될 수 있습니다. 뒤에서 보듯 `AFTER_COMMIT` 에도 같은 유실 가능성이 있습니다. 다만 그 유실 가능성이 네트워크 너머 발행만큼 눈에 띄지 않았을 뿐입니다.)
-Phase 2에서 Order, Payment, Notification 을 Kafka로 느슨하게 잇기 시작하자 이 구조가 달라졌습니다. 이제 "주문을 DB에 저장하는 일"과 "주문 생성 이벤트를 Kafka에 발행하는 일"은 **서로 다른 두 시스템에 대한 두 번의 쓰기**입니다. 둘 사이 어딘가에서 프로세스가 죽으면, DB 에는 주문이 있는데 Kafka 에는 이벤트가 없는, 혹은 그 반대의 상태가 남습니다. 결제도 알림도 영영 트리거되지 않는 주문이 생기는 것입니다.
+Phase 2에서 Order, Payment, Notification 을 Kafka로 느슨하게 잇기 시작하자 이 구조가 달라졌습니다. 이제 "주문을 DB에 저장하는 일"과 "주문 생성 이벤트를 Kafka에 발행하는 일"은 **서로 다른 두 시스템에 대한 두 번의 쓰기**입니다. 둘 사이 어딘가에서 프로세스가 죽으면, DB 에는 주문이 있는데 Kafka 에는 이벤트가 없는, 혹은 그 반대의 상태가 남습니다. 결제도 알림도 영영 트리거되지 않는 주문이 생깁니다.
 이번 글은 이 **dual-write 문제**를 왜 `@TransactionalEventListener` 로는 못 막는지, 그리고 PeekCart 가 **Transactional Outbox** 패턴으로 그것을 어떻게 "한 번의 쓰기"로 되돌렸는지를 정리합니다. 정확히는 Producer(발행) 측 이야기입니다.
 
 이 글에서 쓰는 용어의 뜻은 다음과 같습니다.
@@ -68,7 +68,7 @@ public void handleOrderCreated(OrderCreatedEvent event) {
 }
 ```
 
-커밋은 끝났는데 이 `send` 가 브로커 장애나 프로세스 강제 종료로 실패하면, 되돌릴 트랜잭션이 없습니다. 주문은 DB 에 남고 이벤트는 사라집니다. 설계 문서가 이 한계를 "Phase 2 전환의 직접적 이유"로 명시한 이유가 이것입니다(`04-design-deep-dive.md` §10-5). `AFTER_COMMIT` 는 **유령 이벤트는 막지만 유실 이벤트는 못 막는다.** 우리에게 필요한 건 "DB 저장과 이벤트 기록이 같이 살고 같이 죽는" 원자성이었습니다.
+커밋은 끝났는데 이 `send` 가 브로커 장애나 프로세스 강제 종료로 실패하면, 되돌릴 트랜잭션이 없습니다. 주문은 DB 에 남고 이벤트는 사라집니다. 이 한계가 Phase 2 전환의 직접적 이유였습니다(`04-design-deep-dive.md` §10-5). `AFTER_COMMIT` 는 **유령 이벤트는 막지만 유실 이벤트는 못 막는다.** 우리에게 필요한 건 "DB 저장과 이벤트 기록이 같이 살고 같이 죽는" 원자성이었습니다.
 
 ---
 
@@ -264,7 +264,7 @@ public void pollAndPublish() {
 }
 ```
 
-설계에서 짚을 내용은 셋입니다.
+설계에서 짚을 내용은 다음과 같습니다.
 
 - **`.get()`으로 동기 대기한다.** `kafkaTemplate.send(...)` 는 `CompletableFuture` 를 돌려주는데 여기에 `.get()` 을 붙여 **브로커 ack 결과를 받을 때까지 블록**합니다. ack 의 강도는 Producer `acks` 설정에 달려 있는데 PeekCart 는 `acks=all` + `enable.idempotence=true` 라 leader 가 모든 in-sync replica 의 ack 를 확인한 뒤 Future 가 완료됩니다. 비동기로 보내고 바로 `markPublished()` 를 하면, 발행이 실패했는데도 `PUBLISHED` 로 표시해버려 유실이 납니다. 동기 대기는 polling 처리량을 깎는 대가로 "브로커 ack 확인 후에만 PUBLISHED" 불변식을 지킵니다. 다만 타임아웃 없는 `.get()` 은 브로커가 응답을 멈추면 폴링 스레드가 무한정 블록될 수 있어, `.get(timeout, unit)` 이 더 안전합니다. 현재는 무한 `.get()` 이라 개선 여지가 남습니다.
 - **성공과 실패 모두 상태를 영속한다.** 발행 성공이면 `PUBLISHED`, 실패면 `retry_count++`. 실패한 행은 여전히 `PENDING` 이라 다음 폴링이 다시 읽습니다. 별도 재시도 큐 없이 `PENDING`으로 남겨두기만 해도 5초 뒤 또 시도됩니다.
@@ -408,7 +408,7 @@ flowchart LR
 **바뀌는 것**
 
 - **`outbox_events`가 서비스별로 분산된다.** 단일 테이블이 N개가 되고 폴러도 N개가 됩니다. ShedLock 락 이름도 서비스별로 분리돼야 합니다(ShedLock 글). 한 서비스의 폴러 장애가 그 서비스 이벤트만 지연시키도록 격리되는 건 장점입니다.
-- **Choreography Saga의 발행 지점이 된다.** `payment.failed`, `order.cancelled`, `inventory restore` 로 이어지는 보상 흐름(§8-5)에서, 각 단계의 이벤트가 바로 이 outbox 를 거쳐 나갑니다. 지금 모놀리스에서 한 트랜잭션 안의 메서드 호출로 처리되는 보상이, Phase 4에선 outbox 발행, Kafka, 다른 서비스 소비로 나뉩니다. **Outbox가 Saga의 신뢰성 토대**가 되는 것입니다.
+- **Choreography Saga의 발행 지점이 된다.** `payment.failed`, `order.cancelled`, `inventory restore` 로 이어지는 보상 흐름(§8-5)에서, 각 단계의 이벤트가 바로 이 outbox 를 거쳐 나갑니다. 지금 모놀리스에서 한 트랜잭션 안의 메서드 호출로 처리되는 보상이, Phase 4에선 outbox 발행, Kafka, 다른 서비스 소비로 나뉩니다. 그래서 **Outbox가 Saga의 신뢰성 토대**가 됩니다.
 - **trace context가 cross-service로 확장된다.** 모놀리스 단계에서 미리 깔아둔 `trace_id`/`user_id` 헤더 전파는, Phase 4에서 W3C `traceparent` 주입, 추출과 OpenTelemetry 계측을 붙일 수 있는 기반이 됩니다. "HTTP 요청, outbox 저장, 발행, 다른 서비스 소비, DLQ"를 단일 traceId로 묶기 위한 선결 작업 일부가 끝나 있습니다.
 - **CDC 전환이 현실적 선택지가 된다.** 서비스가 많아지고 발행 지연이 누적되면, 서비스별 polling 을 Debezium Outbox Event Router로 갈아탈 수 있습니다. payload 스키마(`KafkaEventEnvelope`)와 outbox 컬럼을 안 바꾸고 발행 메커니즘만 교체하도록 설계해둔 게 여기서 도움이 됩니다.
 

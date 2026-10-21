@@ -11,7 +11,7 @@ slug: "peekcart-shedlock-multi-pod-scheduler"
 
 문제는 단순합니다. `@Scheduled` 는 **각 JVM 프로세스 안에서** 타이머를 돌립니다. Pod 이 하나일 땐 타이머도 하나라 아무 문제가 없습니다. 그런데 Phase 3에서 HPA 가 Pod 을 1에서 3으로 늘리면(`k8s/overlays/gke/hpa.yml`), 똑같은 `@Scheduled` 메서드가 **세 Pod에서 각자의 타이머로 동시에** 깨어납니다. 60초마다 한 번 돌아야 할 주문 취소가 세 번 돌고 5초마다 한 번이어야 할 Outbox 폴링이 세 번 실행됩니다. "한 번만 일어나야 하는 일"이 인스턴스 수만큼 중복됩니다.
 
-ShedLock 은 이걸 DB 테이블 한 개와 락 레코드 한 행으로 풉니다. "여러 주체가 한 자원에 동시에 손대지 못하게 한다"는 발상은 [분산 락 글](/blog/peekcart-inventory-lock-defense/)과 같습니다. 다른 점은 둘입니다. 락을 거는 대상은 *재고 같은 도메인 자원*에서 **주기 작업 그 자체**로, 락 제공자는 *Redis(Redisson)*에서 **DB(JDBC)**로 바뀝니다. 왜 같은 프로젝트가 한쪽은 Redis 락, 한쪽은 DB 락을 쓰는지도 이 글에서 짚습니다.
+ShedLock 은 이걸 DB 테이블 한 개와 락 레코드 한 행으로 풉니다. "여러 주체가 한 자원에 동시에 손대지 못하게 한다"는 발상은 [분산 락 글](/blog/peekcart-inventory-lock-defense/)과 같습니다. 다만 락을 거는 대상은 *재고 같은 도메인 자원*에서 **주기 작업 그 자체**로, 락 제공자는 *Redis(Redisson)*에서 **DB(JDBC)**로 바뀝니다. 왜 같은 프로젝트가 한쪽은 Redis 락, 한쪽은 DB 락을 쓰는지도 이 글에서 짚습니다.
 
 이 글에서 쓰는 용어의 뜻은 다음과 같습니다.
 
@@ -85,7 +85,7 @@ flowchart TD
 
 **(1) 결제 타임아웃 스케줄러: 막는 주체는 ORD-002가 아니다**  
   
-세 Pod 이 같은 만료 주문 `#42` 를 조회하고 셋 다 `cancelExpiredOrder(42)` 를 부릅니다. 각 호출은 `@Transactional(REQUIRES_NEW)` 라 건별 독립 트랜잭션이고 안에서 세 가지가 일어납니다(`OrderCommandService`).  
+세 Pod 이 같은 만료 주문 `#42` 를 조회하고 셋 다 `cancelExpiredOrder(42)` 를 부릅니다. 각 호출은 `@Transactional(REQUIRES_NEW)` 라 건별 독립 트랜잭션이고 안에서 다음 순서로 처리합니다(`OrderCommandService`).  
   
 ```text
 order.cancel()  →  재고 복구(restoreStock 루프)  →  order.cancelled 이벤트 발행
@@ -311,7 +311,7 @@ UPDATE shedlock
 
 ### `@Scheduled(fixedDelay)`와 ShedLock의 미묘한 어긋남
 
-`fixedDelay` 는 "이전 실행 **종료** 후 N ms 뒤 다음 실행"입니다. 그런데 ShedLock으로 락을 못 잡아 즉시 빠진 Pod 에서는, 그 "실행"이 사실상 0ms 만에 끝난 것으로 처리됩니다. 그래서 락을 계속 놓치는 Pod 의 타이머는 `fixedDelay` 간격으로 불필요하게 반복 실행됩니다. 5초마다 깨어나 락을 시도하고, 실패하면 즉시 반환하고, 5초 뒤 또 시도합니다. 무해하지만 "락을 못 잡는 Pod들도 주기마다 DB 락 쿼리를 날린다"는 비용은 있습니다. Pod 3개면 Outbox 락 쿼리가 5초에 3번 발생하고 그중 2번은 "0행 UPDATE"로 끝납니다. 앞서 말한 MySQL 추가 부하의 실체가 이것입니다. 단일 인스턴스 대비 락 경쟁 쿼리가 인스턴스 수만큼 늡니다.
+`fixedDelay` 는 "이전 실행 **종료** 후 N ms 뒤 다음 실행"입니다. 그런데 ShedLock으로 락을 못 잡아 즉시 빠진 Pod 에서는, 그 "실행"이 사실상 0ms 만에 끝난 것으로 처리됩니다. 그래서 락을 계속 놓치는 Pod 의 타이머는 `fixedDelay` 간격으로 불필요하게 반복 실행됩니다. 5초마다 깨어나 락을 시도하고, 실패하면 즉시 반환하고, 5초 뒤 또 시도합니다. 무해하지만 "락을 못 잡는 Pod들도 주기마다 DB 락 쿼리를 날린다"는 비용은 있습니다. Pod 3개면 Outbox 락 쿼리가 5초에 3번 발생하고 그중 2번은 "0행 UPDATE"로 끝납니다. 앞서 말한 MySQL 추가 부하가 이 쿼리입니다. 단일 인스턴스 대비 락 경쟁 쿼리가 인스턴스 수만큼 늡니다.
 
 ### 락 이름 충돌은 컴파일 타임에 안 잡힌다
 

@@ -94,7 +94,7 @@ flowchart TD
 
 ### 2. Testcontainers를 CI에서 추가 설정 없이 실행한다
 
-PeekCart 의 통합 테스트(앞선 글들의 `ProductCacheIntegrationTest`, `OutboxKafkaIntegrationTest`, `ShedLockIntegrationTest` 등)는 mock 없이 **실제 MySQL/Redis/Kafka**를 Testcontainers로 띄웁니다. 보통 CI 에서는 Docker-in-Docker(DinD) 설정이 필요한지 고민하게 되지만 PeekCart 에는 추가 설정이 **하나도 없다**. 이유는 둘입니다.
+PeekCart 의 통합 테스트(앞선 글들의 `ProductCacheIntegrationTest`, `OutboxKafkaIntegrationTest`, `ShedLockIntegrationTest` 등)는 mock 없이 **실제 MySQL/Redis/Kafka**를 Testcontainers로 띄웁니다. 보통 CI 에서는 Docker-in-Docker(DinD) 설정이 필요한지 고민하게 되지만 PeekCart 에는 추가 설정이 **하나도 없습니다**.
 
 - `ubuntu-latest` runner엔 **Docker 데몬이 이미 깔려 있다.** Testcontainers 가 그 데몬에 바로 컨테이너를 띄웁니다. 별도 DinD 는 필요하지 않습니다.
 - 테스트가 `@ServiceConnection` 을 씁니다. Testcontainers 가 띄운 컨테이너의 host/port 를 Spring 설정에 **자동 주입**하므로 "CI에선 접속 정보가 다르다" 같은 환경 분기 코드가 없습니다.
@@ -207,7 +207,7 @@ jobs:
           path: build/reports/
 ```
 
-이 한 줄(`./gradlew build`)이 **단위 테스트와 통합 테스트를 함께** 실행합니다(통합 테스트는 Testcontainers로 실제 인프라 기동). 바로 뒤 `upload-artifact` 의 `if: always()` 가 중요합니다. 빌드가 **실패해도** 테스트 리포트를 아티팩트로 올립니다. 실패했을 때야말로 리포트가 필요하기 때문입니다. 성공 시에만 올리면 정작 디버깅이 필요한 순간 리포트를 확인할 수 없습니다.
+이 한 줄(`./gradlew build`)이 **단위 테스트와 통합 테스트를 함께** 실행합니다(통합 테스트는 Testcontainers로 실제 인프라 기동). 바로 뒤 `upload-artifact` 의 `if: always()` 덕분에 빌드가 **실패해도** 테스트 리포트를 아티팩트로 올립니다. 실패했을 때야말로 리포트가 필요하기 때문입니다. 성공 시에만 올리면 정작 디버깅이 필요한 순간 리포트를 확인할 수 없습니다.
 
 ```yaml
       - uses: docker/login-action@v3

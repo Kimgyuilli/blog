@@ -53,7 +53,7 @@ Phase 1을 끝낸 시점의 PeekCart 는 모든 요청이 MySQL 을 조회합니
 | Write-Behind (Write-Back) | (별도 결정) | 앱이 캐시에 쓰면 캐시가 비동기로 DB에 flush | 캐시 라이브러리 |
 | Write-Around | (Read-Through와 동반) | 앱이 DB에만 쓰고 캐시는 건드리지 않음. 다음 read의 미스로 자연 적재 | 애플리케이션 + 캐시 |
 
-PeekCart 가 Cache Aside 를 택한 이유는 네 가지입니다.
+PeekCart 가 Cache Aside 를 택한 이유는 다음과 같습니다.
 
 1. **읽기/쓰기 비대칭이 극단적이다**. 상품 조회는 1초에 수백 건, 변경은 관리자 작업이라 하루 수십 건 수준. Write-Through나 Write-Behind 는 "쓰기마다 캐시도 갱신한다"는 비용을 전제로 하는데 우리 쓰기 대부분은 그 직후 읽힐 데이터가 아닙니다. 차라리 다음 read 시점의 cache miss로 자연 적재되는 게 효율적입니다.
 2. **무효화 영향 범위가 도메인 지식이다**. 상품 한 건이 수정되면 그 상품의 상세 캐시 한 줄 + 모든 페이지의 목록 캐시가 영향을 받습니다(뒤의 `allEntries = true` 절). 이 범위는 도메인이 결정해야 하는데 Read-Through/Write-Through 는 캐시 라이브러리에 read/write 책임을 위임하는 구조라 "이 변경이 어떤 키들에 파급되는가"라는 도메인 결정을 넣을 자리가 좁습니다. Cache Aside 는 갱신/무효화를 애플리케이션이 명시적으로 한다는 점이 오히려 장점입니다.

@@ -62,7 +62,7 @@ Phase 3에서 kube-prometheus-stack을 띄우고([Kustomize 글](/blog/peekcart-
   
 원인은 **메트릭의 *타입***이었습니다. p95/p99는 "95%의 요청이 몇 초 안에 끝났나"인데, 이것을 계산하려면 응답시간을 구간별로 쪼갠 **histogram bucket**(`..._seconds_bucket{le="0.1"}`, `le="0.5"` 등)이 있어야 합니다. PromQL `histogram_quantile()`은 이 bucket을 입력으로 받아 분위수를 *역산*합니다. 그런데 우리 앱은 `http_server_requests_seconds`를 **bucket 없는 `summary` 타입**으로만 내보내고 있었습니다. 입력 시계열 자체가 없으니 `histogram_quantile()`은 NaN을 반환하고 Grafana는 그것을 "No data"로 표시합니다.  
   
-histogram bucket을 켜는 설정은 한 줄입니다. `management.metrics.distribution.percentiles-histogram[http.server.requests]: true`. 문제는 **이 한 줄을 YAML 어디에 넣어도 동작하지 않았다**는 것입니다.
+histogram bucket을 켜는 설정은 한 줄입니다. `management.metrics.distribution.percentiles-histogram[http.server.requests]: true`. 그런데 **이 한 줄을 YAML 어디에 넣어도 동작하지 않았습니다**.
   
 ```  
 시도 1) application-k8s.yml 에 추가      → 동작 안 함  
@@ -166,7 +166,7 @@ YAML 원칙은 *값을 어디에 두나*를 풀었지만 더 큰 질문이 남�
   
 여기까지가 *메트릭*(전체 통계)입니다. 그런데 "5xx 에러율이 올랐다"는 alert가 떴을 때, 운영자는 곧장 "*어느 요청*이 터졌나"를 알고 싶어 합니다. 그것이 *로그/trace* 쪽 관측성이고 PeekCart는 이를 **MDC `traceId`**로 풉니다.  
   
-시작은 단순합니다. `MdcFilter`가 16자리 `traceId`와(SecurityContext가 있으면) `userId`를 MDC에 적습니다. 단 위치가 중요합니다. 이 필터는 `JwtFilter` 뒤에 등록돼(`SecurityConfig`의 `addFilterAfter(new MdcFilter(), JwtFilter.class)`), userId를 채우려면 JWT 인증이 먼저 끝나 있어야 하기 때문입니다. 그래서 traceId가 붙는 범위는 정확히는 **JwtFilter 이후의 애플리케이션 처리 구간**이고 JwtFilter 내부 로그나 그 전에 끝나는 보안 실패 로그는 이 traceId 밖입니다.  
+시작은 단순합니다. `MdcFilter`가 16자리 `traceId`와(SecurityContext가 있으면) `userId`를 MDC에 적습니다. 이 필터는 `JwtFilter` 뒤에 등록돼(`SecurityConfig`의 `addFilterAfter(new MdcFilter(), JwtFilter.class)`), userId를 채우려면 JWT 인증이 먼저 끝나 있어야 하기 때문입니다. 그래서 traceId가 붙는 범위는 정확히는 **JwtFilter 이후의 애플리케이션 처리 구간**이고 JwtFilter 내부 로그나 그 전에 끝나는 보안 실패 로그는 이 traceId 밖입니다.  
   
 ```java  
 // global/filter/MdcFilter.java  

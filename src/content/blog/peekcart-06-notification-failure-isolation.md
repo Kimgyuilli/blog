@@ -154,7 +154,7 @@ public class NotificationCommandService {
 
 UseCase는 두 줄입니다. 알림 엔티티를 저장하고 Slack으로 메시지를 보냅니다. [주문 생성](/blog/peekcart-order-transaction-flow/)과 [결제 실패](/blog/peekcart-payment-failure-flow/) 글에서 본 `OrderCommandService.createOrder()`나 `PaymentCommandService.confirmPayment()`와 비교하면 훨씬 단순합니다.
 
-여기서 짚을 점은 의존하는 대상이 `SlackPort` 인터페이스라는 것입니다. 구현체인 `SlackNotificationClient`가 아닙니다. 이 의존 역전이 의도하는 효과는 두 가지입니다.
+여기서 짚을 점은 의존하는 대상이 `SlackPort` 인터페이스라는 것입니다. 구현체인 `SlackNotificationClient`가 아닙니다. 이 의존 역전으로 다음 효과를 노렸습니다.
 
 - **테스트 격리**: 단위 테스트에서 `SlackPort`를 Mock으로 교체하면 실제 Slack을 호출하지 않고도 "발송이 호출됐는가"만 검증할 수 있습니다.
 - **위치의 자유**: 구현체가 Slack이든, 이메일이든, 향후 SMS든 Application은 모릅니다.
@@ -304,7 +304,7 @@ public void handleOrderCreated(OrderCreatedEvent event) {
 
 ### 그런데 왜 부족했는가
 
-이 구조는 단일 JVM 안에서는 완벽하게 동작합니다. 문제는 다음 두 가지입니다.
+이 구조는 단일 JVM 안에서는 완벽하게 동작합니다. 하지만 다음 상황에서 문제가 됩니다.
 
 **(1) 단일 인스턴스 가정.** 리스너가 같은 JVM 안에서만 호출되므로, 알림 처리는 주문을 만든 그 인스턴스에서만 실행됩니다. Phase 3에서 HPA로 Pod이 1에서 3으로 늘어나면 이 모델은 자연스럽게 분산되지 않습니다. 어떤 Pod에서 주문이 만들어졌느냐에 따라 알림 부하가 한 Pod에 쏠릴 수 있습니다.
 
@@ -345,7 +345,7 @@ private static final String GROUP_ORDER_CANCELLED     = "notification-svc-order-
 
 ### 왜 토픽마다 Consumer Group을 따로 두는가
 
-가장 큰 이유는 **Consumer Group 단위로 오프셋과 멱등성 처리가 독립적**이라는 점입니다.
+**Consumer Group 단위로 오프셋과 멱등성 처리가 독립적**이기 때문입니다.
 
 `payment.completed`는 `OrderEventConsumer`도 소비하고 `NotificationConsumer`도 소비합니다. 만약 두 Consumer가 같은 Group을 공유한다면 한쪽만 메시지를 받게 됩니다. 그래서 Group은 도메인과 토픽의 조합마다 하나씩 만듭니다. `notification-svc-payment-completed-group`이라는 이름이 그 사실을 그대로 드러냅니다.
 

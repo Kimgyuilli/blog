@@ -53,11 +53,11 @@ slug: "peekcart-consumer-idempotency-dlq"
 | `payment.completed` | `OrderEventConsumer`   | 주문 상태 `PAYMENT_COMPLETED` 재전이 시도 |
 | `payment.failed`    | `OrderEventConsumer`   | 주문 재취소 + 재고 재복구 시도               |
 
-여기서 "시도된다"와 "실제로 커밋된다"를 구분하는 게 중요합니다. PeekCart 에는 멱등성 말고도 **두 번째 방어선**이 깔려 있기 때문입니다([분산 락 글](/blog/peekcart-inventory-lock-defense/)의 분산 락과 낙관적 락 이중 방어와 같은 결의 구조입니다). `Payment` 는 `order_id` 에 UNIQUE 제약이 있어(`Payment.java`) 같은 주문으로 두 번째 결제를 INSERT하면 DB 가 막습니다. `Order` 는 이미 `CANCELLED`면 `cancel()` 이 `ORD-002` 를, 허용되지 않은 전이면 `transitionTo()` 가 `ORD-003` 을 던집니다(`Order.java`). 즉 결제, 주문 쪽 중복은 멱등성이 없더라도 double-commit 되지 않고 **예외**가 되며, 그 예외는 재시도를 거쳐 DLQ로 떨어집니다. 정합성은 지키지만 시끄럽습니다.
+여기서 "시도된다"와 "실제로 커밋된다"를 구분해야 합니다. PeekCart 에는 멱등성 말고도 **두 번째 방어선**이 깔려 있기 때문입니다([분산 락 글](/blog/peekcart-inventory-lock-defense/)의 분산 락과 낙관적 락 이중 방어와 같은 결의 구조입니다). `Payment` 는 `order_id` 에 UNIQUE 제약이 있어(`Payment.java`) 같은 주문으로 두 번째 결제를 INSERT하면 DB 가 막습니다. `Order` 는 이미 `CANCELLED`면 `cancel()` 이 `ORD-002` 를, 허용되지 않은 전이면 `transitionTo()` 가 `ORD-003` 을 던집니다(`Order.java`). 즉 결제, 주문 쪽 중복은 멱등성이 없더라도 double-commit 되지 않고 **예외**가 되며, 그 예외는 재시도를 거쳐 DLQ로 떨어집니다. 정합성은 지키지만 시끄럽습니다.
 
 실제로 오류 없이 이중 반영되는 곳은 **알림**입니다. `notifications` 에는 그런 자연 UK 가 없고 게다가 `createNotification` 은 DB 저장에 더해 외부 `slackPort.send` 까지 부릅니다(뒤 「부수효과의 경계」 절). 받쳐줄 도메인 가드가 없어, 멱등성이 빠지면 알림 행이 둘 생기고 Slack 도 두 번 나갑니다.
 
-그래서 멱등성의 역할은 둘입니다. (1) UK, 도메인 가드가 막아줄 수 있는 중복을 **예외/DLQ 소음 없이 깨끗하게** 걸러내고 (2) 알림처럼 자연 방어선이 없는 경로의 이중 반영을 **유일하게** 막습니다. 설계 단계에서 멱등성을 "선택"으로 두지 않고 "필수"로 정한 이유입니다. at-least-once 를 택한 이상, 중복은 **반드시 온다고 가정**하고 Consumer 가 흡수해야 합니다. 연산마다 "이건 원래 멱등인가"를 따로 따지는 건 일관성도 없고 빠뜨리기 쉬워서, **연산이 멱등이든 아니든 진입 지점에서 한 번 걸러내는** 공통 장치를 둔 것입니다.
+그래서 멱등성은 (1) UK, 도메인 가드가 막아줄 수 있는 중복을 **예외/DLQ 소음 없이 깨끗하게** 걸러내고 (2) 알림처럼 자연 방어선이 없는 경로의 이중 반영을 **유일하게** 막습니다. 설계 단계에서 멱등성을 "선택"으로 두지 않고 "필수"로 정한 이유입니다. at-least-once 를 택한 이상, 중복은 **반드시 온다고 가정**하고 Consumer 가 흡수해야 합니다. 연산마다 "이건 원래 멱등인가"를 따로 따지는 건 일관성도 없고 빠뜨리기 쉬워서, **연산이 멱등이든 아니든 진입 지점에서 한 번 걸러내는** 공통 장치를 둔 것입니다.
 
 ---
 
@@ -82,7 +82,7 @@ flowchart TD
 
 멱등성 키를 `event_id` 단독으로 잡으면 안 됩니다. **같은 이벤트를 여러 consumer group이 정당하게 각자 처리**하기 때문입니다.
 
-`order.created` 하나를 보겠습니다. 이걸 받는 그룹은 둘입니다.
+`order.created` 하나를 보겠습니다. 이걸 받는 그룹은 다음과 같습니다.
 
 - `payment-svc-order-created-group`: `Payment(PENDING)` 생성
 - `notification-svc-order-created-group`: 주문 생성 알림 발송
@@ -101,14 +101,14 @@ flowchart LR
 
 ### 왜 save-first인가. 처리 이력을 비즈니스 로직 앞에 적는다
 
-순서가 중요합니다. 두 가지 선택지가 있습니다.
+처리 이력을 언제 기록하느냐에 따라 선택지가 갈립니다.
 
 - **act-first**: 비즈니스 로직을 먼저 실행하고 성공하면 처리 이력 기록
 - **save-first**: 처리 이력을 먼저 기록(claim)하고 그 다음 비즈니스 로직 실행
 
 PeekCart 는 **save-first**를 택했습니다(`IdempotencyChecker.executeIfNew`). 이유는 동시성입니다. Kafka 리밸런스 등으로 같은 메시지가 거의 동시에 두 번 소비되는 순간을 생각해 보겠습니다. act-first라면 두 소비자가 "아직 이력 없음"을 동시에 확인하고 **둘 다 비즈니스 로직을 실행**한 뒤 이력을 적으려다 충돌합니다. 이미 이중 처리가 끝난 뒤입니다. save-first 는 비즈니스 로직 **전에** UK 가 걸린 INSERT를 먼저 하므로 하나만 INSERT 에 성공하고 나머지는 거기서 막힙니다. 비즈니스 로직은 INSERT 에 성공한 하나만 실행합니다.
 
-여기서 흔한 오해 하나를 짚으면, 진입부의 `exists()` 조회는 **빠른 경로(fast path)**일 뿐이고, 정확성은 전적으로 **UK 제약**이 보장합니다. `exists()` 는 "대부분의 중복은 이미 이력이 있으니 INSERT까지 안 가고 싸게 걸러내자"는 최적화고 `exists()` 와 `save()` 사이의 좁은 틈으로 들어온 동시 중복은 INSERT 시점의 UK 충돌이 받아냅니다. 이 둘을 분리해서 이해하는 게 중요합니다. `exists()` 를 지워도 정확하고(느려질 뿐), UK 를 지우면 틀립니다.
+여기서 흔한 오해 하나를 짚으면, 진입부의 `exists()` 조회는 **빠른 경로(fast path)**일 뿐이고, 정확성은 전적으로 **UK 제약**이 보장합니다. `exists()` 는 "대부분의 중복은 이미 이력이 있으니 INSERT까지 안 가고 싸게 걸러내자"는 최적화고 `exists()` 와 `save()` 사이의 좁은 틈으로 들어온 동시 중복은 INSERT 시점의 UK 충돌이 받아냅니다. 이 둘은 따로 동작합니다. `exists()` 를 지워도 정확하고(느려질 뿐), UK 를 지우면 틀립니다.
 
 ---
 

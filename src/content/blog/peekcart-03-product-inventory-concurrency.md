@@ -45,7 +45,7 @@ slug: "peekcart-product-inventory-concurrency"
 | 상품 정보 | name, price, description, image_url, status | 관리자 | 낮음 (하루 수회) | 거의 없음 |  
 | 재고 정보 | stock, version | 사용자 주문 | 높음 (초당 수회~수백회) | 인기 상품에서 매우 높음 |  
   
-하나의 row에 둘 다 있으면 문제가 두 가지입니다.  
+하나의 row에 둘 다 있으면 다음 문제가 생깁니다.  
   
 **1. 불필요한 락 경합이 생긴다.** 관리자가 상품 설명을 수정하는 것과 사용자가 재고를 차감하는 것은 완전히 다른 비즈니스 사건입니다. 그런데 같은 row를 갱신하면 낙관적 락에서 version 충돌이 발생합니다. 관리자가 설명을 수정한 것이 주문 트랜잭션을 실패시킬 수 있습니다.  
   
@@ -137,7 +137,7 @@ public class Product extends BaseTimeEntity {
   
 `Product`에는 비즈니스 메서드가 있지만 동시성 관련 장치는 없습니다. 생성 시 기본 상태는 `ON_SALE`이고 가격은 0 이상이어야 한다는 규칙이 생성자에 들어 있습니다. `discontinue()`는 soft delete로, 물리적 삭제 대신 상태를 `DISCONTINUED`로 바꿉니다.  
   
-상태는 세 가지입니다.  
+상태는 `ProductStatus` enum으로 정의합니다.  
   
 ```java  
 public enum ProductStatus {  
@@ -321,7 +321,7 @@ sequenceDiagram
 | 데드락 위험 | 없음 (잠그지 않으므로) | 있음 (여러 row를 순서 없이 잠그면) |  
 | DB 커넥션 점유 | 짧음 | 대기 중에도 점유 |  
   
-이커머스 재고의 경우를 보면 상황이 두 가지로 나뉩니다.  
+이커머스 재고는 평소와 타임세일의 상황이 다릅니다.  
   
 - **평소**: 같은 상품을 동시에 주문하는 경우는 드뭅니다. 낙관적 락만으로 충분합니다.  
 - **인기 상품 타임세일**: 같은 상품에 수백 요청이 몰립니다. 낙관적 락만 쓰면 대부분 충돌로 실패하고 재시도가 급증합니다.  
@@ -387,7 +387,7 @@ public class InventoryLockFacade {
   
 이 코드에서 살펴볼 부분은 `InventoryLockFacade`와 `InventoryService`의 분리입니다.  
   
-`InventoryService`는 `@Transactional`이 붙어 있습니다(기본 `Propagation.REQUIRED`). `InventoryLockFacade`는 `@Transactional`이 없습니다. 이 분리의 의도는 "락 획득, 트랜잭션 시작, 재고 변경, 트랜잭션 커밋, 락 해제" 순서를 보장하는 것입니다.
+`InventoryService`는 `@Transactional`이 붙어 있습니다(기본 `Propagation.REQUIRED`). `InventoryLockFacade`는 `@Transactional`이 없습니다. 이렇게 나눠서 "락 획득, 트랜잭션 시작, 재고 변경, 트랜잭션 커밋, 락 해제" 순서를 보장하려 했습니다.
 
 하지만 이 순서가 항상 보장되는 것은 아닙니다. **호출자의 트랜잭션 컨텍스트에 따라 실제 동작이 달라진다.**
 
@@ -641,7 +641,7 @@ public long decreaseStockAndGetUnitPrice(Long productId, int quantity) {
     Product product = productRepository.findById(productId)            .orElseThrow(() -> new ProductException(ErrorCode.PRD_001));    inventoryLockFacade.decreaseStock(productId, quantity);    return product.getPrice();}  
 ```  
   
-여기서 `decreaseStockAndGetUnitPrice`라는 메서드 이름이 중요합니다. 이 메서드는 재고를 차감하면서 동시에 주문 시점의 상품 가격을 반환합니다. 이 가격은 `order_items.unit_price`에 스냅샷으로 저장되어, 나중에 상품 가격이 바뀌더라도 주문 당시 가격이 보존됩니다.  
+`decreaseStockAndGetUnitPrice`는 이름 그대로 재고를 차감하면서 동시에 주문 시점의 상품 가격을 반환합니다. 이 가격은 `order_items.unit_price`에 스냅샷으로 저장되어, 나중에 상품 가격이 바뀌더라도 주문 당시 가격이 보존됩니다.  
   
 Order 도메인은 `ProductPort` 인터페이스만 알고 `Inventory`, `InventoryLockFacade`, `DistributedLockManager`의 존재를 모릅니다. 재고 차감의 구체적인 동시성 전략이 바뀌더라도 Order 코드는 영향을 받지 않습니다.  
   
