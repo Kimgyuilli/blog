@@ -1,6 +1,6 @@
 ---
 title: "PeekCart 학습 기록 17: 1,000명이 소수 상품을 동시에 주문하면"
-description: "1,000 VUser 동시 주문 부하에서 오버셀링 0건, HPA 1→3 scale-out, Kafka Lag 회복, throughput 미달을 함께 검증한 세션 C 기록입니다."
+description: "1,000 VUser 동시 주문에서 오버셀링 0건, HPA scale-out, Kafka Lag 회복, 처리량 미달을 함께 검증합니다."
 image: "/images/blog/peekcart-order-concurrency-hpa/thumbnail.png"
 pubDate: 2026-06-05
 category: "infra"

@@ -1,6 +1,6 @@
 ---
 title: "PeekCart 학습 기록 11: 같은 이벤트가 두 번 왔다 - Consumer 멱등성과 DLQ"
-description: "Kafka의 at-least-once 전달에서 생기는 중복을 Consumer 멱등성으로 흡수하고, 재시도해도 처리할 수 없는 메시지를 DLQ로 격리하는 흐름을 정리합니다."
+description: "at-least-once 전달의 중복을 Consumer 멱등성으로 흡수하고, 처리할 수 없는 메시지를 DLQ로 격리합니다."
 image: "/images/blog/peekcart-consumer-idempotency-dlq/thumbnail.png"
 pubDate: 2026-06-01T12:00:03+09:00
 category: "backend"

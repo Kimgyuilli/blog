@@ -1,6 +1,6 @@
 ---
 title: "PeekCart 학습 기록 6: 알림 발송이 실패해도 주문은 살아남아야 한다"
-description: "PeekCart Notification 도메인의 Kafka Consumer 전환, SlackPort 위치, 멱등성, Slack Webhook 실패 격리, Phase 4 MSA 분리를 정리합니다."
+description: "Notification 도메인의 Kafka Consumer 전환, SlackPort 위치, Slack 실패 격리를 정리합니다."
 image: "/images/blog/peekcart-notification-failure-isolation/thumbnail.png"
 pubDate: 2026-05-28
 category: "backend"

@@ -1,6 +1,6 @@
 ---
 title: "PeekCart 학습 기록 14: 같은 매니페스트로 두 환경을 배포한다 - Kustomize base/overlays와 minikube → GKE"
-description: "Kustomize base/overlays로 minikube와 GKE 환경 차이를 patch로 분리하고, monitoring 스택을 base에서 떼어낸 배포 구조와 한계를 정리합니다."
+description: "Kustomize base/overlays로 minikube와 GKE의 차이를 patch로 분리한 배포 구조와 한계를 정리합니다."
 image: "/images/blog/peekcart-kustomize-base-overlays-gke/thumbnail.png"
 pubDate: 2026-06-03T20:00:00+09:00
 category: "infra"

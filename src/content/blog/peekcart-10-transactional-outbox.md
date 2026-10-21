@@ -1,6 +1,6 @@
 ---
 title: "PeekCart 학습 기록 10: DB는 커밋됐는데 이벤트가 사라진다면 - Kafka와 Transactional Outbox"
-description: "Kafka 발행과 DB 저장 사이의 dual-write 문제를 Transactional Outbox로 줄이고, polling, at-least-once, Debezium CDC의 트레이드오프를 정리합니다."
+description: "Kafka 발행과 DB 저장의 dual-write 문제를 Transactional Outbox로 줄이고 그 트레이드오프를 정리합니다."
 image: "/images/blog/peekcart-transactional-outbox/thumbnail.png"
 pubDate: 2026-05-31T23:22:56+09:00
 category: "backend"

@@ -1,6 +1,6 @@
 ---
 title: "PeekCart 학습 기록 1: 4-Layered + DDD 구조를 어떻게 읽어야 할까"
-description: "PeekCart의 단일 Spring Boot 모놀리스 구조를 4-Layered Architecture, DDD, Hexagonal, Clean Architecture와 비교하며 읽어봅니다."
+description: "PeekCart 모놀리스 구조를 4-Layered, DDD, Hexagonal, Clean Architecture와 비교하며 읽어봅니다."
 image: "/images/blog/peekcart-layered-ddd/thumbnail.png"
 pubDate: 2026-05-22
 category: "backend"

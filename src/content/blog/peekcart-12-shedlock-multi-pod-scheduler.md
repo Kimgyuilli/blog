@@ -1,6 +1,6 @@
 ---
 title: "PeekCart 학습 기록 12: Pod이 셋이면 스케줄러도 셋이 돈다 - ShedLock"
-description: "여러 Pod에서 중복 실행되는 Spring 스케줄러를 ShedLock과 MySQL 락 레코드로 조율하는 원리, 설정, SQL, 한계를 정리합니다."
+description: "여러 Pod에서 중복 실행되는 Spring 스케줄러를 ShedLock과 MySQL 락 레코드로 조율하는 방법을 정리합니다."
 image: "/images/blog/peekcart-shedlock-multi-pod-scheduler/thumbnail.png"
 pubDate: 2026-06-02T19:03:58+09:00
 category: "backend"

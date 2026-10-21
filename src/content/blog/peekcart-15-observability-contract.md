@@ -1,6 +1,6 @@
 ---
 title: "PeekCart 학습 기록 15: 메트릭은 수집됐는데 그래프가 비어 있다"
-description: "Actuator에서 Prometheus, Grafana 알림까지 이어지는 관측성 경로를 따라가며 YAML 설정 배치 원칙과 SSOT 기반 관측성 계약을 정리합니다."
+description: "Actuator에서 Grafana 알림까지 이어지는 관측성 경로를 따라가며 비어 있던 그래프의 원인을 정리합니다."
 image: "/images/blog/peekcart-observability-contract/thumbnail.png"
 pubDate: 2026-06-04
 category: "infra"

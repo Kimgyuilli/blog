@@ -1,6 +1,6 @@
 ---
 title: "PeekCart 학습 기록 18: Phase 4로 넘어가기 전에 - 글을 쓰다 발견한 22개의 부채"
-description: "Phase 4 MSA 진입 전에 글쓰기 과정에서 드러난 22개의 기술 부채를 보안, 관측성, 발행 경로, 동시성, CI와 배포 관점에서 정리합니다."
+description: "Phase 4 MSA 진입 전에 글을 쓰며 드러난 22개의 기술 부채를 영역별로 나눠 정리합니다."
 image: "/images/blog/peekcart-phase4-debt-checklist/thumbnail.svg"
 pubDate: 2026-06-05T22:30:00+09:00
 category: "backend"

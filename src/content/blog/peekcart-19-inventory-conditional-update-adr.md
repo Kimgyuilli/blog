@@ -1,6 +1,6 @@
 ---
 title: 'PeekCart 학습 기록 19: "조건부 UPDATE 한 방"이면 분산 락이 필요 없을까'
-description: "단일 행 재고 차감에서 조건부 UPDATE, Redis 분산 락, JPA 낙관적 락의 적정 구간을 비교하고 PeekCart에 남길 ADR 판단 기준을 정리합니다."
+description: "단일 행 재고 차감에서 조건부 UPDATE, Redis 분산 락, 낙관적 락이 각각 맞는 구간을 비교합니다."
 image: "/images/blog/peekcart-inventory-conditional-update-adr/thumbnail.png"
 pubDate: 2026-06-06T14:20:00+09:00
 category: "backend"

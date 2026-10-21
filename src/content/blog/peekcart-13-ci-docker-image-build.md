@@ -1,6 +1,6 @@
 ---
 title: 'PeekCart 학습 기록 13: "내 머신에선 되는데"를 닫는다 - CI와 Docker 이미지 빌드'
-description: "PeekCart의 GitHub Actions CI, Testcontainers 통합 테스트, 멀티스테이지 Docker 이미지 빌드, GHCR 발행 흐름과 검증 공백을 정리합니다."
+description: "GitHub Actions CI, Testcontainers 통합 테스트, Docker 이미지 빌드 흐름과 검증 공백을 정리합니다."
 image: "/images/blog/peekcart-ci-docker-image-build/thumbnail.png"
 pubDate: 2026-06-02T20:11:54+09:00
 category: "backend"

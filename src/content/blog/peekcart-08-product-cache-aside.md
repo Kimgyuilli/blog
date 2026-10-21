@@ -1,6 +1,6 @@
 ---
 title: "PeekCart 학습 기록 8: 상품 조회를 캐시 뒤로 옮기기"
-description: "PeekCart의 상품 목록과 상세 조회를 Redis Cache Aside로 옮기며 재고 제외, self-invocation 회피, 목록 캐시 무효화, CachedPage 래퍼를 정리합니다."
+description: "상품 조회를 Redis Cache Aside로 옮기며 재고 제외, 목록 캐시 무효화, CachedPage 래퍼를 정리합니다."
 image: "/images/blog/peekcart-product-cache-aside/thumbnail.png"
 pubDate: 2026-05-29
 category: "backend"

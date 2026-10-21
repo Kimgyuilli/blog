@@ -1,6 +1,6 @@
 ---
 title: "PeekCart 학습 기록 26: DLQ 메시지를 원래 토픽에 다시 넣기 전에 무엇을 정해야 할까"
-description: "DLQ 에 쌓인 메시지를 원래 토픽에 다시 보내는 기능을 만들며 부딪힌 네 질문(어디로 넣나, 원본이 남아 있나, 다시 실패하면, 연 뒤 되돌릴 수 있나)과, 그 과정에서 드러난 Kafka 보존 기간의 선언과 실효, JPA 잠금 조회의 낡은 엔티티, `clearAutomatically` detach 같은 함정을 정리합니다."
+description: "DLQ 메시지를 원래 토픽에 다시 넣는 기능을 만들며 정해야 했던 네 질문과 그 과정의 함정을 정리합니다."
 image: "/images/blog/peekcart-dlq-replay-four-questions/thumbnail.jpg"
 pubDate: 2026-10-13
 category: backend

@@ -1,6 +1,6 @@
 ---
 title: "PeekCart 학습 기록 16: 캐시 효과를 어떻게 증명할까"
-description: "Redis Cache Aside 도입 효과를 GKE 부하 테스트에서 캐시 ON/OFF 단일 변수 실험으로 검증하고, 목표 x3에 못 미친 x2.31 결과를 baseline으로 남긴 과정을 정리합니다."
+description: "캐시 ON/OFF 단일 변수 부하 테스트로 Cache Aside 효과를 재고, 목표에 못 미친 2.31배를 기준값으로 남깁니다."
 image: "/images/blog/peekcart-cache-effect-measurement/thumbnail.png"
 pubDate: 2026-06-04
 category: "backend"
