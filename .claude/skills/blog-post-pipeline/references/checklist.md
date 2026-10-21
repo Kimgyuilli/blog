@@ -38,7 +38,12 @@ Answer these before gate A and again before handing the reviewed draft back. The
 - Does a metaphor verb that is not in `voice.md` yet carry the meaning? Use a concrete verb.
 - Are findings framed as cleft sentences ("~한 것은 X입니다", "~한 곳은 X입니다", "이유는 X에 있습니다") more than once or twice? Put the subject first and state it.
 - Does a noun carry three or more stacked modifier clauses ("A 를 읽어 B 에서 C 까지 이어지는지 확인하는 검사 스크립트")? Name the thing first, then describe it in its own sentence.
-- Is one verb, often "확인했습니다", doing most of the work? Use the specific action (대조했습니다, 다시 받았습니다, 실패했습니다). Leave scope markers such as "확인하지 않았습니다" as they are.
+- Is one verb, often "확인했습니다", doing most of the work? Use the specific action (대조했습니다, 다시 받았습니다, 실패했습니다). Leave scope markers such as "확인하지 않았습니다" as they are. Does a verb like "봅니다", "살펴봅니다", "함께 봅니다" stand without saying what is compared, counted, or read? Write the action.
+- Does each "이", "그", "이를 통해", "그 기준" point at something the previous sentence names? If not, write the target or add the missing step.
+- Do dictionary-style compounds ("운영 관점", "작동 구조", "~측면에서") recur in one section? Unpack them into what is done.
+- Is a list of three ("A, B, 그리고 C") there because all three matter and relate, or because three looks organized? Keep the one that matters, or explain each.
+- Does a section open or close on a declaration ("중요한 것은 ~", "기준은 분명합니다") with nothing new after it? Cut it or attach the evidence.
+- Can the reader tell who did each action? Name the author, the team, or the system when the source says so, and do not invent one when it does not.
 - Is a plan or prediction cited as a document ("계획에는 ~가 있었다", "주석에 남은 이유는")? Make the author or the team the subject: "~하기로 계획했습니다", "~라고 추정했습니다".
 
 ## Visuals
