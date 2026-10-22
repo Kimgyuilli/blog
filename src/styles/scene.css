@@ -732,6 +732,58 @@ html.dark .db-demo {
 .scene-cline-ghost rect { fill: none; stroke: var(--scene-dep); stroke-width: 1.4; stroke-dasharray: 4 3; }
 .scene-cline-ghost text { fill: var(--scene-dep); }
 
+/* arena 의 lock 과 chunk (ArenaScatter) */
+.scene-lock-card { fill: var(--canvas); stroke: var(--hairline); stroke-width: 1.5; transition: fill 240ms ease, stroke 240ms ease; }
+.scene-lock.is-held .scene-lock-card { fill: color-mix(in srgb, var(--node-hue) 14%, var(--canvas)); stroke: var(--node-hue); stroke-width: 2; }
+.scene-lock-text { fill: var(--ink); font-family: var(--font-mono); font-size: 11px; font-weight: 700; text-anchor: middle; transform-box: fill-box; transform-origin: center; }
+.scene-lock-text.is-bump { animation: scene-pop 420ms ease-out; }
+.scene-arena-chunk { cursor: default; }
+.scene-arena-chunk-text { fill: var(--ink); font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; text-anchor: middle; pointer-events: none; }
+
+/* 스레드 점과 캐시: 캐시가 스레드에 붙었다가 CPU 로 모입니다 (PerCpuCacheCount) */
+.scene-pthread-dot { fill: var(--scene-hue-gray); }
+.scene-pcpu .scene-node-name { font-size: 12.5px; }
+.scene-pcache { fill: color-mix(in srgb, var(--scene-hue-violet) 70%, var(--surface)); stroke: var(--scene-hue-violet); stroke-width: 0.8; }
+.scene-pcache-box rect { fill: color-mix(in srgb, var(--scene-hue-violet) 22%, var(--surface)); stroke: var(--scene-hue-violet); stroke-width: 1.5; }
+.scene-pcache-box text { fill: var(--ink); font-size: 10.5px; font-weight: 700; text-anchor: middle; }
+
+/* mimalloc page 의 목록 세 개 (CrossThreadFree) */
+.scene-ctf-lane { fill: var(--ink); font-family: var(--font-mono); font-size: 12px; font-weight: 700; }
+.scene-ctf-track { stroke: var(--hairline); stroke-width: 1.5; stroke-dasharray: 2 5; }
+
+/* TLAB 과 eden: 객체가 쌓이며 top 이 옮겨 가고, TLAB 은 eden 의 한 구간입니다 (TlabBumpPointer) */
+.scene-tlab-track { fill: var(--surface); stroke: var(--hairline); stroke-width: 1.5; }
+.scene-tlab-obj rect { fill: color-mix(in srgb, var(--node-hue) 58%, var(--surface)); stroke: var(--node-hue); stroke-width: 1.3; }
+.scene-tlab-obj.is-filler rect { stroke: var(--hairline); stroke-width: 1; }
+.scene-tlab-obj-text { fill: var(--ink); font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; text-anchor: middle; pointer-events: none; }
+.scene-tlab-seg rect { stroke-width: 1.2; }
+.scene-tlab-seg.is-other rect { fill: color-mix(in srgb, var(--scene-hue-gray) 35%, var(--surface)); stroke: var(--scene-hue-gray); }
+.scene-tlab-seg.is-old rect { fill: color-mix(in srgb, var(--scene-hue-cyan) 22%, var(--surface)); stroke: color-mix(in srgb, var(--scene-hue-cyan) 55%, var(--hairline)); }
+.scene-tlab-seg.is-cur rect { fill: color-mix(in srgb, var(--scene-hue-cyan) 10%, var(--surface)); stroke: var(--scene-hue-cyan); stroke-width: 1.8; stroke-dasharray: 4 3; }
+.scene-tlab-seg.is-big rect { fill: color-mix(in srgb, var(--scene-hue-cyan) 58%, var(--surface)); stroke: var(--scene-hue-cyan); }
+.scene-tlab-wing { stroke: color-mix(in srgb, var(--scene-hue-cyan) 55%, var(--hairline)); stroke-width: 1.2; stroke-dasharray: 3 4; }
+.scene-tlab-ptr path { fill: var(--scene-dep); }
+.scene-tlab-ptr text { fill: var(--scene-dep); font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; text-anchor: middle; paint-order: stroke; stroke: var(--canvas); stroke-width: 4px; }
+.scene-tlab-ptr.is-strong path { fill: var(--scene-hue-cyan); }
+.scene-tlab-ptr.is-strong text { fill: var(--ink); font-size: 12px; font-weight: 800; }
+
+/* 여러 단계로 이어지는 동작이 끝날 때까지 받지 않는 버튼 */
+.db-demo .db-demo-controls button[aria-disabled="true"] { opacity: 0.55; cursor: progress; }
+
+/* 할당 요청이 층을 따라 내려가는 경로 (AllocPath) */
+.scene-apath-lane { stroke: var(--hairline); stroke-width: 2; stroke-dasharray: 3 5; }
+.scene-apath-card.is-passed .scene-node-card { stroke: var(--scene-temp); stroke-dasharray: 5 4; }
+.scene-apath-tag { fill: var(--scene-temp); }
+
+/* 할당자 정적 도식 (AllocFigure) */
+.scene-alloc-fig-line { fill: none; stroke: color-mix(in srgb, var(--scene-dep) 55%, var(--hairline)); stroke-width: 1.4; }
+.scene-alloc-fig-bit { fill: var(--scene-dep); font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; }
+.scene-alloc-fig-bit.is-caption { font-family: var(--font-sans); font-size: 10.5px; font-weight: 600; }
+.scene-alloc-fig-slot { fill: var(--surface); stroke: color-mix(in srgb, var(--ink) 45%, var(--hairline)); stroke-width: 1.4; }
+.scene-alloc-fig-rest { stroke: var(--scene-temp); stroke-width: 1.2; stroke-dasharray: 4 3; }
+.scene-alloc-fig-waste { fill: var(--scene-temp); }
+.scene-alloc-fig-chain { fill: none; stroke: var(--scene-flow); stroke-width: 1.5; stroke-dasharray: 4 3; }
+
 /* NUMA 노드 사이 연결 (NumaPlacement) */
 .scene-numa-link { stroke: color-mix(in srgb, var(--scene-dep) 70%, var(--hairline)); stroke-width: 4; stroke-linecap: round; }
 
@@ -757,6 +809,7 @@ html.dark .db-demo {
   .scene-badge-value.is-bump,
   .scene-mem-value.is-bump,
   .scene-cline-text.is-bump,
+  .scene-lock-text.is-bump,
   .scene-cline.is-written .scene-cline-body,
   .scene-wall.is-pierced .scene-wall-ghost { animation: none; }
   .scene-timeline-step.is-timing .scene-timeline-fill { animation: none; width: 100%; }

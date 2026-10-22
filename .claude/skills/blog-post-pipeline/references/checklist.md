@@ -37,6 +37,8 @@ Answer these before gate A and again before handing the reviewed draft back. The
 - Are commas placed after every connective ending ("~했고,", "~해서,")? Keep them only where the subject changes in a long sentence.
 - Does a metaphor verb that is not in `voice.md` yet carry the meaning? Use a concrete verb.
 - Are findings framed as cleft sentences ("~한 것은 X입니다", "~한 곳은 X입니다", "이유는 X에 있습니다") more than once or twice? Put the subject first and state it.
+- Does a sentence equate two "-는 일" nominals ("A 를 바꾸는 일은 B 를 정하는 일입니다", "할당하는 일은 X 가 하고 ~하는 일은 Y 가 합니다")? Make the actor the subject and use the verb.
+- Do several sections repeat one symmetric trade-off frame ("X 하면 A 는 빨라지지만 B 가 늘고, Y 하면 ...")? Keep the full pair once; state the others as the specific cost.
 - Does a noun carry three or more stacked modifier clauses ("A 를 읽어 B 에서 C 까지 이어지는지 확인하는 검사 스크립트")? Name the thing first, then describe it in its own sentence.
 - Is one verb, often "확인했습니다", doing most of the work? Use the specific action (대조했습니다, 다시 받았습니다, 실패했습니다). Leave scope markers such as "확인하지 않았습니다" as they are. Does a verb like "봅니다", "살펴봅니다", "함께 봅니다" stand without saying what is compared, counted, or read? Write the action.
 - Does each "이", "그", "이를 통해", "그 기준" point at something the previous sentence names? If not, write the target or add the missing step.

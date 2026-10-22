@@ -13,6 +13,8 @@
 - 실린 lock·값의 의미 태그·safepoint 시간축 사례: `JvmLockVsCpu`, `JvmOopMapLens`, `JvmSafepointLanes`, `JvmPcVsIp`, `JvmSameThreadMode`
 - 할당자 블록·페이지 반환·수준 막대 사례: `AllocatorPageReturn`, `PicnicMemoryLevels`, `GcCompactionNative`, `PlanningCycleCompare`, `HoleReuseCompare`
 - 캐시 라인 이동·원격 메모리 읽기 사례: `CacheLineBounce`, `NumaPlacement`
+- lock 대기·캐시 모으기·목록 이동·bump pointer 사례: `ArenaScatter`, `PerCpuCacheCount`, `CrossThreadFree`, `TlabBumpPointer`
+- 층을 따라 내려가는 요청·정적 할당자 도식 사례: `AllocPath`, `AllocFigure`
 
 ## 1. 먼저 정할 것: 독자가 장면에서 알아낼 변화
 
@@ -84,6 +86,11 @@
 | 같은 축 위의 크기 비교 | 한 GB 축 위에 줄마다 막대가 자라고, 한도는 위험 색 벽. 설명되지 않는 구간은 임시 색 점선 상자로 막대 위에 겹침 | `scene-level-bar`, `scene-level-gap`, `createWall` (`PicnicMemoryLevels`) | `draw` |
 | 쓰기 권한이 다른 코어로 옮겨 갔다 (캐시 라인) | 라인 카드가 쓰려는 코어의 캐시로 호를 그리며 날아가 착지 링. 떠난 캐시에는 점선 "무효" 복사본이 남고 이동 횟수가 튀어 오름. 권한이 이미 있으면 쓰기 패킷만 도착하고 라인은 그대로. 패딩은 빗금 영역 | `scene-cline-*` + `hopLift` + `landRing` (`CacheLineBounce`) | `fly` |
 | 멀리 있는 메모리를 읽는다 (원격 접근) | 읽기 패킷이 노드 사이 interconnect를 건너며 임시 색. 같은 노드 안의 읽기는 흐름 색으로 짧게 감. 경로가 길수록 오래 걸림 | `createPacketLayer` tone `temp`/`flow`, `scene-numa-link` (`NumaPlacement`) | 경로 길이 비례 |
+| lock 을 쥐고 있다 | lock 알약의 테두리와 바탕이 쥔 스레드의 색으로 바뀌고 글자가 `lock: T1` 로 튀어 오름. 기다리는 스레드는 `is-waiting`, 기다리는 패킷은 lock 옆에 멈춰 `대기`(임시 색) | `scene-lock` + `is-held`, `is-waiting` (`ArenaScatter`) | — |
+| 여럿이 하나로 모인다 | 대상마다 붙어 있던 작은 사본이 물결처럼 차례로 날아가 한 자리에 모이며 흐려지고, 모인 자리에 하나짜리 상자가 나타남. 반대로 바꾸면 다시 흩어짐 | `bowAt` + 지연(stagger), `scene-pcache` (`PerCpuCacheCount`) | `fly` 1.6배 |
+| 목록을 옮겨 다닌다 | 블록이 호를 그리며 다른 목록의 줄 끝으로 날아가 착지 링. 원자적 연산이 필요한 곳에서는 `CAS`, `원자적 교환` 알약이 잠깐 뜸 | `hopLift` + `landRing`, 패킷 `land(false)` (`CrossThreadFree`) | `fly` |
+| 포인터를 앞으로 민다 (bump pointer) | 객체가 막대 왼쪽부터 자라며 쌓이고 `top` 표시가 그만큼 오른쪽으로 옮겨 감. 전용 구간이 공유 영역의 어느 부분인지는 점선 날개로 이어 줌 | `scene-tlab-*` (`TlabBumpPointer`) | `move` |
+| 요청이 층을 따라 내려간다 | 패킷이 왼쪽 세로 길을 따라 내려가며 층마다 카드 앞에 들름. 응답하지 못한 층은 임시 색 점선 테두리와 위쪽 사유 문구, lock 이 필요한 층은 lock 알약이 켜짐. 응답한 층은 초록 테두리와 착지 링, 패킷은 `응답`(흐름 색) | `createNode` + `scene-apath-*`, `scene-lock` (`AllocPath`) | `draw` / `move` |
 | 다음에 누를 것 | 칩에 은은한 맥박 | `data-state="next"` | — |
 
 새 의미가 필요하면 먼저 이 표에 한 줄을 추가하고, 그다음 키트에 부품을 만듭니다.
