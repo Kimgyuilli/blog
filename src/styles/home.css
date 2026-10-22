@@ -2,8 +2,12 @@
 .hero {
   display: grid;
   gap: 18px;
-  max-width: 760px;
   padding-block: 20px 36px;
+}
+
+.hero h1 {
+  word-break: keep-all;
+  text-wrap: balance;
 }
 
 .eyebrow {
