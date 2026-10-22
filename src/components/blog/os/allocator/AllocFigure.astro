@@ -1,0 +1,265 @@
+---
+import '@/styles/scene.css';
+import '@/styles/database-demos.css';
+
+type Kind = 'jemalloc-layout' | 'size-class-fit' | 'slab-pinned' | 'mimalloc-pages' | 'tlab-layout';
+type Props = { kind: Kind };
+const { kind } = Astro.props;
+
+const COPY: Record<Kind, { label: string; caption: string }> = {
+  'jemalloc-layout': {
+    label: 'jemalloc arena 안에 size class 별 bin 이 있고, bin 아래 slab 이 있으며, slab 은 region 칸과 그 사용 여부를 적은 bitmap 으로 이루어집니다. slab 은 extent 에서 잘라 낸 연속 영역에 놓입니다.',
+    caption: 'slab 마다 region 일부만 그렸습니다. bitmap 의 1 은 사용 중인 region, 0 은 빈 region 입니다.',
+  },
+  'size-class-fit': {
+    label: '65바이트 요청을 128바이트 slot 에 넣으면 63바이트가 남고, 80바이트 slot 에 넣으면 15바이트가 남습니다.',
+    caption: '두 막대는 같은 축척입니다. 빗금은 slot 안에서 남는 공간입니다.',
+  },
+  'slab-pinned': {
+    label: '64바이트 region 64개로 된 4KiB slab 에서 region 하나만 사용 중이고 63개는 비어 있습니다. 빈 region 은 다시 쓸 수 있지만 slab 전체는 반환할 수 없습니다.',
+    caption: '설명을 위해 단순하게 가정한 slab 입니다.',
+  },
+  'mimalloc-pages': {
+    label: 'size class 64바이트의 블록을 담는 page 세 개가 있고, page 마다 빈 블록을 이은 free list 가 따로 있습니다.',
+    caption: 'page 마다 블록 아홉 개만 그렸습니다. 화살표는 free list 에서 다음 빈 블록을 가리킵니다.',
+  },
+  'tlab-layout': {
+    label: 'TLAB 막대 왼쪽부터 Object A 와 Object B 가 놓여 있고, 그 뒤가 빈 공간입니다. start 는 TLAB 의 시작, top 은 다음 객체가 놓일 위치, end 는 TLAB 의 끝을 가리킵니다.',
+    caption: 'top 이 다음 객체가 놓일 자리입니다. 새 객체를 만들면 top 이 객체 크기만큼 end 쪽으로 옮겨 갑니다.',
+  },
+};
+const copy = COPY[kind];
+---
+
+<figure class="db-demo alloc-figure" data-blog-demo="alloc-figure" data-kind={kind} aria-label={copy.label}>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label={copy.label}></svg>
+  </div>
+  <figcaption class="db-demo-disclaimer">{copy.caption}</figcaption>
+</figure>
+
+<script>
+  import { quadAt, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createArrow, createBoundary, createNode } from '@/scripts/blog/scene/parts';
+
+  type Kind = 'jemalloc-layout' | 'size-class-fit' | 'slab-pinned' | 'mimalloc-pages' | 'tlab-layout';
+  const USED_HUE = 'var(--scene-hue-blue)';
+  let hatchSeq = 0;
+
+  /** 그리기 도구. 넓은·좁은 배치를 바꿀 때마다 svg 를 비우고 다시 그립니다. */
+  const tools = (root: SVGSVGElement) => {
+    const hatchId = `alloc-fig-hatch-${++hatchSeq}`;
+    return {
+      hatchId,
+      defs() {
+        const defs = svg('defs', {}, root);
+        const pattern = svg('pattern', { id: hatchId, patternUnits: 'userSpaceOnUse', width: 6, height: 6, patternTransform: 'rotate(45)' }, defs);
+        svg('line', { x1: 0, y1: 0, x2: 0, y2: 6, stroke: 'var(--scene-temp)', 'stroke-width': 1.6, opacity: 0.55 }, pattern);
+      },
+      cell(x: number, y: number, w: number, h: number, used: boolean, label = '') {
+        const g = svg('g', { class: 'scene-alloc-block scene-arena-chunk' }, root);
+        g.style.setProperty('--node-hue', USED_HUE);
+        svg('rect', { class: used ? 'scene-alloc-used' : 'scene-alloc-free', rx: 4, x, y, width: w, height: h }, g);
+        if (label) {
+          const t = svg('text', { class: 'scene-arena-chunk-text', x: x + w / 2, y: y + h / 2 + 3.8 }, g);
+          t.textContent = label;
+        }
+        return g;
+      },
+      text(x: number, y: number, value: string, cls = 'scene-label is-sans scene-label-dep', anchor: 'start' | 'middle' | 'end' = 'start') {
+        const t = svg('text', { class: cls, x, y, 'text-anchor': anchor }, root);
+        t.textContent = value;
+        return t;
+      },
+      line(points: Point[], cls = 'scene-alloc-fig-line') {
+        return svg('polyline', { class: cls, points: points.map((p) => `${p.x},${p.y}`).join(' ') }, root);
+      },
+    };
+  };
+
+  // ── jemalloc arena 계층 ──
+  const SLAB_ROWS = [
+    { bin: 0, name: 'slab 1', used: [1, 1, 0, 1, 0, 0, 1, 0] },
+    { bin: 0, name: 'slab 2', used: [1, 0, 0, 0, 0, 0, 0, 0] },
+    { bin: 1, name: 'slab 3', used: [1, 0, 1, 1] },
+  ];
+  function drawJemalloc(root: SVGSVGElement, narrow: boolean) {
+    const t = tools(root);
+    const W = narrow ? 360 : 560;
+    const bins = narrow
+      ? [{ x: 180, y: 62, w: 300, label: 'bin 64B' }, { x: 180, y: 236, w: 300, label: 'bin 128B' }]
+      : [{ x: 150, y: 62, w: 240, label: 'bin 64B' }, { x: 420, y: 62, w: 220, label: 'bin 128B' }];
+    const rowY = narrow ? [112, 176, 286] : [112, 176, 112];
+    const rowX = narrow ? [84, 84, 84] : [86, 86, 330];
+    const extentY = narrow ? 352 : 236;
+    const H = narrow ? 392 : 278;
+    setAttrs(root, { viewBox: `0 0 ${W} ${H}` });
+    createBoundary(root, 'arena').place({ x: 6, y: 6, w: W - 12, h: H - 12 }, { x: 20, y: 28, anchor: 'start' });
+    bins.forEach((b) => createNode(root, { label: b.label, hue: USED_HUE }).setBox({ x: b.x, y: b.y, w: b.w, h: 32 }));
+    SLAB_ROWS.forEach((row, i) => {
+      const bin = bins[row.bin];
+      const cellW = row.used.length === 4 ? 40 : 18;
+      const x0 = rowX[i];
+      const y = rowY[i];
+      const spineX = x0 - 34;
+      t.line([{ x: spineX, y: bin.y + 16 }, { x: spineX, y }, { x: spineX + 6, y }]);
+      t.text(spineX + 10, y + 4, row.name, 'scene-label is-sans scene-label-dep');
+      // 이름 옆 공간을 비우고 region 칸을 놓습니다.
+      const start = x0 + 26;
+      row.used.forEach((u, k) => {
+        const x = start + k * (cellW + 4);
+        t.cell(x, y - 11, cellW, 22, Boolean(u));
+        t.text(x + cellW / 2, y + 26, String(u), 'scene-alloc-fig-bit', 'middle');
+      });
+      t.text(start - 4, y + 26, 'bitmap', 'scene-alloc-fig-bit is-caption', 'end');
+    });
+    const extent = createBoundary(root, 'extent: slab 이 놓이는 연속 영역', 'zone');
+    extent.place({ x: 24, y: extentY - 14, w: W - 48, h: 28 }, { x: W / 2, y: extentY + 4, anchor: 'middle' });
+  }
+
+  // ── size class 올림 ──
+  function drawSizeClass(root: SVGSVGElement, narrow: boolean) {
+    const t = tools(root);
+    t.defs();
+    const W = narrow ? 360 : 560;
+    const x0 = narrow ? 82 : 116;
+    const scale = narrow ? 2.05 : 3.2;
+    setAttrs(root, { viewBox: `0 0 ${W} 150` });
+    const rows = [{ y: 52, slot: 128 }, { y: 112, slot: 80 }];
+    rows.forEach(({ y, slot }) => {
+      t.text(x0 - 12, y + 4, `${slot}B slot`, 'scene-label scene-label-dep', 'end');
+      svg('rect', { class: 'scene-alloc-fig-slot', x: x0, y: y - 16, width: slot * scale, height: 32, rx: 6 }, root);
+      t.cell(x0 + 2, y - 13, 65 * scale - 2, 26, true, '65B');
+      const restX = x0 + 65 * scale + 2;
+      const restW = (slot - 65) * scale - 4;
+      svg('rect', { x: restX, y: y - 13, width: restW, height: 26, rx: 4, fill: `url(#${t.hatchId})`, class: 'scene-alloc-fig-rest' }, root);
+      const label = `${slot - 65}B 남음`;
+      if (restW > 70) t.text(restX + restW / 2, y + 4, label, 'scene-label is-sans scene-alloc-fig-waste', 'middle');
+      else t.text(restX + restW + 10, y + 4, label, 'scene-label is-sans scene-alloc-fig-waste');
+    });
+  }
+
+  // ── 객체 하나가 남은 slab ──
+  function drawSlab(root: SVGSVGElement, narrow: boolean) {
+    const t = tools(root);
+    const cols = narrow ? 8 : 16;
+    const cw = narrow ? 30 : 26;
+    const ch = narrow ? 18 : 22;
+    const gap = 4;
+    const W = narrow ? 360 : 560;
+    const gridW = cols * (cw + gap) - gap;
+    const x0 = (W - gridW) / 2;
+    const y0 = 50;
+    const rows = 64 / cols;
+    const gridBottom = y0 + rows * (ch + gap) - gap;
+    const H = gridBottom + 66;
+    setAttrs(root, { viewBox: `0 0 ${W} ${H}` });
+    const box = svg('g', { class: 'scene-alloc-page is-stuck' }, root);
+    svg('rect', { class: 'scene-alloc-card', x: x0 - 12, y: y0 - 30, width: gridW + 24, height: gridBottom - y0 + 42, rx: 10 }, box);
+    t.text(x0 - 2, y0 - 12, 'slab 4KiB (64B region 64개)', 'scene-caption');
+    const live = narrow ? 13 : 21;
+    for (let i = 0; i < 64; i += 1) {
+      const x = x0 + (i % cols) * (cw + gap);
+      const y = y0 + Math.floor(i / cols) * (ch + gap);
+      t.cell(x, y, cw, ch, i === live);
+    }
+    t.text(x0, gridBottom + 34, '빈 region 63개: 다음 64B 요청에 다시 씀', 'scene-label is-sans scene-label-flow');
+    t.text(x0, gridBottom + 54, '살아 있는 객체 1개 때문에 slab 전체는 반환할 수 없음', 'scene-label is-sans scene-alloc-fig-waste');
+  }
+
+  // ── mimalloc page 별 free list ──
+  const PAGES = [
+    { name: 'page A', used: [1, 0, 1, 0, 0, 1, 1, 0, 1] },
+    { name: 'page B', used: [0, 1, 1, 1, 0, 1, 0, 1, 1] },
+    { name: 'page C', used: [1, 1, 0, 0, 1, 0, 1, 0, 0] },
+  ];
+  function drawMimalloc(root: SVGSVGElement, narrow: boolean) {
+    const t = tools(root);
+    const W = narrow ? 360 : 560;
+    const H = narrow ? 432 : 236;
+    setAttrs(root, { viewBox: `0 0 ${W} ${H}` });
+    t.text(14, 24, 'size class: 64B', 'scene-caption');
+    PAGES.forEach((page, p) => {
+      const card = narrow ? { x: 8, y: 40 + p * 130, w: 344, h: 118 } : { x: 8 + p * 184, y: 40, w: 176, h: 188 };
+      const g = svg('g', { class: 'scene-alloc-page' }, root);
+      svg('rect', { class: 'scene-alloc-card', x: card.x, y: card.y, width: card.w, height: card.h, rx: 10 }, g);
+      t.text(card.x + 12, card.y + 20, page.name, 'scene-label scene-label-dep');
+      t.text(card.x + card.w - 12, card.y + 20, `free list ${page.name.slice(-1)}`, 'scene-label is-sans scene-label-flow', 'end');
+      const cols = narrow ? 9 : 3;
+      const bw = narrow ? 30 : 38;
+      const bh = 22;
+      const gx = narrow ? 6 : 14;
+      const gy = narrow ? 0 : 20;
+      const gridW = cols * (bw + gx) - gx;
+      const bx0 = card.x + (card.w - gridW) / 2;
+      const by0 = card.y + (narrow ? 70 : 64);
+      const centers: Point[] = page.used.map((_, k) => ({ x: bx0 + (k % cols) * (bw + gx) + bw / 2, y: by0 + Math.floor(k / cols) * (bh + gy) + bh / 2 }));
+      // free list 화살표를 먼저 그려 블록이 위에 오게 합니다.
+      const free = page.used.map((u, k) => (u ? -1 : k)).filter((k) => k >= 0);
+      const head = { x: bx0 - (narrow ? 2 : 4), y: by0 - (narrow ? 26 : 22) };
+      const chain = [head, ...free.map((k) => ({ x: centers[k].x, y: centers[k].y - bh / 2 }))];
+      chain.slice(1).forEach((to, i) => {
+        const from = i === 0 ? chain[0] : { x: centers[free[i - 1]].x, y: centers[free[i - 1]].y - bh / 2 };
+        const lift = narrow ? 16 : 14;
+        const c = { x: (from.x + to.x) / 2, y: Math.min(from.y, to.y) - lift };
+        svg('path', { class: 'scene-alloc-fig-chain', d: `M ${from.x} ${from.y} Q ${c.x} ${c.y} ${to.x} ${to.y}` }, root);
+        const tip = quadAt(from, c, to, 1);
+        createArrow(root, 'var(--scene-flow)')({ x: to.x, y: to.y - 1 }, tip.angle);
+      });
+      t.text(head.x, head.y - 4, 'free', 'scene-label scene-label-flow');
+      page.used.forEach((u, k) => t.cell(centers[k].x - bw / 2, centers[k].y - bh / 2, bw, bh, Boolean(u)));
+    });
+  }
+
+  // ── TLAB 의 start, top, end ──
+  function drawTlab(root: SVGSVGElement, narrow: boolean) {
+    const t = tools(root);
+    const W = narrow ? 360 : 560;
+    const x0 = narrow ? 20 : 40;
+    const w = narrow ? 320 : 480;
+    const unit = w / 20;
+    const y = 40;
+    const h = 40;
+    setAttrs(root, { viewBox: `0 0 ${W} 150` });
+    t.text(x0, 26, 'TLAB (스레드 전용)', 'scene-caption');
+    svg('rect', { class: 'scene-tlab-track', x: x0, y, width: w, height: h, rx: 6 }, root);
+    const objs = [{ start: 0, size: 5, name: narrow ? 'A' : 'Object A' }, { start: 5, size: 5, name: narrow ? 'B' : 'Object B' }];
+    objs.forEach((o) => {
+      const g = svg('g', { class: 'scene-tlab-obj' }, root);
+      g.style.setProperty('--node-hue', 'var(--scene-hue-cyan)');
+      svg('rect', { x: x0 + o.start * unit + 1, y: y + 4, width: o.size * unit - 2, height: h - 8, rx: 4 }, g);
+      const label = svg('text', { class: 'scene-tlab-obj-text', x: x0 + (o.start + o.size / 2) * unit, y: y + h / 2 + 4 }, g);
+      label.textContent = o.name;
+    });
+    t.text(x0 + 15 * unit, y + h / 2 + 4, '빈 공간', 'scene-label is-sans scene-label-dep', 'middle');
+    const pointer = (u: number, label: string, strong: boolean, dy: number) => {
+      const g = svg('g', { class: strong ? 'scene-tlab-ptr is-strong' : 'scene-tlab-ptr', transform: `translate(${x0 + u * unit} ${y + h + dy})` }, root);
+      svg('path', { d: 'M 0 4 L -5 12 L 5 12 Z' }, g);
+      const text = svg('text', { y: 26 }, g);
+      text.textContent = label;
+    };
+    pointer(0, 'start', false, 0);
+    pointer(20, 'end', false, 0);
+    pointer(10, 'top', true, 0);
+  }
+
+  const DRAW: Record<Kind, (root: SVGSVGElement, narrow: boolean) => void> = {
+    'jemalloc-layout': drawJemalloc,
+    'size-class-fit': drawSizeClass,
+    'slab-pinned': drawSlab,
+    'mimalloc-pages': drawMimalloc,
+    'tlab-layout': drawTlab,
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="alloc-figure"]').forEach((figure) => {
+    if (figure.dataset.ready) return;
+    figure.dataset.ready = 'true';
+    const stage = figure.querySelector<HTMLElement>('[data-stage]')!;
+    const root = figure.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const draw = DRAW[figure.dataset.kind as Kind];
+    watchNarrow(stage, (narrow) => {
+      root.replaceChildren();
+      draw(root, narrow);
+    });
+  });
+</script>

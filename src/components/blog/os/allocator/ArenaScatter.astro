@@ -1,0 +1,344 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="arena-scatter" ariaLabel="arena 수에 따라 lock 대기와 빈 chunk 재사용이 어떻게 달라지는지 보는 실험" title="arena 를 늘리면 무엇을 얻고 무엇을 잃을까요?" description="두 스레드가 동시에 malloc(256) 을 부릅니다. arena 수를 고르면 같은 요청을 다시 보내고, lock 을 기다린 횟수와 새로 받은 공간을 셉니다.">
+  <DemoControls ariaLabel="arena 수">
+    <button type="button" data-mode="one" aria-pressed="true">arena 1개</button>
+    <button type="button" data-mode="two" aria-pressed="false">arena 2개</button>
+    <button type="button" data-action="replay">다시 보내기</button>
+  </DemoControls>
+
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="위에 Thread 1 과 Thread 2 가 있고, 아래 arena 안에 256바이트 chunk 가 줄지어 있습니다. arena 가 하나면 두 스레드가 lock 하나를 함께 쓰고, 둘이면 arena 마다 lock 과 chunk 가 따로 있습니다."></svg>
+  </div>
+
+  <div class="arena-readouts" aria-label="이번 실행의 수치">
+    <span>lock 대기 <b data-waits>0번</b></span>
+    <span>새로 받은 공간 <b data-grown>0B</b></span>
+    <span>남은 빈 chunk <b data-free>512B</b></span>
+  </div>
+  <ul class="arena-legend">
+    <li><i class="is-used"></i>사용 중인 chunk</li>
+    <li><i class="is-free"></i>해제되어 bin 에 있는 chunk</li>
+  </ul>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">
+    glibc 의 arena 를 단순화한 모형입니다. 두 스레드의 tcache 는 가득 차 있어서, 해제된 256B chunk 가 tcache 대신 arena 의 bin 으로 갔다고 가정했습니다. bin 탐색과 chunk 분할은 그리지 않았고, heap 확장량은 요청 크기로 단순화했습니다. 실제 heap 은 페이지 단위로 늘어납니다.
+    arena B 를 쓰는 스레드는 arena A 를 확인하러 가지 않습니다. 벽에 튕기는 장면은 탐색 범위가 자기 arena 안으로 한정된다는 뜻으로 그렸습니다. 수치는 이 순서의 요청에서 나온 값이며 측정값이 아닙니다.
+  </p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, lerp, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createBoundary, createNode, createWall, landRing, type Rect } from '@/scripts/blog/scene/parts';
+  import { arcPoints, createPacketLayer, type Packet } from '@/scripts/blog/scene/packets';
+
+  type Mode = 'one' | 'two';
+  const SLOTS = 8;
+  const EXT = 8;
+  const CHUNK = 256;
+  const START_USED = [1, 0, 0, 1, 1, 1, 1, 1, 0];
+  const THREADS = [
+    { name: 'Thread 1', subject: 'Thread 1 이', hue: 'var(--scene-hue-cyan)' },
+    { name: 'Thread 2', subject: 'Thread 2 가', hue: 'var(--scene-hue-amber)' },
+  ];
+  const ARENA_HUE = 'var(--scene-hue-blue)';
+
+  type State = { split: number; used: number[]; ext: number; strand: number };
+  type Layout = {
+    view: [number, number];
+    threads: Point[];
+    nodeW: number;
+    one: Rect;
+    a: Rect;
+    b: Rect;
+    lockOne: Point;
+    lockA: Point;
+    lockB: Point;
+    blockY: number;
+    blockW: number;
+    blockH: number;
+    cols: number[];
+    ext: Point;
+    wallX: number;
+    unit: string;
+  };
+  const layouts: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 292], threads: [{ x: 140, y: 38 }, { x: 420, y: 38 }], nodeW: 132,
+      one: { x: 16, y: 86, w: 528, h: 190 }, a: { x: 16, y: 86, w: 258, h: 190 }, b: { x: 286, y: 86, w: 258, h: 190 },
+      lockOne: { x: 280, y: 118 }, lockA: { x: 160, y: 118 }, lockB: { x: 430, y: 118 },
+      blockY: 176, blockW: 50, blockH: 32, cols: [55, 115, 175, 235, 325, 385, 445, 505], ext: { x: 325, y: 236 },
+      wallX: 280, unit: '256B',
+    },
+    narrow: {
+      view: [360, 300], threads: [{ x: 92, y: 38 }, { x: 268, y: 38 }], nodeW: 120,
+      one: { x: 6, y: 86, w: 348, h: 198 }, a: { x: 6, y: 86, w: 168, h: 198 }, b: { x: 186, y: 86, w: 168, h: 198 },
+      lockOne: { x: 180, y: 148 }, lockA: { x: 90, y: 148 }, lockB: { x: 270, y: 148 },
+      blockY: 192, blockW: 34, blockH: 30, cols: [30, 70, 110, 150, 210, 250, 290, 330], ext: { x: 210, y: 248 },
+      wallX: 180, unit: '256',
+    },
+  };
+
+  const lerpRect = (a: Rect, b: Rect, t: number): Rect => ({ x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t), w: lerp(a.w, b.w, t), h: lerp(a.h, b.h, t) });
+  const lerpPoint = (a: Point, b: Point, t: number): Point => ({ x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) });
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="arena-scatter"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const waitsOut = demo.querySelector<HTMLElement>('[data-waits]')!;
+    const grownOut = demo.querySelector<HTMLElement>('[data-grown]')!;
+    const freeOut = demo.querySelector<HTMLElement>('[data-free]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-mode]')];
+    let layout = layouts.wide;
+    let mode: Mode = 'one';
+    let started = false;
+
+    // ── 논리 모형 ──
+    let used = [...START_USED];
+    let strand = 0;
+    let waits = 0;
+    let grown = 0;
+    let extShown = 0;
+    /** 아직 아무도 쓰지 않는 chunk 의 합. heap 확장 자리는 나타난 뒤에만 셉니다. */
+    const freeBytes = () => used.reduce((sum, u, i) => sum + (u || (i === EXT && !extShown) ? 0 : CHUNK), 0);
+    const target = (): State => ({ split: mode === 'two' ? 1 : 0, used: [...used], ext: extShown, strand });
+
+    // ── 그림 ──
+    const arenaA = createBoundary(root, 'arena');
+    const arenaB = createBoundary(root, 'arena B');
+    const wall = createWall(root);
+    const threadViews = THREADS.map((t) => createNode(root, { label: t.name, hue: t.hue }));
+    threadViews.forEach((view) => view.group.classList.add('is-sans-sub'));
+
+    const makeLock = () => {
+      const group = svg('g', { class: 'scene-lock' }, root);
+      const card = svg('rect', { class: 'scene-lock-card', rx: 10, height: 22, y: -11 }, group);
+      const text = svg('text', { class: 'scene-lock-text', y: 4 }, group);
+      text.textContent = 'lock';
+      return { group, card, text };
+    };
+    const locks = [makeLock(), makeLock()];
+
+    const blockViews = Array.from({ length: SLOTS + 1 }, () => {
+      const group = svg('g', { class: 'scene-alloc-block scene-arena-chunk' }, root);
+      group.style.setProperty('--node-hue', ARENA_HUE);
+      const free = svg('rect', { class: 'scene-alloc-free', rx: 5 }, group);
+      const fill = svg('rect', { class: 'scene-alloc-used', rx: 5 }, group);
+      const text = svg('text', { class: 'scene-arena-chunk-text', y: 3.8 }, group);
+      return { group, free, fill, text };
+    });
+    const extLabel = svg('text', { class: 'scene-label is-sans scene-label-dep' }, root);
+    extLabel.textContent = 'heap 확장';
+    const strandLabel = svg('text', { class: 'scene-label is-sans is-waiting-label', 'text-anchor': 'middle' }, root);
+    const packets = createPacketLayer(root);
+
+    const blockAt = (i: number): Point => (i === EXT ? layout.ext : { x: layout.cols[i], y: layout.blockY });
+
+    const sizeAll = () => {
+      const { blockW: w, blockH: h } = layout;
+      blockViews.forEach((view) => {
+        const box = { x: -w / 2, y: -h / 2, width: w, height: h };
+        setAttrs(view.free, box);
+        setAttrs(view.fill, box);
+        view.text.textContent = layout.unit;
+      });
+      THREADS.forEach((_, k) => threadViews[k].setBox({ ...layout.threads[k], w: layout.nodeW, h: 40 }));
+      locks.forEach(({ card }) => setAttrs(card, { x: -34, width: 68 }));
+      strandLabel.textContent = layout === layouts.narrow ? 'T2 는 못 씀' : 'Thread 2 는 못 씀';
+    };
+
+    const scene = createScene<State>(target(), (s) => {
+      const a = lerpRect(layout.one, layout.a, s.split);
+      const b = lerpRect(layout.one, layout.b, s.split);
+      arenaA.place(a, { x: a.x + 14, y: a.y + 22, anchor: 'start' });
+      arenaB.place({ ...b, o: s.split }, { x: b.x + 14, y: b.y + 22, anchor: 'start' });
+      arenaA.caption.textContent = s.split > 0.5 ? 'arena A' : 'arena (두 스레드가 공유)';
+      wall.place({ x: layout.wallX, y1: layout.one.y + 8, y2: layout.one.y + layout.one.h - 8 }, { show: s.split, ghost: 0 });
+      const lockA = lerpPoint(layout.lockOne, layout.lockA, s.split);
+      const lockB = lerpPoint(layout.lockOne, layout.lockB, s.split);
+      setAttrs(locks[0].group, { transform: `translate(${lockA.x.toFixed(2)} ${lockA.y.toFixed(2)})` });
+      setAttrs(locks[1].group, { transform: `translate(${lockB.x.toFixed(2)} ${lockB.y.toFixed(2)})` });
+      locks[1].group.style.opacity = String(s.split);
+      blockViews.forEach((view, i) => {
+        const at = blockAt(i);
+        const scale = i === EXT ? lerp(0.6, 1, s.ext) : 1;
+        setAttrs(view.group, { transform: `translate(${at.x} ${at.y}) scale(${scale.toFixed(3)})` });
+        view.group.style.opacity = String(i === EXT ? s.ext : 1);
+        view.fill.setAttribute('opacity', String(s.used[i]));
+      });
+      setAttrs(extLabel, { x: layout.ext.x + layout.blockW / 2 + 10, y: layout.ext.y + 4 });
+      extLabel.style.opacity = String(s.ext);
+      setAttrs(strandLabel, { x: layout.cols[2], y: layout.blockY + layout.blockH / 2 + 18 });
+      strandLabel.style.opacity = String(s.strand);
+    });
+
+    const holdLock = (k: number, thread: number | null) => {
+      const lock = locks[k];
+      lock.group.classList.toggle('is-held', thread !== null);
+      if (thread !== null) lock.group.style.setProperty('--node-hue', THREADS[thread].hue);
+      bumpText(lock.text, thread === null ? 'lock' : `lock: T${thread + 1}`);
+    };
+    const setWaiting = (thread: number, on: boolean) => {
+      threadViews[thread].group.classList.toggle('is-waiting', on);
+      threadViews[thread].setSub(on ? 'lock 대기' : '');
+    };
+    const say = (html: string, alert = false) => {
+      note.classList.toggle('is-alert', alert);
+      note.innerHTML = html;
+    };
+    const syncCounts = () => {
+      bumpText(waitsOut, `${waits}번`);
+      bumpText(grownOut, `${grown}B`);
+      bumpText(freeOut, `${freeBytes()}B`);
+      waitsOut.classList.toggle('is-temp', waits > 0);
+      grownOut.classList.toggle('is-temp', grown > 0);
+    };
+    const interrupt = () => {
+      const alive = scene.begin();
+      packets.clear();
+      return alive;
+    };
+
+    const threadOut = (k: number): Point => ({ x: layout.threads[k].x, y: layout.threads[k].y + 30 });
+    const lockAt = (k: number): Point => (mode === 'two' ? (k ? layout.lockB : layout.lockA) : layout.lockOne);
+    const lockTop = (k: number): Point => ({ x: lockAt(k).x, y: lockAt(k).y - 22 });
+
+    /** 패킷을 chunk 자리에 내려놓고 사용 중으로 바꿉니다. */
+    const settle = async (packet: Packet, slot: number, alive: () => boolean) => {
+      if (!(await packet.travel(arcPoints(packet.at, blockAt(slot), 18), duration.move)) || !alive()) return false;
+      used[slot] = 1;
+      void packet.fade(duration.reflow);
+      if (!(await scene.go(target(), duration.reflow)) || !alive()) return false;
+      syncCounts();
+      return true;
+    };
+
+    const runOne = async (alive: () => boolean) => {
+      const p1 = packets.spawn({ label: 'malloc(256)', at: threadOut(0) });
+      const p2 = packets.spawn({ label: 'malloc(256)', at: threadOut(1) });
+      const waitSpot = { x: layout.lockOne.x + (layout === layouts.narrow ? 62 : 86), y: layout.lockOne.y - 22 };
+      const first = p1.travel([lockTop(0)], 620).then((ok) => { if (ok && alive()) holdLock(0, 0); return ok; });
+      const second = scene.pause(160).then(() => (alive() ? p2.travel([waitSpot], 620) : false));
+      const [ok1, ok2] = await Promise.all([first, second]);
+      if (!ok1 || !ok2 || !alive()) return;
+      p2.relabel('대기', 'temp');
+      setWaiting(1, true);
+      waits += 1;
+      syncCounts();
+      say('arena 가 하나라 lock 도 하나입니다. Thread 1 이 lock 을 먼저 얻었고 <strong>Thread 2 는 lock 이 풀리기를 기다립니다.</strong>');
+      await scene.pause(duration.beat * 2);
+      if (!alive() || !(await settle(p1, 1, alive))) return;
+      holdLock(0, null);
+      await scene.pause(duration.beat / 2);
+      if (!alive()) return;
+      setWaiting(1, false);
+      p2.relabel('malloc(256)', 'dep');
+      if (!(await p2.travel([lockTop(0)], 420)) || !alive()) return;
+      holdLock(0, 1);
+      await scene.pause(duration.beat / 2);
+      if (!alive() || !(await settle(p2, 2, alive))) return;
+      holdLock(0, null);
+      say(`Thread 2 는 한 번 기다렸지만 bin 에 있던 빈 chunk 를 다시 썼습니다. <strong>새로 받은 공간은 ${grown}B</strong>, 남은 빈 chunk 는 ${freeBytes()}B 입니다. arena 2개로 바꿔 보세요.`);
+      modeButtons.find((b) => b.dataset.mode === 'two')!.setAttribute('data-state', 'next');
+    };
+
+    const runTwo = async (alive: () => boolean) => {
+      const p1 = packets.spawn({ label: 'malloc(256)', at: threadOut(0) });
+      const p2 = packets.spawn({ label: 'malloc(256)', at: threadOut(1) });
+      const first = p1.travel([lockTop(0)], 620).then((ok) => { if (ok && alive()) holdLock(0, 0); return ok; });
+      const second = scene.pause(160).then(() => (alive() ? p2.travel([lockTop(1)], 620) : false)).then((ok) => { if (ok && alive()) holdLock(1, 1); return ok; });
+      const [ok1, ok2] = await Promise.all([first, second]);
+      if (!ok1 || !ok2 || !alive()) return;
+      say('arena 마다 lock 이 있어서 두 스레드 모두 <strong>기다리지 않고</strong> 자기 arena 의 lock 을 얻었습니다.');
+      await scene.pause(duration.beat);
+      if (!alive() || !(await settle(p1, 1, alive))) return;
+      holdLock(0, null);
+      say('arena B 에는 빈 chunk 가 없습니다. arena A 에 빈 chunk 가 하나 남아 있지만 관리 상태가 따로라 Thread 2 는 그 chunk 를 쓰지 않습니다.', true);
+      if (!(await p2.travel([{ x: layout.cols[4], y: layout.blockY - layout.blockH / 2 - 16 }], 420)) || !alive()) return;
+      if (!(await p2.bounce({ x: layout.wallX + 14, y: layout.blockY }, 30)) || !alive()) return;
+      strand = 1;
+      if (!(await scene.go(target(), duration.snap)) || !alive()) return;
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      extShown = 1;
+      grown += CHUNK;
+      if (!(await scene.go(target(), duration.draw)) || !alive()) return;
+      landRing(root, { ...layout.ext, w: layout.blockW + 8, h: layout.blockH + 8 });
+      syncCounts();
+      p2.relabel('malloc(256)', 'dep');
+      if (!(await settle(p2, EXT, alive))) return;
+      holdLock(1, null);
+      say(`기다림은 0번이 됐지만 arena B 가 heap 을 늘려 <strong>${grown}B 를 새로 받았습니다.</strong> arena A 의 빈 chunk ${freeBytes()}B 는 그대로 남습니다. 빈 chunk 가 arena 마다 흩어진 결과입니다.`, true);
+    };
+
+    const run = async () => {
+      started = true;
+      const alive = interrupt();
+      used = [...START_USED];
+      strand = 0;
+      extShown = 0;
+      waits = 0;
+      grown = 0;
+      holdLock(0, null);
+      holdLock(1, null);
+      setWaiting(1, false);
+      syncCounts();
+      say(mode === 'one'
+        ? 'arena 하나를 두 스레드가 함께 씁니다. bin 에 빈 256B chunk 가 두 개 있습니다.'
+        : 'arena 를 둘로 나눴습니다. Thread 1 은 arena A, Thread 2 는 arena B 를 씁니다. 같은 요청을 다시 보냅니다.');
+      if (!(await scene.go(target(), duration.draw)) || !alive()) return;
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      await (mode === 'one' ? runOne(alive) : runTwo(alive));
+    };
+
+    modeButtons.forEach((button) => button.addEventListener('click', () => {
+      mode = button.dataset.mode as Mode;
+      modeButtons.forEach((b) => { b.setAttribute('aria-pressed', String(b === button)); b.removeAttribute('data-state'); });
+      void run();
+    }));
+    demo.querySelector('[data-action="replay"]')!.addEventListener('click', () => { void run(); });
+
+    const applyLayout = () => {
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      sizeAll();
+      interrupt();
+      scene.set(scene.state);
+    };
+    watchNarrow(stage, (narrow) => { layout = layouts[narrow ? 'narrow' : 'wide']; applyLayout(); });
+    say('arena 의 bin 에 빈 256B chunk 가 두 개 있습니다. 두 스레드가 동시에 malloc(256) 을 부르면 어떻게 될까요?');
+    syncCounts();
+    applyLayout();
+
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        window.setTimeout(() => { if (!started) void run(); }, scene.reduced ? 0 : 1200);
+      }, { threshold: 0.6 });
+      observer.observe(stage);
+    }
+  });
+</script>
+
+<style>
+  .arena-readouts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .arena-readouts span { display: inline-flex; align-items: baseline; gap: 6px; }
+  .arena-readouts b { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .arena-readouts b:global(.is-temp) { color: var(--scene-temp); }
+  .arena-readouts b:global(.is-bump) { animation: scene-pop 420ms ease-out; }
+  .arena-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 2px 0; padding: 0; color: var(--slate); font-size: 0.76rem; list-style: none; }
+  .arena-legend li { display: inline-flex; align-items: center; gap: 7px; margin: 0; }
+  .arena-legend i { display: inline-block; width: 20px; height: 12px; border-radius: 3px; }
+  .arena-legend i.is-used { background: color-mix(in srgb, var(--scene-hue-blue) 58%, var(--surface)); border: 1px solid var(--scene-hue-blue); }
+  .arena-legend i.is-free { border: 1.5px dashed var(--scene-temp); background: color-mix(in srgb, var(--scene-temp) 10%, transparent); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .arena-readouts b:global(.is-bump) { animation: none; }
+  }
+</style>

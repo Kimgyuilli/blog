@@ -1,0 +1,248 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="per-cpu-cache-count" ariaLabel="캐시를 스레드에 붙일 때와 CPU 에 붙일 때 스레드 수에 따라 캐시 수가 어떻게 달라지는지 보는 실험" title="스레드가 늘면 캐시도 늘어날까요?" description="논리 CPU 8개 위에서 스레드가 실행됩니다. 스레드 수를 끌어 보고, 캐시를 스레드에 붙이는 방식과 CPU 에 붙이는 방식을 바꿔 보세요.">
+  <DemoControls ariaLabel="캐시를 붙이는 곳">
+    <button type="button" data-mode="thread" aria-pressed="true">per-thread 캐시</button>
+    <button type="button" data-mode="cpu" aria-pressed="false">per-CPU 캐시</button>
+  </DemoControls>
+  <label class="scene-range">
+    <span>스레드 수</span>
+    <input type="range" min="8" max="200" step="8" value="8" data-threads aria-describedby="per-cpu-thread-out" />
+    <output id="per-cpu-thread-out" data-threads-out>8개</output>
+  </label>
+
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="논리 CPU 8개 위에 스레드가 점으로 쌓여 있습니다. per-thread 방식에서는 스레드마다 작은 캐시가 붙고, per-CPU 방식에서는 캐시가 CPU 마다 하나씩만 있습니다. 아래 막대는 캐시 상한의 합계입니다."></svg>
+  </div>
+
+  <div class="pcpu-readouts" aria-label="캐시 수와 상한 합계">
+    <span>캐시 <b data-caches>8개</b></span>
+    <span>상한 합계 <b data-sum>8MiB</b></span>
+  </div>
+  <ul class="pcpu-legend">
+    <li><i class="is-thread"></i>스레드</li>
+    <li><i class="is-cache"></i>캐시 하나 (상한 1MiB 가정)</li>
+  </ul>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">
+    캐시 하나의 상한을 1MiB 로 같게 둔 설명용 모형이고, TCMalloc 의 실제 메모리 사용량을 예측한 값이 아닙니다. 실제 per-thread 캐시에는 스레드 캐시 전체의 합계 상한이 따로 있고, per-CPU 캐시의 크기도 부하에 따라 조정됩니다. 스레드는 CPU 에 번갈아 배정되는 것으로 그렸습니다.
+  </p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, bumpText, clamp01, createScene, duration, ease, lerp, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createGauge, createNode, type NodeView } from '@/scripts/blog/scene/parts';
+
+  type Mode = 'thread' | 'cpu';
+  const CPUS = 8;
+  const MAX = 200;
+  const CACHE_MIB = 1;
+  const CPU_HUE = 'var(--scene-hue-blue)';
+
+  type State = { n: number; toCpu: number };
+  type Layout = {
+    view: [number, number];
+    cx: (i: number) => number;
+    perRow: number;
+    cellW: number;
+    cellH: number;
+    top: number;
+    dotR: number;
+    cache: { w: number; h: number; dy: number };
+    cpuY: number;
+    cpuW: number;
+    cpuH: number;
+    cpuLabel: (i: number) => string;
+    boxY: number;
+    box: { w: number; h: number };
+    gauge: { x: number; y: number; w: number; h: number };
+    caption: Point;
+  };
+  const layouts: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 312], cx: (i) => 44 + i * 67, perRow: 5, cellW: 12, cellH: 17, top: 40, dotR: 3.6,
+      cache: { w: 8, h: 5, dy: 7 }, cpuY: 182, cpuW: 60, cpuH: 36, cpuLabel: (i) => `CPU ${i}`,
+      boxY: 226, box: { w: 44, h: 18 }, gauge: { x: 40, y: 284, w: 480, h: 12 }, caption: { x: 14, y: 22 },
+    },
+    narrow: {
+      view: [360, 312], cx: (i) => 26 + i * 44, perRow: 4, cellW: 10, cellH: 12, top: 40, dotR: 3,
+      cache: { w: 6, h: 4, dy: 5.5 }, cpuY: 182, cpuW: 38, cpuH: 34, cpuLabel: (i) => String(i),
+      boxY: 226, box: { w: 34, h: 16 }, gauge: { x: 14, y: 284, w: 332, h: 12 }, caption: { x: 8, y: 22 },
+    },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="per-cpu-cache-count"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const slider = demo.querySelector<HTMLInputElement>('[data-threads]')!;
+    const sliderOut = demo.querySelector<HTMLElement>('[data-threads-out]')!;
+    const cachesOut = demo.querySelector<HTMLElement>('[data-caches]')!;
+    const sumOut = demo.querySelector<HTMLElement>('[data-sum]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-mode]')];
+    let layout = layouts.wide;
+    let mode: Mode = 'thread';
+    let threads = 8;
+    let started = false;
+
+    const target = (): State => ({ n: threads, toCpu: mode === 'cpu' ? 1 : 0 });
+    const cacheCount = () => (mode === 'cpu' ? CPUS : threads);
+
+    // ── 그림 ──
+    const caption = svg('text', { class: 'scene-caption' }, root);
+    caption.textContent = '스레드 (CPU 마다 번갈아 배정)';
+    const cpuCaption = svg('text', { class: 'scene-caption' }, root);
+    cpuCaption.textContent = '논리 CPU 8개';
+    const cpus: NodeView[] = Array.from({ length: CPUS }, () => createNode(root, { label: '', hue: CPU_HUE }));
+    cpus.forEach((view) => view.group.classList.add('scene-pcpu'));
+    const boxes = Array.from({ length: CPUS }, () => {
+      const group = svg('g', { class: 'scene-pcache-box' }, root);
+      const rect = svg('rect', { rx: 4 }, group);
+      const text = svg('text', { y: 3.6 }, group);
+      text.textContent = '캐시';
+      return { group, rect };
+    });
+    const threadLayer = svg('g', {}, root);
+    const dots = Array.from({ length: MAX }, () => svg('circle', { class: 'scene-pthread-dot' }, threadLayer));
+    const cacheLayer = svg('g', {}, root);
+    const caches = Array.from({ length: MAX }, () => svg('rect', { class: 'scene-pcache', rx: 1.5 }, cacheLayer));
+    const gauge = createGauge(root, '캐시 상한 합계', 'h');
+
+    const dotAt = (t: number): Point => {
+      const cpu = t % CPUS;
+      const slot = Math.floor(t / CPUS);
+      const col = slot % layout.perRow;
+      const row = Math.floor(slot / layout.perRow);
+      const left = layout.cx(cpu) - (layout.perRow * layout.cellW) / 2;
+      return { x: left + col * layout.cellW + layout.cellW / 2, y: layout.top + row * layout.cellH };
+    };
+    const boxAt = (cpu: number): Point => ({ x: layout.cx(cpu), y: layout.boxY });
+
+    const sizeAll = () => {
+      dots.forEach((dot) => setAttrs(dot, { r: layout.dotR }));
+      caches.forEach((rect) => setAttrs(rect, { width: layout.cache.w, height: layout.cache.h }));
+      cpus.forEach((view, i) => {
+        view.setBox({ x: layout.cx(i), y: layout.cpuY, w: layout.cpuW, h: layout.cpuH });
+        view.group.querySelector('.scene-node-name')!.textContent = layout.cpuLabel(i);
+      });
+      boxes.forEach(({ group, rect }, i) => {
+        const at = boxAt(i);
+        setAttrs(rect, { x: -layout.box.w / 2, y: -layout.box.h / 2, width: layout.box.w, height: layout.box.h });
+        setAttrs(group, { transform: `translate(${at.x} ${at.y})` });
+      });
+      setAttrs(caption, layout.caption);
+      setAttrs(cpuCaption, { x: layout.caption.x, y: layout.cpuY - layout.cpuH / 2 - 10 });
+    };
+
+    const scene = createScene<State>(target(), (s) => {
+      dots.forEach((dot, t) => {
+        const at = dotAt(t);
+        setAttrs(dot, { cx: at.x.toFixed(2), cy: at.y.toFixed(2) });
+        dot.style.opacity = String(clamp01(s.n - t));
+      });
+      caches.forEach((rect, t) => {
+        const show = clamp01(s.n - t);
+        const delay = 0.35 * (t / MAX);
+        const local = clamp01((s.toCpu - delay) / 0.65);
+        const from = dotAt(t);
+        const start = { x: from.x, y: from.y + layout.cache.dy };
+        const at = local > 0 ? bowAt(start, boxAt(t % CPUS), ease.standard(local), 22 * Math.sin(Math.PI * local)) : start;
+        setAttrs(rect, { x: (at.x - layout.cache.w / 2).toFixed(2), y: (at.y - layout.cache.h / 2).toFixed(2) });
+        rect.style.opacity = String(show * (1 - clamp01((local - 0.75) / 0.25)));
+      });
+      boxes.forEach(({ group }) => { group.style.opacity = String(clamp01((s.toCpu - 0.55) / 0.45)); });
+      const sum = lerp(s.n, CPUS, s.toCpu) * CACHE_MIB;
+      gauge.place(layout.gauge, sum / MAX);
+      gauge.value.textContent = `${Math.round(sum)}MiB`;
+    });
+
+    const say = (html: string) => { note.innerHTML = html; };
+    const syncReadouts = () => {
+      bumpText(sliderOut, `${threads}개`);
+      bumpText(cachesOut, `${cacheCount()}개`);
+      bumpText(sumOut, `${cacheCount() * CACHE_MIB}MiB`);
+    };
+    const explain = () => {
+      if (mode === 'thread') {
+        say(threads === CPUS
+          ? `스레드 ${threads}개에 캐시도 ${threads}개입니다. 스레드 수를 끌어 늘려 보세요.`
+          : `스레드 ${threads}개가 저마다 캐시를 하나씩 들고 있어서 <strong>캐시도 ${threads}개, 상한 합계는 ${threads}MiB</strong> 입니다. 같은 CPU 8개 위에서 실행되는데도 스레드 수만큼 늘었습니다.`);
+      } else {
+        say(`스레드는 ${threads}개지만 캐시는 CPU 마다 하나라 <strong>${CPUS}개, 상한 합계는 ${CPUS}MiB</strong> 입니다. 스레드 수를 끌어도 캐시 수는 그대로입니다.`);
+      }
+    };
+
+    const setMode = (next: Mode) => {
+      started = true;
+      mode = next;
+      modeButtons.forEach((b) => { b.setAttribute('aria-pressed', String(b.dataset.mode === next)); b.removeAttribute('data-state'); });
+      scene.begin();
+      syncReadouts();
+      explain();
+      void scene.go(target(), next === 'cpu' ? duration.fly * 1.6 : duration.fly);
+    };
+    modeButtons.forEach((button) => button.addEventListener('click', () => setMode(button.dataset.mode as Mode)));
+
+    // 슬라이더는 직접 조작이라 보간 없이 바로 따라갑니다.
+    slider.addEventListener('input', () => {
+      started = true;
+      scene.begin();
+      threads = Number(slider.value);
+      scene.set({ ...scene.state, n: threads, toCpu: mode === 'cpu' ? 1 : scene.state.toCpu });
+      syncReadouts();
+      explain();
+    });
+
+    /** 처음 화면에 들어오면 per-thread 방식에서 스레드를 200개까지 늘려 봅니다. */
+    const intro = async () => {
+      started = true;
+      const alive = scene.begin();
+      say('스레드를 늘려 봅니다. 스레드마다 캐시가 하나씩 붙습니다.');
+      threads = MAX;
+      slider.value = String(MAX);
+      if (!(await scene.go(target(), 2600, ease.linear)) || !alive()) return;
+      syncReadouts();
+      explain();
+      modeButtons.find((b) => b.dataset.mode === 'cpu')!.setAttribute('data-state', 'next');
+    };
+
+    const applyLayout = () => {
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      sizeAll();
+      scene.redraw();
+    };
+    watchNarrow(stage, (narrow) => { layout = layouts[narrow ? 'narrow' : 'wide']; applyLayout(); });
+    syncReadouts();
+    explain();
+    applyLayout();
+
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        window.setTimeout(() => { if (!started) void intro(); }, scene.reduced ? 0 : 1000);
+      }, { threshold: 0.6 });
+      observer.observe(stage);
+    }
+  });
+</script>
+
+<style>
+  .pcpu-readouts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .pcpu-readouts span { display: inline-flex; align-items: baseline; gap: 6px; }
+  .pcpu-readouts b { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .pcpu-readouts b:global(.is-bump) { animation: scene-pop 420ms ease-out; }
+  .pcpu-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 2px 0; padding: 0; color: var(--slate); font-size: 0.76rem; list-style: none; }
+  .pcpu-legend li { display: inline-flex; align-items: center; gap: 7px; margin: 0; }
+  .pcpu-legend i { display: inline-block; }
+  .pcpu-legend i.is-thread { width: 8px; height: 8px; border-radius: 50%; background: var(--scene-hue-gray); }
+  .pcpu-legend i.is-cache { width: 12px; height: 8px; border-radius: 2px; background: color-mix(in srgb, var(--scene-hue-violet) 70%, var(--surface)); border: 1px solid var(--scene-hue-violet); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pcpu-readouts b:global(.is-bump) { animation: none; }
+  }
+</style>

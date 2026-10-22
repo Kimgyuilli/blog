@@ -1,0 +1,392 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="tlab-bump-pointer" ariaLabel="TLAB 안의 bump pointer 할당과, TLAB 이 부족할 때 공유 영역에 접근하는 경우를 보는 실험" title="공유 영역에는 언제 접근할까요?" description="Thread 1 이 자기 TLAB 에 객체를 만듭니다. 작은 객체와 큰 객체를 여러 번 만들면서 공유 영역 접근 수가 언제 늘어나는지 세어 보세요.">
+  <DemoControls ariaLabel="만들 객체">
+    <button type="button" data-size="small">new 작은 객체</button>
+    <button type="button" data-size="big">new 큰 객체</button>
+    <button type="button" data-action="reset">처음으로</button>
+  </DemoControls>
+
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="위에 Thread 1 의 TLAB 이 가로 막대로 있고, 객체가 왼쪽부터 차례로 쌓이며 top 표시가 오른쪽으로 옮겨 갑니다. 아래 eden 막대는 여러 스레드가 함께 쓰는 영역이고, 지금 TLAB 이 eden 의 어느 구간인지 점선으로 이어져 있습니다."></svg>
+  </div>
+
+  <div class="tlab-readouts" aria-label="이번 실행의 횟수">
+    <span>할당 <b data-allocs>0번</b></span>
+    <span>공유 영역 접근 <b data-shared>0번</b></span>
+  </div>
+  <ul class="tlab-legend">
+    <li><i class="is-obj"></i>객체</li>
+    <li><i class="is-filler"></i>filler (버린 TLAB 의 남은 공간)</li>
+    <li><i class="is-other"></i>다른 스레드의 TLAB</li>
+  </ul>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">
+    HotSpot 의 TLAB 할당을 단순화한 모형입니다. 크기는 TLAB 을 20으로 둔 상대 단위이고, 남은 공간이 4보다 크면 TLAB 을 유지한다고 가정했습니다. 실제 기준값과 TLAB 크기는 할당 통계에 따라 조정됩니다.
+    객체 헤더, 정렬, 필드 초기화와 GC 는 그리지 않았습니다. eden 은 G1 처럼 region 으로 나뉠 수 있지만 한 막대로 그렸습니다. eden 접근은 빠른 경우의 원자적 연산만 그렸고, region 이 바닥나 lock 을 잡는 경로와 아주 큰 객체(humongous)를 별도 영역에 두는 경로는 생략했습니다.
+  </p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createNode, landRing } from '@/scripts/blog/scene/parts';
+  import { createPacketLayer, type Packet } from '@/scripts/blog/scene/packets';
+
+  type Size = 'small' | 'big';
+  type ObjKind = 'obj' | 'filler';
+  type SegKind = 'other' | 'old' | 'cur' | 'big';
+  const TLAB = 20;
+  const EDEN = 100;
+  const SIZE: Record<Size, number> = { small: 3, big: 8 };
+  const LIMIT = 4;
+  const MAX_OBJ = 10;
+  const MAX_SEG = 14;
+  const HUE = 'var(--scene-hue-cyan)';
+
+  type State = { top: number; edenTop: number; wing: number; objShow: number[]; segShow: number[] };
+  type Layout = {
+    view: [number, number];
+    thread: Point;
+    nodeW: number;
+    x0: number;
+    w: number;
+    y: number;
+    h: number;
+    ey: number;
+    eh: number;
+    tlabCaption: Point;
+    edenCaption: Point;
+  };
+  const layouts: Record<'wide' | 'narrow', Layout> = {
+    wide: { view: [560, 286], thread: { x: 100, y: 30 }, nodeW: 120, x0: 40, w: 480, y: 88, h: 40, ey: 214, eh: 28, tlabCaption: { x: 40, y: 76 }, edenCaption: { x: 40, y: 204 } },
+    narrow: { view: [360, 286], thread: { x: 80, y: 30 }, nodeW: 120, x0: 20, w: 320, y: 88, h: 40, ey: 214, eh: 28, tlabCaption: { x: 20, y: 76 }, edenCaption: { x: 20, y: 204 } },
+  };
+
+  let hatchSeq = 0;
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="tlab-bump-pointer"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const allocsOut = demo.querySelector<HTMLElement>('[data-allocs]')!;
+    const sharedOut = demo.querySelector<HTMLElement>('[data-shared]')!;
+    const sizeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-size]')];
+    let layout = layouts.wide;
+    /** 독자가 버튼을 누르면 처음 자동 재생을 멈춥니다. */
+    let touched = false;
+
+    // ── 논리 모형 ──
+    let objs: { start: number; size: number; kind: ObjKind }[] = [];
+    let segs: { start: number; size: number; kind: SegKind }[] = [];
+    let top = 0;
+    let edenTop = 0;
+    let curStart = 0;
+    let allocs = 0;
+    let shared = 0;
+    const reset = () => {
+      objs = [];
+      segs = [{ start: 0, size: TLAB, kind: 'other' }, { start: TLAB, size: TLAB, kind: 'cur' }];
+      curStart = TLAB;
+      edenTop = TLAB * 2;
+      top = 0;
+      allocs = 0;
+      shared = 0;
+    };
+    reset();
+    const target = (): State => ({
+      top,
+      edenTop,
+      wing: curStart,
+      objShow: Array.from({ length: MAX_OBJ }, (_, i) => (i < objs.length ? 1 : 0)),
+      segShow: Array.from({ length: MAX_SEG }, (_, i) => (i < segs.length ? 1 : 0)),
+    });
+
+    // ── 그림 ──
+    const hatchId = `tlab-hatch-${++hatchSeq}`;
+    const defs = svg('defs', {}, root);
+    const pattern = svg('pattern', { id: hatchId, patternUnits: 'userSpaceOnUse', width: 6, height: 6, patternTransform: 'rotate(45)' }, defs);
+    svg('line', { x1: 0, y1: 0, x2: 0, y2: 6, stroke: 'var(--hairline)', 'stroke-width': 2.2 }, pattern);
+
+    const thread = createNode(root, { label: 'Thread 1', hue: HUE });
+    const tlabCaption = svg('text', { class: 'scene-caption' }, root);
+    tlabCaption.textContent = 'TLAB (Thread 1 전용)';
+    const edenCaption = svg('text', { class: 'scene-caption' }, root);
+    edenCaption.textContent = 'eden (여러 스레드가 함께 쓰는 영역)';
+    const wings = [svg('line', { class: 'scene-tlab-wing' }, root), svg('line', { class: 'scene-tlab-wing' }, root)];
+    const track = svg('rect', { class: 'scene-tlab-track', rx: 6 }, root);
+    const edenTrack = svg('rect', { class: 'scene-tlab-track', rx: 5 }, root);
+
+    const objViews = Array.from({ length: MAX_OBJ }, () => {
+      const group = svg('g', { class: 'scene-tlab-obj' }, root);
+      group.style.setProperty('--node-hue', HUE);
+      const rect = svg('rect', { rx: 4 }, group);
+      const text = svg('text', { class: 'scene-tlab-obj-text' }, group);
+      return { group, rect, text };
+    });
+    const segViews = Array.from({ length: MAX_SEG }, () => {
+      const group = svg('g', { class: 'scene-tlab-seg' }, root);
+      const rect = svg('rect', { rx: 3 }, group);
+      const text = svg('text', { class: 'scene-tlab-obj-text' }, group);
+      return { group, rect, text };
+    });
+
+    const makePointer = (label: string, strong: boolean) => {
+      const group = svg('g', { class: strong ? 'scene-tlab-ptr is-strong' : 'scene-tlab-ptr' }, root);
+      svg('path', { d: 'M 0 4 L -5 12 L 5 12 Z' }, group);
+      const text = svg('text', { y: 26 }, group);
+      text.textContent = label;
+      return group;
+    };
+    const startPtr = makePointer('start', false);
+    const endPtr = makePointer('end', false);
+    const topPtr = makePointer('top', true);
+    const edenPtr = makePointer('eden top', true);
+    const packets = createPacketLayer(root);
+
+    const unit = () => layout.w / TLAB;
+    const eunit = () => layout.w / EDEN;
+    const tx = (u: number) => layout.x0 + u * unit();
+    const ex = (u: number) => layout.x0 + u * eunit();
+
+    const syncKinds = () => {
+      objViews.forEach((view, i) => {
+        const o = objs[i];
+        view.group.classList.toggle('is-filler', o?.kind === 'filler');
+        view.rect.setAttribute('fill', o?.kind === 'filler' ? `url(#${hatchId})` : '');
+        if (o) view.text.textContent = o.kind === 'filler' ? (o.size * unit() >= 44 ? 'filler' : '') : 'obj';
+      });
+      segViews.forEach((view, i) => {
+        const seg = segs[i];
+        if (!seg) return;
+        view.group.setAttribute('class', `scene-tlab-seg is-${seg.kind}`);
+        const wide = seg.size * eunit();
+        view.text.textContent = seg.kind === 'other' ? (wide >= 70 ? 'T2 TLAB' : 'T2')
+          : seg.kind === 'cur' ? (wide >= 70 ? '지금 TLAB' : '지금')
+          : seg.kind === 'big' ? (wide >= 30 ? 'obj' : '')
+          : (wide >= 70 ? '버린 TLAB' : '');
+      });
+    };
+
+    const scene = createScene<State>(target(), (s) => {
+      const { x0, w, y, h, ey, eh } = layout;
+      setAttrs(track, { x: x0, y, width: w, height: h });
+      setAttrs(edenTrack, { x: x0, y: ey, width: w, height: eh });
+      objViews.forEach((view, i) => {
+        const o = objs[i];
+        const show = s.objShow[i];
+        view.group.style.opacity = String(o ? Math.min(1, show * 1.5) : 0);
+        if (!o) return;
+        const width = Math.max(0, o.size * unit() * show - 2);
+        setAttrs(view.rect, { x: tx(o.start) + 1, y: y + 4, width, height: h - 8 });
+        setAttrs(view.text, { x: tx(o.start) + (o.size * unit()) / 2, y: y + h / 2 + 4 });
+        view.text.style.opacity = String(show);
+      });
+      segViews.forEach((view, i) => {
+        const seg = segs[i];
+        const show = s.segShow[i];
+        view.group.style.opacity = String(seg ? show : 0);
+        if (!seg) return;
+        setAttrs(view.rect, { x: ex(seg.start) + 0.5, y: ey + 3, width: Math.max(0, seg.size * eunit() * show - 1), height: eh - 6 });
+        setAttrs(view.text, { x: ex(seg.start) + (seg.size * eunit()) / 2, y: ey + eh / 2 + 4 });
+      });
+      setAttrs(startPtr, { transform: `translate(${tx(0)} ${y + h})` });
+      setAttrs(endPtr, { transform: `translate(${tx(TLAB)} ${y + h})` });
+      setAttrs(topPtr, { transform: `translate(${tx(s.top).toFixed(2)} ${y + h + 30})` });
+      setAttrs(edenPtr, { transform: `translate(${ex(s.edenTop).toFixed(2)} ${ey + eh})` });
+      setAttrs(wings[0], { x1: ex(s.wing), y1: ey, x2: tx(0), y2: y + h });
+      setAttrs(wings[1], { x1: ex(s.wing + TLAB), y1: ey, x2: tx(TLAB), y2: y + h });
+    });
+
+    const say = (html: string, alert = false) => {
+      note.classList.toggle('is-alert', alert);
+      note.innerHTML = html;
+    };
+    const syncCounts = () => {
+      bumpText(allocsOut, `${allocs}번`);
+      bumpText(sharedOut, `${shared}번`);
+      sharedOut.classList.toggle('is-temp', shared > 0);
+    };
+    const interrupt = () => {
+      const alive = scene.begin();
+      packets.clear();
+      return alive;
+    };
+    const hint = (next?: Size) => sizeButtons.forEach((b) => {
+      if (b.dataset.size === next) b.setAttribute('data-state', 'next');
+      else b.removeAttribute('data-state');
+    });
+
+    const threadOut = (): Point => ({ x: layout.thread.x, y: layout.thread.y + 22 });
+    const edenFull = (packet: Packet) => {
+      say('eden 에 남은 공간이 없습니다. 실제 JVM 은 여기서 GC 를 실행해 공간을 되찾습니다. <strong>처음으로</strong>를 눌러 다시 시작하세요.', true);
+      void packet.fade();
+      hint();
+    };
+
+    /** TLAB 의 top 자리에 객체를 놓고 top 을 옮깁니다. */
+    const placeInTlab = async (packet: Packet, size: number, alive: () => boolean) => {
+      const at = { x: tx(top + size / 2), y: layout.y + layout.h / 2 };
+      if (!(await packet.travel([{ x: at.x, y: layout.y - 14 }, at], duration.move)) || !alive()) return false;
+      void packet.fade(duration.reflow);
+      objs.push({ start: top, size, kind: 'obj' });
+      top += size;
+      allocs += 1;
+      syncKinds();
+      if (!(await scene.go(target(), duration.move)) || !alive()) return false;
+      syncCounts();
+      return true;
+    };
+
+    const create = async (kind: Size) => {
+      const alive = interrupt();
+      const size = SIZE[kind];
+      const label = kind === 'small' ? 'new 작은 객체' : 'new 큰 객체';
+      const packet = packets.spawn({ label, at: threadOut() });
+
+      if (top + size <= TLAB) {
+        if (!(await placeInTlab(packet, size, alive))) return;
+        say(`TLAB 안에서 <strong>top 만 ${size}만큼 옮겼습니다.</strong> 빈 블록을 찾지 않았고 공유 영역에도 접근하지 않았습니다. 남은 공간은 ${TLAB - top} 입니다.`);
+        hint(TLAB - top >= SIZE.small ? (kind === 'small' && top >= 9 ? 'big' : 'small') : 'small');
+        return;
+      }
+
+      const remaining = TLAB - top;
+      if (!(await packet.travel([{ x: Math.min(tx(top) + 18, tx(TLAB) - 90), y: layout.y - 14 }], duration.move)) || !alive()) return;
+      if (!(await packet.bounce({ x: tx(TLAB) - 44, y: layout.y - 14 }, 30)) || !alive()) return;
+      say(`TLAB 에 남은 공간 ${remaining} 에 크기 ${size} 인 객체가 들어가지 않습니다.`, true);
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+
+      if (remaining > LIMIT) {
+        // 남은 공간이 아직 크면 TLAB 은 그대로 두고 이 객체만 eden 에 할당합니다.
+        if (edenTop + size > EDEN) return edenFull(packet);
+        packet.relabel(label, 'temp');
+        if (!(await packet.travel([{ x: ex(edenTop + size / 2), y: layout.ey - 14 }], duration.fly)) || !alive()) return;
+        packet.relabel('CAS', 'flow');
+        segs.push({ start: edenTop, size, kind: 'big' });
+        edenTop += size;
+        shared += 1;
+        allocs += 1;
+        syncKinds();
+        void packet.land(false);
+        if (!(await scene.go(target(), duration.move)) || !alive()) return;
+        syncCounts();
+        say(`남은 공간 ${remaining} 이 아직 커서 <strong>TLAB 은 그대로 두고</strong>, 이 객체만 eden 에 원자적 연산으로 할당했습니다. 공유 영역 접근이 1번 늘었습니다.`);
+        hint('small');
+        return;
+      }
+
+      // 남은 공간이 작으면 filler 로 채우고 TLAB 을 버린 뒤 새 TLAB 을 받습니다.
+      if (edenTop + TLAB > EDEN) return edenFull(packet);
+      if (remaining > 0) {
+        objs.push({ start: top, size: remaining, kind: 'filler' });
+        syncKinds();
+        if (!(await scene.go(target(), duration.move)) || !alive()) return;
+      }
+      say(`${remaining ? `남은 공간 ${remaining} 을 filler 로 채우고 ` : ''}TLAB 을 버립니다. 새 TLAB 을 eden 에서 원자적 연산으로 받아 옵니다.`);
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      segs.forEach((seg) => { if (seg.kind === 'cur') seg.kind = 'old'; });
+      segs.push({ start: edenTop, size: TLAB, kind: 'cur' });
+      curStart = edenTop;
+      edenTop += TLAB;
+      shared += 1;
+      syncKinds();
+      const tag = packets.spawn({ label: 'CAS', tone: 'flow', at: { x: ex(curStart + TLAB / 2), y: layout.ey - 14 } });
+      void tag.land(false);
+      if (!(await scene.go(target(), duration.draw)) || !alive()) return;
+      syncCounts();
+      landRing(root, { x: ex(curStart + TLAB / 2), y: layout.ey + layout.eh / 2, w: TLAB * eunit() + 6, h: layout.eh + 6 });
+      // 옛 TLAB 의 내용은 eden 에 남고, 위 막대는 새 TLAB 을 보여 줍니다.
+      const fading = target();
+      fading.objShow = fading.objShow.map(() => 0);
+      fading.top = 0;
+      if (!(await scene.go(fading, duration.move)) || !alive()) return;
+      objs = [];
+      top = 0;
+      syncKinds();
+      scene.set(target());
+      packet.relabel(label, 'dep');
+      if (!(await placeInTlab(packet, size, alive))) return;
+      say(`새 TLAB 을 받을 때 <strong>공유 영역에 한 번</strong> 접근했고, 객체는 새 TLAB 의 처음에 놓였습니다.${remaining ? ' 버린 TLAB 의 filler 는 다음 GC 까지 쓰이지 않습니다.' : ''}`);
+      hint('small');
+    };
+
+    const restart = () => {
+      interrupt();
+      reset();
+      syncKinds();
+      syncCounts();
+      scene.set(target());
+      say('Thread 1 의 TLAB 이 비어 있습니다. 객체를 여러 번 만들어 보세요. 공유 영역 접근 수는 언제 늘어날까요?');
+      hint('small');
+    };
+
+    // 한 번의 할당은 TLAB 교체처럼 여러 단계로 이어지므로, 끝날 때까지 다음 할당을 받지 않습니다.
+    let busy = false;
+    const run = async (kind: Size) => {
+      if (busy) return;
+      busy = true;
+      sizeButtons.forEach((b) => b.setAttribute('aria-disabled', 'true'));
+      try { await create(kind); } finally {
+        busy = false;
+        sizeButtons.forEach((b) => b.removeAttribute('aria-disabled'));
+      }
+    };
+    sizeButtons.forEach((button) => button.addEventListener('click', () => { touched = true; void run(button.dataset.size as Size); }));
+    demo.querySelector('[data-action="reset"]')!.addEventListener('click', () => { touched = true; restart(); });
+
+    const applyLayout = () => {
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      thread.setBox({ ...layout.thread, w: layout.nodeW, h: 38 });
+      setAttrs(tlabCaption, layout.tlabCaption);
+      setAttrs(edenCaption, layout.edenCaption);
+      interrupt();
+      syncKinds();
+      scene.set(target());
+    };
+    watchNarrow(stage, (narrow) => { layout = layouts[narrow ? 'narrow' : 'wide']; applyLayout(); });
+    restart();
+    applyLayout();
+
+    /** 처음 화면에 들어오면 작은 객체를 세 번 만듭니다. */
+    const intro = async () => {
+      for (let i = 0; i < 3; i += 1) {
+        if (touched) return;
+        await run('small');
+        if (touched) return;
+        await scene.pause(duration.beat);
+      }
+    };
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        window.setTimeout(() => { if (!touched) void intro(); }, scene.reduced ? 0 : 1000);
+      }, { threshold: 0.6 });
+      observer.observe(stage);
+    }
+  });
+</script>
+
+<style>
+  .tlab-readouts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .tlab-readouts span { display: inline-flex; align-items: baseline; gap: 6px; }
+  .tlab-readouts b { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .tlab-readouts b:global(.is-temp) { color: var(--scene-temp); }
+  .tlab-readouts b:global(.is-bump) { animation: scene-pop 420ms ease-out; }
+  .tlab-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 2px 0; padding: 0; color: var(--slate); font-size: 0.76rem; list-style: none; }
+  .tlab-legend li { display: inline-flex; align-items: center; gap: 7px; margin: 0; }
+  .tlab-legend i { display: inline-block; width: 20px; height: 12px; border-radius: 3px; }
+  .tlab-legend i.is-obj { background: color-mix(in srgb, var(--scene-hue-cyan) 58%, var(--surface)); border: 1px solid var(--scene-hue-cyan); }
+  .tlab-legend i.is-filler { border: 1px solid var(--hairline); background: repeating-linear-gradient(45deg, var(--hairline) 0 2px, transparent 2px 5px); }
+  .tlab-legend i.is-other { background: color-mix(in srgb, var(--scene-hue-gray) 35%, var(--surface)); border: 1px solid var(--scene-hue-gray); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tlab-readouts b:global(.is-bump) { animation: none; }
+  }
+</style>

@@ -1,0 +1,241 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+
+type Allocator = 'glibc' | 'jemalloc' | 'tcmalloc';
+type Props = { allocator: Allocator };
+const { allocator } = Astro.props;
+
+const COPY: Record<Allocator, { title: string; description: string; buttons: string[]; disclaimer: string }> = {
+  glibc: {
+    title: 'glibc malloc 의 요청은 어디까지 내려갈까요?',
+    description: 'malloc(64) 하나가 tcache, arena, 운영체제 순서로 내려갑니다. 요청이 어디서 해결되는지 골라 보내 보세요.',
+    buttons: ['tcache 에서 해결', 'arena 까지', '운영체제까지'],
+    disclaimer: 'glibc 의 작은 요청 경로를 단순화한 모형입니다. arena 안에서 bin 을 찾는 순서, chunk 분할, mmap_threshold 보다 큰 요청의 경로는 한 층으로 묶었습니다.',
+  },
+  jemalloc: {
+    title: 'jemalloc 의 요청은 어디까지 내려갈까요?',
+    description: 'malloc(64) 하나가 size class 를 정한 뒤 tcache, arena 의 bin 과 slab, 새 extent 순서로 내려갑니다. 요청이 어디서 해결되는지 골라 보내 보세요.',
+    buttons: ['tcache 에서 해결', 'bin 과 slab 까지', '새 extent 까지'],
+    disclaimer: 'jemalloc 의 작은 요청 경로를 단순화한 모형입니다. tcache 를 다시 채우는 묶음 이동, decay 로 보관 중인 페이지의 재사용은 그리지 않았습니다.',
+  },
+  tcmalloc: {
+    title: 'TCMalloc 의 요청은 어디까지 내려갈까요?',
+    description: 'malloc(64) 하나가 front-end, middle-end, back-end, 운영체제 순서로 내려갑니다. 요청이 어디서 해결되는지 골라 보내 보세요.',
+    buttons: ['front-end 에서 해결', 'middle-end 까지', 'back-end 까지', '운영체제까지'],
+    disclaimer: 'TCMalloc 의 요청 경로를 단순화한 모형입니다. front-end 는 per-CPU 모드로 그렸고, middle-end 가 front-end 를 객체 묶음으로 채우는 동작은 한 번의 응답으로 줄였습니다.',
+  },
+};
+const copy = COPY[allocator];
+---
+
+<InteractiveDemoFrame demoId="alloc-path" ariaLabel={`${allocator} 에서 작은 할당 요청이 어느 층까지 내려가는지 보는 실험`} title={copy.title} description={copy.description}>
+  <DemoControls ariaLabel="요청이 해결되는 층">
+    {copy.buttons.map((label, i) => (
+      <button type="button" data-stop={i} aria-pressed={i === 0 ? 'true' : 'false'}>{label}</button>
+    ))}
+  </DemoControls>
+
+  <div class="scene-stage" data-stage data-allocator={allocator}>
+    <svg data-graphic role="img" aria-label="왼쪽 위의 스레드에서 malloc(64) 요청이 출발해, 오른쪽에 위에서 아래로 쌓인 층을 하나씩 들릅니다. 위층일수록 스레드나 CPU 전용이라 lock 이 없고, 아래층은 여러 스레드가 함께 쓰는 구조와 운영체제입니다."></svg>
+  </div>
+
+  <div class="apath-readouts" aria-label="이번 요청의 수치">
+    <span>들른 층 <b data-visits>0개</b></span>
+    <span>lock <b data-locks>0번</b></span>
+    <span>시스템 콜 <b data-syscalls>0번</b></span>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">{copy.disclaimer} lock 을 언제 놓는지는 그리지 않았습니다. 수치는 이 요청 하나의 경로에서 센 값이며 측정값이 아닙니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createNode, landRing, type NodeView } from '@/scripts/blog/scene/parts';
+  import { createPacketLayer } from '@/scripts/blog/scene/packets';
+
+  type Allocator = 'glibc' | 'jemalloc' | 'tcmalloc';
+  type Layer = { name: string; sub: string; short: string; lock: boolean; os?: boolean; served: string; miss: string };
+  const LAYERS: Record<Allocator, Layer[]> = {
+    glibc: [
+      { name: 'tcache', sub: '스레드 전용, 크기별 chunk 몇 개', short: '스레드 전용', lock: false,
+        served: 'tcache 에 같은 크기의 chunk 가 있어서 <strong>lock 없이</strong> 바로 돌려줬습니다.', miss: 'tcache 가 비었습니다' },
+      { name: 'arena', sub: 'bin 과 heap 맨 위에서 찾고 나눔', short: 'bin, top chunk', lock: true,
+        served: 'tcache 가 비어 arena 로 내려갔습니다. <strong>arena 의 lock</strong> 을 잡고 bin 에서 chunk 를 찾았습니다.', miss: 'bin 과 heap 에 맞는 공간이 없습니다' },
+      { name: '운영체제', sub: 'brk 로 heap 확장, 또는 mmap', short: 'brk, mmap', lock: false, os: true,
+        served: 'arena 에도 공간이 없어 <strong>시스템 콜</strong>로 heap 을 늘렸습니다. 가장 느린 경로입니다.', miss: '' },
+    ],
+    jemalloc: [
+      { name: 'tcache', sub: '스레드 전용, size class 별 객체', short: '스레드 전용', lock: false,
+        served: 'size class 를 64B 로 정한 뒤 tcache 에서 <strong>lock 없이</strong> 객체를 내줬습니다.', miss: 'tcache 가 비었습니다' },
+      { name: 'arena 의 bin, slab', sub: 'slab 의 bitmap 에서 빈 region', short: 'bin, slab', lock: true,
+        served: 'tcache 가 비어 arena 로 내려갔습니다. <strong>bin 의 lock</strong> 을 잡고 slab 의 빈 region 을 찾았습니다.', miss: 'slab 에 빈 region 이 없습니다' },
+      { name: '새 extent', sub: '운영체제에서 받은 연속 영역', short: '연속 영역', lock: true, os: true,
+        served: '빈 region 이 없어 새 slab 을 만들 extent 를 받았습니다. 보관 중인 페이지가 없으면 <strong>시스템 콜</strong>까지 내려갑니다.', miss: '' },
+    ],
+    tcmalloc: [
+      { name: 'front-end', sub: 'per-CPU 캐시, rseq', short: 'per-CPU 캐시', lock: false,
+        served: '이 CPU 의 캐시에 객체가 있어서 <strong>lock 없이</strong> 내줬습니다. rseq 구간 안에서 끝납니다.', miss: 'CPU 캐시가 비었습니다' },
+      { name: 'middle-end', sub: 'transfer cache, central free list', short: 'transfer, central', lock: true,
+        served: 'CPU 캐시가 비어 middle-end 로 내려갔습니다. <strong>lock</strong> 을 잡고 객체 묶음을 가져왔습니다.', miss: 'middle-end 에도 객체가 없습니다' },
+      { name: 'back-end', sub: 'pageheap 의 span', short: 'pageheap', lock: true,
+        served: 'middle-end 도 비어 back-end 에서 <strong>span</strong> 을 받아 객체로 나눴습니다.', miss: 'pageheap 에 맞는 span 이 없습니다' },
+      { name: '운영체제', sub: 'mmap', short: 'mmap', lock: false, os: true,
+        served: 'pageheap 에도 공간이 없어 <strong>시스템 콜</strong>로 메모리를 받았습니다. 가장 느린 경로입니다.', miss: '' },
+    ],
+  };
+  const THREAD_HUE = 'var(--scene-hue-cyan)';
+  const SHARED_HUE = 'var(--scene-hue-blue)';
+  const OS_HUE = 'var(--scene-hue-gray)';
+
+  type Layout = { width: number; thread: Point; threadW: number; lane: number; cardX: number; cardW: number; top: number; gap: number; h: number; narrow: boolean };
+  const layouts: Record<'wide' | 'narrow', Layout> = {
+    wide: { width: 560, thread: { x: 72, y: 32 }, threadW: 112, lane: 72, cardX: 156, cardW: 388, top: 112, gap: 76, h: 46, narrow: false },
+    narrow: { width: 360, thread: { x: 58, y: 32 }, threadW: 96, lane: 50, cardX: 112, cardW: 242, top: 112, gap: 76, h: 46, narrow: true },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="alloc-path"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const visitsOut = demo.querySelector<HTMLElement>('[data-visits]')!;
+    const locksOut = demo.querySelector<HTMLElement>('[data-locks]')!;
+    const syscallsOut = demo.querySelector<HTMLElement>('[data-syscalls]')!;
+    const buttons = [...demo.querySelectorAll<HTMLButtonElement>('[data-stop]')];
+    const layers = LAYERS[(stage.dataset.allocator ?? 'glibc') as Allocator];
+    let layout = layouts.wide;
+    let stop = 0;
+    let started = false;
+
+    // ── 그림 ──
+    const lane = svg('line', { class: 'scene-apath-lane' }, root);
+    const thread = createNode(root, { label: 'Thread', hue: THREAD_HUE });
+    const cards = layers.map((layer) => {
+      const view: NodeView = createNode(root, { label: layer.name, hue: layer.os ? OS_HUE : layer.lock ? SHARED_HUE : THREAD_HUE, sub: layer.sub });
+      view.group.classList.add('is-sans-sub', 'scene-apath-card');
+      const lock = svg('g', { class: 'scene-lock' }, root);
+      svg('rect', { class: 'scene-lock-card', rx: 9, height: 18, y: -9, x: -26, width: 52 }, lock);
+      const text = svg('text', { class: 'scene-lock-text', y: 3.6 }, lock);
+      text.textContent = 'lock';
+      lock.style.display = layer.lock ? '' : 'none';
+      const tag = svg('text', { class: 'scene-label is-sans scene-apath-tag' }, root);
+      return { view, lock, text, tag };
+    });
+    const packets = createPacketLayer(root);
+    // 장면 상태는 패킷이 맡고, 카드는 클래스로만 바뀌어 빈 상태를 둡니다.
+    const scene = createScene<{ t: number }>({ t: 0 }, () => {});
+
+    const cardY = (i: number) => layout.top + i * layout.gap;
+    const cardLeft = () => layout.cardX;
+    const place = () => {
+      const height = cardY(layers.length - 1) + layout.h / 2 + 18;
+      setAttrs(root, { viewBox: `0 0 ${layout.width} ${height}` });
+      thread.setBox({ ...layout.thread, w: layout.threadW, h: 38 });
+      setAttrs(lane, { x1: layout.lane, x2: layout.lane, y1: layout.thread.y + 20, y2: cardY(layers.length - 1) });
+      cards.forEach(({ view, lock, tag }, i) => {
+        view.setBox({ x: layout.cardX + layout.cardW / 2, y: cardY(i), w: layout.cardW, h: layout.h });
+        view.setSub(layout.narrow ? layers[i].short : layers[i].sub);
+        setAttrs(lock, { transform: `translate(${layout.cardX + layout.cardW - 34} ${cardY(i) - layout.h / 2})` });
+        setAttrs(tag, { x: layout.cardX + 4, y: cardY(i) - layout.h / 2 - 8 });
+      });
+    };
+
+    const say = (html: string) => { note.innerHTML = html; };
+    const reset = () => {
+      cards.forEach(({ view, lock, text, tag }) => {
+        view.group.classList.remove('is-done', 'is-temp', 'is-passed');
+        lock.classList.remove('is-held');
+        text.textContent = 'lock';
+        tag.textContent = '';
+      });
+      visitsOut.textContent = '0개';
+      locksOut.textContent = '0번';
+      syscallsOut.textContent = '0번';
+      locksOut.classList.remove('is-temp');
+      syscallsOut.classList.remove('is-temp');
+    };
+
+    const send = async () => {
+      started = true;
+      const alive = scene.begin();
+      packets.clear();
+      reset();
+      let locks = 0;
+      say('malloc(64) 를 보냅니다. 위층부터 차례로 들릅니다.');
+      const packet = packets.spawn({ label: 'malloc(64)', at: { x: layout.lane, y: layout.thread.y + 24 } });
+      for (let i = 0; i <= stop; i += 1) {
+        const y = cardY(i);
+        if (!(await packet.travel([{ x: layout.lane, y }], i ? duration.draw * 0.6 : duration.draw * 0.5)) || !alive()) return;
+        const card = cards[i];
+        if (layers[i].lock) {
+          card.lock.classList.add('is-held');
+          card.lock.style.setProperty('--node-hue', THREAD_HUE);
+          bumpText(card.text, 'lock 잡음');
+          locks += 1;
+          bumpText(locksOut, `${locks}번`);
+          locksOut.classList.add('is-temp');
+        }
+        if (!(await packet.travel([{ x: cardLeft() - 4, y }], duration.move * 0.6)) || !alive()) return;
+        bumpText(visitsOut, `${i + 1}개`);
+        if (i < stop) {
+          card.view.group.classList.add('is-passed');
+          card.tag.textContent = layers[i].miss;
+          await scene.pause(duration.beat);
+          if (!alive()) return;
+          if (!(await packet.travel([{ x: layout.lane, y }], duration.move * 0.5)) || !alive()) return;
+          continue;
+        }
+        card.view.flash('is-done');
+        card.view.group.classList.add('is-done');
+        landRing(root, { x: layout.cardX + layout.cardW / 2, y, w: layout.cardW + 6, h: layout.h + 6 });
+        packet.relabel('응답', 'flow');
+        void packet.land(true);
+        if (layers[i].os) {
+          bumpText(syscallsOut, '1번');
+          syscallsOut.classList.add('is-temp');
+        }
+        say(layers[i].served);
+      }
+    };
+
+    buttons.forEach((button) => button.addEventListener('click', () => {
+      stop = Number(button.dataset.stop);
+      buttons.forEach((b) => { b.setAttribute('aria-pressed', String(b === button)); b.removeAttribute('data-state'); });
+      void send();
+    }));
+
+    watchNarrow(stage, (narrow) => {
+      layout = layouts[narrow ? 'narrow' : 'wide'];
+      scene.begin();
+      packets.clear();
+      reset();
+      place();
+    });
+    say('위층일수록 스레드나 CPU 가 혼자 쓰는 구조이고, 아래로 내려갈수록 여러 스레드가 함께 쓰는 구조와 운영체제입니다. 버튼을 골라 요청을 보내 보세요.');
+
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        window.setTimeout(() => {
+          if (started) return;
+          void send().then(() => { buttons[1]?.setAttribute('data-state', 'next'); });
+        }, scene.reduced ? 0 : 1000);
+      }, { threshold: 0.6 });
+      observer.observe(stage);
+    }
+  });
+</script>
+
+<style>
+  .apath-readouts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .apath-readouts span { display: inline-flex; align-items: baseline; gap: 6px; }
+  .apath-readouts b { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .apath-readouts b:global(.is-temp) { color: var(--scene-temp); }
+  .apath-readouts b:global(.is-bump) { animation: scene-pop 420ms ease-out; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .apath-readouts b:global(.is-bump) { animation: none; }
+  }
+</style>
