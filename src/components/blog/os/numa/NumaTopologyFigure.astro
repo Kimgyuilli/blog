@@ -1,0 +1,103 @@
+---
+import '@/styles/scene.css';
+import '@/styles/database-demos.css';
+
+const label = '소켓이 두 개인 서버를 단순하게 그린 그림입니다. NUMA node 0 에는 core 0~15 를 가진 socket 0, memory controller 0, 64GB RAM 0 이 있고, NUMA node 1 에는 core 16~31 을 가진 socket 1, memory controller 1, 64GB RAM 1 이 있습니다. 두 노드는 interconnect 로 이어집니다. socket 0 의 코어가 RAM 0 을 읽으면 같은 노드 안의 경로로 끝나는 local access 이고, RAM 1 을 읽으면 interconnect 와 memory controller 1 을 거치는 remote access 입니다.';
+---
+
+<figure class="db-demo numa-topology" data-blog-demo="numa-topology" aria-label={label}>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label={label}></svg>
+  </div>
+  <figcaption class="db-demo-disclaimer">코어 수와 메모리 용량은 예시입니다. 가운데 굵은 선이 노드 사이의 연결(interconnect)이고, 초록 실선은 socket 0 코어의 local access, 주황 점선은 remote access 경로입니다. 실제 서버는 소켓 하나를 여러 노드로 나누기도 합니다.</figcaption>
+</figure>
+
+<script>
+  import { setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createArrow, createBoundary, createNode } from '@/scripts/blog/scene/parts';
+
+  type Layout = {
+    view: [number, number];
+    node: (n: number) => { x: number; y: number; w: number; h: number };
+    cx: (n: number) => number;
+    row: { cpu: number; mc: number; ram: number };
+    card: { w: number; h: number };
+    link: number;
+    linkLabel: Point | null;
+    offset: number;
+  };
+  const layouts: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 300],
+      node: (n) => ({ x: n === 0 ? 10 : 314, y: 10, w: 236, h: 280 }),
+      cx: (n) => (n === 0 ? 128 : 432),
+      row: { cpu: 76, mc: 166, ram: 248 },
+      card: { w: 180, h: 46 },
+      link: 121,
+      linkLabel: { x: 280, y: 142 },
+      offset: 26,
+    },
+    narrow: {
+      view: [360, 300],
+      node: (n) => ({ x: n === 0 ? 6 : 194, y: 10, w: 160, h: 280 }),
+      cx: (n) => (n === 0 ? 86 : 274),
+      row: { cpu: 76, mc: 166, ram: 248 },
+      card: { w: 136, h: 46 },
+      link: 121,
+      linkLabel: null,
+      offset: 22,
+    },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="numa-topology"]').forEach((figure) => {
+    const stage = figure.querySelector<HTMLElement>('[data-stage]')!;
+    const root = figure.querySelector<SVGSVGElement>('[data-graphic]')!;
+
+    const draw = (l: Layout) => {
+      root.replaceChildren();
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      [0, 1].forEach((n) => createBoundary(root, `NUMA node ${n}`).place(l.node(n)));
+      const link = svg('line', { class: 'scene-numa-link', x1: l.node(0).x + l.node(0).w, y1: l.link, x2: l.node(1).x, y2: l.link }, root);
+      void link;
+      if (l.linkLabel) {
+        const text = svg('text', { class: 'scene-label scene-label-dep is-sans', x: l.linkLabel.x, y: l.linkLabel.y, 'text-anchor': 'middle' }, root);
+        text.textContent = 'interconnect';
+      }
+
+      // 경로는 카드 뒤에 그려 카드를 지나가는 것처럼 보이게 합니다.
+      const top = l.row.cpu + l.card.h / 2;
+      const end = l.row.ram - l.card.h / 2 - 2;
+      const localX = l.cx(0) - l.offset;
+      const remoteX0 = l.cx(0) + l.offset;
+      const remoteX1 = l.cx(1) - l.offset;
+      svg('polyline', { class: 'numa-path is-local', points: `${localX},${top} ${localX},${end}` }, root);
+      svg('polyline', { class: 'numa-path is-remote', points: `${remoteX0},${top} ${remoteX0},${l.link} ${remoteX1},${l.link} ${remoteX1},${end}` }, root);
+      createArrow(root, 'var(--scene-flow)')({ x: localX, y: end + 2 }, 90);
+      createArrow(root, 'var(--scene-temp)')({ x: remoteX1, y: end + 2 }, 90);
+      const gap = (l.row.mc + l.row.ram) / 2 + 4;
+      const localText = svg('text', { class: 'scene-label is-sans numa-path-label is-local', x: localX + 8, y: gap }, root);
+      localText.textContent = 'local';
+      const remoteText = svg('text', { class: 'scene-label is-sans numa-path-label is-remote', x: remoteX1 + 8, y: gap }, root);
+      remoteText.textContent = 'remote';
+
+      [0, 1].forEach((n) => {
+        const cards = [
+          { label: `socket ${n}`, sub: n === 0 ? 'core 0~15' : 'core 16~31', y: l.row.cpu, hue: 'var(--scene-hue-gray)' },
+          { label: `MC ${n}`, sub: 'memory controller', y: l.row.mc, hue: 'var(--scene-hue-cyan)' },
+          { label: `RAM ${n}`, sub: '64GB', y: l.row.ram, hue: 'var(--scene-hue-blue)' },
+        ];
+        cards.forEach((c) => createNode(root, { label: c.label, hue: c.hue, sub: c.sub }).setBox({ x: l.cx(n), y: c.y, ...l.card }));
+      });
+    };
+
+    watchNarrow(stage, (narrow) => draw(layouts[narrow ? 'narrow' : 'wide']));
+  });
+</script>
+
+<style>
+  .numa-topology :global(.numa-path) { fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  .numa-topology :global(.numa-path.is-local) { stroke: var(--scene-flow); }
+  .numa-topology :global(.numa-path.is-remote) { stroke: var(--scene-temp); stroke-dasharray: 6 5; }
+  .numa-topology :global(.numa-path-label.is-local) { fill: var(--scene-flow); font-weight: 700; }
+  .numa-topology :global(.numa-path-label.is-remote) { fill: var(--scene-temp); font-weight: 700; }
+</style>

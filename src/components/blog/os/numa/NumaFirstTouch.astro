@@ -1,0 +1,239 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="numa-first-touch" ariaLabel="malloc 으로 받은 buf 의 물리 페이지가 어느 노드에 생기는지 보는 실험" title="buf 를 받은 스레드와 처음 쓴 스레드가 다르면?" description="스레드 A 가 node 0 에서 malloc 으로 buf 를 받았고, 아직 물리 페이지는 없습니다. 어느 스레드가 먼저 쓰거나 읽을지 골라 보고, 페이지가 어느 노드 메모리에 생기는지 확인하세요.">
+  <DemoControls ariaLabel="buf 에 접근할 스레드">
+    <button type="button" data-action="write-b">스레드 B 가 쓰기</button>
+    <button type="button" data-action="write-a">스레드 A 가 쓰기</button>
+    <button type="button" data-action="read-b">스레드 B 가 읽기만</button>
+    <button type="button" data-action="reset">처음으로</button>
+  </DemoControls>
+
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="위쪽에 스레드 A 가 받은 buf 의 페이지 네 개가 가상 주소만 있는 상태로 놓여 있고, 아래에 NUMA 노드 두 개가 있습니다. 스레드 A 는 node 0, 스레드 B 는 node 1 에서 실행됩니다. 어떤 스레드가 처음 쓰면 페이지가 그 스레드가 실행 중인 노드의 메모리로 내려옵니다."></svg>
+  </div>
+
+  <div class="numa-readouts" aria-label="물리 페이지 위치와 마지막 접근">
+    <span>node 0 페이지 <b data-n0>0</b></span>
+    <span>node 1 페이지 <b data-n1>0</b></span>
+    <span>마지막 접근 중 원격 <b data-remote>미측정</b></span>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">
+    페이지 네 개짜리 buf 하나로 단순화한 모형입니다. 기본 정책(local allocation)이고, 두 노드 모두 빈 메모리가 충분하며, automatic NUMA balancing 은 꺼져 있다고 가정했습니다.
+    malloc 이 블록 앞에 헤더를 쓰지 않는 할당자로 가정했습니다. glibc 처럼 헤더를 쓰는 할당자에서는 헤더가 놓인 페이지를 스레드 A 가 먼저 건드릴 수 있습니다. CPU 0~3 은 논리 CPU 입니다. page fault 처리, TLB, CPU 캐시는 그리지 않았습니다. zero page 는 여러 곳이 함께 쓰는 읽기 전용 페이지라 어느 노드 메모리에도 새로 그리지 않았습니다. 접근 패킷의 이동 시간은 경로 길이에 맞춰 그렸을 뿐 실제 지연 비율이 아닙니다.
+  </p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, bumpText, clamp01, createScene, duration, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createBoundary, createChip, landRing, type Rect } from '@/scripts/blog/scene/parts';
+  import { arcPoints, createPacketLayer } from '@/scripts/blog/scene/packets';
+  import { cpuNode, createStage, pageRoute, stageLayouts, travelMs } from '@/components/blog/os/numa/numaStage';
+
+  const PAGES = 4;
+  const PAGE_HUE = 'var(--scene-hue-blue)';
+  const THREADS = { A: { cpu: 0, hue: 'var(--scene-hue-violet)' }, B: { cpu: 2, hue: 'var(--scene-hue-amber)' } } as const;
+  type ThreadId = keyof typeof THREADS;
+
+  /** 페이지마다 위쪽 buf 자리에서 노드 메모리까지 내려온 정도(0~1). */
+  type State = { m: number[] };
+  type Top = { tray: Rect; caption: Point; slot: (i: number) => Point; lift: number };
+  const stages = stageLayouts(90, 88);
+  const tops: Record<'wide' | 'narrow', Top> = {
+    wide: { tray: { x: 150, y: 10, w: 260, h: 66 }, caption: { x: 166, y: 30 }, slot: (i) => ({ x: 202 + i * 52, y: 54 }), lift: 28 },
+    narrow: { tray: { x: 20, y: 10, w: 320, h: 66 }, caption: { x: 36, y: 30 }, slot: (i) => ({ x: 96 + i * 56, y: 54 }), lift: 24 },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="numa-first-touch"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const out = {
+      n0: demo.querySelector<HTMLElement>('[data-n0]')!,
+      n1: demo.querySelector<HTMLElement>('[data-n1]')!,
+      remote: demo.querySelector<HTMLElement>('[data-remote]')!,
+    };
+    let narrow = false;
+    const layout = () => stages[narrow ? 'narrow' : 'wide'];
+    const top = () => tops[narrow ? 'narrow' : 'wide'];
+
+    // ── 논리 모형: 'none' 은 가상 주소만, 'zero' 는 zero page 매핑, 0과 1은 물리 페이지가 있는 노드 ──
+    type Where = 'none' | 'zero' | 0 | 1;
+    let where: Where[] = Array(PAGES).fill('none');
+    const target = (): State => ({ m: where.map((w) => (w === 0 || w === 1 ? 1 : 0)) });
+    const destOf = (i: number) => (where[i] === 1 ? 1 : 0);
+    /** 그림에서 페이지가 내려갈 노드. 처음으로 되돌아가는 동안에도 원래 노드에서 출발하도록 따로 둡니다. */
+    const dest: number[] = Array(PAGES).fill(0);
+
+    // ── 그림 ──
+    const stageView = createStage(root);
+    const tray = createBoundary(root, '스레드 A 가 malloc 으로 받은 buf (가상 주소)', 'zone');
+    // 가상 주소 자리는 물리 페이지가 생긴 뒤에도 그대로 남습니다.
+    const slots = Array.from({ length: PAGES }, (_, i) => createChip(root, { label: `p${i + 1}`, hue: PAGE_HUE, width: 38 }));
+    slots.forEach((slot) => slot.group.classList.add('is-empty'));
+    const threads = (Object.keys(THREADS) as ThreadId[]).map((id) => createChip(root, { label: `thread ${id}`, hue: THREADS[id].hue, width: 74 }));
+    const pages = Array.from({ length: PAGES }, (_, i) => createChip(root, { label: `p${i + 1}`, hue: PAGE_HUE, width: 38 }));
+    const packets = createPacketLayer(root);
+
+    const pageAt = (i: number, m: number) => {
+      const t = clamp01((m - i * 0.1) / 0.7);
+      const from = top().slot(i);
+      const to = layout().page(dest[i], i);
+      return bowAt(from, to, t, top().lift * Math.sin(Math.PI * t));
+    };
+    const scene = createScene<State>(target(), (s) => {
+      pages.forEach((page, i) => page.place(pageAt(i, s.m[i]), where[i] === 'none' && s.m[i] < 0.02 ? 0 : 1));
+    });
+
+    const paint = () => {
+      pages.forEach((page, i) => {
+        const w = where[i];
+        page.group.classList.toggle('is-shared', w === 'zero');
+        page.setLabel(w === 'zero' ? 'zero' : `p${i + 1}`);
+      });
+      bumpText(out.n0, String(where.filter((w) => w === 0).length));
+      bumpText(out.n1, String(where.filter((w) => w === 1).length));
+      scene.redraw();
+    };
+    const say = (html: string, alert = false) => {
+      note.classList.toggle('is-alert', alert);
+      note.innerHTML = html;
+    };
+    const interrupt = () => {
+      const alive = scene.begin();
+      packets.clear();
+      return alive;
+    };
+
+    const intro = () => say('스레드 A 가 node 0 의 CPU 0 에서 <code>malloc</code> 으로 페이지 네 개짜리 buf 를 받았습니다. 아직 가상 주소만 있고 물리 페이지는 없습니다. <strong>node 1 의 스레드 B 가 먼저 쓰면</strong> 페이지는 어느 노드에 생길까요?');
+
+    /** 아직 물리 페이지가 없는 자리로 가는 첫 접근. 위쪽 buf 자리까지 호를 그리며 날아갑니다. */
+    const touchSlot = async (alive: () => boolean, id: ThreadId, i: number, kind: 'write' | 'read', order: number) => {
+      await scene.pause(order * 150);
+      if (!alive()) return false;
+      const from = layout().seat(THREADS[id].cpu);
+      const to = top().slot(i);
+      const packet = packets.spawn({ label: kind, tone: 'dep', at: from });
+      if (!(await packet.travel(arcPoints(from, { x: to.x, y: to.y + 16 }, 26), 620)) || !alive()) return false;
+      packet.relabel(kind === 'write' ? 'fault' : 'zero', 'temp');
+      await scene.pause(duration.beat);
+      if (!alive()) return false;
+      void packet.fade(320);
+      return true;
+    };
+
+    /** 물리 페이지가 있는 자리로 가는 접근. 노드가 다르면 interconnect 를 건너고 임시 색입니다. */
+    const touchPage = async (alive: () => boolean, id: ThreadId, i: number, kind: 'write' | 'read', order: number) => {
+      await scene.pause(order * 170);
+      if (!alive()) return null;
+      const node = destOf(i);
+      const cpu = THREADS[id].cpu;
+      const remote = cpuNode(cpu) !== node;
+      const route = pageRoute(layout(), node, i, cpu);
+      if (kind === 'write') route.reverse();
+      const packet = packets.spawn({ label: kind, tone: remote ? 'temp' : 'flow', at: route[0] });
+      if (!(await packet.travel(route, travelMs(route))) || !alive()) return null;
+      void packet.land(false);
+      return remote;
+    };
+
+    const access = async (id: ThreadId, kind: 'write' | 'read') => {
+      const alive = interrupt();
+      const node = cpuNode(THREADS[id].cpu);
+      const fresh = where.map((w, i) => (w === 'none' || w === 'zero' ? i : -1)).filter((i) => i >= 0);
+      const mapped = where.map((w, i) => (w === 0 || w === 1 ? i : -1)).filter((i) => i >= 0);
+      threads[id === 'A' ? 0 : 1].flash('is-ok');
+      say(`스레드 ${id} 가 buf 의 페이지 네 개에 ${kind === 'write' ? '씁니다' : '읽기만 합니다'}.`);
+      bumpText(out.remote, '미측정');
+      out.remote.classList.remove('is-remote');
+
+      // 1. 물리 페이지가 없는 자리: 첫 쓰기는 page fault, 첫 읽기는 zero page
+      const touched = await Promise.all(fresh.map((i, k) => touchSlot(alive, id, i, kind, k)));
+      if (!touched.every(Boolean) || !alive()) return;
+      let firstTouch = 0;
+      let zeroed = 0;
+      fresh.forEach((i) => {
+        if (kind === 'write') { where[i] = node as 0 | 1; dest[i] = node; firstTouch += 1; } else { where[i] = 'zero'; zeroed += 1; }
+      });
+      paint();
+
+      // 2. 첫 쓰기를 받은 페이지가 쓴 스레드의 노드 메모리로 내려옵니다
+      if (firstTouch) {
+        if (!(await scene.go(target(), duration.fly + 300)) || !alive()) return;
+        fresh.forEach((i) => {
+          const at = layout().page(node, i);
+          landRing(root, { x: at.x, y: at.y, w: 48, h: 26 });
+        });
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+      }
+
+      // 3. 물리 페이지가 있는 자리에 실제로 접근합니다
+      const reach = kind === 'write' ? [...mapped, ...fresh] : mapped;
+      const results = await Promise.all(reach.sort((a, b) => a - b).map((i, k) => touchPage(alive, id, i, kind, k)));
+      if (results.some((r) => r === null) || !alive()) return;
+      const remote = results.filter(Boolean).length;
+      bumpText(out.remote, reach.length ? `${remote} / ${reach.length}` : '접근 없음');
+      out.remote.classList.toggle('is-remote', remote > 0);
+
+      // 4. 설명
+      const parts: string[] = [];
+      if (firstTouch) parts.push(`스레드 ${id} 가 처음 쓴 순간 페이지 ${firstTouch}개가 <strong>${id} 가 실행 중인 node ${node} 메모리</strong>에 생겼습니다.${id === 'B' ? ' buf 를 받은 스레드 A 는 위치를 정하지 않았습니다.' : ''}`);
+      if (zeroed) parts.push('읽기만 했을 때는 커널이 공용 zero page 를 보여 주고 물리 페이지를 새로 할당하지 않았습니다. 그래서 위치가 정해지는 시점이 첫 쓰기로 늦어질 수 있습니다.');
+      if (mapped.length) {
+        const there = [...new Set(mapped.map(destOf))].map((n) => `node ${n}`).join(' 과 ');
+        parts.push(`이미 ${there} 에 있던 페이지 ${mapped.length}개는 이번 ${kind === 'write' ? '쓰기' : '읽기'}로 옮겨지지 않았습니다.${remote ? ` 그래서 <strong>접근 ${remote}번이 interconnect 를 건넜습니다.</strong> first touch 는 페이지마다 한 번만 일어납니다.` : ' 스레드와 같은 노드라 모든 접근이 노드 안에서 끝났습니다.'}`);
+      }
+      const next = !where.every((w) => w === 0 || w === 1) ? ' 이제 누가 먼저 쓸까요?'
+        : mapped.length ? '' : ' 다른 스레드가 쓰면 페이지가 옮겨 갈까요?';
+      say(parts.join(' ') + next, mapped.length > 0 && remote > 0);
+    };
+
+    const reset = async () => {
+      const alive = interrupt();
+      where = Array(PAGES).fill('none');
+      bumpText(out.remote, '미측정');
+      out.remote.classList.remove('is-remote');
+      intro();
+      // 내려와 있던 페이지는 각자 자리에서 위쪽 buf 로 되돌아간 뒤 빈 자리로 바뀝니다.
+      if (!(await scene.go(target(), duration.fly)) || !alive()) return;
+      paint();
+    };
+
+    demo.querySelector('[data-action="write-b"]')!.addEventListener('click', () => { void access('B', 'write'); });
+    demo.querySelector('[data-action="write-a"]')!.addEventListener('click', () => { void access('A', 'write'); });
+    demo.querySelector('[data-action="read-b"]')!.addEventListener('click', () => { void access('B', 'read'); });
+    demo.querySelector('[data-action="reset"]')!.addEventListener('click', () => { void reset(); });
+
+    const applyLayout = () => {
+      stageView.place(layout());
+      tray.place(top().tray, { ...top().caption, anchor: 'start' });
+      slots.forEach((slot, i) => slot.place(top().slot(i)));
+      threads.forEach((chip, k) => chip.place(layout().seat(k === 0 ? THREADS.A.cpu : THREADS.B.cpu)));
+      interrupt();
+      scene.set(target());
+      paint();
+      if (where.every((w) => w === 'none')) intro();
+    };
+    watchNarrow(stage, (isNarrow) => { narrow = isNarrow; applyLayout(); });
+    paint();
+    intro();
+    applyLayout();
+  });
+</script>
+
+<style>
+  .numa-readouts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .numa-readouts span { display: inline-flex; align-items: baseline; gap: 6px; }
+  .numa-readouts b { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .numa-readouts b:global(.is-remote) { color: var(--scene-temp); }
+  .numa-readouts b:global(.is-bump) { animation: scene-pop 420ms ease-out; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .numa-readouts b:global(.is-bump) { animation: none; }
+  }
+</style>

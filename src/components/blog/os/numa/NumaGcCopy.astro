@@ -1,0 +1,220 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="numa-gc-copy" ariaLabel="GC 의 객체 복사와 커널의 page migration 이 각각 무엇을 바꾸는지 비교하는 장면" title="객체 주소가 바뀌는 것과 물리 노드가 바뀌는 것" description="obj 는 힙의 R1 region 에 있고, R1 의 물리 페이지는 node 0 에 있습니다. 세 가지 이동을 하나씩 눌러 obj 의 주소와 물리 노드 중 무엇이 바뀌는지 비교해 보세요.">
+  <DemoControls ariaLabel="obj 에 일어날 이동">
+    <button type="button" data-action="same">GC 가 R2 로 복사 (같은 노드)</button>
+    <button type="button" data-action="other">GC 가 R3 으로 복사 (다른 노드)</button>
+    <button type="button" data-action="migrate">R1 페이지를 node 1 로 옮기기 (migrate_pages)</button>
+    <button type="button" data-action="reset">처음으로</button>
+  </DemoControls>
+
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="위쪽에 Java 힙의 region 네 개가 가상 주소 순서로 놓여 있고 obj 는 R1 에 있습니다. 아래 NUMA 노드 두 개의 메모리에 각 region 의 물리 페이지가 있습니다. GC 가 obj 를 다른 region 으로 복사하면 obj 가 위쪽에서 옮겨 가고, 커널이 페이지를 옮기면 아래쪽 페이지만 다른 노드로 옮겨 갑니다."></svg>
+  </div>
+
+  <div class="numa-readouts" aria-label="obj 의 주소와 물리 노드">
+    <span>obj 주소 <b class="is-mono" data-addr>0x10040</b></span>
+    <span>obj 의 물리 노드 <b data-node>node 0</b></span>
+    <span>스레드 A 의 읽기 <b data-read>미측정</b></span>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">
+    region 네 개와 객체 하나로 단순화한 모형입니다. region 하나에 물리 페이지 하나만 그렸지만 실제 region 은 여러 페이지로 이루어집니다. 주소 값은 예시입니다.
+    region 별 노드는 처음 상태로 정해 둔 가정입니다. 기본 설정이라면 각 region 에 처음 쓴 스레드가, <code>UseNUMA</code> 를 켜면 JVM 이 정합니다. 페이지 이동은 스레드 A 의 접근과 상관없는 수동 이동으로 그렸습니다. automatic NUMA balancing 이라면 자주 접근하는 노드 쪽으로 옮깁니다. GC 가 객체를 옮긴 뒤 참조를 고치는 과정, 옛 자리의 회수, 페이지를 옮기는 비용은 그리지 않았습니다. 버튼마다 처음 상태에서 다시 시작합니다.
+  </p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, bumpText, createScene, duration, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createBoundary, createChip, createNode, landRing, type Rect } from '@/scripts/blog/scene/parts';
+  import { createPacketLayer } from '@/scripts/blog/scene/packets';
+  import { cpuNode, createStage, pageRoute, stageLayouts, travelMs } from '@/components/blog/os/numa/numaStage';
+
+  const REGIONS = 4;
+  const PAGE_HUE = 'var(--scene-hue-blue)';
+  const OBJ_HUE = 'var(--scene-hue-pink)';
+  const THREAD_CPU = 0;
+  /** region 의 물리 페이지가 처음 놓인 노드와 그 노드 메모리 안의 자리. R1 이 옮겨 가면 node 1 의 세 번째 자리로 갑니다. */
+  const HOME = [{ node: 0, slot: 0 }, { node: 0, slot: 1 }, { node: 1, slot: 0 }, { node: 1, slot: 1 }];
+  const MOVED_SLOT = 2;
+  const address = (r: number) => `0x${r + 1}0040`;
+
+  /** obj: 출발 region 에서 도착 region 까지 간 정도. page: R1 페이지가 node 1 로 간 정도. */
+  type State = { obj: number; page: number };
+  type Top = { tray: Rect; caption: Point; region: (r: number) => Point; regionSize: { w: number; h: number }; objDy: number };
+  const stages = stageLayouts(118, 118);
+  const tops: Record<'wide' | 'narrow', Top> = {
+    wide: { tray: { x: 10, y: 8, w: 540, h: 100 }, caption: { x: 26, y: 28 }, region: (r) => ({ x: 85 + r * 130, y: 58 }), regionSize: { w: 112, h: 40 }, objDy: 34 },
+    narrow: { tray: { x: 8, y: 8, w: 344, h: 100 }, caption: { x: 22, y: 28 }, region: (r) => ({ x: 52 + r * 85, y: 58 }), regionSize: { w: 76, h: 40 }, objDy: 34 },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="numa-gc-copy"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const out = {
+      addr: demo.querySelector<HTMLElement>('[data-addr]')!,
+      node: demo.querySelector<HTMLElement>('[data-node]')!,
+      read: demo.querySelector<HTMLElement>('[data-read]')!,
+    };
+    let narrow = false;
+    const layout = () => stages[narrow ? 'narrow' : 'wide'];
+    const top = () => tops[narrow ? 'narrow' : 'wide'];
+
+    // ── 논리 모형 ──
+    let objFrom = 0;
+    let objTo = 0;
+    let r1Moved = false;
+    let rewinding = false;
+    const objRegion = () => objTo;
+    const pageOf = (r: number) => (r === 0 && r1Moved ? { node: 1, slot: MOVED_SLOT } : HOME[r]);
+    const target = (): State => ({ obj: objFrom === objTo ? 0 : 1, page: r1Moved ? 1 : 0 });
+
+    // ── 그림 ──
+    const stageView = createStage(root);
+    const tray = createBoundary(root, 'Java 힙 (가상 주소 순서)', 'zone');
+    const regions = Array.from({ length: REGIONS }, (_, r) => createNode(root, { label: `R${r + 1}`, hue: PAGE_HUE, sub: `node ${HOME[r].node}` }));
+    const thread = createChip(root, { label: 'thread A', hue: 'var(--scene-hue-violet)', width: 74 });
+    const pages = Array.from({ length: REGIONS }, (_, r) => createChip(root, { label: `R${r + 1}`, hue: PAGE_HUE, width: 38 }));
+    const ghost = createChip(root, { label: 'obj', hue: OBJ_HUE, width: 44 });
+    ghost.group.classList.add('is-empty');
+    const obj = createChip(root, { label: 'obj', hue: OBJ_HUE, width: 44 });
+    const packets = createPacketLayer(root);
+
+    const objAt = (r: number): Point => {
+      const at = top().region(r);
+      return { x: at.x, y: at.y + top().objDy };
+    };
+    const scene = createScene<State>(target(), (s) => {
+      const a = objAt(objFrom);
+      const b = objAt(objTo);
+      obj.place(bowAt(a, b, s.obj, -14 * Math.sin(Math.PI * s.obj)));
+      ghost.place(a, objFrom === objTo || rewinding ? 0 : Math.min(1, s.obj * 2) * (1 - Math.max(0, s.obj - 0.6)));
+      pages.forEach((page, r) => {
+        if (r !== 0) { page.place(layout().page(HOME[r].node, HOME[r].slot)); return; }
+        page.place(bowAt(layout().page(0, 0), layout().page(1, MOVED_SLOT), s.page, 48 * Math.sin(Math.PI * s.page)));
+      });
+    });
+
+    const say = (html: string, alert = false) => {
+      note.classList.toggle('is-alert', alert);
+      note.innerHTML = html;
+    };
+    const interrupt = () => {
+      const alive = scene.begin();
+      packets.clear();
+      return alive;
+    };
+    const syncOut = () => {
+      bumpText(out.addr, address(objRegion()));
+      bumpText(out.node, `node ${pageOf(objRegion()).node}`);
+      regions.forEach((region, r) => region.setSub(`node ${pageOf(r).node}`));
+    };
+    const intro = () => say('Java 힙은 가상 주소로 이어진 공간이지만 region 마다 물리 페이지가 놓인 노드가 다릅니다. R1, R2 는 node 0, R3, R4 는 node 1 에 있습니다. <strong>obj 는 R1 에 있고 node 0 의 스레드 A 가 읽습니다.</strong> 세 가지 이동 중 무엇이 obj 의 물리 노드를 바꿀까요?');
+
+    /** 스레드 A 가 obj 를 한 번 읽습니다. 페이지가 다른 노드에 있으면 interconnect 를 건넙니다. */
+    const read = async (alive: () => boolean) => {
+      const { node, slot } = pageOf(objRegion());
+      const remote = cpuNode(THREAD_CPU) !== node;
+      const route = pageRoute(layout(), node, slot, THREAD_CPU);
+      const packet = packets.spawn({ label: 'read', tone: remote ? 'temp' : 'flow', at: route[0] });
+      if (!(await packet.travel(route, travelMs(route))) || !alive()) return false;
+      void packet.land(false);
+      bumpText(out.read, remote ? '원격' : '로컬');
+      out.read.classList.toggle('is-remote', remote);
+      return true;
+    };
+
+    /** 처음 상태로 되돌립니다. 이미 처음이면 바로 끝납니다. */
+    const rewind = async (alive: () => boolean) => {
+      if (objFrom === objTo && !r1Moved) return true;
+      objFrom = objTo;
+      objTo = 0;
+      const back = objFrom !== objTo;
+      r1Moved = false;
+      bumpText(out.read, '미측정');
+      out.read.classList.remove('is-remote');
+      rewinding = true;
+      if (back) scene.set({ ...scene.state, obj: 0 });
+      // obj 를 R1 로, R1 페이지를 node 0 으로 함께 되돌립니다.
+      const ok = await scene.go({ obj: back ? 1 : 0, page: 0 }, duration.move);
+      objFrom = 0;
+      rewinding = false;
+      scene.set(target());
+      syncOut();
+      return ok && alive();
+    };
+
+    const run = async (kind: 'same' | 'other' | 'migrate') => {
+      const alive = interrupt();
+      if (!(await rewind(alive))) return;
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      if (kind === 'migrate') {
+        say('<code>migrate_pages()</code> 같은 호출로 R1 의 물리 페이지를 node 1 로 옮깁니다.');
+        r1Moved = true;
+        if (!(await scene.go(target(), duration.fly + 200)) || !alive()) return;
+        const at = layout().page(1, MOVED_SLOT);
+        landRing(root, { x: at.x, y: at.y, w: 44, h: 26 });
+        regions[0].flash('is-ok');
+      } else {
+        const to = kind === 'same' ? 1 : 2;
+        say(`GC 가 obj 를 R${to + 1} 로 복사합니다.`);
+        objFrom = 0;
+        objTo = to;
+        scene.set({ ...scene.state, obj: 0 });
+        if (!(await scene.go(target(), duration.fly)) || !alive()) return;
+        const at = objAt(to);
+        landRing(root, { x: at.x, y: at.y, w: 50, h: 26 });
+      }
+      syncOut();
+      await scene.pause(duration.beat);
+      if (!alive() || !(await read(alive))) return;
+      if (kind === 'same') say('GC 가 obj 를 R2 로 복사해 <strong>주소가 <code>0x10040</code> 에서 <code>0x20040</code> 으로 바뀌었습니다.</strong> R2 의 페이지도 node 0 에 있어 물리 노드는 그대로이고, 읽기는 노드 안에서 끝납니다.');
+      if (kind === 'other') say('이번에도 주소가 바뀌었고, R3 의 페이지가 node 1 에 있어서 <strong>obj 의 물리 노드도 node 1 이 되었습니다.</strong> 스레드 A 의 읽기가 interconnect 를 건넙니다.', true);
+      if (kind === 'migrate') say('obj 는 R1 에 그대로 있고 <strong>주소 <code>0x10040</code> 도 그대로입니다.</strong> 그 주소 뒤의 물리 페이지만 node 1 로 바뀌어 스레드 A 의 읽기가 interconnect 를 건넙니다. R1 의 노드 표시도 node 1 로 바뀌었습니다.', true);
+    };
+
+    const reset = async () => {
+      const alive = interrupt();
+      intro();
+      await rewind(alive);
+    };
+
+    demo.querySelector('[data-action="same"]')!.addEventListener('click', () => { void run('same'); });
+    demo.querySelector('[data-action="other"]')!.addEventListener('click', () => { void run('other'); });
+    demo.querySelector('[data-action="migrate"]')!.addEventListener('click', () => { void run('migrate'); });
+    demo.querySelector('[data-action="reset"]')!.addEventListener('click', () => { void reset(); });
+
+    const applyLayout = () => {
+      stageView.place(layout());
+      tray.place(top().tray, { ...top().caption, anchor: 'start' });
+      regions.forEach((region, r) => region.setBox({ ...top().region(r), ...top().regionSize }));
+      thread.place(layout().seat(THREAD_CPU));
+      interrupt();
+      scene.set(target());
+      if (objTo === 0 && !r1Moved) intro();
+    };
+    watchNarrow(stage, (isNarrow) => { narrow = isNarrow; applyLayout(); });
+    intro();
+    syncOut();
+    applyLayout();
+  });
+</script>
+
+<style>
+  .numa-readouts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .numa-readouts span { display: inline-flex; align-items: baseline; gap: 6px; }
+  .numa-readouts b { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .numa-readouts b:global(.is-remote) { color: var(--scene-temp); }
+  .numa-readouts b.is-mono { font-family: var(--font-mono); font-size: 0.92rem; }
+  .numa-readouts b:global(.is-bump) { animation: scene-pop 420ms ease-out; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .numa-readouts b:global(.is-bump) { animation: none; }
+  }
+</style>

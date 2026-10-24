@@ -1,0 +1,231 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="numa-block-reuse" ariaLabel="할당자가 다시 내준 블록의 페이지가 어느 노드에 있는지 비교하는 장면" title="free 한 블록을 다른 노드의 스레드가 다시 받으면?" description="node 0 의 스레드 A 가 블록을 할당해 썼고, 블록의 페이지 네 개가 node 0 메모리에 있습니다. A 가 free 한 뒤 할당자가 페이지를 들고 있을 때와 OS 에 돌려줬을 때, node 1 의 스레드 B 가 같은 블록을 받아 쓰면 어떻게 다른지 비교하세요.">
+  <DemoControls ariaLabel="free 뒤 할당자가 페이지를 다루는 방식">
+    <button type="button" data-action="cached">페이지를 캐시에 둔 채 B 가 받기</button>
+    <button type="button" data-action="returned">페이지를 OS 에 돌려준 뒤 B 가 받기</button>
+    <button type="button" data-action="reset">처음으로</button>
+  </DemoControls>
+
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="위쪽 왼편은 할당자 캐시, 오른편은 OS 영역입니다. 아래 NUMA 노드 두 개 중 node 0 메모리에 블록의 페이지 네 개가 있습니다. 블록은 스레드 A 에서 할당자 캐시를 거쳐 node 1 의 스레드 B 에게 갑니다. 페이지를 캐시에 둔 채 넘기면 B 의 쓰기가 interconnect 를 건너고, 페이지를 OS 에 돌려준 뒤 넘기면 B 의 첫 쓰기로 node 1 메모리에 새 페이지가 생깁니다."></svg>
+  </div>
+
+  <div class="numa-readouts" aria-label="블록과 페이지의 위치">
+    <span>블록을 쓰는 스레드 <b data-owner>A</b></span>
+    <span>블록의 페이지 <b data-pages>node 0</b></span>
+    <span>B 의 쓰기 중 원격 <b data-remote>미측정</b></span>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">
+    페이지 네 개짜리 블록 하나로 단순화한 모형입니다. 블록의 가상 주소는 그대로 두고, OS 에 돌려주는 경우는 그 주소 뒤의 물리 페이지를 즉시 비우는 반납(MADV_DONTNEED 등)으로 보았습니다. MADV_FREE 로 반납했다면 커널이 회수하기 전에는 B 가 쓸 때 node 0 의 원래 페이지가 그대로 쓰입니다. 실제 할당자는 크기와 시간 기준에 따라 더 큰 단위로 반납합니다. 블록이 스레드나 CPU 전용 캐시에서 공유 계층으로 내려간 뒤 B 에게 넘어가는 경로는 할당자 캐시 하나로 줄여 그렸습니다.
+    기본 정책(local allocation)이고 automatic NUMA balancing 은 꺼져 있다고 가정했습니다. 쓰기 패킷의 이동 시간은 경로 길이에 맞춰 그렸을 뿐 실제 지연 비율이 아닙니다. 버튼마다 처음 상태에서 다시 시작합니다.
+  </p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, bumpText, clamp01, createScene, duration, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createBoundary, createChip, landRing, type Rect } from '@/scripts/blog/scene/parts';
+  import { createPacketLayer } from '@/scripts/blog/scene/packets';
+  import { cpuNode, createStage, pageRoute, stageLayouts, travelMs } from '@/components/blog/os/numa/numaStage';
+
+  const PAGES = 4;
+  const PAGE_HUE = 'var(--scene-hue-blue)';
+  const BLOCK_HUE = 'var(--scene-hue-cyan)';
+  const THREADS = { A: { cpu: 0, hue: 'var(--scene-hue-violet)' }, B: { cpu: 2, hue: 'var(--scene-hue-amber)' } } as const;
+
+  /** block: 0 은 A, 1 은 할당자 캐시, 2 는 B. out: node 0 페이지가 운영체제로 간 정도. fresh: node 1 에 새 페이지가 생긴 정도. */
+  type State = { block: number; out: number; fresh: number };
+  type Top = { cache: Rect; cacheCaption: Point; os: Rect; osCaption: Point; slot: Point; osSpot: (i: number) => Point; blockDx: number };
+  const stages = stageLayouts(96, 96);
+  const tops: Record<'wide' | 'narrow', Top> = {
+    wide: {
+      cache: { x: 10, y: 8, w: 300, h: 76 }, cacheCaption: { x: 26, y: 28 },
+      os: { x: 330, y: 8, w: 220, h: 76 }, osCaption: { x: 346, y: 28 },
+      slot: { x: 160, y: 58 }, osSpot: (i) => ({ x: 374 + i * 44, y: 58 }), blockDx: 82,
+    },
+    narrow: {
+      cache: { x: 8, y: 8, w: 196, h: 76 }, cacheCaption: { x: 22, y: 28 },
+      os: { x: 212, y: 8, w: 140, h: 76 }, osCaption: { x: 226, y: 28 },
+      slot: { x: 106, y: 58 }, osSpot: (i) => ({ x: 258 + (i % 2) * 44, y: 50 + Math.floor(i / 2) * 22 }), blockDx: 86,
+    },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="numa-block-reuse"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const out = {
+      owner: demo.querySelector<HTMLElement>('[data-owner]')!,
+      pages: demo.querySelector<HTMLElement>('[data-pages]')!,
+      remote: demo.querySelector<HTMLElement>('[data-remote]')!,
+    };
+    let narrow = false;
+    const layout = () => stages[narrow ? 'narrow' : 'wide'];
+    const top = () => tops[narrow ? 'narrow' : 'wide'];
+    const initial: State = { block: 0, out: 0, fresh: 0 };
+
+    // ── 그림 ──
+    const stageView = createStage(root);
+    const cache = createBoundary(root, '할당자 캐시', 'zone');
+    const os = createBoundary(root, 'OS', 'zone');
+    const threads = (['A', 'B'] as const).map((id) => createChip(root, { label: `thread ${id}`, hue: THREADS[id].hue, width: 74 }));
+    const oldPages = Array.from({ length: PAGES }, (_, i) => createChip(root, { label: `p${i + 1}`, hue: PAGE_HUE, width: 38 }));
+    const newPages = Array.from({ length: PAGES }, (_, i) => createChip(root, { label: `p${i + 1}`, hue: PAGE_HUE, width: 38 }));
+    const block = createChip(root, { label: 'block', hue: BLOCK_HUE, width: 58 });
+    const packets = createPacketLayer(root);
+
+    const holder = (id: 'A' | 'B'): Point => {
+      const at = layout().seat(THREADS[id].cpu);
+      return { x: at.x + top().blockDx, y: at.y };
+    };
+    const stagger = (v: number, i: number) => clamp01((v - i * 0.1) / 0.7);
+    const scene = createScene<State>({ ...initial }, (s) => {
+      const leg = Math.min(1, s.block);
+      const at = s.block <= 1
+        ? bowAt(holder('A'), top().slot, leg, 30 * Math.sin(Math.PI * leg))
+        : bowAt(top().slot, holder('B'), s.block - 1, 30 * Math.sin(Math.PI * (s.block - 1)));
+      block.place(at);
+      oldPages.forEach((page, i) => {
+        const t = stagger(s.out, i);
+        page.place(bowAt(layout().page(0, i), top().osSpot(i), t, 26 * Math.sin(Math.PI * t)), 1 - 0.45 * t);
+      });
+      newPages.forEach((page, i) => page.place(layout().page(1, i), stagger(s.fresh, i)));
+    });
+
+    const say = (html: string, alert = false) => {
+      note.classList.toggle('is-alert', alert);
+      note.innerHTML = html;
+    };
+    const setFlags = ({ held = false, returned = false } = {}) => {
+      oldPages.forEach((page) => {
+        page.group.classList.toggle('is-shared', held);
+        page.group.classList.toggle('is-empty', returned);
+      });
+    };
+    const interrupt = () => {
+      const alive = scene.begin();
+      packets.clear();
+      return alive;
+    };
+    const intro = () => say('node 0 의 스레드 A 가 블록을 할당해 처음 썼으므로 <strong>페이지 네 개가 node 0 메모리에 있습니다.</strong> A 가 free 한 뒤 node 1 의 스레드 B 가 같은 블록을 받으면, B 의 쓰기는 어디로 갈까요?');
+    const resetOut = () => {
+      bumpText(out.owner, 'A');
+      bumpText(out.pages, 'node 0');
+      bumpText(out.remote, '미측정');
+      out.remote.classList.remove('is-remote');
+    };
+
+    /** B 가 블록의 페이지 네 개에 씁니다. 페이지가 node 0 에 있으면 interconnect 를 건넙니다. */
+    const writeAll = async (alive: () => boolean, node: number) => {
+      const cpu = THREADS.B.cpu;
+      const remote = cpuNode(cpu) !== node;
+      let count = 0;
+      bumpText(out.remote, `0 / ${PAGES}`);
+      const writes = Array.from({ length: PAGES }, async (_, i) => {
+        await scene.pause(i * 170);
+        if (!alive()) return false;
+        const route = pageRoute(layout(), node, i, cpu).reverse();
+        const packet = packets.spawn({ label: 'write', tone: remote ? 'temp' : 'flow', at: route[0] });
+        if (!(await packet.travel(route, travelMs(route))) || !alive()) return false;
+        if (remote) {
+          count += 1;
+          bumpText(out.remote, `${count} / ${PAGES}`);
+          out.remote.classList.add('is-remote');
+        }
+        void packet.land(false);
+        return true;
+      });
+      return (await Promise.all(writes)).every(Boolean) && alive();
+    };
+
+    const run = async (kind: 'cached' | 'returned') => {
+      const alive = interrupt();
+      setFlags();
+      resetOut();
+      if (!(await scene.go({ ...initial }, duration.move)) || !alive()) return;
+
+      // 1. A 가 free: 블록이 할당자 캐시로 갑니다. 페이지는 node 0 에 그대로 있습니다.
+      say('스레드 A 가 <code>free()</code> 를 부릅니다. 할당자는 블록을 OS 에 돌려주지 않고 캐시에 둡니다.');
+      if (!(await scene.go({ ...initial, block: 1 }, duration.fly)) || !alive()) return;
+      landRing(root, { ...top().slot, w: 64, h: 26 });
+      bumpText(out.owner, '할당자');
+      setFlags({ held: true });
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+
+      // 2. 돌려주는 경우: 블록은 캐시에 남고, 그 뒤의 물리 페이지만 운영체제로 갑니다.
+      if (kind === 'returned') {
+        say('할당자가 블록 뒤의 물리 페이지를 즉시 비우는 방식으로 OS 에 돌려줍니다. 블록의 가상 주소는 캐시에 그대로 남습니다.');
+        if (!(await scene.go({ ...initial, block: 1, out: 1 }, duration.fly + 300)) || !alive()) return;
+        setFlags({ returned: true });
+        bumpText(out.pages, '없음');
+        for (let i = 0; i < PAGES; i += 1) landRing(root, { ...top().osSpot(i), w: 44, h: 26 });
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+      }
+
+      // 3. B 가 malloc 으로 같은 블록을 받습니다.
+      say('블록이 할당자의 공유 계층을 거쳐, 같은 크기를 요청한 node 1 의 스레드 B 에게 넘어갑니다.');
+      const after = kind === 'returned' ? 1 : 0;
+      if (!(await scene.go({ block: 2, out: after, fresh: 0 }, duration.fly)) || !alive()) return;
+      landRing(root, { ...holder('B'), w: 64, h: 26 });
+      bumpText(out.owner, 'B');
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+
+      // 4. B 가 씁니다. 돌려준 경우에는 첫 쓰기에서 node 1 에 새 페이지가 생깁니다.
+      if (kind === 'returned') {
+        if (!(await scene.go({ block: 2, out: 1, fresh: 1 }, duration.draw)) || !alive()) return;
+        for (let i = 0; i < PAGES; i += 1) landRing(root, { ...layout().page(1, i), w: 44, h: 26 });
+        bumpText(out.pages, 'node 1');
+        if (!(await writeAll(alive, 1))) return;
+        say('페이지를 OS 에 돌려준 뒤라 B 의 첫 쓰기가 다시 first touch 가 되었습니다. <strong>새 페이지가 B 가 실행 중인 node 1 메모리에 생겨</strong> 쓰기 네 번이 모두 노드 안에서 끝났습니다.');
+      } else {
+        setFlags();
+        if (!(await writeAll(alive, 0))) return;
+        say('블록은 B 에게 갔지만 <strong>페이지는 A 가 처음 쓴 node 0 메모리에 그대로</strong> 있습니다. 블록을 다시 받는 것은 새 first touch 가 아니어서 B 의 쓰기 네 번이 모두 interconnect 를 건넜습니다.', true);
+      }
+    };
+
+    const reset = async () => {
+      const alive = interrupt();
+      setFlags();
+      resetOut();
+      intro();
+      if (!(await scene.go({ ...initial }, duration.move)) || !alive()) return;
+    };
+
+    demo.querySelector('[data-action="cached"]')!.addEventListener('click', () => { void run('cached'); });
+    demo.querySelector('[data-action="returned"]')!.addEventListener('click', () => { void run('returned'); });
+    demo.querySelector('[data-action="reset"]')!.addEventListener('click', () => { void reset(); });
+
+    const applyLayout = () => {
+      stageView.place(layout());
+      cache.place(top().cache, { ...top().cacheCaption, anchor: 'start' });
+      os.place(top().os, { ...top().osCaption, anchor: 'start' });
+      threads.forEach((chip, k) => chip.place(layout().seat(k === 0 ? THREADS.A.cpu : THREADS.B.cpu)));
+      interrupt();
+      scene.redraw();
+    };
+    watchNarrow(stage, (isNarrow) => { narrow = isNarrow; applyLayout(); });
+    intro();
+    applyLayout();
+  });
+</script>
+
+<style>
+  .numa-readouts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .numa-readouts span { display: inline-flex; align-items: baseline; gap: 6px; }
+  .numa-readouts b { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .numa-readouts b:global(.is-remote) { color: var(--scene-temp); }
+  .numa-readouts b:global(.is-bump) { animation: scene-pop 420ms ease-out; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .numa-readouts b:global(.is-bump) { animation: none; }
+  }
+</style>
