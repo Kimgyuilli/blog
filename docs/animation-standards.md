@@ -15,6 +15,7 @@
 - 캐시 라인 이동·원격 메모리 읽기 사례: `CacheLineBounce`, `NumaPlacement`
 - lock 대기·캐시 모으기·목록 이동·bump pointer 사례: `ArenaScatter`, `PerCpuCacheCount`, `CrossThreadFree`, `TlabBumpPointer`
 - 층을 따라 내려가는 요청·정적 할당자 도식 사례: `AllocPath`, `AllocFigure`
+- first touch·주소와 물리 페이지 분리·블록 재사용 사례: `NumaFirstTouch`, `NumaGcCopy`, `NumaBlockReuse` (공통 무대 `numaStage.ts`)
 
 ## 1. 먼저 정할 것: 독자가 장면에서 알아낼 변화
 
@@ -91,6 +92,8 @@
 | 목록을 옮겨 다닌다 | 블록이 호를 그리며 다른 목록의 줄 끝으로 날아가 착지 링. 원자적 연산이 필요한 곳에서는 `CAS`, `원자적 교환` 알약이 잠깐 뜸 | `hopLift` + `landRing`, 패킷 `land(false)` (`CrossThreadFree`) | `fly` |
 | 포인터를 앞으로 민다 (bump pointer) | 객체가 막대 왼쪽부터 자라며 쌓이고 `top` 표시가 그만큼 오른쪽으로 옮겨 감. 전용 구간이 공유 영역의 어느 부분인지는 점선 날개로 이어 줌 | `scene-tlab-*` (`TlabBumpPointer`) | `move` |
 | 요청이 층을 따라 내려간다 | 패킷이 왼쪽 세로 길을 따라 내려가며 층마다 카드 앞에 들름. 응답하지 못한 층은 임시 색 점선 테두리와 위쪽 사유 문구, lock 이 필요한 층은 lock 알약이 켜짐. 응답한 층은 초록 테두리와 착지 링, 패킷은 `응답`(흐름 색) | `createNode` + `scene-apath-*`, `scene-lock` (`AllocPath`) | `draw` / `move` |
+| 물리 페이지가 처음 생긴다 (first touch) | 가상 주소 자리는 위쪽에 점선 빈 칩으로 남고, 처음 쓴 스레드의 노드 메모리로 페이지 칩이 호를 그리며 내려와 착지 링. 읽기만 하면 그 자리에 임시 색 점선 `zero` 칩만 생기고 메모리에는 아무것도 생기지 않음 | `createChip` `is-empty`/`is-shared` + `bowAt`, `landRing` (`NumaFirstTouch`) | `fly` |
+| 주소는 그대로, 뒤의 물리 페이지만 옮겨 갔다 | 위쪽 가상 주소 쪽(region 카드, 객체 칩)은 제자리에 있고 아래 메모리의 페이지 칩만 interconnect 너머로 날아가 착지 링, region 보조 문구가 새 노드 이름으로 바뀜. 객체 복사는 반대로 객체 칩만 옮겨 가고 옛 자리에 점선 사본이 남음 | `createNode` `setSub` + `bowAt`, `landRing` (`NumaGcCopy`) | `fly` |
 | 다음에 누를 것 | 칩에 은은한 맥박 | `data-state="next"` | — |
 
 새 의미가 필요하면 먼저 이 표에 한 줄을 추가하고, 그다음 키트에 부품을 만듭니다.
