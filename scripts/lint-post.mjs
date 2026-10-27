@@ -56,6 +56,7 @@ const RULES = [
   { id: 'translationese', level: 'warn', re: /판단|관측|성립|수렴|모양|좌표|표적|선점|표식|단언|판독|처분|결부|공허한|빈틈|구멍/g, msg: '번역투 명사입니다. 평이한 동사나 원어로 바꿀 수 있는지 봅니다' },
   { id: 'translated-term', level: 'warn', re: /적중|캐시 미스|무작위 편차|기아 상태|부수 효과|계약 테스트|벽시계 시간|부하 생성기|버퍼 풀|대기 이벤트|행 락 대기|밀리코어|실행 단위|대역폭 제어/g, msg: '원어를 쓰기로 한 용어입니다 (hit, miss, jitter, starvation, side effect, contract test, wall-clock, load generator, buffer pool, wait event, row lock wait, millicore, task, bandwidth control)' },
   { id: 'abstract-noun', level: 'warn', re: /의 결(?=[을이은에\s])|농도|여운|(맥락|정보|감정)의 밀도/g, msg: '감각적인 추상어입니다. 구체적으로 무엇이 달라지는지 씁니다' },
+  { id: 'quiet-adverb', level: 'warn', re: /조용(히|한|하게)|소리\s?없이|슬그머니|몰래/g, msg: '"조용히" 같은 의인화 부사입니다. 무엇이 없었는지 씁니다 (오류 로그 없이, DEBUG 로만 남고)' },
   { id: 'dictionary-compound', level: 'warn', re: /운영 관점|작동 구조|관점에서|측면에서/g, msg: '사전적인 합성어입니다. 반복된다면 실제로 무엇을 하는지 풀어 씁니다' },
   { id: 'time-anchor', level: 'warn', re: /당시에는|당시에|지금 돌아보|글을 쓰면서|이 글을 쓰기 전|\d{4}년 \d{1,2}월 \d{1,2}일/g, msg: '서술 시점 표지입니다. "당시 분석은"처럼 내용으로 가리킵니다' },
 
