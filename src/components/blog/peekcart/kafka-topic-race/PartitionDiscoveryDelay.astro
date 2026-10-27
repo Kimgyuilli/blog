@@ -1,0 +1,306 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="partition-discovery-delay" ariaLabel="구독 중인 토픽의 파티션을 늘린 뒤 새 파티션이 언제 할당되는지 보는 장면" title="늘어난 파티션은 언제부터 소비될까요?" description="로컬 재현 B 를 옮긴 장면입니다. 컨슈머 그룹 하나가 자동 생성된 파티션 1개짜리 토픽을 구독해 파티션 0 을 할당받은 상태입니다. Admin 으로 파티션을 3개로 늘리고 파티션마다 레코드를 한 건씩 보내 보세요. 토픽을 앱보다 먼저 만들어 둔 경우와도 비교해 보세요.">
+  <div class="scene-chips" role="group" aria-label="토픽 준비 방식">
+    <span class="scene-chips-label">토픽 준비</span>
+    <button type="button" class="scene-chip is-plain" data-pre="0" aria-pressed="true">앱이 기동하며 만듦</button>
+    <button type="button" class="scene-chip is-plain" data-pre="1" aria-pressed="false">앱보다 먼저 토픽 생성</button>
+  </div>
+  <DemoControls ariaLabel="실행">
+    <button type="button" data-action="run" data-state="next">파티션을 3개로 늘리고 3건 발행</button>
+    <button type="button" data-action="reset">처음으로</button>
+  </DemoControls>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="생산자가 토픽의 파티션 p0, p1, p2 로 레코드를 보내고, 컨슈머 그룹은 할당받은 파티션의 레코드만 받습니다. 시간 축은 증설 뒤 경과 시간이고, 미할당 파티션 표시는 그룹이 받지 못한 파티션을 보여 줍니다."></svg>
+  </div>
+  <ol class="scene-console" data-console aria-live="polite"></ol>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">시간 축은 로컬 재현 B(apache/kafka:3.8.1 단일 브로커, kafka-clients 3.9.2 기본 설정, 1회 측정)의 시각을 압축해 그렸습니다. 297.9초는 재현 프로그램이 잰 경과 시간이고, 로그에 찍힌 시각으로는 약 295.7초입니다. 실제 대기는 컨슈머의 마지막 metadata 갱신 시점에 따라 달라지고, 기본 설정(metadata.max.age.ms 300000ms)에서는 길게 5분입니다. CI lab 에서 잰 값은 들어 있지 않습니다. 레코드는 재현처럼 파티션마다 한 건씩 직접 지정해 보냈고, 키 있는 레코드와 리밸런스 세부 단계는 그리지 않았습니다. 앱보다 먼저 만든 경우는 처음부터 세 파티션이 할당되는 모형이고 시간을 재지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, clamp01, createScene, duration, ease, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createBadge, createBoundary, createNode, landRing, type Rect } from '@/scripts/blog/scene/parts';
+  import { createPacketLayer } from '@/scripts/blog/scene/packets';
+  import { createConsole } from '@/scripts/blog/scene/console';
+
+  // 독자가 볼 변화: 파티션을 늘리면 p1, p2 가 바로 생기고 레코드도 들어오지만, 그룹의 할당선은 p0 하나뿐이라
+  // 두 레코드가 그 자리에서 기다린다. 시간 축이 약 5분을 지나 리밸런스가 일어난 뒤에야 할당선이 세 개가 되고 레코드가 소비된다.
+  // 토픽을 앱보다 먼저 만들면 처음부터 할당선이 세 개라 세 레코드가 바로 소비된다.
+  const TOPIC_HUE = 'var(--scene-hue-amber)';
+  const GROUP_HUE = 'var(--scene-hue-cyan)';
+  const REBALANCE_AT = 297.9;
+  const RECEIVED_AT = 298.3;
+  const AXIS_MAX = 300;
+  const CLOCK_MS = 6400;
+
+  type State = { lane: number[]; assign: number[]; clock: number; axis: number };
+  type Layout = {
+    view: [number, number]; badge: Point; producer: Rect; zone: Rect; lanes: { x1: number; x2: number; y: number[]; h: number };
+    group: Rect; axis: { x1: number; x2: number; y: number; label: Point };
+    /** 좁은 배치는 그룹을 토픽 아래에 두고 위에서 받는다. */
+    stacked: boolean;
+  };
+  const LAYOUTS: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 300], badge: { x: 14, y: 24 }, producer: { x: 70, y: 146, w: 104, h: 42 },
+      zone: { x: 150, y: 50, w: 250, h: 186 }, lanes: { x1: 196, x2: 384, y: [106, 148, 190], h: 28 },
+      group: { x: 482, y: 148, w: 132, h: 48 }, axis: { x1: 150, x2: 540, y: 270, label: { x: 14, y: 274 } }, stacked: false,
+    },
+    narrow: {
+      view: [360, 418], badge: { x: 10, y: 24 }, producer: { x: 76, y: 70, w: 120, h: 40 },
+      zone: { x: 20, y: 100, w: 300, h: 160 }, lanes: { x1: 86, x2: 276, y: [150, 192, 234], h: 28 },
+      group: { x: 200, y: 320, w: 170, h: 48 }, axis: { x1: 22, x2: 338, y: 386, label: { x: 10, y: 368 } }, stacked: true,
+    },
+  };
+  const initial = (pre: boolean): State => ({ lane: pre ? [1, 1, 1] : [1, 0, 0], assign: pre ? [1, 1, 1] : [1, 0, 0], clock: 0, axis: 0 });
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="partition-discovery-delay"]').forEach((demo) => {
+    if (demo.dataset.ready) return;
+    demo.dataset.ready = 'true';
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const runButton = demo.querySelector<HTMLButtonElement>('[data-action="run"]')!;
+    const resetButton = demo.querySelector<HTMLButtonElement>('[data-action="reset"]')!;
+    const preButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-pre]')];
+    const log = createConsole(demo.querySelector<HTMLOListElement>('[data-console]')!, '로컬 재현 B 의 컨슈머 로그 (증설 뒤 경과, 재현 프로그램이 잰 시간)');
+    let layout = LAYOUTS.wide;
+    let narrow = false;
+    let pre = false;
+    let onTick: ((clock: number) => void) | undefined;
+
+    const zone = createBoundary(root, '토픽', 'boundary');
+    const laneRects = [0, 1, 2].map(() => svg('rect', { class: 'pdd-lane', rx: 8 }, root));
+    const laneTexts = [0, 1, 2].map((i) => {
+      const t = svg('text', { class: 'pdd-lane-text' }, root);
+      t.textContent = `p${i}`;
+      return t;
+    });
+    const lines = [0, 1, 2].map(() => svg('path', { class: 'scene-line pdd-assign', pathLength: 1 }, root));
+    const producer = createNode(root, { label: '생산자', hue: 'var(--scene-hue-violet)' });
+    const group = createNode(root, { label: '컨슈머 그룹', hue: GROUP_HUE });
+    group.group.classList.add('is-sans-sub');
+    producer.group.classList.add('is-sans-sub');
+    const badge = createBadge(root, '미할당 파티션', 196);
+    const axisTrack = svg('line', { class: 'pdd-axis' }, root);
+    const axisFill = svg('line', { class: 'pdd-axis-fill' }, root);
+    const axisLabel = svg('text', { class: 'scene-label is-sans scene-label-dep' }, root);
+    axisLabel.textContent = '증설 뒤 경과';
+    const ticks = [0, 60, 120, 180, 240, 300].map((s) => {
+      const t = svg('text', { class: 'pdd-tick' }, root);
+      t.textContent = `${s}초`;
+      return { s, t };
+    });
+    const marker = svg('line', { class: 'pdd-marker' }, root);
+    const markerText = svg('text', { class: 'scene-label is-sans pdd-marker-text' }, root);
+    const clockText = svg('text', { class: 'pdd-clock' }, root);
+    const packets = createPacketLayer(root);
+
+    const laneY = (i: number) => layout.lanes.y[i];
+    const laneEnd = (i: number): Point => ({ x: layout.lanes.x2 - 22, y: laneY(i) });
+    const groupIn = (i: number): Point => (layout.stacked
+      ? { x: layout.group.x + layout.group.w / 2 + 4, y: layout.group.y - 12 + i * 12 }
+      : { x: layout.group.x - layout.group.w / 2 - 4, y: layout.group.y - 12 + i * 12 });
+    /** 파티션 끝에서 그룹까지 레코드가 가는 길. 좁은 배치에서는 파티션들을 가로지르지 않게 오른쪽으로 돈다. */
+    const toGroup = (i: number): Point[] => {
+      const a = { x: layout.lanes.x2 + 2, y: laneY(i) };
+      const b = groupIn(i);
+      if (!layout.stacked) return [a, b];
+      const side = a.x + 22 + i * 8;
+      return [a, { x: side, y: a.y }, { x: side, y: b.y }, b];
+    };
+    const axisX = (s: number) => layout.axis.x1 + ((layout.axis.x2 - layout.axis.x1) * s) / AXIS_MAX;
+
+    const scene = createScene<State>(initial(false), (s) => {
+      const l = layout;
+      zone.place({ x: l.zone.x, y: l.zone.y, w: l.zone.w, h: l.zone.h });
+      producer.setBox({ x: l.producer.x, y: l.producer.y, w: l.producer.w, h: l.producer.h });
+      group.setBox({ x: l.group.x, y: l.group.y, w: l.group.w, h: l.group.h });
+      badge.place(l.badge);
+      [0, 1, 2].forEach((i) => {
+        const show = clamp01(s.lane[i]);
+        const w = (l.lanes.x2 - l.lanes.x1) * show;
+        setAttrs(laneRects[i], { x: l.lanes.x1, y: laneY(i) - l.lanes.h / 2, width: Math.max(0, w), height: l.lanes.h, opacity: show > 0.01 ? 1 : 0 });
+        setAttrs(laneTexts[i], { x: l.lanes.x1 - 10, y: laneY(i) + 4, opacity: 0.3 + 0.7 * show });
+        const a = { x: l.lanes.x2 + 2, y: laneY(i) };
+        const b = groupIn(i);
+        const mx = (a.x + b.x) / 2;
+        const assign = clamp01(s.assign[i]);
+        const d = l.stacked
+          ? `M ${a.x} ${a.y} C ${a.x + 26 + i * 8} ${a.y}, ${a.x + 26 + i * 8} ${b.y}, ${b.x} ${b.y}`
+          : `M ${a.x} ${a.y} C ${mx} ${a.y}, ${mx} ${b.y}, ${b.x} ${b.y}`;
+        setAttrs(lines[i], { d, 'stroke-dasharray': `${assign} 1`, opacity: assign > 0.01 ? 1 : 0 });
+      });
+      const show = clamp01(s.axis);
+      setAttrs(axisTrack, { x1: l.axis.x1, x2: l.axis.x2, y1: l.axis.y, y2: l.axis.y, opacity: 0.35 + 0.65 * show });
+      setAttrs(axisFill, { x1: l.axis.x1, x2: axisX(Math.min(AXIS_MAX, s.clock)), y1: l.axis.y, y2: l.axis.y, opacity: show });
+      setAttrs(axisLabel, { x: l.axis.label.x, y: narrow ? l.axis.label.y : l.axis.label.y, opacity: 0.4 + 0.6 * show });
+      ticks.forEach(({ s: sec, t }) => setAttrs(t, { x: axisX(sec), y: l.axis.y + 18, opacity: 0.4 + 0.6 * show }));
+      const mx = axisX(REBALANCE_AT);
+      setAttrs(marker, { x1: mx, x2: mx, y1: l.axis.y - 9, y2: l.axis.y + 6, opacity: show });
+      setAttrs(markerText, { x: mx, y: l.axis.y - 14, 'text-anchor': 'end', opacity: show * (s.clock >= REBALANCE_AT - 0.05 ? 1 : 0.45) });
+      markerText.textContent = '297.9초 리밸런스 (로컬 재현 B)';
+      setAttrs(clockText, { x: axisX(Math.min(AXIS_MAX, s.clock)), y: l.axis.y - 14, 'text-anchor': 'middle', opacity: show * (s.clock > 0.5 && s.clock < 250 ? 1 : 0) });
+      clockText.textContent = `${Math.floor(s.clock)}초`;
+      onTick?.(s.clock);
+    });
+
+    const setGroupSub = (assigned: number[]) => group.setSub(assigned.length ? `할당 ${assigned.map((i) => `p${i}`).join(', ')}` : '반납, 다시 할당 중');
+    const setBadge = (text: string, ok: boolean) => badge.set(text, ok ? 'var(--scene-flow)' : 'var(--scene-danger)');
+
+    const reset = () => {
+      scene.begin();
+      packets.clear();
+      onTick = undefined;
+      scene.set(initial(pre));
+      log.reset();
+      setGroupSub(pre ? [0, 1, 2] : [0]);
+      producer.setSub('');
+      group.flash('is-done', false);
+      setBadge('없음', true);
+      runButton.textContent = pre ? '3건 발행' : '파티션을 3개로 늘리고 3건 발행';
+      runButton.disabled = false;
+      runButton.setAttribute('data-state', 'next');
+      note.classList.remove('is-alert');
+      note.innerHTML = pre
+        ? '토픽이 배포 전에 선언한 파티션 3개로 만들어져 있어, 그룹은 처음부터 p0, p1, p2 를 할당받았습니다.'
+        : '그룹이 먼저 구독해 토픽이 자동 생성됐고(파티션 1개), 그룹은 p0 을 할당받았습니다.';
+    };
+
+    /** 생산자에서 파티션으로, 할당된 파티션이면 그룹까지 간다. */
+    const sendTo = async (i: number, through: boolean) => {
+      const l = layout;
+      const into = { x: l.lanes.x1 + 16, y: laneY(i) };
+      const start = l.stacked
+        ? { x: l.producer.x - l.producer.w / 2 + 12, y: l.producer.y + l.producer.h / 2 + 6 }
+        : { x: l.producer.x + l.producer.w / 2 + 6, y: l.producer.y };
+      const route = l.stacked
+        ? [start, { x: start.x, y: into.y }, into, laneEnd(i)]
+        : [start, { x: (start.x + into.x) / 2, y: start.y }, { x: (start.x + into.x) / 2, y: into.y }, into, laneEnd(i)];
+      const p = packets.spawn({ label: '레코드', tone: 'dep', at: start });
+      if (!(await p.travel(route, duration.move))) return { p, ok: false };
+      if (!through) {
+        p.relabel('대기', 'temp');
+        return { p, ok: true };
+      }
+      const ok = await p.travel(toGroup(i), duration.move * 0.6);
+      if (ok) {
+        p.relabel('수신', 'flow');
+        await p.land(false);
+      }
+      return { p, ok };
+    };
+
+    const run = async () => {
+      reset();
+      const alive = scene.begin();
+      runButton.disabled = true;
+      runButton.removeAttribute('data-state');
+      if (pre) {
+        log.log('처음부터 p0, p1, p2 할당', 'step');
+        const sent = await Promise.all([0, 1, 2].map(async (i) => { await scene.pause(i * 140); return sendTo(i, true); }));
+        if (sent.some((r) => !r.ok) || !alive()) return;
+        log.log('세 파티션의 레코드를 바로 수신', 'ok');
+        note.innerHTML = '증설이 없으니 새 파티션을 늦게 발견할 일도 없습니다. 세 레코드가 모두 바로 소비됩니다.';
+        group.flash('is-done');
+        runButton.disabled = false;
+        return;
+      }
+      // 1. 소유 서비스가 파티션을 늘린다. 브로커에는 바로 생긴다.
+      producer.setSub('');
+      log.log('Admin 이 파티션을 3개로 늘림', 'step');
+      await scene.go({ ...scene.state, lane: [1, 1, 1] }, duration.draw);
+      if (!alive()) return;
+      [1, 2].forEach((i) => landRing(root, { x: (layout.lanes.x1 + layout.lanes.x2) / 2, y: laneY(i), w: layout.lanes.x2 - layout.lanes.x1, h: layout.lanes.h }));
+      setBadge('p1, p2', false);
+      note.classList.add('is-alert');
+      note.innerHTML = '브로커에는 p1, p2 가 생겼지만 그룹의 할당은 <strong>p0 하나</strong> 그대로입니다.';
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      // 2. 파티션마다 한 건씩 보낸다. p0 만 바로 소비된다.
+      const sent = await Promise.all([0, 1, 2].map(async (i) => { await scene.pause(i * 140); return sendTo(i, i === 0); }));
+      if (sent.some((r) => !r.ok) || !alive()) return;
+      log.log('+0.1초 p0 레코드 수신', 'ok');
+      const waiting = sent.slice(1).map((r) => r.p);
+      // 3. 시간이 흐르는 동안 할당은 그대로다.
+      const tick = log.log('+0초 할당 p0, 받은 파티션 0', 'pending');
+      let lastTick = -1;
+      onTick = (clock) => {
+        const t = Math.floor(clock / 30) * 30;
+        if (t === lastTick || clock >= REBALANCE_AT) return;
+        lastTick = t;
+        tick(`+${t}초 할당 p0, 받은 파티션 0`, 'pending');
+      };
+      note.innerHTML = 'p1, p2 의 레코드는 그 자리에서 기다립니다. 컨슈머는 metadata 를 다시 받기 전까지 파티션 수가 바뀐 것을 모릅니다.';
+      await scene.go({ ...scene.state, axis: 1 }, duration.snap);
+      if (!alive()) return;
+      await scene.go({ ...scene.state, clock: REBALANCE_AT }, scene.ms(CLOCK_MS), ease.linear);
+      onTick = undefined;
+      if (!alive()) return;
+      tick('+272초까지 30초마다 확인, 할당은 계속 p0', 'warn');
+      // 4. metadata 갱신 뒤 리밸런스: p0 를 반납하고 세 파티션을 다시 받는다.
+      await scene.go({ ...scene.state, assign: [0, 0, 0] }, duration.cut);
+      if (!alive()) return;
+      setGroupSub([]);
+      log.log('+297.9초 p0 반납 뒤 p0, p1, p2 할당 (cached metadata has changed)', 'step');
+      await scene.go({ ...scene.state, assign: [1, 1, 1] }, duration.draw);
+      if (!alive()) return;
+      setGroupSub([0, 1, 2]);
+      setBadge('없음', true);
+      // 5. 기다리던 레코드가 소비된다.
+      const drained = await Promise.all(waiting.map(async (p, k) => {
+        const i = k + 1;
+        if (!(await p.travel(toGroup(i), duration.move * 0.6))) return false;
+        p.relabel('수신', 'flow');
+        await p.land(false);
+        return true;
+      }));
+      if (drained.some((ok) => !ok) || !alive()) return;
+      await scene.go({ ...scene.state, clock: RECEIVED_AT }, duration.snap);
+      if (!alive()) return;
+      log.log('+298.3초 p2, p1 레코드 수신', 'ok');
+      group.flash('is-done');
+      note.classList.remove('is-alert');
+      note.innerHTML = '약 5분 뒤 컨슈머가 metadata 를 다시 받고서야 리밸런스가 일어나 p1, p2 가 할당됐습니다. 그 전에 끝나는 검사라면 두 레코드는 처리되지 않은 것으로 보입니다.';
+      runButton.disabled = false;
+    };
+
+    const setPre = (next: boolean) => {
+      pre = next;
+      preButtons.forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.pre === '1') === pre)));
+      reset();
+    };
+    preButtons.forEach((b) => b.addEventListener('click', () => setPre(b.dataset.pre === '1')));
+    runButton.addEventListener('click', () => { void run(); });
+    resetButton.addEventListener('click', reset);
+
+    watchNarrow(stage, (isNarrow) => {
+      narrow = isNarrow;
+      layout = LAYOUTS[isNarrow ? 'narrow' : 'wide'];
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      reset();
+    });
+  });
+</script>
+
+<style is:global>
+  [data-blog-demo="partition-discovery-delay"] .scene-chips { margin: 4px 0 6px; }
+  [data-blog-demo="partition-discovery-delay"] .scene-chip[aria-pressed="true"] { border-color: var(--scene-flow); color: var(--scene-flow-ink); background: var(--scene-flow-soft); }
+  [data-blog-demo="partition-discovery-delay"] .db-demo-controls { margin-bottom: 12px; }
+  [data-blog-demo="partition-discovery-delay"] .pdd-lane { fill: color-mix(in srgb, var(--scene-hue-amber) 16%, var(--surface)); stroke: var(--scene-hue-amber); stroke-width: 1.4; }
+  [data-blog-demo="partition-discovery-delay"] .pdd-lane-text { fill: var(--ink); font-family: var(--font-mono); font-size: 11px; font-weight: 700; text-anchor: end; }
+  [data-blog-demo="partition-discovery-delay"] .pdd-assign { stroke: var(--scene-flow); }
+  [data-blog-demo="partition-discovery-delay"] .pdd-axis { stroke: var(--hairline); stroke-width: 6; stroke-linecap: round; }
+  [data-blog-demo="partition-discovery-delay"] .pdd-axis-fill { stroke: var(--scene-temp); stroke-width: 6; stroke-linecap: round; }
+  [data-blog-demo="partition-discovery-delay"] .pdd-tick { fill: var(--slate); font-family: var(--font-mono); font-size: 10px; text-anchor: middle; }
+  [data-blog-demo="partition-discovery-delay"] .pdd-marker { stroke: var(--scene-flow); stroke-width: 2; }
+  [data-blog-demo="partition-discovery-delay"] .pdd-marker-text { fill: var(--scene-flow-ink); }
+  [data-blog-demo="partition-discovery-delay"] .pdd-clock { fill: var(--scene-temp); font-family: var(--font-mono); font-size: 11px; font-weight: 700; }
+  [data-blog-demo="partition-discovery-delay"] .scene-console { min-height: 118px; }
+  [data-blog-demo="partition-discovery-delay"] .scene-note { min-height: 4.6em; }
+</style>

@@ -1,0 +1,315 @@
+---
+title: 'PeekCart 학습 기록 34: 선언한 Kafka 토픽 config 는 왜 오류 없이 브로커 기본값으로 남았을까?'
+description: 'KafkaAdmin 과 브로커 자동 생성이 같은 토픽을 두고 경합해 선언한 config 가 오류 없이 빠진 원인과 막은 과정입니다.'
+image: "/images/blog/peekcart-kafka-topic-creation-race/thumbnail.jpg"
+pubDate: 2026-10-26
+category: backend
+slug: peekcart-kafka-topic-creation-race
+tags: [kafka, spring-kafka, race-condition, consumer-rebalance, e2e-test]
+draft: false
+---
+
+import TopicRaceBranches from '@/components/blog/peekcart/kafka-topic-race/TopicRaceBranches.astro';
+import PartitionDiscoveryDelay from '@/components/blog/peekcart/kafka-topic-race/PartitionDiscoveryDelay.astro';
+
+{/*
+독자: NewTopic 빈과 KafkaAdmin(Spring Boot 자동 구성)으로 토픽을 선언하고, 서비스나 인스턴스 여럿이 한 브로커를 쓰는 Spring Kafka 사용자. 브로커 auto.create.topics.enable 과 컨슈머 allow.auto.create.topics 는 기본값(true) 그대로다. PeekCart 를 몰라도 자기 스택에 대입할 수 있어야 한다.
+핵심 주장: KafkaAdmin 이 토픽을 describe 한 뒤 createTopics 하기 전에 다른 클라이언트가 브로커 자동 생성으로 같은 토픽을 만들면, spring-kafka 3.3.14 의 KafkaAdmin 은 TopicExistsException 을 DEBUG 로만 남기고 그 토픽을 config 갱신과 파티션 증설에서도 뺀다. 선언한 config 와 파티션 수가 오류 없이 브로커 기본값으로 남는다. 앱보다 먼저 토픽을 만들어 생성 주체를 하나로 줄이고, 적용 여부는 앱 로그 대신 브로커의 동적 config 와 컨슈머 할당으로 확인한다.
+유형: troubleshooting.
+수치 출처: "GKE"는 측정 세션의 토픽 덤프와 다음 세션의 결과, "CI lab"은 GitHub Actions run 의 artifact 로그, "E2E"는 E2E 도입 작업의 실측, "이전 작업의 로컬 확인"은 처방을 만들 때 로컬 브로커로 확인한 값, "로컬 재현 A, B"는 이 글을 위해 apache/kafka:3.8.1 단일 브로커와 kafka-clients 3.9.2 로 돌린 재현이다. 확인한 버전: spring-kafka 3.3.14, kafka-clients 3.9.2, Kafka 브로커 3.8.1, Spring Boot 3.5.12.
+*/}
+
+PeekCart 는 혼자 만드는 이커머스 백엔드 프로젝트입니다. 주문, 상품, 결제 서비스가 Kafka 브로커 하나를 같이 쓰면서 이벤트를 주고받고, 알림 서비스는 이 이벤트를 구독만 합니다. 각 서비스는 자기가 발행하는 토픽을 Spring Kafka 의 `NewTopic` 빈으로 선언합니다. 파티션 수와 함께 보존 기간, 보존 용량, 세그먼트 크기 같은 토픽 config 7개를 적어 두면 Spring Boot 가 자동 구성한 `KafkaAdmin` 이 기동할 때 브로커에 토픽을 만들거나 기존 토픽의 config 를 고칩니다.
+
+서비스는 다른 서비스가 선언한 토픽도 구독합니다. 결제 서비스(payment)가 발행하는 결제 완료 토픽을 주문 서비스와 상품 서비스의 컨슈머가 구독하는 식입니다. 브로커의 토픽 자동 생성(`auto.create.topics.enable`)과 컨슈머의 자동 생성 요청(`allow.auto.create.topics`)은 둘 다 기본값인 true 로 두었습니다.
+
+GKE 측정 세션에서 이렇게 선언한 토픽 일부가 선언값 대신 브로커 기본값으로 남은 것을 발견했습니다. 서비스는 모두 정상 기동했고 서비스 로그로는 알 수 없었습니다. 선언한 config 는 왜 적용되지 않았고 로그에는 왜 아무것도 남지 않았을까요? 이미 있던 통합 테스트와 E2E 는 왜 이 문제를 잡지 못했을까요? 같은 일을 알아채고 막으려면 무엇을 봐야 할까요?
+
+## 선언한 토픽 30개 중 6개가 브로커 기본값이었습니다
+
+GKE 클러스터에서 진행한 성능 측정 세션에는 선언한 토픽 config 가 브로커에 실제로 들어갔는지 대조하는 단계가 있었습니다. 세 서비스가 선언한 토픽 30개의 실효 config 를 `kafka-configs.sh --describe --entity-type topics --all` 로 뽑아 선언값과 비교했습니다. 24개는 선언값과 같았고 6개는 브로커 기본값이었습니다. 값이 달랐던 키는 넷입니다.
+
+| config | 선언값 (업무 토픽) | 6개 토픽의 실효값 |
+| --- | --- | --- |
+| `retention.bytes` | 8388608 (8 MiB) | -1 (무제한) |
+| `segment.bytes` | 4194304 (4 MiB) | 1073741824 (1 GiB) |
+| `segment.ms` | 86400000 (1일) | 604800000 (7일) |
+| `message.timestamp.before.max.ms` | 777600000 (9일) | 9223372036854775807 (무제한) |
+
+DLQ 토픽은 `retention.bytes` 4194304, `segment.bytes` 2097152 로 더 작게 선언했고 6개에 들어 있던 DLQ 토픽 4개도 같은 브로커 기본값이었습니다. 나머지 세 키(`retention.ms` 7일, `cleanup.policy=delete`, `message.timestamp.type=CreateTime`)는 선언값이 브로커 기본값과 같아서 실효값만으로는 차이가 보이지 않습니다.
+
+이 값들은 파티션마다 디스크를 얼마나 쓸지에 상한을 두려고 선언했습니다. `retention.bytes` 는 roll 이 끝난 세그먼트만 지우기 때문에 `segment.bytes` 가 1 GiB 로 남으면 지금 쓰고 있는 세그먼트 하나가 1 GiB 까지 커질 수 있습니다. 이 브로커의 디스크(PVC)는 1 GiB 였습니다.
+
+세 서비스는 모두 정상 기동했습니다. 기존 토픽에도 선언 config 를 반영하도록 `spring.kafka.admin.modify-topic-configs=true` 를 켜 두었고 통합 테스트는 토픽이 없어 새로 만드는 새 토픽 경로(7키가 모두 들어감)와 이미 있는 토픽을 고치는 기존 토픽 경로(이 설정이 false 면 옛 값이 남고 true 면 다른 키를 고침)를 따로 검증하고 있었습니다. "선언했으니 적용된다"는 전제는 테스트로 확인해 왔고 실제 클러스터에서는 이 세션에서 처음 대조했습니다. 뒤에서 보겠지만 이 6개가 생긴 경로는 DEBUG 로그 한 줄만 남기는데 서비스의 로그 수준은 INFO 였습니다. 로그로는 알아챌 수 없는 실패였습니다.
+
+## 첫 추정으로는 6개와 나머지를 가를 수 없었습니다
+
+세션에서 처음 세운 추정은 "다른 서비스가 토픽을 먼저 자동 생성해서 config 가 갱신되지 않았다"였습니다. 이 세션은 namespace 를 지운 뒤 빈 브로커에 모든 서비스를 한꺼번에 배포했습니다. 토픽을 선언한 서비스(이하 소유 서비스)보다 먼저 뜬 다른 서비스의 컨슈머가 구독을 시작하면 브로커가 그 토픽을 자동 생성할 수 있습니다.
+
+이 추정으로는 6개만 기본값으로 남은 이유를 설명하지 못했습니다. 다른 서비스 컨슈머가 먼저 만들었을 토픽은 6개 말고도 더 있었고 그 토픽들은 선언값으로 고쳐져 있었습니다. 6개와 나머지는 토픽에 직접 설정된 config 키의 집합으로 나뉘었습니다.
+
+`kafka-configs.sh --describe --entity-type topics` 를 `--all` 없이 실행하면 토픽에 명시적으로 설정된 키(`DYNAMIC_TOPIC_CONFIG`)만 나오고 브로커 기본값을 쓰는 키는 나오지 않습니다. 이 출력으로 30개를 다시 세면 세 갈래로 나뉩니다.
+
+| 갈래 | 토픽 수 | 직접 설정된 키 | 해석 |
+| --- | --- | --- | --- |
+| A | 10 | 선언한 7개 전부 | `KafkaAdmin` 이 config 를 실어 토픽을 만들었다 |
+| B | 14 | 기본값과 다른 4개 (`retention.bytes`, `segment.bytes`, `segment.ms`, `message.timestamp.before.max.ms`) | 토픽이 먼저 있었고, `KafkaAdmin` 이 선언과 다른 키만 고쳤다 |
+| C | 6 | 없음 | `KafkaAdmin` 이 만들지도 고치지도 않았다 |
+
+B 가 정확히 4키인 이유는 `KafkaAdmin` 의 기존 토픽 경로에 있습니다. spring-kafka 3.3.14 의 `KafkaAdmin` 은 이미 있는 토픽의 현재 config 를 읽어 선언값과 키마다 비교하고 값이 다른 키만 `incrementalAlterConfigs` 의 SET 으로 보냅니다. 선언값이 브로커 기본값과 같은 세 키는 보내지 않으니 기본값 그대로 남습니다. 그래서 직접 설정된 키가 7개면 생성 경로를, 4개면 기존 토픽 경로를 탄 토픽이고 0개는 두 경로 어디에도 들어가지 않은 토픽입니다. `modify-topic-configs` 가 꺼져 있었다면 기존 토픽 경로는 config 를 고치지 않으므로 B 의 직접 설정된 키도 0개가 되어 B 와 C 를 가를 수 없었을 겁니다.
+
+B 의 14개를 실제로 누가 먼저 만들었는지 보여 주는 브로커 로그는 남아 있지 않습니다. 4키라는 점과 서비스 사이의 구독 관계로 미루어 다른 서비스 컨슈머의 자동 생성으로 봤습니다.
+
+## 한 번의 적용에서 세 갈래가 모두 나왔습니다
+
+갈래를 서비스별로 나눠 보면 C 의 6개, B 중 `payment.failed` 와 `payment.refunded`, A 중 `payment.approval-recovery.*` 4개가 모두 결제 서비스가 선언한 토픽입니다. 결제 서비스 `KafkaAdmin` 의 적용 결과에 세 갈래가 다 들어 있습니다.
+
+`KafkaAdmin` 에는 적용이 통째로 실패하는 경로가 따로 있습니다. 기동 중 적용(컨텍스트 초기화 안의 적용)에서 config 를 고치는 단계 전에 예외가 나면 `initialize()` 가 그 예외를 받아 ERROR 로그(`Could not configure topics`)를 남기고 끝냅니다. 그러면 config 를 고치는 단계가 돌지 않으니 B 가 생기지 않습니다. 결제 서비스의 토픽에 B 가 있으니 고치는 단계는 돌았고 A 가 있으니 config 를 실은 생성도 성공했습니다.
+
+결제 서비스 Pod 가 세션 중에 다시 시작했는지는 원자료로 확인하지 못했지만, 결론은 재시작 여부와 상관없습니다. 성공한 적용은 선언한 토픽마다 describe 해서 없으면 만들고 있으면 고칩니다. A 가 있으니 결제 서비스에는 성공한 적용이 적어도 한 번 있었습니다. 그 적용의 describe 때 C 토픽이 이미 있었다면 기존 토픽 경로로 고쳐졌을 것이고, 없었다면 config 를 실어 만들어졌을 것입니다. C 는 둘 다 아니므로 생성 목록에 들어간 뒤 생성되지 못하고 고치는 단계에서도 빠지는 분기가 코드에 있어야 했습니다.
+
+<TopicRaceBranches />
+
+## KafkaAdmin 은 생성에 실패한 토픽을 config 비교와 증설에서 뺍니다
+
+`KafkaAdmin` 은 애플리케이션 컨텍스트가 싱글턴 빈을 다 만든 뒤(`afterSingletonsInstantiated`) `initialize()` 를 부르고, 그 안의 `addOrModifyTopicsIfNeeded` 가 선언 토픽 전체를 처리합니다. 프로젝트가 쓰는 spring-kafka 3.3.14 는 Gradle 캐시에 sources jar 가 없어서 바이너리 jar 의 바이트코드를 `javap` 로 읽고 메서드 호출 순서와 지역 변수 이름(LocalVariableTable)으로 요지를 복원했습니다. 아래 두 조각은 그렇게 복원한 요지이고 원문 소스와 줄 단위로 같지 않습니다. 원문 소스의 주석은 바이트코드에 남지 않아 확인하지 못했습니다.
+
+```java
+// spring-kafka 3.3.14 KafkaAdmin.addOrModifyTopicsIfNeeded
+// javap 바이트코드에서 복원한 요지. 변수명은 LocalVariableTable
+DescribeTopicsResult topicInfo = adminClient.describeTopics(names);
+List<NewTopic> topicsToAdd = new ArrayList<>();
+Map<String, NewPartitions> topicsWithPartitionMismatches =
+        checkPartitions(topicNameToTopic, topicInfo, topicsToAdd);  // describe 실패한 토픽은 topicsToAdd 로
+if (!topicsToAdd.isEmpty()) {
+    addTopics(adminClient, topicsToAdd);                             // createTopics
+}
+if (!topicsWithPartitionMismatches.isEmpty()) {
+    createMissingPartitions(adminClient, topicsWithPartitionMismatches);  // describe 에 성공한 토픽만
+}
+if (this.modifyTopicConfigs) {
+    List<NewTopic> toCheck = new LinkedList<>(topics);
+    toCheck.removeAll(topicsToAdd);                                  // 생성 대상이던 토픽은 config 비교에서 빠진다
+    Map<ConfigResource, List<ConfigEntry>> mismatchingConfigs = checkTopicsForConfigMismatches(adminClient, toCheck);
+    if (!mismatchingConfigs.isEmpty()) {
+        adjustConfigMismatches(adminClient, topics, mismatchingConfigs);
+    }
+}
+```
+
+`checkPartitions` 는 토픽마다 describe 결과를 기다립니다. 성공하면 파티션 수를 비교해 선언이 더 클 때 증설 목록에 넣고, `ExecutionException`(토픽이 없다는 오류 포함)이 나면 그 토픽을 생성 목록 `topicsToAdd` 에 넣습니다. 생성을 맡는 `addTopics` 의 요지는 이렇습니다.
+
+```java
+// spring-kafka 3.3.14 KafkaAdmin.addTopics
+// javap 바이트코드에서 복원한 요지
+CreateTopicsResult topicResults = adminClient.createTopics(topicsToAdd);
+try {
+    topicResults.all().get(this.operationTimeout, TimeUnit.SECONDS);
+}
+catch (InterruptedException e) { /* interrupt 후 ERROR 로그 */ }
+catch (TimeoutException e) {
+    throw new KafkaException("Timed out waiting for create topics results", e);
+}
+catch (ExecutionException e) {
+    if (e.getCause() instanceof TopicExistsException) {
+        LOGGER.debug(e.getCause(), "Failed to create topics");     // DEBUG 만 남기고 정상 반환
+    }
+    else {
+        LOGGER.error(e.getCause(), "Failed to create topics");
+        throw new KafkaException("Failed to create topics", e.getCause());
+    }
+}
+```
+
+두 조각과 `checkPartitions` 설명을 이으면 C 갈래가 나옵니다.
+
+1. describe 시점에 토픽이 아직 보이지 않아 생성 목록에 들어갑니다.
+2. createTopics 가 도착했을 때는 다른 클라이언트가 이미 그 토픽을 만들었습니다. `TopicExistsException` 은 DEBUG 로만 남고 `addTopics` 는 정상 반환합니다.
+3. 생성 목록에 있던 토픽이라 config 비교 대상(`toCheck`)에서 빠집니다. describe 에 실패했으니 파티션 증설 목록에도 없습니다.
+
+이렇게 빠진 토픽은 다른 클라이언트가 만든 상태로 남습니다. 브로커 자동 생성이 만들었다면 브로커 기본 config 에 `num.partitions` 개의 파티션입니다. Kafka 3.8.1 의 `num.partitions` 기본값은 1 이고 이 프로젝트의 브로커도 이 값을 바꾸지 않았습니다.
+
+`TopicExistsException` 을 DEBUG 로만 남기는 처리 때문에 이 실패는 로그에 드러나지 않았습니다. Spring Boot 의 기본 로그 수준은 INFO 이고 이 프로젝트의 k8s 프로파일도 root 를 INFO 로 두고 `org.springframework.kafka` 로거 수준은 따로 정하지 않았습니다. 이 경로로 빠진 토픽은 서비스 로그에 아무것도 남기지 않습니다.
+
+## KRaft 브로커는 자동 생성이 끝날 때까지 그 토픽을 없다고 답합니다
+
+describe 와 createTopics 사이는 요청 왕복 한 번 정도로 짧습니다. 그런데도 경합이 났다면 다른 클라이언트가 토픽을 만들 수 있는 시간(race window)이 그보다 넓어야 합니다. 이 프로젝트에서 토픽을 만드는 주체는 둘이었습니다. 하나는 소유 서비스의 `KafkaAdmin` 이고 다른 하나는 없는 토픽을 묻는 metadata 요청을 받은 브로커의 자동 생성입니다. 브로커의 `auto.create.topics.enable`(Kafka 3.8.1)과 컨슈머의 `allow.auto.create.topics`(kafka-clients 3.9.2)는 기본값이 둘 다 true 입니다.
+
+KRaft 모드의 Kafka 3.8.1 브로커는 없는 토픽에 대한 metadata 요청을 받으면 생성 요청을 활성 컨트롤러로 넘기고 그 metadata 요청에는 곧바로 `UNKNOWN_TOPIC_OR_PARTITION` 으로 답합니다. 생성이 진행 중인 토픽을 다시 물어도 같은 오류로 답합니다. 브로커 jar 의 `DefaultAutoTopicCreationManager` 를 javap 로 읽어 확인한 동작입니다. 생성이 컨트롤러에서 끝나 브로커 metadata 에 반영되기 전까지는 자동 생성을 요청하지 않는 Admin 의 describe 도 그 토픽을 없다고 받습니다.
+
+클라이언트 쪽 처리는 호출에 따라 다릅니다(kafka-clients 3.9.2). `KafkaConsumer.partitionsFor` 는 이 오류를 받은 토픽을 결과에서 빼고 다시 묻지 않습니다. 반면 토픽을 구독한 컨슈머는 같은 오류를 metadata 가 낡았다는 신호(`InvalidMetadataException`)로 처리해 토픽이 보일 때까지 metadata 를 계속 다시 요청합니다.
+
+race window 는 다른 서비스 컨슈머의 자동 생성 요청이 나간 때부터 그 토픽이 브로커 metadata 에 보일 때까지입니다. 이 사이에 소유 서비스의 describe 가 도착하면 "없음"을 받고 이어지는 createTopics 가 자동 생성보다 늦게 처리되면 `TopicExistsException` 이 납니다.
+
+이 구간을 이 글을 쓰며 로컬에서 따로 재 봤습니다(로컬 재현 A). `apache/kafka:3.8.1` 단일 브로커(KRaft, 배포 매니페스트와 같은 환경 변수)에 kafka-clients 3.9.2 컨슈머로 없는 토픽의 `partitionsFor` 를 부르고 곧바로 Admin `describeTopics` 를 1ms 간격으로 반복했습니다. 20회 모두 `partitionsFor` 는 빈 목록을 돌려줬고 그 직후 첫 Admin describe 도 20회 모두 `UnknownTopicOrPartitionException` 이었습니다. Admin 이 토픽을 보기까지는 `partitionsFor` 호출부터 30.6~74.1ms(중앙값 33.2ms)가 걸렸습니다. 그렇게 생긴 토픽 20개는 모두 파티션 1개에 직접 설정된 config 가 없었습니다. 브로커 로그에는 첫 회 토픽의 생성 요청과 파티션 생성이 이렇게 찍힙니다.
+
+```text
+[2026-10-27 13:04:52,239] INFO Sent auto-creation request for Set(auto-0-267d241b) to the active controller. (kafka.server.DefaultAutoTopicCreationManager)
+[2026-10-27 13:04:52,318] INFO Created log for partition auto-0-267d241b-0 in /tmp/kafka-logs/auto-0-267d241b-0 with properties {} (kafka.log.LogManager)
+```
+
+이 수치는 로컬 단일 브로커에서 클라이언트 하나로 잰 값입니다. 서비스 여럿이 동시에 기동하는 클러스터에서 이 구간이 얼마였는지는 재지 않았습니다. 재현 A 로는 자동 생성이 진행되는 동안 Admin describe 도 토픽이 없다고 받는다는 데까지만 확인했습니다.
+
+## createTopics 직전에 자동 생성을 넣어 경합을 재현했습니다
+
+race window 를 타이밍으로 맞출 수는 없으니 테스트에서는 자동 생성이 일어나는 지점을 고정했습니다. 테스트용 `KafkaAdmin` 하위 클래스가 `createAdmin()` 을 덮어 kafka-clients 의 `ForwardingAdmin` 을 돌려주고, 이 `ForwardingAdmin` 의 `createTopics` 가 실제 생성 요청을 넘기기 직전에 컨슈머 `partitionsFor` 로 대상 토픽의 브로커 자동 생성을 일으킵니다. spring-kafka 3.3.14 에서 `createAdmin()` 은 protected 라 하위 클래스에서 덮을 수 있습니다. 자동 생성 자체는 실제 서비스와 같은 경로를 탑니다. 브로커는 Testcontainers 로 띄운 `apache/kafka:3.8.1` 입니다.
+
+한 번의 기동 중 적용에 토픽 세 개를 넣었습니다. 테스트 시작 전에 미리 자동 생성해 둔 토픽(B), createTopics 직전에 자동 생성되는 토픽(C), 아무도 만들지 않은 토픽(A)입니다. 직접 설정된 키 수는 GKE 의 세 갈래와 같았습니다. A 는 직접 설정된 키 7개에 파티션 3개, B 는 4키에 파티션 3개, C 는 0키에 파티션 1개였고 C 의 생성 결과는 `TopicExistsException` 이었습니다.
+
+테스트는 C 의 생성 future 가 `TopicExistsException` 으로 실패했는지를 가장 먼저 검사합니다. 자동 생성 주입이 빗나가면 C 는 A 처럼 정상 생성되고 테스트는 C 상태를 보기 전에 그 검사에서 실패합니다. 주입이 실제로 경합을 만들었을 때만 C 에 대한 검사로 넘어갑니다.
+
+테스트의 첫 실행은 다른 이유로 실패했습니다. 자동 생성을 일으키는 헬퍼의 `partitionsFor` 가 빈 목록을 돌려줬습니다. 앞 절의 브로커 동작(생성이 끝나기 전에는 `UNKNOWN_TOPIC_OR_PARTITION`)과 `partitionsFor` 의 처리(재시도 없음)에서 나온 결과입니다. 헬퍼가 토픽이 보일 때까지 반복해서 묻도록 고친 뒤 위 결과가 나왔습니다.
+
+## 첫 처방: 기동이 끝난 뒤 한 번 더 적용합니다
+
+기동이 끝났을 때 경합을 겪은 토픽은 이미 브로커에 있습니다. 그때 `KafkaAdmin.initialize()` 를 다시 부르면 describe 가 성공하고 토픽은 기존 토픽 경로(파티션 증설과 다른 키 SET)를 탑니다. `ApplicationReadyEvent` 리스너 하나로 만들었습니다. 아래는 클래스 주석을 뺀 요지입니다.
+
+```java
+public class KafkaTopicReconciler implements ApplicationListener<ApplicationReadyEvent> {
+    private final KafkaAdmin kafkaAdmin;
+
+    @Override
+    public void onApplicationEvent(ApplicationReadyEvent event) {
+        try {
+            kafkaAdmin.initialize();
+        } catch (RuntimeException e) {
+            log.error("기동 뒤 토픽 재적용 실패. 생성 경합을 겪은 토픽이 선언 config 없이 남았을 수 있다", e);
+        }
+    }
+}
+```
+
+예외는 일부러 잡았습니다. 컨텍스트 초기화 밖에서 부른 `initialize()` 는 적용에 실패하면 예외를 던집니다. Spring Boot 3.5.12 의 `SpringApplication.run` 은 `ApplicationReadyEvent` 리스너가 던진 예외를 기동 실패로 처리하므로 그대로 두면 브로커가 잠깐 응답하지 않는 것만으로 서비스가 내려갑니다. 기동 중 적용은 같은 실패에 ERROR 로그만 남기고 넘어가므로(`fatalIfBrokerNotAvailable` 기본값 false) 재적용도 그에 맞췄습니다. 이 리스너는 `@Component` 로 두지 않고 토픽을 선언하는 서비스의 Kafka 설정에서 `@Bean` 으로 등록합니다. Kafka 자동 구성을 끈 사용자 서비스도 같은 공용 모듈을 쓰는데, 그 서비스에는 `KafkaAdmin` 빈이 없기 때문입니다.
+
+검증은 앞 절의 재현 테스트에 이어 붙였습니다. 이벤트 전에는 C 가 그대로인지 먼저 확인하고 `ApplicationReadyEvent` 를 발행한 뒤 C 의 7키 값이 선언값과 같아지고 파티션이 3개가 되는지 봅니다. 재적용 본문을 지운 변이를 넣으면 이렇게 실패합니다. 토픽 이름 뒤의 UUID 는 줄였습니다.
+
+```text
+race-raced-… 의 retention.bytes 가 선언값이어야 한다 expected "8388608" but was "-1"
+```
+
+이 처방은 경합으로 남은 토픽을 기동 뒤에 고칠 뿐 경합 자체를 막지는 못합니다. 기동 중 적용이 통째로 실패했다면(예를 들어 그때 브로커가 아직 없었다면) 재적용이 첫 생성을 맡게 되고 같은 경합을 다시 겪을 수 있습니다. 그렇게 남은 토픽은 여전히 DEBUG 로그만 남깁니다.
+
+재적용에는 대가도 따랐습니다. 경합을 겪은 C 토픽의 파티션을 1개에서 3개로 늘리는데 그 시점에는 다른 서비스 컨슈머가 이미 그 토픽을 구독하고 있습니다. 이런 증설은 재적용 전에도 있었습니다. 다른 서비스가 먼저 자동 생성한 B 갈래 토픽도 기동 중 적용에서 같은 증설을 겪고, 그 결과가 CI 에서 먼저 드러났습니다.
+
+## 같은 경합의 두 번째 문제: 늘어난 파티션을 모르는 컨슈머
+
+재적용을 넣은 변경의 CI 에서 결제 복구 시나리오를 컨테이너 스택으로 돌리는 작업(이하 lab)이 두 번 연속 실패했습니다. 중복 이벤트 처리 단계가 시간 제한을 넘겼습니다. 첫 시도의 lab 로그(UTC)를 시각순으로 맞추면 이렇습니다. lab 에서 payment 소유 토픽 `payment.approval-recovery.execute` 는 product 의 컨슈머가 먼저 구독해 자동 생성됐습니다.
+
+| 시각 | 일어난 일 |
+| --- | --- |
+| 12:58:45.513 | product 의 컨슈머가 `payment.approval-recovery.execute` 구독 |
+| 12:58:45.542 | 브로커가 그 토픽의 자동 생성 요청을 컨트롤러로 보냄 |
+| 12:58:45.575 | 브로커가 파티션 0 로그를 만듦, `with properties {}` (토픽 config 없음) |
+| 12:58:45.882 | product 기동 완료 |
+| 12:58:47.401 | payment 의 기동 중 `KafkaAdmin` 이 파티션 수 1 을 3 으로 늘리기로 함 |
+| 12:58:47.615, 47.629 | 브로커가 파티션 2, 1 을 만듦 |
+| 12:58:48.689 | product 그룹이 `execute-0` 하나만 할당받음 |
+| 12:58:51.334 | payment 기동 완료 (product 보다 5.5초 늦음) |
+
+증설을 결정한 줄과 할당 결과 줄입니다. compose 의 컨테이너 이름 접두사는 뺐습니다.
+
+```text
+2026-10-24T12:58:47.401Z  INFO 1 --- [payment-service] [           main] o.springframework.kafka.core.KafkaAdmin  : Topic 'payment.approval-recovery.execute' exists but has a different partition count: 1 not 3, increasing if the broker supports it
+2026-10-24T12:58:48.689Z  INFO 1 --- [product-service] [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : product-svc-approval-recovery-execute-group: partitions assigned: [payment.approval-recovery.execute-0]
+```
+
+lab 의 준비 확인 출력에서도 product 쪽 두 그룹은 할당 파티션 수(`#PARTITIONS`)가 1, payment 쪽 두 그룹은 3 이었습니다. 두 번째 시도도 같았습니다. product 는 13:33:17.670, payment 는 13:33:21.855 에 기동을 마쳐 4.2초 차였고 product 그룹은 이번에도 `execute-0` 만 받았습니다.
+
+product 그룹은 파티션 1, 2 가 브로커에 생기고 약 1초 뒤에 할당을 받았는데도 파티션 0 만 받았습니다. 이 그룹이 쓰는 리밸런스 방식(classic 그룹 프로토콜)에서는 리더 컨슈머가 자기 metadata 로 할당을 계산하는데 그 metadata 가 증설 전 것이었다고 봅니다. 할당 순간의 컨슈머 metadata 를 보여 주는 로그는 없어서 추론입니다. 컨슈머는 `metadata.max.age.ms`(kafka-clients 3.9.2 기본 300000ms, 5분)가 지나면 metadata 를 강제로 다시 받고 그때 파티션 수가 바뀐 것을 알면 리밸런스를 요청합니다.
+
+lab 은 중복 이벤트를 키 없이 발행합니다. 이벤트가 파티션 1, 2 로 가면 product 가 metadata 를 다시 받을 때까지 처리되지 않습니다. 이벤트가 실제로 어느 파티션에 들어갔는지는 lab 로그에 남지 않았고 lab 은 단계 시간 제한을 넘겨 실패했습니다. payment 가 먼저 떠서 토픽을 3파티션으로 만들었다면 product 는 처음부터 세 파티션을 받았을 테니 서비스 기동 순서에 따라 결과가 달라지는 결함입니다.
+
+파티션을 늘린 줄은 payment 의 main 스레드에서 기동 완료(12:58:51.334) 전에 찍혔습니다. 재적용은 기동 완료 뒤에 도니 파티션은 그보다 앞선 기동 중 적용이 늘렸습니다. 소유 서비스보다 먼저 자동 생성된 토픽, 곧 B 갈래 토픽 가운데 선언한 파티션이 1개보다 많은 토픽이면 재적용과 상관없이 기동 중 적용에서 같은 증설을 겪습니다. GKE 의 B 갈래 업무 토픽 8개도 같은 과정을 거쳤을 것으로 보지만 GKE 측정 자료에서 그 흔적을 찾지는 못했습니다.
+
+일반화하면 컨슈머가 구독 중인 토픽의 파티션을 늘릴 때 새 파티션은 각 그룹이 metadata 를 다시 받을 때까지 아무도 소비하지 않습니다. kafka-clients 3.9.2 의 기본 설정에서는 길면 5분입니다. 키가 있는 이벤트도 해시가 새 파티션을 가리키면 같은 지연을 겪을 것으로 보지만 재현하지는 않았습니다.
+
+이 지연도 이 글을 쓰며 로컬에서 따로 재 봤습니다(로컬 재현 B, 1회). 컨슈머 그룹 하나가 없는 토픽을 구독해 자동 생성(파티션 1개)시키고 파티션 0 을 할당받은 뒤 Admin 으로 파티션을 3개로 늘리고 파티션 0, 1, 2 에 한 건씩 직접 발행했습니다. 클라이언트 설정은 `metadata.max.age.ms` 를 포함해 기본값이고, 서비스와 같게 오프셋 리셋을 `earliest` 로, `enable.auto.commit` 을 false 로 둔 것만 바꿨습니다.
+
+| 증설 뒤 경과 (재현 프로그램이 잰 시간) | 일어난 일 |
+| --- | --- |
+| 0.1초 | 파티션 0 의 레코드 수신 |
+| 30초에서 272초 | 30초마다 확인할 때마다 할당은 파티션 0 하나, 받은 레코드도 파티션 0 것뿐 |
+| 297.9초 | 파티션 0 을 반납한 뒤 파티션 0, 1, 2 를 할당받음 |
+| 298.3초 | 파티션 2, 1 의 레코드 수신 |
+
+브로커 로그에 남은 리밸런스 사유입니다.
+
+```text
+[2026-10-27 13:09:53,395] INFO [GroupCoordinator 1]: Preparing to rebalance group g-grow-26459fdb in state PreparingRebalance with old generation 1 (__consumer_offsets-16) (reason: Leader consumer-g-grow-26459fdb-2-650cffe8-592c-4220-8171-b805e500c9f6 re-joining group during Stable; client reason: cached metadata has changed) (kafka.coordinator.group.GroupCoordinator)
+```
+
+파티션 1, 2 는 증설 직후(13:04:57,731 과 13:04:57,743) 브로커에 생겼는데 컨슈머는 캐시한 metadata 가 바뀐 것을 약 5분 뒤에야 알고 리밸런스를 요청했습니다. 표의 경과 시간은 재현 프로그램이 단조 시계(`System.nanoTime`)로 잰 값이고 로그에 찍힌 시각으로 계산하면 증설에서 재할당까지 약 295.7초입니다. 실행 중에 두 시계가 2초 남짓 어긋났고 컨슈머의 마지막 metadata 갱신이 언제였는지는 로그로 확인하지 않았습니다.
+
+<PartitionDiscoveryDelay />
+
+## E2E 는 왜 이 경합을 잡지 못했을까요?
+
+E2E 스택은 앱을 띄우기 전에 선언 토픽 30개를 선언한 파티션 수로 만듭니다. 토픽이 이미 있어서 소유 서비스의 `KafkaAdmin` describe 는 언제나 성공하고 createTopics 를 부르지 않으니 `TopicExistsException` 경합이 생기지 않습니다. 파티션도 처음부터 선언한 수라 증설이 없고 새 파티션을 늦게 발견하는 일도 없습니다. 통합 테스트도 사정이 같았습니다. 새 토픽 경로는 아무도 토픽을 만들지 않는 상태에서, 기존 토픽 경로는 테스트가 Admin 으로 토픽을 미리 만들어 둔 상태에서 검증했고 두 생성 주체가 동시에 움직이는 경우는 없었습니다. 반면 GKE 배포는 브로커와 앱을 `kubectl apply -k` 한 번으로 함께 올렸기 때문에 그 조건이 그대로 남아 있었습니다.
+
+E2E 는 바로 두 번째 문제를 계기로 토픽을 미리 만들게 됐습니다. E2E 를 처음 도입한 작업에서는 시나리오 네 개를 이어 돌리면 뒤쪽이 소비 지연으로 시간 제한을 넘겼고 이 문제를 해결하지 못한 채 남겼습니다. 그때는 원인을 "자동 생성 토픽이 3파티션이면 metadata 와 리밸런스 부하가 커진다"로 보고 브로커의 `KAFKA_NUM_PARTITIONS` 를 1 로 고정했습니다. 그런데 이미지의 기본값은 처음부터 1 이었습니다. 다음 작업에서 실제 원인을 찾았습니다. 컨슈머가 토픽 생성 전에 구독하면 파티션 0 만 보고 나머지는 metadata 갱신 뒤에야 소비합니다. E2E 실측으로 `order.created` 를 18:59:39 에 발행해 19:03:02 에 소비했으니 약 203초입니다. E2E 는 그때 앱 기동 전 토픽 사전 생성으로 고쳤고 같은 처방은 배포 경로로 옮겨지지 않았습니다.
+
+E2E 에 토픽 config 를 자동으로 대조하는 단계를 더하지는 않았습니다. E2E 는 경합 경로를 타지 않으니 대조해도 이 결함은 보이지 않고 기존 토픽 경로는 통합 테스트가 검증합니다. 대신 아래의 측정 전 가드를 E2E 스택에도 돌릴 수 있게 했습니다.
+
+## 처방: 토픽은 앱보다 먼저 만들고, 측정 전에 브로커를 직접 봅니다
+
+토픽을 만드는 주체를 하나로 줄이면 막을 수 있습니다. 앱이 뜨기 전에 토픽이 선언한 파티션 수로 있으면 소유 서비스의 `KafkaAdmin` 은 createTopics 를 부르지 않으므로 경합이 생기지 않고 컨슈머도 처음부터 모든 파티션을 할당받습니다. PeekCart 에는 배포 전 사전 생성, 기동 뒤 재적용, 측정 전 가드를 함께 두었고 셋이 보장하지 않는 범위가 각각 다릅니다.
+
+### 배포 래퍼가 kafka 를 먼저 올리고 토픽을 만듭니다
+
+배포 래퍼 스크립트는 overlay 를 렌더한 결과(`kubectl kustomize`)에서 Namespace 와 kafka 의 PVC, Deployment, Service 만 골라 먼저 적용하고 `rollout status deploy/kafka --timeout=300s` 로 브로커가 뜨기를 기다립니다. 그다음 E2E 와 같은 토픽 목록으로 `kafka-topics.sh --create --if-not-exists` 를 돌리고 전체 describe 결과와 파티션 수를 대조해 토픽이 없거나 파티션 수가 다르면 앱을 적용하지 않고 exit 1 로 멈춥니다. 앱은 그 뒤에 `kubectl apply -k` 로 올립니다.
+
+래퍼는 config 를 넣지 않습니다. config 는 여전히 소유 서비스의 `KafkaAdmin` 이 기동할 때 기존 토픽 경로로 기본값과 다른 4키를 SET 합니다. 토픽이 이미 있으니 이 경로는 매번 돕니다. kafka 를 먼저 올릴 때 Service 도 함께 넣었습니다. 브로커가 Service 주소(`kafka:29092`)를 광고해서 Pod 안의 CLI 도 그 주소로 다시 접속하기 때문입니다. base 매니페스트를 따로 적용하지 않고 overlay 렌더에서 골라낸 이유는 overlay 의 PVC patch 가 빠진 PVC 가 먼저 생기면 생성 뒤에는 spec 을 바꿀 수 없기 때문입니다.
+
+검증은 가짜 kubectl 을 두고 실제 래퍼를 돌려서 했습니다. 빈 클러스터와 재배포는 정상 경로로 끝나는지 보고, 실패 주입 8가지(생성 실패, 1파티션과 3파티션 불일치, describe 실패와 빈 출력, 롤아웃 실패, 선행 적용 실패, 토픽 목록 생성 실패, kafka 가 없는 overlay, 사전 점검 차단)에서는 exit 코드와 `apply -k` 가 한 번도 불리지 않았는지를 확인했습니다. 대조 단계를 지우거나 `--if-not-exists` 를 지우는 변이는 각각 테스트를 실패시켰습니다. 실제 클러스터에서는 다음 GKE 측정 세션에서 처음 썼습니다. 첫 배포에서 토픽 30개를 만들었고 래퍼를 실행한 다섯 번 모두 파티션 수 대조를 통과했습니다.
+
+래퍼를 거치지 않는 배포는 이 단계를 타지 않습니다. 손으로 친 `kubectl apply -k`, 측정 스크립트가 렌더 결과를 바로 `apply -f -` 로 다시 적용하는 경우, kafka 가 없는 장애 훈련이 그렇습니다. 배포 시점의 검사라 그 뒤의 변경도 막지 않습니다. 토픽 목록은 래퍼를 실행한 체크아웃의 소스에서 나오므로 배포할 이미지와 같은 커밋에서 실행해야 합니다.
+
+### 기동 뒤 재적용은 남겨 둡니다
+
+앞에서 만든 `KafkaTopicReconciler` 는 남겨 두었습니다. 래퍼를 거치지 않은 배포에서 경합으로 남은 토픽을 기동 뒤에 고칩니다. 기동 중 적용이 통째로 실패한 경우까지 막지는 못하니 보장은 아닙니다.
+
+### 측정 전에 브로커와 컨슈머 그룹을 직접 확인합니다
+
+앱 로그로는 이 실패를 알 수 없으니 적용됐는지는 브로커에서 직접 확인해야 합니다. 토픽 상태 가드는 측정 run 직전에 돕니다. 선언 토픽 30개의 파티션 수, 선언한 7키의 실효값, 업무 컨슈머 그룹 27개가 구독 토픽의 모든 파티션을 할당받았는지를 확인합니다. 그룹 할당은 `kafka-consumer-groups.sh --describe` 의 오프셋 출력에서 파티션마다 CONSUMER-ID 가 붙은 행이 있어야 통과로 셉니다. 행이 없으면 미할당이고 명령 실패나 빈 출력, 형식을 알 수 없는 출력도 위반으로 셉니다.
+
+config 기대값은 가드 안에 표로 두고 단위 테스트가 같은 값을 서비스 소스(토픽 config 상수와 서비스 설정 파일)에서 다시 유도해 CI 에서 대조합니다. 측정 중에는 Java 와 YAML 을 파싱하지 않았습니다. 비용이 드는 클러스터 세션 도중에 그 파서가 깨질 수 있어서입니다.
+
+GKE 덤프의 원래 출력을 가드에 넣으면 결제 서비스 토픽 6개의 4키씩만 위반으로 나와 손으로 대조한 결과와 같았습니다. 이전 작업의 로컬 확인에서는 `apache/kafka:3.8.1` 브로커에 자동 생성된 1파티션 토픽을 구독한 컨슈머를 둔 채 파티션을 3개로 늘렸더니 `1,2 미할당` 으로 실패했고 metadata 갱신 뒤(약 5분)에는 통과했습니다. 실제 클러스터에서는 다음 GKE 측정 세션에서 세 번(측정 진입 22개 그룹, 재기동 뒤 22개, 다음 시나리오 진입 27개) 모두 통과했습니다. 22개인 두 번은 알림 서비스를 빼고 띄운 구성이었습니다.
+
+가드는 run 진입 시점에만 봅니다. 통과한 뒤의 재기동이나 리밸런스는 막지 못하고 DLQ 를 받는 그룹과 격리(quarantine) 그룹의 할당은 보지 않습니다.
+
+### CI lab 도 서비스보다 토픽을 먼저 만듭니다
+
+lab 에도 같은 사전 생성을 넣었습니다. Kafka 를 먼저 띄우고 E2E 와 같은 목록으로 토픽 30개를 만들어 파티션 수를 대조한 뒤 서비스를 띄웁니다. 수정 뒤 lab run 에서는 네 그룹 모두 3파티션을 할당받았고 파티션 증설 로그는 한 줄도 없었습니다. 그 run 에서도 product 가 payment 보다 1.2초 먼저 기동을 마쳤습니다. 기동 순서는 실패한 run 과 같았고 서비스가 뜨기 전에 토픽이 이미 3파티션으로 있었습니다.
+
+lab 에서 검토하고 쓰지 않은 방법도 있습니다. 준비 확인을 모든 파티션이 할당될 때까지 기다리게 하면 metadata 갱신을 길면 5분 기다려야 해서 lab 의 준비 기한 90초를 넘깁니다. lab 에서만 `metadata.max.age.ms` 를 줄이면 운영과 다른 설정으로 검증하게 됩니다.
+
+### 자동 생성은 끄지 않았습니다
+
+브로커 자동 생성 끄기(`auto.create.topics.enable=false`)는 두 번째 생성 주체를 아예 없앱니다. 대신 소유 서비스의 토픽 적용이 실패하면 토픽이 아예 없게 되고(지금은 기본값으로라도 생깁니다) 다른 서비스 컨슈머는 소유 서비스가 뜰 때까지 기다려야 합니다. 로컬 compose 와 E2E 스택을 운영과 같게 맞출지도 함께 정해야 합니다. 소유 서비스의 적용 실패를 어떻게 다룰지부터 새로 정해야 하는 별도 사안이라 이번에는 하지 않았습니다.
+
+컨슈머 쪽 `allow.auto.create.topics=false` 는 기각했습니다. 통합 테스트가 다른 서비스 토픽의 자동 생성에 기대는 범위가 넓었고 생산자 경로가 그대로 남습니다. kafka-clients 3.9.2 의 생산자는 metadata 요청에 자동 생성 허용을 항상 켜서 보내고 이를 끄는 설정이 없습니다.
+
+## 남은 것
+
+- 가드는 측정 run 에 들어가는 순간만 봅니다. 통과한 뒤 리밸런스로 할당이 빠지면 그 run 의 소비가 늦어지고 그 경우는 run 뒤의 lag 기록으로 확인합니다.
+- 브로커 자동 생성은 켜져 있습니다. 래퍼를 거치지 않는 배포에는 생성 주체가 여전히 둘입니다.
+- 재적용은 기동 중 적용이 통째로 실패한 경우를 보장하지 않습니다.
+- GKE 의 C 갈래 업무 토픽 2개가 실제로 몇 파티션이었는지는 클러스터를 지워서 확인할 수 없습니다. 코드대로라면 1개로 남았을 것입니다.
+- spring-kafka 3.3.14 밖의 버전(3.3.16, 4.1.2)도 같은 코드인지는 직접 확인하지 못했습니다.
+
+## 다시 한다면
+
+선언한 config 를 실제 클러스터의 브로커에서 대조한 것은 이 측정 세션이 처음이었습니다. 그 전까지 "선언했으니 적용된다"는 전제는 토픽 경로를 하나씩 검증하는 통합 테스트에 기대고 있었습니다. 배포할 때마다 브로커의 실효 config, 직접 설정된 키 집합, 컨슈머 그룹의 할당을 대조했다면 이런 토픽은 측정 세션을 기다리지 않고 배포 직후에 보였을 것입니다. 지금은 측정 전 가드가 그 대조를 합니다.
+
+E2E 에 토픽 사전 생성을 넣을 때도 기회가 있었습니다. 그때 찾은 원인은 컨슈머가 토픽 생성 전에 구독하면 새 파티션을 늦게 발견한다는 것이었고 E2E 는 앱보다 토픽을 먼저 만들도록 고쳤습니다. 같은 순서가 배포 경로에도 필요한지 그때 확인했다면 GKE 배포도 같은 조건을 피했을 것입니다.
+
+E2E 를 처음 도입할 때 브로커의 `KAFKA_NUM_PARTITIONS` 를 1 로 고정한 설정은 이미지의 기본값을 다시 적은 것이었습니다. 설정을 넣기 전에 브로커의 실효값을 `kafka-configs.sh --describe --entity-type brokers --all` 로 먼저 봤다면 이 점은 바로 보였을 것입니다.
+
+## 정리하며
+
+선언한 config 가 빠진 토픽은 소유 서비스의 `KafkaAdmin` 이 describe 한 뒤 createTopics 하기 전에 다른 서비스 컨슈머의 요청으로 브로커가 자동 생성한 토픽이었습니다. spring-kafka 3.3.14 의 `KafkaAdmin` 은 이때 나는 `TopicExistsException` 을 DEBUG 로만 남기고 그 토픽을 config 비교와 파티션 증설에서도 뺍니다. KRaft 브로커(Kafka 3.8.1)는 자동 생성이 끝날 때까지 그 토픽을 없다고 답하기 때문에 이 경합이 일어날 수 있는 구간은 요청 왕복 한 번보다 넓습니다.
+
+로그에는 남지 않았습니다. 서비스 로그 수준이 INFO 였기 때문입니다. 통합 테스트와 E2E 는 토픽을 미리 만들거나 생성 주체가 하나뿐인 상태에서 돌아서 이 경로를 타지 않았습니다.
+
+이 실패는 앱 로그 대신 브로커에서 보입니다. 토픽에 직접 설정된 config 키가 7개면 생성 경로, 선언과 기본값이 다른 키만 있으면 기존 토픽 경로, 하나도 없으면 두 경로 모두에서 빠진 토픽입니다. 파티션을 늘린 토픽은 컨슈머 그룹이 모든 파티션을 할당받았는지도 함께 봐야 합니다. PeekCart 는 배포 전에 토픽을 먼저 만들어 생성 주체를 하나로 줄였고 기동 뒤 재적용과 측정 전 가드를 함께 두었습니다.
