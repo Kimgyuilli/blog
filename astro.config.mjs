@@ -1,6 +1,7 @@
 import mdx from '@astrojs/mdx';
 import sitemap from '@astrojs/sitemap';
 import { defineConfig } from 'astro/config';
+import remarkGfm from 'remark-gfm';
 
 import cloudflare from '@astrojs/cloudflare';
 
@@ -20,6 +21,9 @@ export default defineConfig({
   },
 
   markdown: {
+    // 숫자 범위의 물결표(0.21~0.25)가 취소선으로 바뀌지 않게, 취소선은 ~~두 개~~ 일 때만 씁니다.
+    gfm: false,
+    remarkPlugins: [[remarkGfm, { singleTilde: false }]],
     shikiConfig: {
       themes: {
         light: 'github-light',

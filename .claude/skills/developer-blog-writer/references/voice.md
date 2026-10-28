@@ -27,10 +27,11 @@ The author has corrected these patterns in post after post. Apply them while dra
 - Stock phrases: `질문은 하나입니다`, `더 근본적인 문제는`, `확실하게 말할 수 있는 것은`, `~인 셈입니다`, `~에는 의미가 있습니다`, `남은 것도 분명합니다`, `먼저 밝혀 둘 것이 있습니다`, `X에서 끝나지 않습니다`, `~편이 안전합니다`, section-ending aphorisms that restate the paragraph.
 - Declarative closers: `중요한 것은 ~입니다`, `핵심은 ~`, `기준은 분명합니다`. They usually add nothing new. Cut them, or follow with the concrete action or evidence right away.
 - Vague references: `이를 통해`, `이를 바탕으로`, `그 기준`, `이러한 방식` whose target the previous sentence does not name. Write the target, or add the missing step between the two sentences.
+- Judgement by "seeing": `~다고 봅니다`, `~로 봅니다`, `~것으로 봅니다`, `~라고 봤습니다`, `~로 보고`. Name what kind of claim it is: an inference is `~을 것입니다` or `~로 추정합니다`, a calculation is `~로 계산했습니다`, a belief you held then is `~다고 믿었습니다` or `예상했습니다`, a likely cause is `~을 가능성이 큽니다`. `lint:post` flags it as an error.
 - Unspecified actions: `~를 함께 봅니다`, `~를 살펴봅니다` without saying what is compared, counted, or read. Write the actual action (`응답 시간과 오류율을 같은 구간에서 비교했습니다`).
 - Missing actor: a sentence where the reader cannot tell who did it. Name `저`, the team, or the system when the source says so. Do not invent an actor the source does not give.
 - Triads: `A, B, 그리고 C` lists that look organized but never say how the items relate. Keep only the item that matters, or explain each one as an action.
-- Document citing: `기록은 ~라고 결론 냈다`, `측정 기록에 아래 표가 있습니다`, `주석/문서/runbook 에 이렇게 적혀 있었다`, `매뉴얼은 ~라고 설명합니다`, `한계로 적어 두었다`, `~한 기록은 없다`. For context write `기존 계획은 ~였습니다`; for unverified scope write `따로 검토하지 않았습니다`; for an external fact state it with a link.
+- Document citing: `기록은 ~라고 결론 냈다`, `측정 기록에 아래 표가 있습니다`, `주석/문서/runbook 에 이렇게 적혀 있었다`, `매뉴얼은 ~라고 설명합니다`, `한계로 적어 두었다`, `~한 기록은 없다`, and analysing your own plans and decisions from outside: `계획서와 결정 기록에 후보로 올라 있었다`, `이 전제는 결정 기록 안에만 있었다`, `결정 기록에서는 ~를 기각했다`, `결정 기록에 없다`. Narrate what you did instead: `~를 후보로 꼽았습니다`, `계획을 세울 때 이렇게 예상했습니다`, `이런 이유로 기각했습니다`, `결정할 때 정하지 않았습니다`. For context write `기존 계획은 ~였습니다`; for unverified scope write `따로 검토하지 않았습니다`; for an external fact state it with a link.
 - Reviewer attribution: `리뷰가 짚었다`, `계획 리뷰가 반박했다`. State the problem itself.
 - Narrative time anchors: specific dates, `당시에는`, `지금 돌아보며`, `글을 쓰면서 확인했다`, `이 글을 쓰기 전까지`. Durations that are configuration or behavior (TTL 5초, 15일 유효) are fine. `당시 분석은` may refer to an earlier analysis by content.
 
