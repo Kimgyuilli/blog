@@ -1,0 +1,372 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="pool-limit-chart" ariaLabel="커넥션 풀 한계 곡선과 마지막 세션 run 일곱 개를 놓고 필요량 기준을 바꿔 보는 그래프" title="풀 10 의 한계와 run 일곱 개" description="곡선은 풀 크기를 평균 점유 시간으로 나눈 초당 획득 상한입니다. 필요량을 공통 기준선 하나로 볼 때와 run 마다 따로 셀 때 유효와 무효가 어떻게 갈리는지 바꿔 보세요.">
+  <DemoControls ariaLabel="필요량 기준 선택">
+    <button type="button" data-mode="common" aria-pressed="true">필요량: 공통 기준선</button>
+    <button type="button" data-mode="run" aria-pressed="false">필요량: run 별 주문당 획득</button>
+  </DemoControls>
+  <label class="scene-range">
+    <span>주문당 획득</span>
+    <input type="range" min="1.9" max="2.3" step="0.01" value="2.1" data-per aria-describedby="pool-per-out" />
+    <output id="pool-per-out" data-per-out>2.10회</output>
+  </label>
+  <label class="scene-range">
+    <span>목표 주문</span>
+    <input type="range" min="100" max="200" step="10" value="170" data-target aria-describedby="pool-target-out" />
+    <output id="pool-target-out" data-target-out>170건/초</output>
+  </label>
+  <label class="scene-range">
+    <span>풀 크기</span>
+    <input type="range" min="8" max="16" step="1" value="10" data-pool aria-describedby="pool-size-out" />
+    <output id="pool-size-out" data-pool-out>10개</output>
+  </label>
+  <div class="scene-stage">
+    <svg data-pool-svg role="img" aria-label="가로축은 평균 점유 시간, 세로축은 초당 커넥션 획득입니다. 풀 크기를 점유 시간으로 나눈 한계 곡선 위에 마지막 세션 run 일곱 개를 k6 부하 판정 유효와 무효로 나눠 찍고, 필요량 기준선과 비교합니다."></svg>
+  </div>
+  <p class="scene-note" data-pool-note role="status"></p>
+  <p class="db-demo-disclaimer">점은 마지막 세션에서 주문 서비스 Pod 1개, CPU 한도 2코어로 돌린 run 의 원자료를 이 글을 쓰며 다시 센 값입니다. 한 세션 7 run 의 상관이고 풀 크기를 바꿔 본 대조 실험이 아닙니다. 곡선은 이용률 100% 일 때의 상한이고, 실제로는 이용률이 1 에 다가갈수록 대기가 비선형으로 커집니다. 이용률은 유효 run 0.89~1.00, 무효 run 0.92~0.99 라 이용률만으로는 갈리지 않습니다. 점유 시간은 부하를 받는 중에 잰 값이라 무효의 원인인지 결과인지 가르지 못합니다. 주문당 획득은 run 마다 다릅니다. 풀 크기 슬라이더는 풀 10 에서 잰 점유 시간을 그대로 넣은 가정이라, 풀을 바꾸면 점유 시간도 달라질 수 있습니다. 두 번째 세션의 초당 약 122건은 점유 시간을 재지 않아 점으로 찍지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, ease, setAttrs, svg, watchNarrow } from '@/scripts/blog/scene/core';
+  import { watchDemoPlayback } from '@/scripts/blog/watch-demo-playback';
+
+  type Mode = 'common' | 'run';
+  /** split 0 = 공통 기준선, 1 = run 별 필요량. reveal 은 처음 그릴 때의 진행도. */
+  type State = { pool: number; target: number; per: number; split: number; reveal: number };
+  type Run = { id: string; name: string; short: string; valid: boolean; drop: number; hold: number; per: number; acqWait: number; pend: number };
+
+  // 마지막 세션 원자료에서 다시 센 값 (점유 시간 ms, 주문당 획득, 획득 대기 평균 ms, 풀 대기 평균)
+  const RUNS: Run[] = [
+    { id: 'w4', name: 'w4 (마지막 워밍업)', short: 'w4', valid: true, drop: 0, hold: 26.69, per: 1.970, acqWait: 305, pend: 105.4 },
+    { id: 'c1', name: 'c1', short: 'c1', valid: true, drop: 0, hold: 26.38, per: 2.167, acqWait: 115, pend: 46.5 },
+    { id: 'c2a', name: 'c2 첫 시도', short: 'c2 첫', valid: false, drop: 277, hold: 28.74, per: 2.071, acqWait: 331, pend: 115.5 },
+    { id: 'c2b', name: 'c2 재시도', short: 'c2 재', valid: false, drop: 331, hold: 28.56, per: 2.101, acqWait: 361, pend: 112.5 },
+    { id: 'c2c', name: 'c2 (복구 뒤)', short: 'c2 복구 뒤', valid: true, drop: 7, hold: 26.97, per: 2.181, acqWait: 228, pend: 59.7 },
+    { id: 'c3', name: 'c3', short: 'c3', valid: false, drop: 431, hold: 28.23, per: 1.996, acqWait: 519, pend: 149.8 },
+    { id: 's1', name: 's1 (대조군)', short: 's1', valid: true, drop: 0, hold: 26.97, per: 2.066, acqWait: 184, pend: 84.0 },
+  ];
+  const X_MIN = 25;
+  const X_MAX = 30;
+  const TIE = 0.5;
+  type Spot = { dx: number; dy: number; anchor: 'start' | 'middle' | 'end' };
+  const LAYOUT = {
+    wide: {
+      view: [560, 330], x0: 64, x1: 540, y0: 34, y1: 268, status: 316,
+      labels: {
+        w4: { dx: 9, dy: -8, anchor: 'start' }, c1: { dx: -9, dy: -6, anchor: 'end' }, c2a: { dx: 9, dy: 4, anchor: 'start' },
+        c2b: { dx: 0, dy: 21, anchor: 'middle' }, c2c: { dx: 9, dy: -8, anchor: 'start' }, c3: { dx: 0, dy: -12, anchor: 'middle' }, s1: { dx: 0, dy: 0, anchor: 'start' },
+      } as Record<string, Spot>,
+    },
+    narrow: {
+      view: [360, 366], x0: 50, x1: 344, y0: 56, y1: 286, status: 334,
+      labels: {
+        w4: { dx: 8, dy: -8, anchor: 'start' }, c1: { dx: -8, dy: -6, anchor: 'end' }, c2a: { dx: 7, dy: 4, anchor: 'start' },
+        c2b: { dx: 0, dy: 20, anchor: 'middle' }, c2c: { dx: 8, dy: -8, anchor: 'start' }, c3: { dx: 0, dy: -12, anchor: 'middle' }, s1: { dx: 0, dy: 0, anchor: 'start' },
+      } as Record<string, Spot>,
+    },
+  } as const;
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="pool-limit-chart"]').forEach((demo) => {
+    const root = demo.querySelector<SVGSVGElement>('[data-pool-svg]')!;
+    const note = demo.querySelector<HTMLElement>('[data-pool-note]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-mode]')];
+    const perSlider = demo.querySelector<HTMLInputElement>('[data-per]')!;
+    const targetSlider = demo.querySelector<HTMLInputElement>('[data-target]')!;
+    const poolSlider = demo.querySelector<HTMLInputElement>('[data-pool]')!;
+    const perOut = demo.querySelector<HTMLOutputElement>('[data-per-out]')!;
+    const targetOut = demo.querySelector<HTMLOutputElement>('[data-target-out]')!;
+    const poolOut = demo.querySelector<HTMLOutputElement>('[data-pool-out]')!;
+    let narrow = false;
+    let mode: Mode = 'common';
+    let focused: Run | undefined;
+    const L = () => (narrow ? LAYOUT.narrow : LAYOUT.wide);
+
+    // ── 축과 눈금 ──────────────────────────────
+    const grid = svg('g', {}, root);
+    const axisX = svg('line', { class: 'scene-line' }, root);
+    const axisY = svg('line', { class: 'scene-line' }, root);
+    [axisX, axisY].forEach((a) => { a.style.stroke = 'var(--hairline)'; a.style.strokeWidth = '1.5'; });
+    const xTitle = svg('text', { class: 'scene-label scene-label-dep is-sans', 'text-anchor': 'end' }, root);
+    xTitle.textContent = '평균 점유 시간 (ms)';
+    const yTitle = svg('text', { class: 'scene-label scene-label-dep is-sans' }, root);
+    yTitle.textContent = '초당 커넥션 획득';
+    const xTicks = Array.from({ length: 6 }, () => svg('text', { class: 'scene-label scene-label-dep', 'text-anchor': 'middle' }, root));
+    const yTickPool = Array.from({ length: 12 }, () => {
+      const line = svg('line', {}, grid);
+      line.style.stroke = 'var(--hairline)';
+      line.style.strokeWidth = '1';
+      line.style.opacity = '0.55';
+      const text = svg('text', { class: 'scene-label scene-label-dep', 'text-anchor': 'end' }, grid);
+      return { line, text };
+    });
+
+    // ── 필요량 띠와 기준선 ────────────────────
+    const band = svg('rect', {}, root);
+    band.style.fill = 'color-mix(in srgb, var(--scene-temp) 14%, transparent)';
+    const bandText = svg('text', { class: 'scene-label is-sans' }, root);
+    bandText.style.fill = 'var(--scene-temp)';
+    const needLine = svg('line', { 'stroke-dasharray': '6 4' }, root);
+    needLine.style.stroke = 'var(--scene-temp)';
+    needLine.style.strokeWidth = '2';
+    const needText = svg('text', { class: 'scene-label is-sans' }, root);
+    needText.style.fill = 'var(--scene-temp)';
+
+    // ── 경계 점유 시간 ────────────────────────
+    const edge = svg('line', { 'stroke-dasharray': '3 4' }, root);
+    edge.style.stroke = 'var(--scene-dep)';
+    edge.style.strokeWidth = '1.4';
+    const edgeText = svg('text', { class: 'scene-label scene-label-dep is-sans', 'text-anchor': 'middle' }, root);
+
+    // ── 한계 곡선 ─────────────────────────────
+    const curve = svg('path', { fill: 'none' }, root);
+    curve.style.stroke = 'var(--scene-hue-blue)';
+    curve.style.strokeWidth = '2.6';
+    curve.style.strokeLinecap = 'round';
+    const curveText = svg('text', { class: 'scene-label is-sans' }, root);
+    curveText.style.fill = 'var(--scene-hue-blue)';
+
+    // ── run 별 필요량 눈금과 연결선, 점 ──────
+    const runViews = RUNS.map((run) => {
+      const link = svg('line', {}, root);
+      link.style.strokeWidth = '2';
+      const tick = svg('line', {}, root);
+      tick.style.stroke = 'var(--scene-temp)';
+      tick.style.strokeWidth = '2.4';
+      tick.style.strokeLinecap = 'round';
+      const g = svg('g', { tabindex: 0, role: 'button', 'aria-label': `${run.name} 자세히 보기` }, root);
+      g.style.cursor = 'pointer';
+      g.style.outline = 'none';
+      const hit = svg('circle', { r: 12, fill: 'transparent' }, g);
+      const mark = run.valid
+        ? svg('circle', { r: 5.6 }, g)
+        : svg('rect', { width: 9, height: 9, x: -4.5, y: -4.5, transform: 'rotate(45)' }, g);
+      mark.style.fill = run.valid ? 'var(--scene-flow)' : 'var(--scene-danger)';
+      mark.style.stroke = 'var(--canvas)';
+      mark.style.strokeWidth = '1.5';
+      const ring = svg('circle', { r: 9.5, fill: 'none' }, g);
+      ring.style.stroke = 'var(--ink)';
+      ring.style.strokeWidth = '1.5';
+      ring.style.opacity = '0';
+      const label = svg('text', { class: 'scene-label is-sans' }, root);
+      label.style.fill = run.valid ? 'var(--scene-flow-ink)' : 'var(--scene-danger)';
+      label.textContent = run.id === 'c2c' ? 'c2 복구 뒤, s1' : run.short;
+      if (run.id === 's1') label.style.display = 'none';
+      const pick = () => { focused = run; refresh(); };
+      g.addEventListener('pointerenter', pick);
+      g.addEventListener('focus', pick);
+      g.addEventListener('click', pick);
+      void hit;
+      return { run, link, tick, g, ring, label };
+    });
+
+    // ── 범례 ──────────────────────────────────
+    const legend = svg('g', {}, root);
+    const legValid = svg('circle', { r: 5 }, legend);
+    legValid.style.fill = 'var(--scene-flow)';
+    const legValidText = svg('text', { class: 'scene-label scene-label-dep is-sans' }, legend);
+    legValidText.textContent = 'k6 유효';
+    const legInvalid = svg('rect', { width: 8, height: 8, x: -4, y: -4 }, legend);
+    legInvalid.style.fill = 'var(--scene-danger)';
+    const legInvalidText = svg('text', { class: 'scene-label scene-label-dep is-sans' }, legend);
+    legInvalidText.textContent = 'k6 무효';
+
+    const status = svg('text', { class: 'scene-label is-sans', 'text-anchor': 'middle' }, root);
+    status.style.fontSize = '12.5px';
+
+    const limitOf = (run: Run, pool: number) => (pool * 1000) / run.hold;
+    const needOf = (run: Run, state: State) => state.target * (state.split > 0.5 ? run.per : state.per);
+    const fmt = (n: number, d = 1) => n.toFixed(d);
+
+    const yRange = (state: State) => {
+      const limits = [(state.pool * 1000) / X_MAX, (state.pool * 1000) / X_MIN];
+      const needs = [state.target * 1.97, state.target * 2.181, state.target * state.per];
+      const lo = Math.floor((Math.min(...limits, ...needs) - 6) / 10) * 10;
+      const hi = Math.ceil((Math.max(...limits, ...needs) + 6) / 10) * 10;
+      return { lo, hi };
+    };
+
+    const scene = createScene<State>({ pool: 10, target: 170, per: 2.1, split: 0, reveal: 1 }, (state) => {
+      const l = L();
+      const { lo, hi } = yRange(state);
+      const X = (ms: number) => l.x0 + ((ms - X_MIN) / (X_MAX - X_MIN)) * (l.x1 - l.x0);
+      const Y = (v: number) => l.y1 - ((v - lo) / (hi - lo)) * (l.y1 - l.y0);
+      const r = state.reveal;
+
+      setAttrs(axisX, { x1: l.x0, y1: l.y1, x2: l.x1, y2: l.y1 });
+      setAttrs(axisY, { x1: l.x0, y1: l.y0, x2: l.x0, y2: l.y1 });
+      setAttrs(xTitle, { x: l.x1, y: l.y1 + 32 });
+      setAttrs(yTitle, { x: l.x0 - (narrow ? 40 : 52), y: l.y0 - 16 });
+      xTicks.forEach((t, i) => { const ms = X_MIN + i; t.textContent = String(ms); setAttrs(t, { x: X(ms), y: l.y1 + 16 }); });
+      const step = hi - lo > 160 ? 50 : hi - lo > 80 ? 20 : 10;
+      let k = 0;
+      for (let v = Math.ceil(lo / step) * step; v <= hi && k < yTickPool.length; v += step, k++) {
+        const { line, text } = yTickPool[k];
+        setAttrs(line, { x1: l.x0, y1: Y(v), x2: l.x1, y2: Y(v), opacity: 1 });
+        setAttrs(text, { x: l.x0 - 6, y: Y(v) + 4, opacity: 1 });
+        text.textContent = String(v);
+      }
+      for (; k < yTickPool.length; k++) { setAttrs(yTickPool[k].line, { opacity: 0 }); setAttrs(yTickPool[k].text, { opacity: 0 }); }
+
+      // 필요량 띠: run 별 주문당 획득 1.97~2.18 의 범위
+      const bandLo = state.target * 1.97;
+      const bandHi = state.target * 2.181;
+      setAttrs(band, { x: l.x0, y: Y(bandHi), width: (l.x1 - l.x0) * r, height: Y(bandLo) - Y(bandHi), opacity: 1 - state.split * 0.6 });
+      bandText.textContent = narrow ? `run 별 범위 ${fmt(bandLo, 0)}~${fmt(bandHi, 0)}` : `run 별 주문당 획득 범위 ${fmt(bandLo, 0)}~${fmt(bandHi, 0)}`;
+      setAttrs(bandText, { x: l.x0 + 6, y: Y(bandLo) - 5, opacity: r * (1 - state.split) });
+
+      const common = state.target * state.per;
+      setAttrs(needLine, { x1: l.x0, y1: Y(common), x2: l.x0 + (l.x1 - l.x0) * r, y2: Y(common), opacity: 1 - state.split });
+      needText.textContent = narrow ? `필요량 ${fmt(common, 0)}/초` : `공통 필요량 ${fmt(common, 0)}회/초 (${state.target}건, 주문당 ${state.per.toFixed(2)}회)`;
+      setAttrs(needText, { x: l.x0 + 6, y: Y(common) - 7, opacity: r * (1 - state.split) });
+
+      // 경계 점유 시간 = 풀 크기 / 공통 필요량
+      const edgeMs = (state.pool * 1000) / common;
+      const inView = edgeMs >= X_MIN && edgeMs <= X_MAX;
+      const ex = X(Math.min(X_MAX, Math.max(X_MIN, edgeMs)));
+      setAttrs(edge, { x1: ex, y1: l.y0, x2: ex, y2: l.y1, opacity: (inView ? 1 : 0) * r * (1 - state.split) });
+      edgeText.textContent = inView ? `경계 ${fmt(edgeMs)}ms` : `경계 ${fmt(edgeMs)}ms (그래프 밖)`;
+      setAttrs(edgeText, { x: inView ? ex : (l.x0 + l.x1) / 2, y: l.y0 - 6, opacity: r * (1 - state.split) });
+
+      // 한계 곡선
+      const pts: string[] = [];
+      const n = 40;
+      for (let i = 0; i <= n; i++) {
+        const ms = X_MIN + ((X_MAX - X_MIN) * i * r) / n;
+        pts.push(`${i ? 'L' : 'M'}${X(ms).toFixed(1)},${Y((state.pool * 1000) / ms).toFixed(1)}`);
+      }
+      setAttrs(curve, { d: pts.join(' ') });
+      curveText.textContent = `풀 ${Math.round(state.pool)} 의 한계`;
+      const cx = X(25.25);
+      setAttrs(curveText, { x: cx + 4, y: Y((state.pool * 1000) / 25.25) - 8, opacity: r });
+
+      // run 점과 run 별 필요량 눈금
+      let match = 0; let miss = 0; let tie = 0; const missNames: string[] = [];
+      runViews.forEach(({ run, link, tick, g, ring, label }, i) => {
+        const appear = Math.min(1, Math.max(0, (r - 0.45 - i * 0.05) / 0.25));
+        const x = X(run.hold);
+        const limit = limitOf(run, state.pool);
+        const y = Y(limit);
+        const needRun = state.target * run.per;
+        const needY = Y(common + (needRun - common) * state.split);
+        const tw = narrow ? 8 : 11;
+        const dx = run.id === 's1' ? 7 : run.id === 'c2c' ? -7 : 0;
+        setAttrs(tick, { x1: x + dx - tw, y1: needY, x2: x + dx + tw, y2: needY, opacity: state.split * appear });
+        const above = limit - needOf(run, state);
+        const tone = Math.abs(above) < TIE ? 'var(--scene-dep)' : above > 0 ? 'var(--scene-flow)' : 'var(--scene-danger)';
+        link.style.stroke = tone;
+        setAttrs(link, { x1: x + dx, y1: y, x2: x + dx, y2: needY, opacity: state.split * appear });
+        setAttrs(g, { transform: `translate(${x.toFixed(1)},${y.toFixed(1)}) scale(${appear.toFixed(3)})`, opacity: appear });
+        ring.style.opacity = focused?.id === run.id ? '1' : '0';
+        const spot = l.labels[run.id];
+        setAttrs(label, { x: x + spot.dx, y: y + spot.dy, 'text-anchor': spot.anchor, opacity: appear });
+        if (Math.abs(above) < TIE) tie += 1;
+        else if ((above > 0) === run.valid) match += 1;
+        else { miss += 1; missNames.push(run.short); }
+      });
+      setAttrs(legend, { transform: `translate(${l.x1 - (narrow ? 112 : 128)},${l.y0 - (narrow ? 42 : 20)})`, opacity: r });
+      setAttrs(legValid, { cx: 0, cy: 0 });
+      setAttrs(legValidText, { x: 9, y: 4 });
+      setAttrs(legInvalid, { transform: `translate(${narrow ? 60 : 68},0) rotate(45)` });
+      setAttrs(legInvalidText, { x: narrow ? 69 : 77, y: 4 });
+
+      const tieText = tie ? `, 같음 ${tie}` : '';
+      const missText = miss ? ` (${missNames.join(', ')})` : '';
+      status.textContent = narrow
+        ? `k6 판정과 맞음 ${match}, 어긋남 ${miss}${tieText}`
+        : `한계와 필요량 비교가 k6 판정과 맞은 run ${match}개, 어긋난 run ${miss}개${missText}${tieText}`;
+      status.style.fill = miss ? 'var(--scene-danger)' : 'var(--scene-flow-ink)';
+      if (Math.round(state.pool) !== 10) {
+        status.textContent = narrow ? '풀 크기를 바꾼 가정: 판정과 비교 안 함' : '풀 크기를 바꾼 가정에서는 k6 판정과 비교하지 않습니다';
+        status.style.fill = 'var(--scene-dep)';
+      }
+      setAttrs(status, { x: l.view[0] / 2, y: l.status, opacity: r });
+    });
+
+    const refresh = () => {
+      const s = scene.state;
+      if (focused) {
+        const run = focused;
+        const limit = limitOf(run, s.pool);
+        const need = needOf(run, { ...s, split: mode === 'run' ? 1 : 0 });
+        const diff = limit - need;
+        const cmp = Math.abs(diff) < TIE ? '거의 같습니다' : diff > 0 ? `${fmt(diff)} 높습니다` : `${fmt(-diff)} 낮습니다`;
+        note.innerHTML = `<strong>${run.name}</strong>: k6 ${run.valid ? '유효' : '무효'}(드롭 ${run.drop}), 점유 ${run.hold.toFixed(2)}ms, 주문당 획득 ${run.per.toFixed(3)}, 획득 대기 평균 ${run.acqWait}ms, 풀 대기 평균 ${run.pend}. 한계 ${fmt(limit)}회/초가 ${mode === 'run' ? '이 run 의' : '공통'} 필요량 ${fmt(need)}회/초보다 ${cmp}.`;
+        note.classList.toggle('is-alert', Math.abs(diff) >= TIE && (diff > 0) !== run.valid);
+        return;
+      }
+      if (mode === 'run') {
+        note.textContent = '각 run 의 주문당 획득으로 필요량을 따로 세면, 무효인 c3 는 주문당 획득이 2.00 이라 필요량이 339회/초이고 한계 354회/초가 그보다 높습니다. c2 복구 뒤는 한계와 필요량이 거의 같습니다. run 별 필요량으로는 유효와 무효가 갈리지 않습니다.';
+        note.classList.add('is-alert');
+        return;
+      }
+      if (s.pool !== 10) {
+        note.textContent = `풀이 ${s.pool}개라면 같은 점유 시간에서 한계가 ${s.pool > 10 ? '올라' : '내려'} 경계 점유 시간이 ${fmt((s.pool * 1000) / (s.target * s.per))}ms 가 됩니다. 점은 풀 10 에서 잰 점유 시간을 그대로 옮긴 가정이라, 풀 크기를 바꾸면 점유 시간도 달라질 수 있고 k6 판정과 비교할 수 없습니다.`;
+        note.classList.remove('is-alert');
+        return;
+      }
+      note.textContent = s.per >= 2.095 && s.per <= 2.12 && s.target === 170 && s.pool === 10
+        ? '공통 필요량을 약 357회/초로 잡으면 유효 run 넷은 기준선 위, 무효 run 셋은 아래에 있습니다. 주문당 획득을 일곱 run 평균인 2.08 로 끌어 보거나, 필요량을 run 별로 바꿔 보세요.'
+        : `공통 필요량 ${fmt(s.target * s.per, 0)}회/초, 경계 점유 시간 ${fmt((s.pool * 1000) / (s.target * s.per))}ms 입니다. 갈림은 기준선을 어디에 두느냐에 달려 있습니다.`;
+      note.classList.remove('is-alert');
+    };
+
+    const setMode = (next: Mode) => {
+      mode = next;
+      modeButtons.forEach((b) => { b.setAttribute('aria-pressed', String(b.dataset.mode === mode)); b.removeAttribute('data-state'); });
+      perSlider.disabled = mode === 'run';
+      perSlider.closest('label')!.style.opacity = mode === 'run' ? '0.5' : '1';
+      focused = undefined;
+      refresh();
+      void scene.go({ ...scene.state, split: mode === 'run' ? 1 : 0 }, duration.draw, ease.standard);
+    };
+    modeButtons.forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode as Mode)));
+
+    // 슬라이더는 직접 조작이라 보간 없이 바로 따라갑니다.
+    const onSlide = () => {
+      const per = Number(perSlider.value);
+      const target = Number(targetSlider.value);
+      const pool = Number(poolSlider.value);
+      if (per !== scene.state.per) bumpText(perOut, `${per.toFixed(2)}회`);
+      if (target !== scene.state.target) bumpText(targetOut, `${target}건/초`);
+      if (pool !== scene.state.pool) bumpText(poolOut, `${pool}개`);
+      scene.set({ ...scene.state, per, target, pool, reveal: 1 });
+      refresh();
+    };
+    [perSlider, targetSlider, poolSlider].forEach((s) => s.addEventListener('input', onSlide));
+    root.addEventListener('pointerleave', () => { if (focused) { focused = undefined; scene.redraw(); refresh(); } });
+
+    watchNarrow(demo, (isNarrow) => {
+      narrow = isNarrow;
+      const [w, h] = L().view;
+      setAttrs(root, { viewBox: `0 0 ${w} ${h}` });
+      scene.redraw();
+    });
+    refresh();
+
+    // 처음 화면에 들어오면 곡선을 그리고 점을 하나씩 찍은 뒤, run 별 버튼을 부릅니다.
+    let played = false;
+    let touched = false;
+    [perSlider, targetSlider, poolSlider, ...modeButtons].forEach((el) => el.addEventListener('pointerdown', () => { touched = true; }));
+    watchDemoPlayback(demo, ({ shouldPlay }) => {
+      if (played || !shouldPlay || touched) return;
+      played = true;
+      void (async () => {
+        scene.set({ ...scene.state, reveal: 0 });
+        await scene.pause(200);
+        if (touched) { scene.set({ ...scene.state, reveal: 1 }); return; }
+        await scene.go({ ...scene.state, reveal: 1 }, duration.draw * 2.2, ease.out);
+        if (!touched) modeButtons.find((b) => b.dataset.mode === 'run')?.setAttribute('data-state', 'next');
+      })();
+    }, { threshold: 0.45 });
+  });
+</script>
+
+<style>
+  .db-demo :global([data-mode][data-state="next"]) { animation: scene-beckon 1.8s ease-in-out infinite; border-color: var(--scene-flow); }
+  .db-demo :global(.scene-range input:disabled) { cursor: not-allowed; }
+</style>

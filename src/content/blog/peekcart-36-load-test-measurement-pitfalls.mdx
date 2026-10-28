@@ -1,0 +1,517 @@
+---
+title: 'PeekCart 학습 기록 36: 부하 측정은 측정 환경의 어디에서 틀렸을까?'
+description: '부하 측정 세션 세 번에서 숫자를 틀리게 만든 측정 환경의 결함과, 세션 전에 확인하거나 계산할 수 있었던 것을 정리했습니다.'
+image: "/images/blog/peekcart-load-test-measurement-pitfalls/thumbnail.jpg"
+pubDate: 2026-10-28
+category: infra
+slug: peekcart-load-test-measurement-pitfalls
+tags: [peekcart, load-testing, performance-testing, k6, prometheus, grafana, kubernetes, observability, hikaricp, mysql, kafka]
+draft: false
+---
+
+import IncreaseFirstSample from '@/components/blog/peekcart/load-test-pitfalls/IncreaseFirstSample.astro';
+import PoolLimitChart from '@/components/blog/peekcart/load-test-pitfalls/PoolLimitChart.astro';
+
+{/*
+독자: Kubernetes 위에서 Prometheus, Grafana 로 지표를 보고 부하 도구(k6 등)와 셸 하네스로 측정 세션을 돌리는 백엔드 개발자. PeekCart 를 몰라도 자기 측정 세션에 그대로 가져갈 수 있어야 한다.
+핵심 주장: 부하 측정 세 번에서 결론을 흔든 결함은 측정 대상보다 측정 환경에 많았고, 대부분은 "값이 없음"을 0 이나 정상으로 읽는 자리와 세션 전에 계산하지 않은 한계(커넥션 풀, 디스크, 프로브)에서 나왔다. 둘 다 세션 전에 로컬에서 확인하거나 계산할 수 있었다. 단 커넥션 풀은 계산식을 세우는 데까지가 근거의 범위다.
+유형: 주 experiment, 보조 troubleshooting.
+수치 출처: "첫 세션", "두 번째 세션", "마지막 세션"은 GKE 과금 세션 세 번이다(KST 10-24, 10-25, 10-26. 마지막 세션의 원자료 시각은 UTC 10-25). 본문 시각은 모두 UTC. "이 글을 쓰며 로컬에서 재현"은 세션 뒤 macOS arm64 Docker 에서 세션과 같은 이미지 digest 로 다시 돌린 값이다. 세션 값과 재현 값, 세션끼리의 값은 한 표나 그래프에 섞지 않는다.
+확인한 버전: kube-prometheus-stack 91.4.0, Prometheus 3.14.0(세션 버전은 차트 기본값으로 추정), Micrometer 1.15.10, Grafana 문서 latest(세션 Grafana 13.2.1), Kafka 3.8.1, spring-kafka 3.3.14, k6 v2.2.0(문서는 latest), HikariCP 6.3.3, Kubernetes v1.35.6, mysql 8.0.46.
+시점: 스로틀 패널이 빈 원인은 두 번째 세션 전 계획에서 helm template 으로 확인했다. increase() 의 첫 건 누락은 첫 세션 전에 전제로만 알았고 재현은 이 글을 쓰며 했다. rate 창 설정, Kafka 의 "- 0 -" 재현, awk 재현, binlog 기본값 출처와 DELETE 재현, Kafka log.dirs 는 이 글을 쓰며 확인했다. 커넥션 풀 표는 마지막 세션 끝에 만들었고 run 별 필요량 비교는 이 글을 쓰며 다시 셌다.
+*/}
+
+첫 세션에서 과금 GKE 클러스터를 띄우고 20분쯤 지나 상품 조회 경로 측정의 첫 run 이 끝났습니다. 캐시를 끈 조회였고 200 응답이 0.77% 였습니다. 나머지는 대부분 DB 진입 상한이 거절한 요청이었습니다(이 상한과 캐시 결정은 다른 글에서 다룹니다). MySQL 이 CPU 한도에 막혔는지 보려고 대시보드의 "CPU 스로틀 (컨테이너별)" 패널을 열었는데 선이 하나도 없었습니다. 스로틀이 없다는 뜻일 수도 있고 지표가 없다는 뜻일 수도 있었습니다. Prometheus 에 직접 세어 보니 패널이 쓰는 `container_cpu_cfs_throttled_seconds_total` 은 시계열이 하나도 없었습니다. 같은 cAdvisor 의 `container_cpu_cfs_throttled_periods_total` 은 60개 있었습니다.
+
+```text
+16 CPU 스로틀 (컨테이너별) ['sum by (container) (rate(container_cpu_cfs_throttled_seconds_total{namespace="peekcart", container!="", container!="POD"}[$__rate_interval]))']
+count(container_cpu_cfs_throttled_seconds_total) EMPTY
+count(container_cpu_cfs_throttled_periods_total) 60
+count(container_cpu_usage_seconds_total{namespace="peekcart"}) 12
+```
+
+PeekCart 는 혼자 만드는 이커머스 백엔드 프로젝트입니다. 주문이 들어오면 주문, 상품, 결제 서비스가 Kafka 로 메시지를 주고받으며 재고를 예약합니다. 각 서비스는 보낼 메시지를 DB 의 outbox 테이블에 먼저 쓰고 따로 발행합니다. 이 서비스들을 GKE 에 띄우고 과금 세션을 세 번 돌렸습니다. 주된 측정은 경합 run 이었습니다. k6 로 초당 170건의 주문을 60초 동안 상품 하나에 몰아 넣고 재고 행의 낙관락 충돌을 셌습니다. 상품 조회 부하를 넣는 측정도 있었습니다.
+
+세 세션에서 지표가 사라지고, 하네스가 빈 출력을 0 으로 읽고, 부하가 덜 들어가고, 디스크가 차고, 프로브가 JVM 을 죽였습니다. 결론을 흔든 결함은 측정 대상보다 측정 환경에 많았습니다(문제로 적은 34건을 절차 항목까지 함께 제 기준으로 나눈 결과이고, 커넥션 풀 한계는 이 분류에서 측정 대상 쪽에 두었습니다). 대부분은 "값이 없음"을 0 이나 정상으로 읽는 자리와 세션 전에 계산하지 않은 한계(커넥션 풀, 디스크, 프로브)에서 나왔습니다. 둘 다 세션 전에 로컬에서 확인하거나 계산할 수 있었습니다. 다만 이 글을 쓰며 로컬 재현으로 보인 것은 지표, 하네스, 디스크 기본값 쪽입니다. 커넥션 풀은 점유 시간이 측정 환경에서만 나오는 값이라 세션 전에는 계산식을 세우는 데까지만 할 수 있었습니다.
+
+이 글은 세 질문을 따라갑니다. 측정 장치는 어디에서 "값이 없음"을 0 이나 정상으로 읽었을까요? 부하는 목표만큼 들어갔고 처리 한계는 세션 전에 계산할 수 있었을까요? 측정 대상 밖에서 세션을 무너뜨린 사고는 무엇이었고 세션 전에 무엇을 정해 두었어야 했을까요?
+
+세 세션은 차례로 첫 세션, 두 번째 세션, 마지막 세션이라고 부르고 시각은 모두 UTC 로 적습니다. 도구 동작을 일반화한 문장에는 확인한 버전과 방법을 붙였습니다. 이 글을 쓰며 로컬에서 재현한 값은 그렇다고 밝히고 세션 수치와 한 표에 섞지 않았습니다. 재현 환경의 범위는 끝의 "남은 것"에 모았습니다.
+
+## 지표는 세 가지 방식으로 비거나 덜 셌습니다
+
+### 차트 기본 relabel 이 버린 지표는 빈 패널로 보입니다
+
+Helm 차트로 모니터링 스택을 설치하면 차트의 기본 relabel 규칙이 일부 지표를 수집 단계에서 버립니다. 그 지표를 쓰는 패널은 오류 없이 빈 채로 그려집니다. 스로틀 패널이 빈 원인도 여기에 있었습니다.
+
+kube-prometheus-stack 91.4.0 의 기본 values 는 kubelet 의 cAdvisor 엔드포인트에 metric relabel 규칙을 넣습니다. 그 첫 규칙이 `container_cpu_cfs_throttled_seconds_total` 을 버립니다. 같은 규칙이 `container_cpu_load_average_10s`, `container_cpu_system_seconds_total`, `container_cpu_user_seconds_total` 도 버립니다. `container_cpu_cfs_periods_total` 과 `container_cpu_cfs_throttled_periods_total` 은 남깁니다.
+
+```yaml
+    cAdvisorMetricRelabelings:
+      # Drop less useful container CPU metrics.
+      - sourceLabels: [__name__]
+        action: drop
+        regex: 'container_cpu_(cfs_throttled_seconds_total|load_average_10s|system_seconds_total|user_seconds_total)'
+```
+
+세션 중에는 "차트가 버리는 것으로 보인다"까지만 적었고 두 번째 세션을 계획하며 세션 values 로 `helm template` 을 돌려 kubelet ServiceMonitor 에 이 drop 규칙이 들어가는 것을 확인했습니다. 세 세션의 차트 버전은 모두 91.4.0 이었습니다. 설치 스크립트가 차트 버전을 고정하지 않아서 두 번째 세션부터는 설치 명령에 `--version 91.4.0` 을 직접 붙였습니다. 이 글을 쓰며 같은 버전으로 `helm show values` 와 `helm template` 을 다시 돌려 위 규칙과 차트 digest 가 같은지 대조했습니다.
+
+세션 전에 이것을 몰랐던 이유도 있습니다. 대시보드는 첫 세션 하루 전에 만들었고 패널 식은 promtool 로 문법을 검사하고 로컬 Grafana 에 import 까지 했습니다. 로컬 리허설 환경에는 cAdvisor 가 없어서 실제 시계열이 그려지는지는 세션에서만 볼 수 있었습니다. 문법이 맞는 식도 데이터가 없는 식일 수 있다는 것을 그 검사들은 보지 못했습니다.
+
+차트 기본 relabel 목록을 values 에 통째로 복제하고 seconds 규칙만 빼거나, 패널 식을 남아 있는 periods 메트릭의 비율(스로틀된 CFS period 수를 전체 period 수로 나눈 값)로 바꾸는 방법이 있었습니다. 차트에 들어 있는 kubernetes-mixin 대시보드도 periods 비율을 쓰고, 목록을 복제하면 설치 스크립트가 버전을 고정하지 않은 차트의 기본값과 업그레이드 때 어긋나서 비율 쪽을 골랐습니다. 대가로 패널 단위가 "초/초"에서 비율로 바뀌었습니다. 하네스는 cgroup `cpu.stat` 차분으로 스로틀 시간을 초 단위로 따로 세는데 그 값과 같은 축에 겹쳐 읽을 수 없게 됐습니다. 원래 패널은 그 초 단위 축을 의도해 만든 것이었고 이 비용을 알고 제가 비율 쪽으로 정했습니다.
+
+```json
+          "expr": "sum by (container) (rate(container_cpu_cfs_throttled_periods_total{namespace=\"peekcart\", container!=\"\", container!=\"POD\"}[$__rate_interval])) / sum by (container) (rate(container_cpu_cfs_periods_total{namespace=\"peekcart\", container!=\"\", container!=\"POD\"}[$__rate_interval]))",
+```
+
+고친 식은 세션 사이에 로컬 minikube 에 같은 차트를 올려 확인했습니다. CPU limit 을 건 컨테이너에서 바쁜 루프를 돌리자 기존 식은 빈 결과, 새 식은 0.989 였습니다. 처음에는 minikube 의 docker 런타임으로 확인하려 했습니다. 그 구성에서는 cAdvisor 가 Pod 단위 시계열만 내서 판정할 수 없었고 GKE 와 같은 containerd 런타임으로 다시 했습니다. 두 번째 세션의 같은 패널에는 값이 나왔습니다.
+
+첫 세션에는 측정용 overlay 에 앱의 ServiceMonitor 가 없어서 앱 메트릭이 아예 수집되지 않았습니다. 세션 초반 배포 전에 알아채 단계마다 손으로 적용했습니다. 이 조치에도 대가가 있었습니다. 비교 기준선 세션은 Prometheus 없이 쟀는데 이번에는 15초 간격 scrape 가 앱 Pod 에 더해졌습니다. 모니터링 스택 자체는 taint 를 건 전용 노드풀에만 띄워 측정 대상 노드의 CPU 를 나눠 쓰지 않게 했습니다. 노드 CPU 를 재는 node-exporter 만은 DaemonSet 이라 앱 노드에서도 돕니다.
+
+패널이 비면 먼저 그 식의 메트릭이 수집되고 있는지 `count(<메트릭>)` 으로 세어 볼 수 있습니다. 세션에서 쓸 패널 식의 메트릭을 세션 전에 한 번씩 세어 두면 빈 패널을 0 으로 읽는 일을 막을 수 있을 것입니다. 이번 세션들에서는 이 점검을 하지 않았습니다.
+
+### 첫 증가 때 생기는 카운터는 `increase()` 가 첫 건을 세지 못합니다
+
+태그 값이 실행 중에 정해지는 카운터는 보통 그 값이 처음 나올 때 등록합니다. 사건이 일어난 자리에서 Micrometer 의 `Counter.builder(...).register()` 를 부르는 코드가 그렇습니다. 이런 카운터는 첫 사건 전에는 시계열 자체가 없습니다.
+
+경합 run 마다 낙관락 재시도 횟수와 DLQ 로 간 건수를 셌습니다. 이전 측정에서 DLQ 는 7건이었으니 한두 건 차이도 결론에 영향을 줍니다. 상품 서비스의 재시도 메트릭은 Kafka 리스너에서 실패가 처음 날 때 만들어집니다. 토픽과 원인(낙관락 여부) 태그가 그때 정해지므로 미리 등록해 두지 않았습니다.
+
+```java
+    @Override
+    public void failedDelivery(ConsumerRecord<?, ?> record, Exception ex, int deliveryAttempt) {
+        Counter.builder(DELIVERY_FAILED)
+                .tag("topic", record.topic())
+                .tag("cause", isOptimisticLock(ex) ? "optimistic_lock" : "other")
+                .description("소비 전달 실패 (재시도 포함, 마지막 시도 포함)")
+                .register(registry)
+                .increment();
+    }
+```
+
+그래서 첫 실패 전에는 `/actuator/prometheus` 응답에 그 시계열이 아예 없고 첫 실패 뒤 처음 scrape 될 때 값이 이미 1 입니다. Prometheus 3.14 의 [`increase()`](https://prometheus.io/docs/prometheus/3.14/querying/functions/) 는 범위 안에 있는 표본으로 증가량을 계산하고 범위 끝 쪽으로 외삽합니다. 0 인 표본이 한 번도 없으니 0 에서 1 로 오른 첫 건은 계산에 들어갈 자리가 없습니다.
+
+첫 세션 전 대시보드를 만들 때 이 점을 전제로 알고 있었습니다. 그래서 캡처 기준을 정할 때 건수는 세션 전후 `/actuator/prometheus` 원값 차분(시계열이 없으면 0)으로 세고 그래프는 보조로만 쓰기로 했습니다. 그때 재현해 보지는 않았습니다.
+
+이 글을 쓰며 로컬에서 재현했습니다. Prometheus v3.14.0 이미지를 기능 플래그 없이 띄우고 Spring Boot 3.5.12 앱(Micrometer 1.15.10)을 15초마다 scrape 하게 했습니다. 이 앱에는 상품 서비스의 재시도 메트릭 클래스 원본을 그대로 컴파일해 넣었습니다. 시작 50초에 재시도 실패 1건과 DLQ 1건을 내고 시작 110초에 실패 2건을 더 냈습니다. 대조군으로 기동 때 0 으로 등록해 둔 카운터를 같은 시점에 같은 횟수만큼 올렸습니다.
+
+<IncreaseFirstSample />
+
+190초 창으로 물은 결과입니다(이 글을 쓰며 로컬에서 재현).
+
+| 카운터 | 실제 증가(원값 차분, 시계열이 없으면 0) | `increase(...[190s])` |
+|---|---|---|
+| 재시도 실패(첫 실패 때 등록) | 3 | 2.37 |
+| DLQ 회복(첫 DLQ 때 등록, 한 번뿐) | 1 | 0 |
+| 대조군(기동 때 0 으로 등록) | 3 | 3.27 |
+
+늦게 등록된 두 시계열은 첫 표본이 이미 1 이었고 대조군은 0 인 표본 세 개로 시작했습니다. DLQ 처럼 드문 사건은 그 Pod 에서 처음 일어난 한 건이면 그래프에서 0 으로 보입니다. 미리 등록한 대조군도 외삽 때문에 정수가 아닌 3.27 이 나왔으니 건수를 정확히 세는 데는 어느 쪽이든 원값 차분이 맞습니다. 시계열은 Pod 와 태그 조합마다 따로 생기므로 run 안에서 처음 생긴 시계열 수만큼 첫 건이 빠질 것으로 추정합니다.
+
+Prometheus 3.14.0 에는 created timestamp 를 0 표본으로 넣는 실험 기능 `created-timestamp-zero-ingestion` 이 있습니다. 같은 재현에서 이 플래그를 켠 Prometheus 를 하나 더 띄웠지만 결과는 2.22, 0, 3.11 로 같은 경향이었습니다. 이 앱의 응답에는 카운터의 created timestamp 줄이 없었습니다. 어떤 노출 형식으로 scrape 됐는지는 확인하지 못해서 이 플래그가 이 문제를 고치지 못한다고 일반화하지는 않습니다. 세션의 Prometheus 는 이 플래그 없이 떴고 버전이 3.14.0 이라는 것은 차트 기본값에서 추정한 값입니다.
+
+세션 하네스는 run 마다 상품 Pod 셋의 `/actuator/prometheus` 원문을 전후로 떠서 차분을 냈고 시계열이 없으면 0 으로 셌습니다. Pod 가 바뀌면 카운터가 처음부터 다시 시작하므로 전후 Pod UID 집합이 다르면 "차분을 쓰지 않는다"고 찍게 했습니다. 세 세션 원자료에서 이 경고가 찍힌 run 은 없었습니다. 같은 Pod 안에서 컨테이너만 재시작하면 UID 가 그대로라 이 검사로는 잡지 못하는데, 두 번째 세션의 컨테이너 재시작은 주문 서비스에서 일어나 상품 서비스의 차분에는 영향이 없었습니다. 측정 대시보드의 누적 패널도 `increase()` 대신 누적 원값을 그립니다.
+
+드물게 일어나는 사건을 세는 카운터라면 알려진 태그 조합을 기동 때 0 으로 등록하거나 그래프 대신 원값 차분으로 세는 방법이 있습니다. 앞쪽은 재현의 대조군이 보인 방법이고 PeekCart 는 쓰지 않았습니다. 원값 차분을 쓰면 Pod 재시작으로 카운터가 처음부터 다시 시작한 구간을 걸러야 합니다.
+
+### 1분짜리 run 을 2분 이상의 rate 창으로 그렸습니다
+
+Grafana 패널의 rate 창(`$__rate_interval`)은 데이터소스에 적은 scrape 간격의 네 배보다 짧아지지 않습니다. run 이 1분 남짓이면 이 창이 run 보다 길어질 수 있으니 패널의 봉우리를 그대로 판정에 쓰기 전에 창 길이부터 확인해야 합니다.
+
+두 번째 세션의 상품 조회 측정에는 "상품 서비스가 있는 노드의 CPU 가 90% 를 넘는가"라는 판정이 있었습니다. 대시보드 패널로 보면 최대 약 65% 였고 같은 식을 캡처 도구로 export 한 시계열은 84% 였습니다. 판정은 export 값으로 했고 둘 다 90% 아래라 결론은 같았습니다.
+
+두 값이 다른 이유는 이 글을 쓰며 설정에서 찾았습니다. Grafana 의 [`$__rate_interval`](https://grafana.com/docs/grafana/latest/datasources/prometheus/template-variables/) 은 `max($__interval + scrape_interval, 4 * scrape_interval)` 입니다. 쿼리에 Min step 을 정하지 않았다면 scrape_interval 은 데이터소스에 설정한 값입니다. 이 계산식은 최신판 문서로 확인해서 세션의 Grafana 13.2.1 과 다를 수 있습니다. kube-prometheus-stack 91.4.0 을 세션 values 로 렌더하면 Grafana 데이터소스의 `timeInterval` 이 30s 입니다. 그러면 패널의 rate 창은 최소 2분입니다. 캡처 도구는 같은 식의 `$__rate_interval` 을 1m 으로 바꾸고 15초 간격으로 뽑았습니다.
+
+```yaml
+      jsonData:
+        httpMethod: POST
+        timeInterval: 30s
+```
+
+노드 메트릭의 scrape 간격도 30초였습니다. Prometheus CR 에 scrape 간격을 적지 않아 operator 기본값 30s 를 따랐고 node-exporter ServiceMonitor 에도 간격이 없습니다. 15초는 앱 ServiceMonitor 에만 적었습니다. export 의 15초 간격 값이 두 개씩 같은 것도 그 때문입니다.
+
+캡처 이미지에서 상품 서비스 노드의 선은 run 구간과 run 사이 휴지 구간 모두 60~65% 로 평평합니다. 1분 창 export 는 같은 구간에서 0.18~0.24 와 0.76~0.87 사이를 오갑니다. 2분 이상의 창 안에 60초 run 과 휴지 구간이 함께 들어가 봉우리가 낮아졌을 것으로 추정합니다. 다만 1분 창 값 두 개를 평균해 2분 창을 근사해 보면 0.79~0.85 가 나와 화면의 약 65% 를 재구성하지 못했습니다. 근사가 거칠어서인지 다른 요인이 있는지는 구분하지 못했습니다.
+
+Grafana 는 대상마다 scrape 간격이 다르면 데이터소스의 scrape 간격을 그중 가장 긴 값에 맞추라고 권하는데, 이번 설정은 이미 그렇게 30초로 맞춰져 있었고 2분 이상의 창도 그 설정에서 나왔습니다. 쿼리마다 Min step 을 정해 데이터소스 값을 덮어쓰는 방법도 있습니다. 판정에 쓸 값은 창과 간격을 고정한 export 로 미리 정해 두기를 제안합니다.
+
+## 하네스는 "없음"을 0 이나 정상으로 읽었습니다
+
+### 빈 출력과 명령 실패가 awk 에서 0 이 됩니다
+
+명령 출력을 awk 로 합산하는 셸 하네스는 출력이 비어도, 명령이 실패해도 0 을 낼 수 있습니다. 합계를 숫자로 찍으려고 끝에서 `+ 0` 을 붙이면 더한 값이 없을 때도 0 이 찍히기 때문입니다.
+
+경합 run 은 k6 가 끝난 뒤 outbox 가 비고 모든 consumer group 의 lag 가 0 이 될 때까지 기다렸다가(배수) 다음 단계로 갑니다. lag 합계는 `kafka-consumer-groups.sh --describe --all-groups` 출력을 awk 로 더해 구했습니다.
+
+```bash
+lag_total() {
+  kubectl -n "$NS" exec deploy/kafka -- /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:29092 \
+      --describe --all-groups 2>/dev/null \
+    | awk '$1 != "GROUP" && NF >= 6 && $3 ~ /^[0-9]+$/ {
+             if ($5 ~ /^[0-9]+$/) { if ($4 ~ /^[0-9]+$/) l += $5 - $4; else l += $5 }
+           } END { print l + 0 }'
+}
+```
+
+출력이 비면 `l` 에는 값이 없고 `l + 0` 은 0 입니다. 배수 루프는 이 함수가 문자열 "0" 을 내면 배수가 끝난 것으로 처리합니다. 명령은 `2>/dev/null` 로 오류도 버렸습니다. 이 글을 쓰며 같은 awk 에 세 가지 입력을 넣어 로컬에서 재현했습니다. Kafka 3.8.1 의 실제 describe 출력은 1, 빈 출력은 0, 존재하지 않는 브로커 주소로 명령이 실패한 경우도 0 이었습니다.
+
+마지막 세션의 run 은 이름으로 부릅니다. 워밍업 run w1~w4 를 돌린 뒤 결과를 판정하는 run(판정 run) c1, c2, c3 를 경합 모드로, s1 을 대조군으로 돌렸습니다. c2 는 세 번 돌았습니다. 첫 시도가 부하 판정에서 무효라 다시 돌렸고(c2 재시도) 그 배수 중에 디스크가 차서 복구한 뒤 한 번 더 돌렸습니다(복구 뒤 c2).
+
+마지막 세션에서 이 결함이 두 번 의심됐습니다. 디스크가 가득 찬 사고(아래 "기본 binlog 와 1Gi 볼륨" 절에 시간표가 있습니다) 뒤에 돌린 복구 배수는 lag 3,816 에서 다음 조회 한 번에 0 이 되며 끝났습니다. 그런데 같은 순간의 수동 조회는 결제 서비스 group 의 lag 3,815 를 보였습니다. 같은 컨테이너에서 admin 도구 두 개를 겹쳐 돌린 때였고 원인은 확인하지 못했지만 빈 출력이 0 으로 읽혔을 가능성이 큽니다.
+
+약 15분 뒤 복구 뒤의 c2 를 배수하던 중에는 5분 주기 감시가 lag 를 직접 조회해 "group lag 도 모두 0" 이라고 보고했습니다(이 감시는 아래 "멈춘 하네스를 아무도 몰랐습니다"에서 다룹니다). 5분쯤 뒤 다시 조회하니 결제 서비스 group 의 lag 가 10,186 이었습니다. 그 사이 새 run 은 시작하지 않았고 이 lag 는 같은 c2 의 레코드였습니다. 감시의 조회도 오류를 버리고 lag 가 0 보다 큰 행만 찍는 식이었으니 빈 출력이 "모두 0" 으로 읽혔습니다.
+
+```text
+10186 payment-svc-stock-result-group stock.reservation.result 18615/23738 consumer-payment-svc-stock-result-group-2-e06f8d80-f15e-4004-9be6-409429932391
+partitions 103 total lag 10186
+```
+
+그보다 앞선 run 셋(w4, c1, 첫 c2)의 배수 끝 시각은 Prometheus 에 남은 상품 서비스 클라이언트 쪽 lag 0 시각과 1~14초 안에서 맞아 그 셋에는 오판이 없었습니다. 세션 중에는 새로 쓴 대기 스크립트만 파티션 행이 없으면 0 대신 `?` 를 적게 고쳤고 저장소의 하네스는 아직 고치지 않았습니다.
+
+같은 결함은 첫 세션 전에도 한 번 있었습니다. 로컬 수집기가 캐시 counter 를 awk `s+0` 으로 읽어 빈 응답을 0 으로 바꿨습니다. 계획 점검 때 발견해 "수집 불가"를 따로 적도록 고쳤습니다. 그 수정이 다른 스크립트에는 옮겨 가지 않았습니다. 하네스에는 작은 표시 결함도 하나 있었습니다. outbox 가 0 에 닿지 못하고 배수가 중단되면 콘솔에 "outbox 0 까지 0초" 가 찍혔습니다. 기록이 없을 때 기본값으로 시작 시각을 써서 차이가 0 이 됐습니다.
+
+### fixture 가 코드의 틀린 포트를 같이 들고 있어 테스트가 통과했습니다
+
+검사 대상 코드에 맞춰 만든 fixture 는 그 코드의 틀린 상수를 같이 갖게 됩니다. 그러면 틀린 값이 있어도 테스트는 통과합니다.
+
+DLQ 재처리 기능을 배포할 때는 배포 래퍼가 먼저 preflight 스크립트를 돌립니다. 모든 DLQ group 의 lag 가 0 인지 확인하고, 확인하지 못하면 배포를 막는 검사입니다. 이 preflight 가 첫 세션에서 막힌 이유는 단순했습니다. 스크립트가 브로커 주소를 `localhost:9092` 로 고정했는데 Kubernetes 매니페스트의 Kafka 리스너는 29092 하나뿐이었습니다. 실제 클러스터에서 DLQ group 네 개의 lag 조회가 전부 실패했고 preflight 는 배포를 막았습니다.
+
+```text
+[DRAIN-PREFLIGHT] namespace=peekcart · drain 상한 564s · lag 재관측 간격 15s
+수집 실패 — fail-closed (부재는 안전의 증거가 아니다):
+  ! order: consumer group order-svc-dlq-group 의 lag 조회 실패
+  ! product: consumer group product-svc-dlq-group 의 lag 조회 실패
+  ! payment: consumer group payment-svc-dlq-group 의 lag 조회 실패
+  ! notification: consumer group notification-svc-dlq-group 의 lag 조회 실패
+[DRAIN-PREFLIGHT] 배포를 막는다. 조치는 docs/runbooks/dlq-recovery.md §6-R 을 따른다
+```
+
+이 결함이 있는 채로 테스트는 통과했습니다. 한 fixture 는 수집 계층을 실제 Docker 브로커로 검사하는데 브로커 리스너를 9092 로 덮어썼습니다. kubectl 을 흉내 내는 fixture 도 9092 가 들어간 인자만 받았습니다. fixture 를 스크립트에 맞춰 만들었기 때문에 스크립트의 틀린 상수를 fixture 도 같이 갖고 있었습니다.
+
+포트를 29092 로 맞추면서 lint 를 하나 더했습니다. preflight 의 브로커 포트와 매니페스트의 PLAINTEXT 리스너 포트를 각각 읽어 다르면 실패합니다. 고치기 전 코드에 돌리면 "preflight 는 localhost:9092 로 lag 를 묻는데 k8s Kafka 리스너는 29092 다" 로 실패했습니다. lint 자체 검사에는 9092 로 되돌린 사본과 리스너만 바꾼 사본을 넣어 둘 다 잡히는 것을 확인했습니다. fixture 의 대조 기준은 이번 lint 처럼 배포에 실제로 쓰이는 매니페스트여야 합니다.
+
+### 레코드가 없는 파티션의 `-` 를 막자 정상 스택이 막혔습니다
+
+Kafka 의 `kafka-consumer-groups.sh --describe` 는 커밋이 한 번도 없는 파티션의 offset 과 lag 를 `-` 로 냅니다. `-` 를 모두 "모름"으로 막으면 레코드가 없을 뿐인 정상 상태도 막힙니다.
+
+배수 하네스와 반대로 "모름"을 너무 엄격하게 막아 생긴 문제도 있었습니다. preflight 는 offset 과 lag 칸에 숫자가 아닌 값이 있으면 실패로 처리했습니다. 첫 세션에서는 앞의 포트 문제에 먼저 막혀 이 단계까지 오지 못했습니다. 포트를 고친 뒤 코드와 로컬 Kafka 로 정상 스택도 막힌다는 것을 확인했습니다.
+
+이 글을 쓰며 Kafka 3.8.1 로 로컬에서 다시 재현했습니다. 레코드가 한 번도 쓰이지 않은 파티션에, 처리하기 전에는 커밋하지 않는 컨슈머가 붙어 있으면 `CURRENT-OFFSET` 은 `-`, `LOG-END-OFFSET` 은 0, `LAG` 는 `-` 입니다. 레코드 1건을 쓰면 `- 1 -` 가 됩니다. 컨슈머를 끝내면 그 group 은 describe 의 표준 출력에 행이 하나도 남지 않고 표준 오류에 "has no active members" 만 찍힙니다.
+
+```text
+GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID                                           HOST            CLIENT-ID
+g-empty         t-empty         0          -               0               -               console-consumer-4d85ca92-23cc-4e71-99cf-2af5acfb5f16 /127.0.0.1      console-consumer
+g-empty         t-empty         1          -               0               -               console-consumer-4d85ca92-23cc-4e71-99cf-2af5acfb5f16 /127.0.0.1      console-consumer
+g-empty         t-empty         2          -               0               -               console-consumer-4d85ca92-23cc-4e71-99cf-2af5acfb5f16 /127.0.0.1      console-consumer
+```
+
+서비스 컨슈머가 왜 커밋을 남기지 않는지는 세션 사이에 spring-kafka 3.3.14 jar 를 `javap` 로 열어 확인했고 이 글을 쓰며 다시 확인했습니다. 리스너 컨테이너의 기본 `assignmentCommitOption` 은 `LATEST_ONLY_NO_TX` 입니다. 파티션을 할당받을 때 커밋할지 정하는 코드는 자동 커밋이 꺼져 있고 `auto.offset.reset` 이 없거나 `latest` 일 때만 커밋합니다. PeekCart 서비스들은 `auto-offset-reset: earliest` 에 자동 커밋을 끄고 레코드 단위로 커밋하므로 레코드가 없는 파티션에는 커밋이 생기지 않습니다.
+
+고친 규칙은 `- 0 -` 인 행만 lag 0 으로 세고 그 밖의 `-`, 음수, 숫자가 아닌 값은 계속 막습니다. 할당 때 항상 커밋하도록(`ALWAYS`) 컨슈머 설정을 바꾸는 대안도 있었습니다. 하지만 네 서비스의 런타임을 바꾸면서도 재처리 대상 group 의 빈 파티션은 덮지 못해 고르지 않았습니다. 고칠 때 로컬 Kafka 에서 같은 컨슈머의 `0 - 0 -`(앞의 0 은 파티션 번호)는 통과하고 레코드 1건 뒤 `0 - 1 -` 는 막히는 것을 확인했습니다. 두 번째 세션의 실제 스택에서는 preflight 가 단독 실행과 배포 래퍼 경로 모두 통과했습니다.
+
+배수 하네스는 "모름"을 0 으로 읽어 너무 일찍 끝날 수 있었고 preflight 는 "레코드 없음"을 "모름"으로 읽어 늘 막혔습니다. 방향은 반대지만 둘 다 출력의 칸이 비었을 때 그것이 0 인지, 없는 것인지, 읽지 못한 것인지를 구분하지 않았습니다.
+
+### 오류를 버린 준비 단계도 있었습니다
+
+출력과 오류를 모두 버리는 준비 단계는 실패해도 드러나지 않습니다.
+
+상품 조회 측정 하네스는 블록마다 MySQL buffer pool 을 데우려고 SQL 세 문장을 돌렸습니다. 그중 세 번째 문장이 없는 컬럼 `quantity`(실제 컬럼은 `stock`)를 써서 매번 실패했습니다. 출력과 오류를 모두 `/dev/null` 로 버려서 실패가 드러나지 않았고 두 번째 세션에서야 문제로 적었습니다. 두 세션이 같은 조건이라 세션 간 비교는 깨지지 않았고 이 결함은 아직 고치지 않았습니다.
+
+측정 장치가 "없음"을 어떻게 읽었는지 모으면 이렇습니다. 마지막 행은 바로 아래에서 다룹니다.
+
+| 없던 것 | 장치가 읽은 값 | 맞는 읽기 |
+|---|---|---|
+| 첫 증가 전 카운터의 시계열 | `increase()` 가 첫 건을 빼고 셈 | 원값 차분에서 시계열이 없으면 0 |
+| 수집기가 버린 지표 | 빈 패널 | `count()` 로 메트릭이 있는지 먼저 확인 |
+| `lag_total` 의 빈 출력, 명령 실패 | 0 | 모름 |
+| 레코드가 없는 파티션의 `-` | preflight 실패 | `- 0 -` 만 0 |
+| 배수 중단 때 outbox 0 시각 | 0초 | 기록 없음 |
+| 로컬 수집기의 빈 응답 | 0 | 수집 불가 |
+| 워밍업 SQL 의 오류 | 버림 | 실패로 드러냄 |
+| threshold 없이 드롭이 0건일 때 k6 요약의 `dropped_iterations` | 판정 코드가 0 | 0 |
+
+## 부하는 목표만큼 들어갔을까요?
+
+### 부하기가 목표를 못 내도 결과는 나옵니다
+
+arrival-rate 방식의 부하기는 VU 가 모자라 목표 부하를 다 넣지 못해도 run 을 정상으로 끝내고 지연 시간과 오류율을 그대로 보고합니다. 부하가 실제로 들어갔는지는 따로 판정해야 합니다.
+
+첫 세션의 첫 경합 run 은 초당 170건씩 60초, 10,200건이 목표였는데 4,438건만 받았습니다. k6 의 `dropped_iterations` 가 5,763 이었고 가상 사용자(VU) 200개가 모두 바빴습니다. k6 의 constant-arrival-rate executor 는 정해진 속도로 반복을 시작하려 하고 쓸 수 있는 VU 가 없으면 그 반복을 시작하지 않고 버립니다. 그렇게 버린 반복 수가 [`dropped_iterations`](https://grafana.com/docs/k6/latest/using-k6/metrics/reference/) 입니다.
+
+같은 세션의 경합 run 세 개(r1, r2, r3)는 주문 p50 이 1,205ms, 701ms, 151ms 로 떨어졌습니다. 배포 직후의 JVM 이 덜 데워진 상태였는데 경합 run 에는 워밍업 규칙이 없었습니다.
+
+두 번째 세션 전에 판정 규칙을 기계적으로 정했습니다. `dropped_iterations` 가 목표 반복 수의 1%(102)를 넘으면 그 run 은 무효입니다. k6 threshold 로 걸어 두면 실패할 때 k6 가 종료 코드 99 로 끝나고(k6 v2.2.0 의 [`ThresholdsHaveFailed`](https://github.com/grafana/k6/blob/v2.2.0/errext/exitcodes/codes.go)) 요약 첫 줄에 판정을 찍습니다. threshold 를 걸지 않았던 첫 세션의 요약에는 드롭이 0건인 run 에 그 지표가 아예 없었습니다. 판정 코드는 그런 경우를 대비해 지표가 없으면 0 으로 셉니다. 이 경우는 "없음 = 0" 이 맞습니다. threshold 를 건 뒤의 요약에는 드롭이 0건이어도 `count: 0` 이 들어 있었습니다.
+
+```javascript
+// 부하 판정 문장. 0건이면 k6 가 dropped_iterations 를 요약에 넣지 않으므로 없음은 0 이다.
+export function loadVerdict(metrics) {
+  const m = metrics.dropped_iterations;
+  const dropped = (m && m.values && m.values.count) || 0;
+  const valid = dropped <= MAX_DROPPED;
+  return `부하 판정: ${valid ? '유효' : '무효'}. dropped_iterations ${dropped} ${valid ? '<=' : '>'} 한도 ${MAX_DROPPED}`
+    + ` (목표 ${TARGET_ITERATIONS}회의 1%).${valid ? '' : ' 이 run 은 버리고 초기화 뒤 다시 돌린다.'}`;
+```
+
+VU 수도 산식으로 정했습니다. 부하 스크립트에서 VU 하나는 시드한 사용자 계정 하나로 로그인해 주문하므로 사용자 수가 곧 최대 VU 수입니다. arrival-rate executor 에서는 반복 하나가 VU 하나를 반복 시간 동안 붙잡으므로 필요한 VU 는 도착률에 반복 시간을 곱한 만큼입니다.
+
+워밍업이 끝난 run 으로 고른 첫 세션 r3 의 반복 시간 p95(1.639초)에 여유 1.5 를 곱해 `⌈170 × 1.639 × 1.5 / 50⌉ × 50 = 450` 으로 정했습니다. 이전 기준이던 `USERS ≥ RPS/40` 은 사용자 한 명의 요청 한도(초당 40건)에 걸리지 않을 만큼만 사용자를 두는 하한이라 VU 포화를 막지 못했습니다.
+
+사용자를 450명으로 늘리면 순차 로그인으로 하는 setup 이 약 2분 걸려 k6 기본 setup 제한 60초에 걸리므로(종료 코드 100) `setupTimeout` 도 늘렸습니다. 이 판정은 세션 사이에 k6 대신 node 로 돌린 검사에 첫 세션의 원래 요약을 넣어 r1 과 r2 는 무효, r3 와 대조군 run 은 유효로 나오는지, 일부러 틀리게 만든 변이 일곱 가지를 각각 잡는지로 확인했습니다.
+
+대조군도 문제였습니다. 경합 모드(contend)는 모든 주문이 상품 하나에 몰리고 대조군(spread)은 상품을 돌아가며 골라 충돌을 줄이려 했습니다. 그런데 첫 세션의 대조군이 경합 run 보다 낙관락 실패가 많았습니다(129 대 31~61). 그 세션에서는 상품 10개로 나눠도 replica 3개에서는 경합이 낮지 않다고 해석했습니다. 다음 계획을 짜며 스크립트를 다시 읽으니 상품 선택에 `__ITER` 를 쓰고 있었습니다.
+
+```javascript
+  const productId = MODE === 'contend' ? PRODUCT_IDS[0] : PRODUCT_IDS[__ITER % PRODUCT_IDS.length];
+```
+
+[`__ITER`](https://grafana.com/docs/k6/latest/using-k6/execution-context-variables/) 는 VU 별 반복 번호이고 0 부터 셉니다. 그래서 run 초반에는 모든 VU 가 같은 상품을 고릅니다. 사용자 450명, 초당 170건, 60초 조건이면 VU 당 반복이 약 23번이라 상품을 1,000개로 늘려도 앞의 23개만 쓰입니다. 첫 세션(상품 10개, VU 200)의 충돌에 상품 수와 `__ITER` 가 각각 얼마나 기여했는지는 가르지 않았습니다. 시나리오 전역 순번인 [`exec.scenario.iterationInTest`](https://grafana.com/docs/k6/latest/javascript-api/k6-execution/) 로 바꾸고 상품을 1,000개로 늘린 뒤 마지막 세션의 유효한 대조군 run 은 전달 실패가 0 이었습니다.
+
+### 커넥션 풀 한계는 세션 전에 계산할 수 있었을까요?
+
+커넥션 풀이 받아 줄 수 있는 초당 커넥션 획득은 풀 크기를 평균 점유 시간으로 나눈 값을 넘지 못합니다. 필요한 획득과 풀 크기는 세션 전에 알 수 있으니, 한계가 되는 점유 시간도 식으로 미리 셀 수 있습니다.
+
+두 번째 세션은 다른 이유로 목표에 닿지 못했습니다. 아래에서 다룰 프로브 문제를 풀고 나자 수락이 초당 약 122건에서 멈췄습니다. 그때 주문 서비스의 DB 커넥션 풀은 active 10/10, 커넥션을 기다리는 스레드가 평균 153개였습니다. MySQL 순간 표본에서 주문 스키마의 실행 스레드 대부분은 커밋 완료를 기다리는 `waiting for handler commit` 상태였고 잠금 대기는 0 이었습니다(같은 구간 전체로는 85초에 행 잠금 대기 175건, 평균 10.2ms).
+
+원인 후보 셋(상품 쪽 커밋 증가, 동시 사용자 450, 세션마다 다른 디스크와 Pod 배치)을 다음 세션에서 설정을 바꿔 가르기로 하고 그 세션을 마쳤습니다.
+
+마지막 세션은 판정 run 을 현재 설정부터 돌렸고 첫 판정 run 이 유효(수락 10,200, 드롭 0)라 비교용 설정은 돌리지 않았습니다. 122건 정체는 다시 나오지 않았습니다. 그런데 그 뒤의 경합 run 들이 유효와 무효를 오갔습니다. c1 유효, c2 두 번 무효, 디스크 복구 뒤 c2 유효, c3 무효였습니다.
+
+세션 끝 무렵 이 흔들림을 커넥션 풀의 처리 한계로 설명했습니다. 커넥션 하나를 평균 W 초 점유하고 동시에 쓸 수 있는 커넥션이 N 개면, 사용 중인 커넥션 수는 획득률에 평균 점유 시간을 곱한 값이므로 초당 획득 횟수는 N/W 를 넘을 수 없습니다. 주문 서비스의 풀은 크기를 지정하지 않아 [HikariCP 6.3.3 의 기본값](https://github.com/brettwooldridge/HikariCP/blob/HikariCP-6.3.3/README.md) 10 그대로였고 세션 Prometheus 의 `hikaricp_connections_max` 도 10 이었습니다. 필요한 획득률은 목표 170건/초에 주문 1건당 커넥션 획득 횟수를 곱한 값입니다.
+
+이 글을 쓰며 세션이 남긴 run 별 표를 원자료에서 다시 셌습니다. 점유 시간은 부하 구간 60초 동안 Hikari usage 타이머의 합을 건수로 나눈 값, 획득률은 획득 타이머 건수를 60 으로 나눈 값, 주문당 획득은 획득 수를 k6 가 센 수락 건수로 나눈 값입니다. 표는 모두 마지막 세션의 값입니다(주문 서비스 Pod 1개, CPU 한도 2코어).
+
+| run | k6 부하 판정(드롭) | 점유 시간 ms | 한계(10 을 점유 시간으로 나눔, 획득/초) | 주문당 획득 | 획득 대기 평균 ms | 대기 스레드 평균 |
+|---|---|---|---|---|---|---|
+| w4 | 유효(0) | 26.69 | 374.7 | 1.970 | 305 | 105.4 |
+| c1 | 유효(0) | 26.38 | 379.1 | 2.167 | 115 | 46.5 |
+| c2 첫 시도 | 무효(277) | 28.74 | 347.9 | 2.071 | 331 | 115.5 |
+| c2 재시도 | 무효(331) | 28.56 | 350.1 | 2.101 | 361 | 112.5 |
+| c2(복구 뒤) | 유효(7) | 26.97 | 370.8 | 2.181 | 228 | 59.7 |
+| c3 | 무효(431) | 28.23 | 354.2 | 1.996 | 519 | 149.8 |
+| s1(대조군) | 유효(0) | 26.97 | 370.8 | 2.066 | 184 | 84.0 |
+
+유효 run 넷은 점유 26.4~27.0ms 에 한계 371~379회/초였고 무효 run 셋은 28.2~28.7ms 에 348~354회/초였습니다. 주문당 획득은 run 마다 1.97~2.18 이라 필요량은 대략 335~371회/초 사이입니다. 세션에서는 "주문당 약 2.1회, 초당 약 360회 필요"로 잡았습니다. 이렇게 모든 run 에 같은 필요량 하나를 쓰는 것을 아래에서 공통 기준선이라고 부릅니다.
+
+이 설명대로라면 점유 시간이 1~2ms 늘면 한계가 필요량 아래로 내려가고 풀 앞 대기가 커집니다. 그러면 응답이 느려져 VU 450개가 다 차고 반복을 시작하지 못해 드롭이 납니다.
+
+다른 후보는 이 표본에서 갈리지 않았습니다. 디스크 쓰기 지연은 무효인 c3 가 0.58ms 로 오히려 가장 낮았고 주문 서비스 CPU 는 일곱 run 모두 2코어 중 1.69~1.76 이었습니다.
+
+<PoolLimitChart />
+
+세션 결과를 정리할 때는 "병목은 주문 서비스의 Hikari 풀(10)"이라고 단정해 썼습니다. 클러스터를 지운 뒤 이 결과를 다시 이야기하면서는 "검증된 사실이 아니라 강하게 뒷받침되는 가설"이라고 범위를 좁혔습니다. 풀 크기를 바꿔 본 대조 실험은 하지 않았고 한 세션 7개 run 의 상관입니다.
+
+다시 세면서 두 가지를 더 확인했습니다. 먼저 run 별 필요량과 비교하면 유효와 무효가 갈리지 않습니다. c3 는 주문당 획득이 2.00 이라 자기 필요량이 339회/초인데 한계는 354회/초로 그보다 높습니다. 깔끔하게 갈리는 것은 점유 시간(26.97ms 와 28.23ms 사이)과, 그 사이(354~371회/초)를 지나는 공통 기준선뿐입니다. 세션에서 잡은 약 360회/초도 이 구간 안에 있습니다. 주문당 획득을 일곱 run 평균(2.08)으로 잡으면 필요량이 353회/초라 c3 가 기준선 위로 올라갑니다.
+
+또 점유 시간은 부하를 받는 중에 잰 값입니다. 대기열이 길어지고 CPU 를 다투면 커넥션을 쥔 채 기다리는 시간도 늘 수 있으므로 점유 시간이 무효의 원인인지 결과인지는 이 자료로 가를 수 없습니다. 점유 시간이 run 마다 흔들린 이유도 찾지 못했습니다.
+
+두 번째 세션의 초당 122건 정체도 세션에서 같은 식으로 설명했습니다. 같은 풀 포화(active 10/10)였으니 점유 시간이 약 39ms 였다면 맞는다는 것입니다. 하지만 그 세션은 점유 시간을 재지 않았습니다. 39ms 는 122 에 2.1 을 곱한 초당 256회로 10 을 나눠 거꾸로 셈한 값입니다. 처리량이 얼마였든 점유 시간을 거꾸로 고르면 식은 맞으므로 이 계산은 "모순은 없다"는 것까지만 보여 줍니다. 그 세션에서 점유 시간 계산과 상관없이 남는 근거는 active 10/10, 대기 평균 153 이라는 풀 포화 신호와 커밋 대기 표본뿐입니다.
+
+그렇다면 세션 전에 계산할 수 있었을까요? 식은 세울 수 있었습니다. 필요한 획득률(170 에 약 2.1 을 곱해 약 357회/초)과 풀 크기 10 은 세션 전에 알았으니, 점유 시간 약 28ms 가 경계라는 것도 미리 셀 수 있습니다. 하지만 점유 시간은 커밋 지연이나 CPU 경합 같은 측정 환경에서 나오는 값이라 로컬에서 잰 값을 그대로 옮기기 어렵습니다.
+
+여유가 얼마인지는 세션에서 점유 시간을 잰 뒤에야 알 수 있었습니다. 357회/초 기준으로 유효 run 은 한계가 4~6% 위, 무효 run 은 1~3% 아래였습니다. 경계 약 28ms 를 세션 계획에 넣었다면 잰 점유 시간(26~29ms)이 경계 바로 옆이라는 것을 세션 중에 알아보고 풀 크기를 바꾸는 비교나 점유 시간 분해를 측정 항목으로 넣었을 것입니다. 이 가정의 근거는 위 수치뿐입니다.
+
+### run 이 앱의 타이머보다 길면 다른 코드 경로가 섞입니다
+
+부하 스크립트가 실제 사용자 흐름의 일부만 흉내 내면 run(부하와 배수)이 길어질 때 앱의 타이머가 측정 중에 다른 코드 경로를 돌릴 수 있습니다. 이 일반화의 근거는 아래 사례 하나입니다.
+
+첫 세션의 경합 run 두 개에서 결제 대기 주문이 수천 건 만료 취소됐습니다(2,609건, 3,839건). 그 세션에서는 "재고 예약 lease 가 만료된 뒤 스케줄러가 취소했다"고 추정했는데 다음 날 코드를 읽어 보니 다른 경로였습니다. 부하 스크립트는 결제를 부르지 않아 주문이 PENDING 에 머뭅니다. 스케줄러는 60초마다 돌며 예약 결과를 받지 못한 PENDING 주문을 5분(하드코딩) 뒤 취소합니다. lease(30분)는 배수 시간(최대 534초) 안에서는 상관이 없었습니다.
+
+예약 결과가 늦게 온 데는 측정 대상 쪽 설정이 있었습니다. 주문 생성부터 예약 확정까지 걸린 시간(p50 154~272초)에는 주문 서비스의 발행 대기(p50 68~83초)와 상품 서비스의 발행 대기(p50 27~180초)가 함께 들어 있었습니다. 상품 서비스의 outbox 발행은 기본 폴링(5초에 100건, 초당 20건 상한)에 붙어 있었습니다. 그 시간이 5분을 넘은 주문이 취소됐고 p99 가 5분 아래였던(247.5초) 첫 run 만 취소가 0건이었습니다. 나머지 run 의 충돌 수와 배수 시간에는 취소 경로가 함께 들어갔습니다. 세션을 계획할 때 폴링 대기가 들어 있는 왕복 지연처럼 설정이 정하는 숫자는 처리 속도로 쓰지 않기로 정해 두었습니다.
+
+## 측정 대상 밖에서 세션이 무너졌습니다
+
+### 콜드 JVM 에 1초짜리 liveness 가 걸렸습니다
+
+timeout 을 적지 않은 liveness probe 는 기본 1초 안에 답해야 합니다(버전과 근거는 아래에 적었습니다). 업무 트래픽과 같은 포트로 health 에 답하는 JVM 이 부하를 받으며 데워지는 중이면 이 1초를 넘겨 재시작될 수 있습니다.
+
+두 번째 세션의 첫 경합 run 에서 주문 서비스가 부하 시작 약 1분 뒤 재시작했습니다. kubelet 이벤트를 보면 liveness 조회가 `context deadline exceeded` 로 실패해 컨테이너가 재시작됐습니다.
+
+```text
+4m56s       Warning   Unhealthy                pod/order-service-7bd869c55-sfd45      Liveness probe failed: Get "http://10.68.0.22:8080/actuator/health/liveness": context deadline exceeded (Client.Timeout exceeded while
+4m55s       Warning   Unhealthy                pod/order-service-7bd869c55-sfd45      Readiness probe failed: Get "http://10.68.0.22:8080/actuator/health/readiness": context deadline exceeded (Client.Timeout exceeded whi
+4m36s       Normal    Killing                  pod/order-service-7bd869c55-sfd45      Container order-service failed liveness probe, will be restarted
+```
+
+재기동하는 동안 gateway 는 연결 거부(Connection refused)로 주문 요청에 500 을 6,519건 돌려줬고(k6 가 센 거절은 6,408건) 재기동 직후 run 도 같은 일을 겪었습니다. 재시작한 JVM 은 다시 워밍업이 필요해서 측정 run 으로 넘어갈 수 없는 순환이었습니다.
+
+매니페스트의 liveness 는 업무 트래픽과 같은 8080 포트의 actuator 를 보고 `timeoutSeconds` 를 적지 않았습니다. Kubernetes v1.35.6 소스의 [`SetDefaults_Probe`](https://github.com/kubernetes/kubernetes/blob/v1.35.6/pkg/apis/core/v1/defaults.go) 와 [필드 주석](https://github.com/kubernetes/kubernetes/blob/v1.35.6/staging/src/k8s.io/api/core/v1/types.go)에서 기본값은 timeout 1초, period 10초, 실패 3회입니다. 현재 [Pod API 레퍼런스](https://kubernetes.io/docs/reference/kubernetes-api/core/pod-v1/)의 timeout 기본값도 1초입니다. 세션 GKE 는 1.35.6 의 GKE 빌드였고 GKE 빌드가 이 기본값을 바꾸는지는 확인하지 못했습니다. CPU 한도 2코어를 다 쓰는 콜드 JVM 이 1초 안에 health 에 답하지 못하면 약 30초 만에 재시작됩니다. 사용자 200명으로 돌린 첫 세션에서는 재시작이 없었습니다.
+
+```yaml
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            periodSeconds: 10
+```
+
+세션 계획은 "세션 안에서 고치지 않는다"였지만 제가 결정해서 측정용 overlay 에만 프로브를 완화했습니다(liveness timeout 5초, 실패 12회, readiness timeout 5초, 실패 6회). kubelet 의 재시작 판정만 늦추고 요청 처리 경로와 CPU 한도, replica 수는 그대로라 측정 조건은 같다고 정리했습니다. 그 뒤 재시작과 연결 거부는 0 이 됐고 대신 앞에서 다룬 초당 122건 정체가 드러났습니다. 운영 환경의 프로브 정책(관리 포트 분리 등)은 이 작업의 범위 밖이라 정하지 않았습니다.
+
+마지막 세션에서는 run 앞뒤로 주문, 상품 서비스의 재시작 횟수를 남기는 래퍼를 두어 재시작이 섞인 run 을 걸러 낼 수 있게 했습니다.
+
+### 상한이 있는 지표에 변화율 기준을 걸었습니다
+
+목표 건수를 넘을 수 없는 수락 건수처럼 상한이 있는 지표에 "직전 대비 변화율" 기준을 걸면, 목표에 처음 닿은 run 은 크게 오른 것으로 보여 기준을 통과하지 못합니다.
+
+첫 세션에는 경합 run 의 워밍업 규칙이 없었습니다. 두 번째 세션은 "워밍업 1회"로는 모자라 세션 중에 "첫 유효 run 까지, 연장 최대 3회"로 바꿨습니다. 결과를 보기 전에 바꾸기는 했지만 다음 세션부터는 종료 기준을 미리 정해 두기로 했습니다.
+
+마지막 세션에 미리 정한 규칙은 "직전 워밍업 run 대비 수락 건수 변화가 5% 이내이고 그 사이 재시작이 없으면 워밍업을 끝낸다, 최대 4회"였습니다. 결과는 이랬습니다.
+
+```text
+워밍업 판정: 미수렴. 수락 4819건에서 6967건, 변화 +44.6% (임계 5%). 드롭 5382건에서 3234건
+워밍업 판정: 미수렴. 수락 6967건에서 9284건, 변화 +33.3% (임계 5%). 드롭 3234건에서 916건
+워밍업 판정: 미수렴. 수락 9284건에서 10201건, 변화 +9.9% (임계 5%). 드롭 916건에서 0건
+```
+
+네 번째 run 은 드롭 0 으로 목표(10,200)에 닿은 유효한 부하였는데도 규칙으로는 워밍업이 끝나지 않았습니다. 수락 건수는 목표(약 10,200) 근처에서 더 오를 수 없어서 목표에 처음 닿은 이 run 의 변화율이 +9.9% 로 컸습니다. 상한이 있는 지표에 변화율 기준을 건 규칙의 구조적 결함이었습니다. 규칙대로라면 4회 안에 끝나지 않은 이 설정은 "미달"로 판정해야 했습니다.
+
+저는 규칙을 정할 때 함께 적은 근거("170건에 닿는 설정은 수락이 목표(10,200)에 붙어 바로 수렴한다")를 따라 판정 run 으로 가기로 했습니다. 이것을 결과를 본 뒤의 규칙 해석, 곧 편차로 기록했습니다. 워밍업 종료를 부하 판정(드롭 1% 이하)과 같은 기준으로 정했다면 이 해석은 필요 없었을 것입니다.
+
+### 기본 binlog 와 1Gi 볼륨으로 디스크가 찼습니다
+
+MySQL 8.0 은(8.0.46 에서 확인) 기본으로 binlog 를 켜고 지운 행까지 기록합니다. 몇 시간짜리 세션 안에서는 그 파일을 지우지도 회전하지도 않습니다. 작은 볼륨에서 run 마다 DELETE 로 초기화하면 디스크는 줄지 않고 계속 찹니다.
+
+마지막 세션의 일곱 번째 run(c2 재시도)이 배수하던 중에 MySQL 데이터 볼륨이 가득 찼습니다.
+
+```text
+2026-10-25T19:08:29.533648280Z 2026-10-25T19:08:29.533380Z 1628 [ERROR] [MY-000035] [Server] Disk is full writing './binlog.000002' (OS errno 28 - No space left on device). Waiting for someone to free space... Retry in 60 secs. Message reprinted in 600 secs.
+```
+
+이 사고 앞뒤의 일을 시각 순으로 표에 모았습니다. 앞의 빈 lag 절과 이 뒤의 두 절이 이 시간표의 일부를 다룹니다.
+
+| 시각(UTC) | 일 |
+|---|---|
+| 19:04~19:07 | c2 재시도 run 의 부하 구간(부하 판정 무효) |
+| 19:08 | MySQL 데이터 볼륨이 가득 차 쓰기가 멈춤 |
+| 19:22 | 배수 15분 규칙이 걸리고 run 스크립트가 초기화 단계에서 멈춤 |
+| 20:12 | 진행 상황을 확인하다 정지를 발견 |
+| 20:16 | 멈춘 초기화 호출을 끊음 |
+| 20:30 | 볼륨을 10Gi 로 확장해 쓰기가 다시 됨 |
+| 20:31~20:42 | 복구 배수, lag 3,816 에서 한 번에 0 으로 끝남 |
+| 20:45 | 복구 뒤 c2 시작(부하 판정 유효) |
+| 20:56 | 감시가 "group lag 도 모두 0" 을 보고 |
+| 21:01 | 다시 조회한 결제 서비스 group lag 10,186 |
+| 21:08~21:51 | 결제 서비스의 적체가 빠지기를 2,540초 기다림 |
+| 21:51 | c3 시작 |
+
+볼륨은 base 매니페스트 그대로 1Gi 였고 GKE 측정 overlay 는 storage class 만 바꿨습니다. 첫 run 전에 이미 214MiB(redo 100MiB, undo 64MiB, 시스템 테이블)를 쓰고 있었고 run 마다 73~135MiB 늘었습니다(run 시작 시점 사용량의 차이). 가득 찼을 때 binlog 파일 하나가 544MiB 였습니다.
+
+binlog 설정은 MySQL 8.0.46 기본값 그대로였습니다.
+
+```text
+binlog_expire_logs_seconds	2592000
+binlog_format	ROW
+binlog_row_image	FULL
+innodb_max_undo_log_size	1073741824
+innodb_redo_log_capacity	104857600
+innodb_undo_log_truncate	ON
+log_bin	ON
+max_binlog_size	1073741824
+sync_binlog	1
+```
+
+[MySQL 8.0](https://dev.mysql.com/doc/refman/8.0/en/replication-options-binary-log.html) 부터 binlog 는 기본으로 켜져 있고 형식은 ROW, 행 이미지는 FULL, `sync_binlog` 는 1, 보존 기간은 30일, 파일 상한은 1GB 입니다. 만료된 파일은 서버 시작이나 binlog flush 때만 지워지고 회전은 쓰기가 파일 크기를 상한 넘게 키울 때 일어납니다. 그래서 몇 시간짜리 세션 안에서는 지워지지도 회전하지도 않습니다.
+
+이 글을 쓰며 세션 Pod 와 같은 digest 의 `mysql:8.0.46` 을 로컬에서 띄워 보니 이 값들의 출처(`performance_schema.variables_info` 의 `VARIABLE_SOURCE`)가 모두 설정 없이 컴파일된 기본값인 `COMPILED` 였습니다.
+
+run 사이 초기화가 공간을 되찾지 못한 이유도 같은 곳에 있었습니다. 초기화는 주문, 재고 테이블을 DELETE 로 비웠는데 ROW 형식에 FULL 이미지인 binlog 는 지운 행 전체를 다시 기록합니다. 이 글을 쓰며 같은 이미지로 로컬에서 재현했을 때 20만 행을 INSERT 하자 binlog 가 약 41.6MB 늘었고 그 행을 모두 DELETE 하자 같은 크기의 binlog 가 한 번 더 쌓였습니다. 테이블 파일(.ibd) 크기는 DELETE 뒤에도 그대로였습니다. 세션에서는 결제 스키마가 초기화 대상이 아니어서 77MiB 까지 자랐습니다.
+
+그러면 이 볼륨에는 run 이 몇 번 들어갈 수 있었을까요? 마지막 세션에서 첫 run 전부터 가득 찰 때까지 늘어난 743MiB 를 그동안 받은 주문 61,264건으로 나누면 주문 1건당 약 12KiB 입니다. 첫 run 전에 비어 있던 공간이 그 743MiB 였으니 이 볼륨에는 6만 건 남짓이 들어갑니다.
+
+첫 판정 run 이 통과하면 워밍업을 포함해 run 을 6~8번(무효 run 재시도는 별도) 돌릴 계획이었고 run 하나에 최대 10,200건을 넣습니다. 6번이면 경계이고 8번이나 재시도가 더해지면 들어가지 않는 계획이었습니다. 앞의 두 세션은 세션 전체에서 받은 주문이 각각 3만 건 남짓이라 차지 않았습니다. 세션 계획에 디스크 예산 점검이 없었습니다.
+
+측정값은 오염되지 않았다고 결론 냈습니다. 디스크 쓰기 지연은 사용량이 214MiB 에서 892MiB 로 느는 동안 0.60~0.70ms 로 평평했고 디스크가 찬 시각은 그 run 의 부하 구간이 끝난 뒤였습니다. 그 run 은 이미 부하 판정에서 무효였습니다.
+
+세션은 여기서 멈출 수도 있었습니다. 계획에는 한 run 의 배수가 15분을 넘으면 그 run 의 정합성만 확인하고 경합 측정 단계를 끝낸다는 규칙이 있었고 그 규칙이 걸렸습니다. 하지만 그 규칙은 측정 대상(outbox 발행 설정)이 기대대로 동작하지 않는 경우를 겨냥해 만들었고 환경 결함을 다루는 조항은 없었습니다.
+
+세션에서는 이렇게 정리했습니다. 멈춘 원인이 측정 대상에 있으면 사전 규칙대로 멈추고 그것을 결과로 적습니다. 측정 장치나 환경에 있으면 측정 조건을 바꾸지 않는 방법으로 복구한 뒤 영향받은 run 만 버리고 잇습니다. 복구 뒤 재개하려면 네 가지가 갖춰져야 했습니다.
+
+1. 원인이 측정 대상과 독립이라는 증거: errno 28 이 찍혔고, 쓰기 지연은 평평했고, 디스크는 부하 구간이 끝난 뒤에 찼습니다.
+2. 복구가 측정 조건을 바꾸지 않을 것: 볼륨 확장은 설정을 바꾸지 않습니다. binlog 를 끄면 커밋마다 하던 binlog fsync 가 빠지는데 바로 앞 세션에서 커밋 대기를 병목 후보로 지목했으니 그 경로가 바뀝니다. `PURGE BINARY LOGS` 는 기록이 파일 하나에 다 들어 있어 먼저 회전해야 했고 그 회전이 공간을 기다리는 쓰기에 막힐 수 있었습니다.
+3. 계속할지를 지금까지의 결과값으로 정하지 않을 것.
+4. 영향받은 run 만 버릴 것.
+
+제가 결정해서 볼륨을 10Gi 로 온라인 확장했습니다(Pod 재시작 없음). 배수와 초기화, 토픽 상태 확인을 거쳐 재개했습니다. 디스크가 찬 때부터 확장할 때까지 약 82분 동안 MySQL 쓰기가 멈춰 있었습니다. 볼륨 크기와 binlog 를 어떻게 다룰지, 계획 단계의 디스크 예산 점검은 할 일로 등록만 했고 아직 정하지 않았습니다.
+
+같은 세션의 Kafka 볼륨은 사용량이 내내 0MiB 였습니다. 세션에서는 "log.dirs 설정이 없어 이미지 기본 경로에 쓰는 것으로 보인다(확인 안 함)"로만 적었습니다. 이 글을 쓰며 같은 digest 의 `apache/kafka:3.8.1` 을 매니페스트와 같은 환경 변수로 로컬에서 띄워 확인했습니다. 환경 변수로 만든 설정 파일에는 `log.dirs` 가 없고 브로커의 실효 설정은 `log.dirs=null`, `log.dir=/tmp/kafka-logs`(Kafka 기본값)였습니다. 토픽 데이터는 컨테이너 안 `/tmp/kafka-logs` 에 쌓였고 볼륨을 마운트한 `/var/lib/kafka/data` 는 비어 있었습니다.
+
+```text
+  log.dir=/tmp/kafka-logs sensitive=false synonyms={DEFAULT_CONFIG:log.dir=/tmp/kafka-logs}
+  log.dirs=null sensitive=false synonyms={}
+```
+
+세션의 브로커도 같은 이미지와 같은 환경 변수였으니 같은 경로에 썼을 것입니다. GKE 에서 경로를 직접 보지는 않았습니다. 같은 경로에 썼다면 측정 중 Kafka 의 디스크 쓰기는 매니페스트가 의도한 영속 볼륨 대신 노드의 컨테이너 쓰기 계층으로 갔고 Pod 가 재시작하면 토픽 데이터가 사라졌을 것입니다.
+
+### 디스크 사고가 애플리케이션 결함을 드러냈습니다
+
+환경 사고가 나면 평소에는 타지 않던 애플리케이션 경로가 돕니다. 측정 범위 밖의 서비스라도 그 경로가 측정 범위의 레코드를 막을 수 있습니다.
+
+디스크가 차 있던 동안 결제 생성 134건이 실패해 DLQ 로 갔습니다. 그 주문들의 예약 결과가 도착하자 결제 서비스는 "결제 정보를 찾을 수 없습니다"를 일시 오류로 처리해 건마다 30~60초 재시도한 뒤 DLQ 로 보냈습니다. 컨슈머 하나가 파티션 셋을 맡고 있었고 재시도가 파티션을 막아 뒤에 있던 복구 뒤 c2 의 레코드 약 1만 건이 밀렸습니다. 측정 범위인 주문, 상품 서비스의 배수는 끝나서 c2 는 유효로 두었습니다(편차로 기록). 적체가 빠지기를 2,540초 기다린 뒤 c3 를 돌렸습니다. 영구 실패를 일시 오류로 재시도하는 분류는 아직 고치지 않았습니다.
+
+복구 뒤 무효 run 의 최종 상태에서는 상품 하나의 재고가 재고 원장으로 계산한 기대값보다 1 적었습니다. 음수 재고는 없었고 취소된 주문 하나의 예약이 RESERVED 로 남아 있었습니다. 최종 상태만으로는 설명되지 않아 원인을 확인하지 못했고 로컬 장애 주입으로 재현해 볼 대상으로 등록만 했습니다.
+
+### 멈춘 하네스를 아무도 몰랐습니다
+
+시간 제한이 없는 하네스 단계는 멈춰도 오류를 내지 않습니다. 끝날 때만 알리는 방식으로 실행하면 멈춘 것을 아무도 모릅니다.
+
+배수 15분 규칙이 걸린 뒤 run 스크립트는 다음 단계인 초기화로 넘어갔습니다. 그 초기화가 binlog 공간을 기다리며 19:22 부터 20:16 에 초기화 호출을 직접 끊을 때까지 약 54분 멈춰 있었습니다. 볼륨은 그 뒤 20:30 에 확장했습니다. 초기화 단계에는 시간 제한이 없었습니다.
+
+```bash
+{ sql_file peekcart_order loadtest/sql/d002bc-reset.sql; sql_file peekcart_product loadtest/sql/d002bc-product-reset.sql; } > "$P-reset.txt"
+```
+
+run 스크립트는 백그라운드 작업으로 돌았고 백그라운드 작업은 끝날 때만 알림을 보내서 그동안 아무도 몰랐습니다. 정지는 20:12 에 제가 진행 상황을 확인했을 때 드러났습니다. 그 뒤 5분마다 산출물 갱신 시각과 오래 도는 명령을 보는 정지 감시를 붙였습니다.
+
+세션 끝의 대시보드 캡처에서도 Grafana 로 가는 port-forward 가 끊기자 headless Chrome 캡처가 끝나지 않고 10분 멈췄습니다. 장마다 120초 제한과 1회 재시도를 넣었고 port-forward 를 다시 띄우자 8장이 21초에 끝났습니다.
+
+하네스의 시간 제한, 빈 lag 출력 처리, 캡처 시간 제한, "0초" 표시는 묶어서 할 일로 등록만 했습니다. 측정 하네스의 모든 단계에 시간 제한을 두고 산출물이 일정 시간 갱신되지 않으면 알리는 감시를 세션과 함께 띄우는 방법을 제안합니다.
+
+## 미리 정해 둔 것 중 제 역할을 한 것
+
+세 세션에서 미리 정해 둔 규칙 가운데 제 역할을 한 것도 있습니다.
+
+- 판정 규칙: 부하 판정(드롭 1%), 무효 run 의 재시도 상한(모드마다 2회), 배수 15분, 클러스터 생성 후 8시간이나 예산 50% 알림이면 중단. 마지막 세션의 유효한 경합 run 은 2개뿐이었지만 재시도 상한을 지켜서 "여섯 번 중 세 번 유효"라는 비율 자체가 결과로 남았습니다.
+- 건수 기준: 원값 차분으로 세고 그래프는 보조로만 썼습니다.
+- 모니터링 스택 격리: taint 를 건 전용 노드풀에 띄웠습니다.
+- 비용: 결제 계정에 월 예산 알림(50%, 90%, 100%, 150%)을 걸었습니다. Google Cloud 의 [지출 한도(spend cap)](https://docs.cloud.google.com/billing/docs/how-to/budgets-spend-caps)는 2026-10-28 에 조회한 문서 기준으로 Gemini API, Agent Platform(옛 Vertex AI), Cloud Run, Cloud Run functions 만 대상이라 GKE 와 Compute Engine 에는 걸 수 없었습니다. 정책은 바뀔 수 있습니다. 그래서 알림과 중단 규칙, run 수에 시간당 단가를 곱해 미리 셈한 비용에 기댔습니다.
+
+## 남은 것
+
+- 경합 측정의 유효 run 은 2개라 표본이 작습니다.
+- 커넥션 풀 한계는 한 세션의 상관입니다. 점유 시간을 쪼개거나 풀 크기를 바꿔 본 실험은 하지 않았습니다.
+- 운영 환경의 프로브 정책은 이 작업의 범위 밖이라 정하지 않았습니다. 결제 재시도 분류, 재고 원장 1 차이의 원인, 볼륨 크기와 binlog 를 다루는 방식, 하네스 정비는 등록만 하고 대기 중입니다.
+- 이 글의 재현은 로컬(macOS arm64, Docker)에서 했습니다. MySQL 과 Kafka 는 세션 Pod 와 같은 이미지 digest 를, Prometheus 는 세션 차트의 기본값으로 추정한 버전을, `increase()` 재현 앱은 따로 빌드한 앱을 썼습니다. GKE 노드(amd64)와 실제 Pod 에서 다시 돌리지는 않았습니다.
+- Grafana 와 k6 동작은 최신 문서로 확인했고 세션 버전(Grafana 13.2.1, k6 v2.2.0)의 문서와는 다를 수 있습니다. k6 종료 코드만 v2.2.0 소스로 확인했습니다.
+
+## 다시 한다면
+
+세션 전에 아래를 확인하겠습니다. 오른쪽 열은 이번에 실제로 해 보지 않은 것이 섞인 제안입니다.
+
+| 빠진 것 | 무엇이 틀렸나 | 세션 전에 할 수 있는 확인 |
+|---|---|---|
+| 패널 식 메트릭의 존재 | 스로틀 패널이 빈 채로 세션에 들어감 | 차트 버전 고정, 패널마다 `count(<메트릭>)` |
+| 대시보드 창과 scrape 간격 | 1분 run 이 2분 이상의 창에서 낮게 그려짐 | 데이터소스 scrape 간격과 `$__rate_interval` 확인, 판정은 고정 창 export |
+| 하네스의 "없음" 처리 | 빈 출력과 명령 실패가 0 이 됨 | 파싱한 행 수를 세고 0 행이면 "모름" |
+| fixture 와 배포 설정 대조 | 틀린 포트가 테스트를 통과함 | 매니페스트 값과 대조하는 lint |
+| 처리 한계 계산 | 경계(약 28ms) 바로 옆에서 run 마다 유효와 무효가 갈림 | 풀 크기를 점유 시간으로 나눈 한계와 목표에 주문당 획득을 곱한 필요량 비교 |
+| 디스크 예산 | 1Gi 에 계획한 run 이 들어가지 않음 | 주문당 바이트에 계획 주문 수를 곱하고 고정분을 더함 |
+| 프로브 허용치 | 콜드 JVM 에서 liveness 1초가 재시작을 부름 | 측정 overlay 의 프로브 timeout 과 실패 횟수 |
+| 상한 있는 지표의 워밍업 종료 기준 | 목표에 처음 닿은 run 을 끝나지 않은 것으로 판정 | 워밍업 종료를 부하 판정과 같은 기준으로 |
+| 단계별 시간 제한과 정지 감시 | 54분, 10분 무인 정지 | 모든 단계에 timeout, 산출물 갱신 감시 |
+| 환경 결함 조항 | 측정 대상용 중단 규칙이 디스크 사고에 걸림 | 복구 뒤 재개의 조건을 미리 적기 |
+
+커넥션 풀은 식을 세워도 경계 점유 시간까지만 알 수 있습니다. 점유 시간이 측정 환경에서 얼마로 나올지는 세션에서만 알 수 있었으니 경계를 계획에 적어 두고, 잰 값이 경계에 가까우면 풀 크기를 바꾸는 비교나 점유 시간 분해를 측정 항목으로 넣겠습니다.
+
+## 정리하며
+
+측정 장치는 여러 곳에서 "없음"을 잘못 읽었습니다. 수집기가 버린 지표는 빈 패널로, 첫 증가 때 생기는 카운터의 첫 건은 `increase()` 의 누락으로, 빈 출력과 명령 실패는 하네스의 0 으로 나타났습니다. 반대로 레코드가 없는 파티션의 `-` 를 "모름"으로 막자 정상 스택이 막혔습니다. 같은 칸이 비었을 때 0 인지, 없는 것인지, 읽지 못한 것인지를 세션 전에 정해 두지 않은 것이 공통이었습니다.
+
+부하는 첫 세션에서 목표의 절반도 들어가지 않았는데 결과는 나왔습니다. 그 뒤 드롭 1% 를 넘는 run 을 무효로 하고 VU 수를 도착률과 반복 시간으로 정했습니다. 커넥션 풀 한계는 풀 크기를 평균 점유 시간으로 나눈 값이고 마지막 세션의 유효와 무효는 점유 시간과 공통 기준선으로만 갈렸습니다. 이것은 한 세션 7 run 의 상관이고 점유 시간이 원인인지 결과인지는 가르지 못했습니다. 세션 전에 할 수 있었던 것은 식을 세우고 경계 점유 시간을 아는 데까지입니다.
+
+세션을 무너뜨린 사고는 측정 대상 밖에 있었습니다. 기본 timeout 1초짜리 liveness 가 콜드 JVM 을 죽였습니다. MySQL 8 기본 binlog 와 1Gi 볼륨에 초기화 DELETE 가 더해져 디스크가 찼습니다. 시간 제한이 없는 초기화가 54분 멈춘 것을 아무도 몰랐습니다. 프로브와 binlog 의 기본값은 이 글을 쓰며 로컬에서 확인한 것처럼 세션 전에도 확인할 수 있었고 디스크 예산은 주문당 크기와 계획 주문 수로 셀 수 있었을 것입니다. 단계별 시간 제한은 기본값과 상관없이 하네스에 미리 넣어 둘 수 있었습니다.
+
+## 참고
+
+- [Prometheus 3.14 query functions](https://prometheus.io/docs/prometheus/3.14/querying/functions/)
+- [Grafana Prometheus template variables](https://grafana.com/docs/grafana/latest/datasources/prometheus/template-variables/)
+- [k6 execution context variables](https://grafana.com/docs/k6/latest/using-k6/execution-context-variables/), [k6/execution](https://grafana.com/docs/k6/latest/javascript-api/k6-execution/), [k6 built-in metrics](https://grafana.com/docs/k6/latest/using-k6/metrics/reference/), [k6 v2.2.0 exit codes](https://github.com/grafana/k6/blob/v2.2.0/errext/exitcodes/codes.go)
+- [HikariCP 6.3.3 README](https://github.com/brettwooldridge/HikariCP/blob/HikariCP-6.3.3/README.md)
+- [Kubernetes Pod API reference](https://kubernetes.io/docs/reference/kubernetes-api/core/pod-v1/), [v1.35.6 defaults.go](https://github.com/kubernetes/kubernetes/blob/v1.35.6/pkg/apis/core/v1/defaults.go), [v1.35.6 types.go](https://github.com/kubernetes/kubernetes/blob/v1.35.6/staging/src/k8s.io/api/core/v1/types.go)
+- [MySQL 8.0 binary logging options](https://dev.mysql.com/doc/refman/8.0/en/replication-options-binary-log.html)
+- [Google Cloud budgets and spend caps](https://docs.cloud.google.com/billing/docs/how-to/budgets-spend-caps) (2026-10-28 조회)

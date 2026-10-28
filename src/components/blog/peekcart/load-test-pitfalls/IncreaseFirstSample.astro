@@ -1,0 +1,234 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import SceneTimeline from '@/components/blog/shared/SceneTimeline.astro';
+import '@/styles/scene.css';
+
+const steps = [
+  { name: '기동 뒤 45초', detail: '대조군만 0 으로 있음' },
+  { name: '50초: 실패 1, DLQ 1', detail: '두 시계열이 처음 나타남' },
+  { name: '110초: 실패 2', detail: '실패 3, DLQ 1' },
+  { name: '190초 창으로 묻기', detail: '2.37, 0, 3.27' },
+];
+---
+
+<InteractiveDemoFrame demoId="increase-first-sample" ariaLabel="첫 실패 때 등록되는 카운터와 기동 때 0 으로 등록한 카운터를 15초마다 scrape 하고 increase 로 세는 타임라인" title="scrape 된 표본만 보는 increase()" description="세 카운터를 15초마다 scrape 했습니다. 두 카운터는 첫 실패 때 처음 생기고, 대조군은 기동 때 0 으로 등록했습니다. 점이 찍히는 순서를 따라가 보세요.">
+  <SceneTimeline ariaLabel="재현 타임라인 단계" steps={steps} />
+  <div class="scene-stage">
+    <svg data-inc-svg role="img" aria-label="시간축 0초부터 190초까지 세 카운터의 scrape 표본을 점으로 찍고, 마지막에 원값 차분과 increase 결과를 나란히 보여 주는 그림"></svg>
+  </div>
+  <p class="scene-note" data-inc-note role="status"></p>
+  <p class="db-demo-disclaimer">이 글을 쓰며 로컬에서 재현한 값입니다(Prometheus 3.14.0 기능 플래그 없음, 15초 scrape, 상품 서비스의 재시도 메트릭 클래스를 그대로 컴파일한 Spring Boot 3.5.12 앱). 세션의 측정값이 아닙니다. 표본 시각과 값, 결과 수치는 재현 기록 그대로이고, 외삽은 점선으로만 표시했습니다. Prometheus 가 범위 끝까지 얼마나 외삽하는지의 세부 규칙은 그리지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, ease, setAttrs, svg, watchNarrow } from '@/scripts/blog/scene/core';
+  import { createStepPlayer } from '@/scripts/blog/scene/step-player';
+
+  /** t 는 지금까지 scrape 한 시각(초), win 은 increase 창을 보여 주는 정도. */
+  type State = { t: number; win: number };
+  type Lane = { id: string; title: string; short: string; samples: [number, number][]; diff: number; between: number; inc: string; late: boolean };
+
+  // 재현 기록의 원 표본 (시작 기준 초, 값)
+  const after55 = (values: number[]) => [55, 70, 85, 100, 115, 130, 145, 160, 175].map((s, i) => [s, values[i]] as [number, number]);
+  const LANES: Lane[] = [
+    { id: 'failed', title: '재시도 실패 (첫 실패 때 등록)', short: '재시도 실패', samples: after55([1, 1, 1, 1, 3, 3, 3, 3, 3]), diff: 3, between: 2, inc: '2.37', late: true },
+    { id: 'dlq', title: 'DLQ 회복 (첫 DLQ 때 등록)', short: 'DLQ 회복', samples: after55([1, 1, 1, 1, 1, 1, 1, 1, 1]), diff: 1, between: 0, inc: '0', late: true },
+    { id: 'eager', title: '대조군 (기동 때 0 으로 등록)', short: '대조군', samples: [[10, 0], [25, 0], [40, 0], ...after55([1, 1, 1, 1, 3, 3, 3, 3, 3])], diff: 3, between: 3, inc: '3.27', late: false },
+  ];
+  const T_END = 190;
+  const EVENTS = [{ at: 50, text: '실패 1, DLQ 1' }, { at: 110, text: '실패 2' }];
+  const STEP_T = [45, 100, 190, 190];
+  const STEP_WIN = [0, 0, 0, 1];
+  const LAYOUT = {
+    wide: { view: [560, 330], x0: 26, x1: 380, top: 58, gap: 82, plotH: 46, res: { x: 398, dy: 0 }, axis: 316 },
+    narrow: { view: [360, 410], x0: 18, x1: 342, top: 58, gap: 108, plotH: 44, res: { x: 18, dy: 66 }, axis: 396 },
+  } as const;
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="increase-first-sample"]').forEach((demo) => {
+    const root = demo.querySelector<SVGSVGElement>('[data-inc-svg]')!;
+    const note = demo.querySelector<HTMLElement>('[data-inc-note]')!;
+    let narrow = false;
+    let stepIndex = 0;
+    const L = () => (narrow ? LAYOUT.narrow : LAYOUT.wide);
+
+    // ── 창, 사건, scrape 커서 ─────────────────
+    const winRect = svg('rect', { rx: 6 }, root);
+    winRect.style.fill = 'color-mix(in srgb, var(--scene-hue-blue) 9%, transparent)';
+    winRect.style.stroke = 'var(--scene-hue-blue)';
+    winRect.style.strokeDasharray = '5 4';
+    const winText = svg('text', { class: 'scene-label is-sans' }, root);
+    winText.style.fill = 'var(--scene-hue-blue)';
+    winText.textContent = 'increase(...[190s]) 의 창';
+    const events = EVENTS.map((e) => {
+      const line = svg('line', { 'stroke-dasharray': '2 4' }, root);
+      line.style.stroke = 'var(--scene-danger)';
+      line.style.strokeWidth = '1.6';
+      const text = svg('text', { class: 'scene-label scene-label-danger is-sans', 'text-anchor': 'middle' }, root);
+      text.textContent = e.text;
+      return { ...e, line, text };
+    });
+    const cursor = svg('line', {}, root);
+    cursor.style.stroke = 'var(--scene-temp)';
+    cursor.style.strokeWidth = '1.6';
+    const cursorText = svg('text', { class: 'scene-label is-sans', 'text-anchor': 'middle' }, root);
+    cursorText.style.fill = 'var(--scene-temp)';
+    const axis = svg('line', {}, root);
+    axis.style.stroke = 'var(--hairline)';
+    axis.style.strokeWidth = '1.5';
+    const axisTicks = [0, 50, 110, 190].map((s) => {
+      const t = svg('text', { class: 'scene-label scene-label-dep', 'text-anchor': 'middle' }, root);
+      t.textContent = s === 190 ? '190초' : String(s);
+      return { s, t };
+    });
+
+    // ── 카운터 줄 ─────────────────────────────
+    const lanes = LANES.map((lane, i) => {
+      const hue = ['var(--scene-hue-violet)', 'var(--scene-hue-pink)', 'var(--scene-hue-cyan)'][i];
+      const title = svg('text', { class: 'scene-label scene-label-dep is-sans' }, root);
+      title.textContent = lane.title;
+      const base = svg('line', {}, root);
+      base.style.stroke = 'var(--hairline)';
+      base.style.strokeWidth = '1';
+      const absent = svg('rect', { rx: 5 }, root);
+      absent.style.fill = 'none';
+      absent.style.stroke = 'var(--scene-dep)';
+      absent.style.strokeDasharray = '4 4';
+      const absentText = svg('text', { class: 'scene-label scene-label-dep is-sans', 'text-anchor': 'middle' }, root);
+      absentText.textContent = '응답에 줄 없음';
+      const path = svg('path', { fill: 'none' }, root);
+      path.style.stroke = hue;
+      path.style.strokeWidth = '2';
+      const between = svg('line', {}, root);
+      between.style.stroke = 'var(--scene-flow)';
+      between.style.strokeWidth = '3';
+      between.style.strokeLinecap = 'round';
+      const extL = svg('line', { 'stroke-dasharray': '3 3' }, root);
+      const extR = svg('line', { 'stroke-dasharray': '3 3' }, root);
+      [extL, extR].forEach((e) => { e.style.stroke = 'var(--scene-flow)'; e.style.strokeWidth = '2'; });
+      const dots = lane.samples.map(([, v]) => {
+        const c = svg('circle', { r: 4.2 }, root);
+        c.style.fill = hue;
+        c.style.stroke = 'var(--canvas)';
+        c.style.strokeWidth = '1.5';
+        const value = svg('text', { class: 'scene-label', 'text-anchor': 'middle' }, root);
+        value.style.fill = hue;
+        value.textContent = String(v);
+        return { c, value };
+      });
+      const callout = svg('text', { class: 'scene-label is-sans' }, root);
+      callout.style.fill = 'var(--scene-temp)';
+      callout.textContent = lane.late ? '첫 표본이 이미 1' : '';
+      const resA = svg('text', { class: 'scene-label scene-label-dep is-sans' }, root);
+      const resB = svg('text', { class: 'scene-label is-sans' }, root);
+      const resC = svg('text', { class: 'scene-label scene-label-dep is-sans' }, root);
+      return { lane, title, base, absent, absentText, path, between, extL, extR, dots, callout, resA, resB, resC };
+    });
+
+    const geometry = () => {
+      const l = L();
+      const X = (s: number) => l.x0 + (s / T_END) * (l.x1 - l.x0);
+      const laneTop = (i: number) => l.top + i * l.gap;
+      const Y = (i: number, v: number) => laneTop(i) + l.plotH - (v / 3) * (l.plotH - 8);
+      return { l, X, laneTop, Y };
+    };
+
+    const scene = createScene<State>({ t: STEP_T[0], win: 0 }, (state) => {
+      const { l, X, laneTop, Y } = geometry();
+      const last = lanes.length - 1;
+      const bottom = laneTop(last) + l.plotH + 8;
+      setAttrs(winRect, { x: X(0), y: l.top - 34, width: X(T_END) - X(0), height: bottom - l.top + 34, opacity: state.win });
+      setAttrs(winText, { x: X(0) + 6, y: l.top - 38, opacity: state.win });
+      events.forEach((e) => {
+        const on = state.t >= e.at ? 1 : 0;
+        setAttrs(e.line, { x1: X(e.at), y1: l.top - 22, x2: X(e.at), y2: bottom, opacity: on });
+        setAttrs(e.text, { x: X(e.at), y: l.top - 26, opacity: on * (1 - state.win) });
+      });
+      const cx = X(Math.min(T_END, state.t));
+      setAttrs(cursor, { x1: cx, y1: l.top - 12, x2: cx, y2: bottom, opacity: 1 - state.win });
+      cursorText.textContent = `${Math.round(state.t)}초`;
+      setAttrs(cursorText, { x: cx, y: bottom + 14, opacity: (1 - state.win) * (state.t < T_END - 4 ? 1 : 0) });
+      setAttrs(axis, { x1: X(0), y1: l.axis - 14, x2: X(T_END), y2: l.axis - 14 });
+      axisTicks.forEach(({ s, t }) => setAttrs(t, { x: X(s), y: l.axis }));
+
+      lanes.forEach((v, i) => {
+        const top = laneTop(i);
+        setAttrs(v.title, { x: l.x0, y: top - 6 });
+        setAttrs(v.base, { x1: X(0), y1: Y(i, 0), x2: X(T_END), y2: Y(i, 0) });
+        const seen = v.lane.samples.filter(([s]) => s <= state.t);
+        // 첫 표본 전까지는 그 시계열이 응답에 없습니다.
+        const absentEnd = v.lane.late ? Math.min(state.t, 55) : 0;
+        setAttrs(v.absent, { x: X(0) + 2, y: top + 6, width: Math.max(0, X(absentEnd) - X(0) - 6), height: l.plotH - 8, opacity: v.lane.late && state.t > 4 ? 1 : 0 });
+        setAttrs(v.absentText, { x: (X(0) + X(Math.min(state.t, 55))) / 2, y: top + l.plotH / 2 + 6, opacity: v.lane.late && state.t > 30 ? 1 : 0 });
+        const d = seen.map(([s, val], k) => `${k ? `L${X(s).toFixed(1)},${Y(i, seen[k - 1][1]).toFixed(1)} L` : 'M'}${X(s).toFixed(1)},${Y(i, val).toFixed(1)}`).join(' ');
+        setAttrs(v.path, { d: d || 'M0,0' , opacity: seen.length > 1 ? 1 : 0 });
+        v.lane.samples.forEach(([s, val], k) => {
+          const on = s <= state.t ? 1 : 0;
+          const { c, value } = v.dots[k];
+          setAttrs(c, { cx: X(s), cy: Y(i, val), opacity: on });
+          const changed = k === 0 || v.lane.samples[k - 1][1] !== val;
+          setAttrs(value, { x: X(s), y: Y(i, val) - 8, opacity: on && changed ? 1 : 0 });
+        });
+        const first = v.lane.samples[0];
+        setAttrs(v.callout, { x: X(first[0]) + 8, y: Y(i, first[1]) + 16, opacity: v.lane.late && state.t >= 55 ? 1 - state.win : 0 });
+
+        // 결과: 표본 사이 증가(실선)와 범위 끝까지의 외삽(점선)
+        const lastS = v.lane.samples[v.lane.samples.length - 1];
+        const yb = Y(i, 0) + 6;
+        setAttrs(v.between, { x1: X(first[0]), y1: yb, x2: X(first[0]) + (X(lastS[0]) - X(first[0])) * state.win, y2: yb, opacity: state.win });
+        setAttrs(v.extL, { x1: X(first[0]), y1: yb, x2: X(first[0]) - (X(first[0]) - X(0)) * state.win, y2: yb, opacity: state.win });
+        setAttrs(v.extR, { x1: X(lastS[0]), y1: yb, x2: X(lastS[0]) + (X(T_END) - X(lastS[0])) * state.win, y2: yb, opacity: state.win });
+
+        const rx = l.res.x;
+        const ry = top + l.res.dy;
+        if (narrow) {
+          v.resA.textContent = `원값 차분 ${v.lane.diff}`;
+          v.resB.textContent = `increase() ${v.lane.inc}`;
+          v.resC.textContent = `표본 사이 +${v.lane.between}`;
+          setAttrs(v.resA, { x: rx, y: ry, opacity: state.win });
+          setAttrs(v.resC, { x: rx + 92, y: ry, opacity: state.win });
+          setAttrs(v.resB, { x: rx + 200, y: ry, opacity: state.win });
+        } else {
+          v.resA.textContent = `원값 차분 ${v.lane.diff}`;
+          v.resC.textContent = `표본 사이 +${v.lane.between}`;
+          v.resB.textContent = `increase() ${v.lane.inc}`;
+          setAttrs(v.resA, { x: rx, y: ry + 12, opacity: state.win });
+          setAttrs(v.resC, { x: rx, y: ry + 28, opacity: state.win });
+          setAttrs(v.resB, { x: rx, y: ry + 46, opacity: state.win });
+        }
+        const missed = String(v.lane.diff) !== v.lane.inc;
+        v.resB.style.fill = missed ? 'var(--scene-danger)' : 'var(--scene-flow-ink)';
+        v.resB.style.fontSize = narrow ? '12px' : '13px';
+      });
+    });
+
+    const NOTES = [
+      '대조군은 기동 때 0 으로 등록해 15초마다 0 이 찍힙니다. 첫 실패 때 생기는 두 카운터는 아직 /actuator/prometheus 응답에 줄이 없습니다.',
+      '50초에 실패 1건과 DLQ 1건이 났습니다. 그 뒤 처음 scrape 한 55초에 두 카운터가 처음 나타나는데, 첫 표본이 이미 1 입니다. 0 이었던 표본은 어디에도 없습니다.',
+      '110초에 실패 2건이 더 나서 실패 카운터와 대조군은 3, DLQ 는 1 그대로입니다.',
+      'increase() 는 창 안 표본의 첫 값과 끝 값 사이 증가(실선)를 범위 끝 쪽으로 외삽(점선)합니다. 대조군은 0 에서 3 이 보여 3.27, 실패 카운터는 1 에서 3 만 보여 2.37, DLQ 는 1 에서 1 이라 0 입니다.',
+    ];
+
+    createStepPlayer(demo, {
+      dwell: (i) => (i === STEP_T.length - 1 ? duration.dwellLast : duration.dwell + 400),
+      onStep: (i, instant) => {
+        const goingBack = i < stepIndex;
+        stepIndex = i;
+        note.textContent = NOTES[i];
+        note.classList.toggle('is-alert', i === 3);
+        const next = { t: STEP_T[i], win: STEP_WIN[i] };
+        if (instant) { scene.set(next); return; }
+        if (goingBack || i === 0) { void scene.go(next, duration.move); return; }
+        const span = Math.abs(next.t - scene.state.t);
+        if (span > 0) void scene.go({ ...next, win: 0 }, Math.max(duration.move, (span / T_END) * 3200), ease.linear).then((ok) => { if (ok && next.win) void scene.go(next, duration.draw); });
+        else void scene.go(next, duration.draw).then((ok) => { if (ok && i === 3) lanes.forEach((v) => bumpText(v.resB, v.resB.textContent ?? '')); });
+      },
+    });
+
+    watchNarrow(demo, (isNarrow) => {
+      narrow = isNarrow;
+      const [w, h] = L().view;
+      setAttrs(root, { viewBox: `0 0 ${w} ${h}` });
+      scene.redraw();
+    });
+  });
+</script>
