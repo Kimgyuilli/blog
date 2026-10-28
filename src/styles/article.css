@@ -17,7 +17,7 @@
 }
 
 .article-header h1 {
-  max-width: 720px;
+  max-width: var(--content-width);
   font-size: clamp(2rem, 4vw, 2.35rem);
   font-weight: 700;
   line-height: 1.3;

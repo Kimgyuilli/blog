@@ -70,6 +70,6 @@ Tell the user what changed and why, in terms of what the reader now sees. Say wh
 
 - Panel swaps (`hidden` toggles) as the main visual change
 - New colours or motions that duplicate an existing meaning
-- Wide `viewBox` sizes like 720 that shrink text to about ¾ in the article column
+- Wide `viewBox` sizes like 800 that shrink text to about ¾ once the stage narrows toward the 560px breakpoint (the stage is about 740px wide on desktop)
 - Skipping browser verification, or declaring timing fine from throttled screenshots
 - Editing the article's prose or moving demos without the user's confirmation
