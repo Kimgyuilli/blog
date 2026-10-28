@@ -1,0 +1,319 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="locking-writer-waits" ariaLabel="locking writer 의 캐시 단위 락 하나가 어떤 요청을 얼마나 기다리게 하는지 시간축으로 보는 실험" title="product~lock 하나 앞에서 누가 기다릴까요?" description="locking writer 는 캐시 이름마다 락 키 하나를 둡니다. 장면을 고르면 요청마다 끝난 시각까지 막대가 자랍니다. 점선은 기다린 시간, 채운 막대는 적재한 시간입니다.">
+  <div class="lw-controls">
+    <DemoControls ariaLabel="장면">
+      <span class="lw-control-label">장면</span>
+      <button type="button" data-scenario="same" aria-pressed="true">같은 키 16개</button>
+      <button type="button" data-scenario="diff" aria-pressed="false">다른 키 16개</button>
+      <button type="button" data-scenario="hit" aria-pressed="false">적재 중 hit</button>
+      <button type="button" data-scenario="stale" aria-pressed="false">남은 락</button>
+    </DemoControls>
+    <DemoControls ariaLabel="writer 와 폴링 간격">
+      <span class="lw-control-label">writer</span>
+      <button type="button" data-writer="locking" aria-pressed="true">locking</button>
+      <button type="button" data-writer="nonlocking" aria-pressed="false">기본</button>
+      <span class="lw-control-label lw-control-gap">폴링</span>
+      <button type="button" data-poll="10" aria-pressed="false">10ms</button>
+      <button type="button" data-poll="50" aria-pressed="true">50ms (기본)</button>
+      <button type="button" data-poll="200" aria-pressed="false">200ms</button>
+      <button type="button" data-action="replay">다시 보기</button>
+    </DemoControls>
+  </div>
+
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="위에 product~lock 락 키가 있고, 아래에 요청마다 가로 막대가 있습니다. 가로축은 요청을 보낸 뒤의 시간입니다. 점선 막대는 락을 기다린 시간, 채운 막대는 로더가 적재한 시간이고, 세로선이 시간을 따라 움직이면 막대가 함께 자랍니다."></svg>
+  </div>
+
+  <div class="lw-readouts" aria-label="이번 장면의 수치">
+    <span>로더 실행 <b data-loads>0번</b></span>
+    <span data-wall-label>끝나기까지</span><b data-wall class="lw-wall">미측정</b>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">
+    로컬 재현 값입니다. 같은 맥북의 Docker Redis 7.2.16 과 JVM 하나(spring-data-redis 3.5.10)로 쟀고, 로더는 DB 대신 잠드는 함수입니다. 같은 키 장면은 스레드 16개, 로더 200ms 이고 막대 끝은 1회차 로그의 완료 시각, 아래 수치 칸의 범위는 5회 반복의 범위입니다. 다른 키 장면은 재현에서 1회차의 최소, 중앙값, 최대만 남겨서 그 사이를 고르게 나눠 그렸고, 키마다 끝의 200ms 를 적재로 칠했습니다. 적재 중 hit 장면은 다른 키를 1,000ms 동안 적재하기 시작하고 약 100ms 뒤에 보낸 hit 요청이고, 조합마다 한 번씩 돌렸습니다. 수치 칸의 범위는 hit 요청의 <code>sync</code> 를 끈 값과 켠 값입니다. 남은 락 장면은 <code>SET product~lock ""</code> 로 남은 락을 흉내 낸 뒤 3초에 지웠습니다.
+    각 막대는 그 요청을 보낸 때부터 잰 시간이고, 남은 락 장면의 3,021ms 도 요청을 보낸 때부터 잰 값입니다. 락 키를 쥔 요청 표시는 완료 순서에서 그린 해석이고, 요청마다 락을 얻은 시각은 재지 않았습니다. GKE 측정값은 이 모형에 없습니다.
+  </p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, ease, lerp, setAttrs, svg, watchNarrow } from '@/scripts/blog/scene/core';
+
+  type Scenario = 'same' | 'diff' | 'hit' | 'stale';
+  type Writer = 'locking' | 'nonlocking';
+  type Poll = '10' | '50' | '200';
+  /** 한 레인: 이름, 기다린 구간 [start, waitEnd], 적재 구간 [loadStart, end] (ms). start 를 빼면 0 입니다. */
+  type Lane = { name: string; start?: number; waitEnd: number; loadStart: number; end: number; holder: [number, number] | null };
+  type Plan = { lanes: Lane[]; loads: number; wall: string; wallLabel: string; stale: boolean; done: string; alert: boolean };
+
+  const AXIS_MS = 4000;
+  const LOADER_HUE = 'var(--scene-hue-amber)';
+  const LOCK_HUE = 'var(--scene-hue-violet)';
+  const SPEED = 1.4; // 데이터 1초를 화면에서 1.4초로 보여 줍니다.
+
+  /** 같은 키, locking writer, sync 켬, 1회차 로그의 정렬한 완료 시각(ms). */
+  const SAME: Record<Poll, { sorted: number[]; wall: string; del: string }> = {
+    '10': { sorted: [220, 236, 258, 276, 289, 301, 315, 327, 342, 355, 355, 367, 368, 381, 394, 411], wall: '412~503ms', del: '16' },
+    '50': { sorted: [243, 271, 327, 383, 458, 500, 508, 510, 556, 568, 611, 623, 665, 679, 717, 735], wall: '735~1,019ms', del: '16' },
+    '200': { sorted: [212, 213, 415, 416, 424, 633, 837, 1043, 1257, 1469, 1682, 1886, 2092, 2300, 2508, 2714], wall: '2,373~3,214ms', del: '13~16' },
+  };
+
+  const lockedChain = (ends: number[], first: number): Lane[] => ends.map((end, i) => ({
+    name: `요청 ${i + 1}`,
+    waitEnd: i === first ? 0 : end,
+    loadStart: i === first ? 0 : end,
+    end,
+    holder: [i === 0 ? 0 : ends[i - 1], end],
+  }));
+
+  const plan = (scenario: Scenario, writer: Writer, poll: Poll): Plan => {
+    if (scenario === 'same') {
+      if (writer === 'nonlocking') {
+        const lanes = Array.from({ length: 16 }, (_, i) => ({ name: `요청 ${i + 1}`, waitEnd: 0, loadStart: 0, end: 229 + (i % 3 === 0 ? 1 : 0), holder: null }));
+        return { lanes, loads: 16, wall: '208~232ms', wallLabel: '16개가 끝나기까지 (5회 범위)', stale: false, alert: true,
+          done: '기본 writer 는 락이 없어서 아무도 기다리지 않습니다. 대신 <strong>16개가 모두 로더를 돌렸습니다.</strong>' };
+      }
+      const lanes = lockedChain(SAME[poll].sorted, 0);
+      return { lanes, loads: 1, wall: SAME[poll].wall, wallLabel: `16개가 끝나기까지 (5회 범위, 락 해제 ${SAME[poll].del}번)`, stale: false, alert: poll === '200',
+        done: `로더는 1번 돌았습니다. 기다리던 요청은 값을 읽으려고 하나씩 차례로 락을 얻어서, 폴링 간격 ${poll}ms 에서는 마지막 요청이 1회차에 ${(Math.round(SAME[poll].sorted[15] / 10) / 100).toFixed(2)}초에 끝났습니다. 폴링 간격을 바꿔 보세요.` };
+    }
+    if (scenario === 'diff') {
+      if (writer === 'nonlocking') {
+        const lanes = Array.from({ length: 16 }, (_, i) => ({ name: `키 ${i + 1}`, waitEnd: 0, loadStart: 0, end: 208 + Math.round((i / 15) * 6), holder: null }));
+        return { lanes, loads: 16, wall: '213~247ms', wallLabel: '16개가 끝나기까지 (3회 범위)', stale: false, alert: false,
+          done: '기본 writer 에서는 서로 다른 키 16개가 <strong>동시에</strong> 적재해 0.2초 남짓에 끝났습니다.' };
+      }
+      const ends = Array.from({ length: 16 }, (_, i) => Math.round(216 + (i * (3738 - 216)) / 15));
+      const lanes = ends.map((end, i) => ({ name: `키 ${i + 1}`, waitEnd: Math.max(0, end - 200), loadStart: Math.max(0, end - 200), end, holder: [Math.max(0, end - 200), end] as [number, number] }));
+      return { lanes, loads: 16, wall: '3,739~3,962ms', wallLabel: '16개가 끝나기까지 (3회 범위)', stale: false, alert: true,
+        done: '키가 모두 다른데도 로더 16번이 <strong>한 번에 하나씩</strong> 돌았습니다. 락 키가 캐시 이름에 하나라서 다른 키의 적재도 같은 락을 기다립니다.' };
+    }
+    if (scenario === 'hit') {
+      const loader: Lane = { name: '키 2 적재', waitEnd: 0, loadStart: 0, end: 1000, holder: writer === 'locking' ? [0, 1000] : null };
+      const hit: Lane = writer === 'locking'
+        ? { name: '키 1 hit', start: 100, waitEnd: 1048, loadStart: 1048, end: 1048, holder: null }
+        : { name: '키 1 hit', start: 100, waitEnd: 100, loadStart: 100, end: 101, holder: null };
+      return { lanes: [loader, hit], loads: 1, wall: writer === 'locking' ? '923~948ms' : '1~8ms', wallLabel: 'hit 요청을 보내고 끝나기까지 (1회씩)', stale: false, alert: writer === 'locking',
+        done: writer === 'locking'
+          ? '이미 캐시에 있는 키 1 을 읽는 요청도 <strong>키 2 의 적재가 끝날 때까지</strong> 기다렸습니다. locking writer 는 모든 읽기와 쓰기 앞에서 락 키를 확인합니다.'
+          : '기본 writer 에서는 키 2 를 적재하는 동안에도 키 1 의 hit 가 곧바로 돌아왔습니다.' };
+    }
+    const lanes: Lane[] = [{ name: '키 1 hit', waitEnd: 3021, loadStart: 3021, end: 3021, holder: null }];
+    return { lanes, loads: 0, wall: '요청부터 3,021ms (3초에 DEL)', wallLabel: 'hit 요청이 끝나기까지', stale: true, alert: true,
+      done: '주인 없는 락 키가 남자 이미 채워진 키를 읽는 요청도 멈췄고, <strong>락 키를 지운 뒤에야</strong> 돌아왔습니다. 기본 락 TTL 은 만료 없음이고 기다리는 루프에는 시한이 없습니다.' };
+  };
+
+  type Layout = { view: [number, number]; labelX: number; x0: number; x1: number; top: number; gap: number; lock: { x: number; y: number }; barH: number };
+  const layouts: Record<'wide' | 'narrow', Layout> = {
+    wide: { view: [560, 376], labelX: 70, x0: 84, x1: 540, top: 62, gap: 17, lock: { x: 300, y: 22 }, barH: 10 },
+    narrow: { view: [360, 376], labelX: 50, x0: 58, x1: 346, top: 62, gap: 17, lock: { x: 200, y: 22 }, barH: 10 },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="locking-writer-waits"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const loadsOut = demo.querySelector<HTMLElement>('[data-loads]')!;
+    const wallOut = demo.querySelector<HTMLElement>('[data-wall]')!;
+    const wallLabel = demo.querySelector<HTMLElement>('[data-wall-label]')!;
+    const scenarioButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-scenario]')];
+    const writerButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-writer]')];
+    const pollButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-poll]')];
+    let layout = layouts.wide;
+    let scenario: Scenario = 'same';
+    let writer: Writer = 'locking';
+    let poll: Poll = '50';
+    let current = plan(scenario, writer, poll);
+    let started = false;
+
+    // ── 그림 ──
+    const ticks = Array.from({ length: 9 }, (_, k) => {
+      const line = svg('line', { class: 'lw-tick' }, root);
+      const text = svg('text', { class: 'scene-label scene-label-dep', 'text-anchor': 'middle' }, root);
+      text.textContent = k % 2 === 0 ? (k === 0 ? '0' : `${k / 2}초`) : '';
+      return { line, text };
+    });
+    const lanes = Array.from({ length: 16 }, () => {
+      const label = svg('text', { class: 'scene-label is-sans scene-label-dep', 'text-anchor': 'end' }, root);
+      const track = svg('rect', { class: 'scene-lane-track', rx: 3 }, root);
+      const wait = svg('rect', { class: 'lw-wait', rx: 3 }, root);
+      const load = svg('rect', { class: 'scene-lane-bar', rx: 3 }, root);
+      load.style.setProperty('--node-hue', LOADER_HUE);
+      const end = svg('circle', { class: 'lw-end', r: 3.6 }, root);
+      return { label, track, wait, load, end };
+    });
+    const delMark = svg('line', { class: 'scene-tick-line' }, root);
+    const delText = svg('text', { class: 'scene-label scene-label-danger', 'text-anchor': 'middle' }, root);
+    delText.textContent = 'DEL';
+    const cursor = svg('line', { class: 'lw-cursor' }, root);
+    const cursorText = svg('text', { class: 'scene-label lw-cursor-text', 'text-anchor': 'start' }, root);
+    const lockGroup = svg('g', { class: 'scene-lock' }, root);
+    lockGroup.style.setProperty('--node-hue', LOCK_HUE);
+    svg('rect', { class: 'scene-lock-card', rx: 10, height: 22, y: -11, x: -88, width: 176 }, lockGroup);
+    const lockText = svg('text', { class: 'scene-lock-text', y: 4 }, lockGroup);
+    lockText.textContent = 'product~lock';
+
+    const xAt = (ms: number) => lerp(layout.x0, layout.x1, Math.min(ms, AXIS_MS) / AXIS_MS);
+    const laneY = (i: number) => layout.top + i * layout.gap;
+    const lastEnd = () => Math.max(...current.lanes.map((l) => l.end));
+
+    const holderAt = (t: number) => {
+      if (writer !== 'locking') return null;
+      if (current.stale) return t < 3000 ? -1 : null;
+      const index = current.lanes.findIndex((l) => l.holder && t > l.holder[0] && t <= l.holder[1]);
+      return index < 0 ? null : index;
+    };
+    let shownHolder: number | null | undefined;
+    const showHolder = (holder: number | null) => {
+      if (holder === shownHolder) return;
+      shownHolder = holder;
+      lockGroup.classList.toggle('is-held', holder !== null);
+      lockGroup.classList.toggle('is-orphan', holder === -1);
+      bumpText(lockText, holder === null ? 'product~lock' : holder === -1 ? 'product~lock: 주인 없음' : `product~lock: ${current.lanes[holder].name}`);
+    };
+
+    const scene = createScene<{ t: number }>({ t: 0 }, ({ t }) => {
+      const bottom = laneY(15) + 14;
+      ticks.forEach(({ line, text }, k) => {
+        const x = xAt(k * 500);
+        setAttrs(line, { x1: x, x2: x, y1: layout.top - 12, y2: bottom });
+        setAttrs(text, { x, y: bottom + 16 });
+      });
+      lanes.forEach((view, i) => {
+        const lane = current.lanes[i];
+        const y = laneY(i);
+        const on = Boolean(lane);
+        [view.label, view.track, view.wait, view.load, view.end].forEach((el) => { (el as SVGElement).style.display = on ? '' : 'none'; });
+        if (!lane) return;
+        view.label.textContent = lane.name;
+        setAttrs(view.label, { x: layout.labelX, y: y + 4 });
+        setAttrs(view.track, { x: layout.x0, y: y - layout.barH / 2, width: layout.x1 - layout.x0, height: layout.barH });
+        const waitFrom = lane.start ?? 0;
+        const waitTo = Math.min(t, lane.waitEnd);
+        setAttrs(view.wait, { x: xAt(waitFrom), y: y - layout.barH / 2, width: Math.max(0, xAt(waitTo) - xAt(waitFrom)), height: layout.barH });
+        const loadFrom = lane.loadStart;
+        const loadTo = Math.min(t, lane.end);
+        const loadW = loadTo > loadFrom ? Math.max(2, xAt(loadTo) - xAt(loadFrom)) : 0;
+        setAttrs(view.load, { x: xAt(loadFrom), y: y - layout.barH / 2, width: loadW, height: layout.barH });
+        const finished = t >= lane.end;
+        setAttrs(view.end, { cx: xAt(lane.end) + 4, cy: y });
+        view.end.style.opacity = finished ? '1' : '0';
+        view.label.classList.toggle('scene-label-flow', finished);
+        view.label.classList.toggle('is-waiting-label', !finished && t > (lane.start ?? 0) && lane.waitEnd > (lane.start ?? 0) && t < lane.waitEnd);
+      });
+      const showDel = current.stale && t >= 3000;
+      setAttrs(delMark, { x1: xAt(3000), x2: xAt(3000), y1: layout.top - 12, y2: laneY(0) + 10 });
+      setAttrs(delText, { x: xAt(3000), y: layout.top - 16 });
+      delMark.style.opacity = showDel ? '1' : '0';
+      delText.style.opacity = showDel ? '1' : '0';
+      const cx = xAt(t);
+      setAttrs(cursor, { x1: cx, x2: cx, y1: layout.top - 12, y2: bottom });
+      cursor.style.opacity = t > 0 ? '1' : '0';
+      cursorText.textContent = `${(t / 1000).toFixed(2)}초`;
+      const nearEnd = cx > layout.x1 - 50;
+      setAttrs(cursorText, { x: nearEnd ? cx - 6 : cx + 6, y: layout.top - 16, 'text-anchor': nearEnd ? 'end' : 'start' });
+      cursorText.style.opacity = t > 0 && !showDel ? '1' : '0';
+      setAttrs(lockGroup, { transform: `translate(${layout.lock.x} ${layout.lock.y})` });
+      lockGroup.style.opacity = writer === 'locking' ? '1' : '0.35';
+      showHolder(holderAt(t));
+    });
+
+    const say = (html: string, alert = false) => {
+      note.classList.toggle('is-alert', alert);
+      note.innerHTML = html;
+    };
+    const syncControls = () => {
+      writerButtons.forEach((b) => { b.disabled = scenario === 'stale'; b.setAttribute('aria-pressed', String(b.dataset.writer === writer)); });
+      pollButtons.forEach((b) => { b.disabled = scenario !== 'same' || writer !== 'locking'; b.setAttribute('aria-pressed', String(b.dataset.poll === poll)); });
+      scenarioButtons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.scenario === scenario)));
+    };
+    const intro = () => {
+      if (scenario === 'same') return writer === 'locking'
+        ? `같은 키를 16개 스레드가 동시에 읽습니다. locking writer, sync 켬, 폴링 간격 ${poll}ms 입니다.`
+        : '같은 키를 16개 스레드가 동시에 읽습니다. 기본 writer, sync 켬입니다.';
+      if (scenario === 'diff') return `서로 다른 키 16개를 동시에 읽습니다. ${writer === 'locking' ? 'locking' : '기본'} writer, sync 켬입니다.`;
+      if (scenario === 'hit') return `키 2 를 1초 동안 적재하는 사이에, 이미 캐시에 있는 키 1 을 읽습니다. ${writer === 'locking' ? 'locking' : '기본'} writer 입니다.`;
+      return '적재하던 프로세스가 죽어 <code>product~lock</code> 이 남은 상황입니다. 이미 채워진 키 1 을 읽습니다.';
+    };
+
+    const play = async () => {
+      started = true;
+      const alive = scene.begin();
+      current = plan(scenario, writer, poll);
+      syncControls();
+      shownHolder = undefined;
+      scene.set({ t: 0 });
+      bumpText(loadsOut, `${current.loads}번`);
+      loadsOut.classList.toggle('is-temp', current.loads > 1);
+      wallLabel.textContent = current.wallLabel;
+      bumpText(wallOut, '진행 중');
+      say(intro(), scenario === 'stale');
+      await scene.pause(500);
+      if (!alive()) return;
+      const end = Math.min(AXIS_MS, lastEnd() + 60);
+      const finished = await scene.go({ t: end }, end * SPEED, ease.linear);
+      if (!finished || !alive()) return;
+      bumpText(wallOut, current.wall);
+      wallOut.classList.toggle('is-temp', current.alert);
+      say(current.done, current.alert);
+      if (scenario === 'same' && writer === 'locking' && poll === '50') pollButtons.find((b) => b.dataset.poll === '200')!.setAttribute('data-state', 'next');
+    };
+
+    const clearNext = () => pollButtons.forEach((b) => b.removeAttribute('data-state'));
+    scenarioButtons.forEach((b) => b.addEventListener('click', () => {
+      scenario = b.dataset.scenario as Scenario;
+      if (scenario === 'stale') writer = 'locking';
+      clearNext();
+      void play();
+    }));
+    writerButtons.forEach((b) => b.addEventListener('click', () => { writer = b.dataset.writer as Writer; clearNext(); void play(); }));
+    pollButtons.forEach((b) => b.addEventListener('click', () => { poll = b.dataset.poll as Poll; clearNext(); void play(); }));
+    demo.querySelector('[data-action="replay"]')!.addEventListener('click', () => { void play(); });
+
+    const applyLayout = () => {
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      scene.redraw();
+    };
+    watchNarrow(stage, (narrow) => { layout = layouts[narrow ? 'narrow' : 'wide']; applyLayout(); });
+    syncControls();
+    say('같은 키 16개가 locking writer 에서 동시에 miss 됩니다. 로더는 한 번 돕니다. 나머지 15개는 언제 끝날까요?');
+    applyLayout();
+
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        window.setTimeout(() => { if (!started) void play(); }, scene.reduced ? 0 : 1000);
+      }, { threshold: 0.5 });
+      observer.observe(stage);
+    }
+  });
+</script>
+
+<style>
+  .lw-controls :global(.db-demo-controls) { align-items: center; margin-block: 10px 0; }
+  .lw-controls :global(.db-demo-controls:first-child) { margin-top: 18px; }
+  .lw-controls :global(.db-demo-controls:last-child) { margin-bottom: 14px; }
+  .lw-control-label { min-width: 2.6em; color: var(--slate); font-size: 0.78rem; font-weight: 700; }
+  .lw-control-gap { margin-left: 8px; }
+  .lw-readouts { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 10px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .lw-readouts span { display: inline-flex; align-items: baseline; gap: 6px; margin-right: 10px; }
+  .lw-readouts b { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .lw-readouts b:global(.is-temp) { color: var(--scene-temp); }
+  .lw-readouts b:global(.is-bump) { animation: scene-pop 420ms ease-out; }
+
+  :global(.db-demo .lw-tick) { stroke: var(--hairline); stroke-width: 1; stroke-dasharray: 2 5; }
+  :global(.db-demo .lw-wait) { fill: color-mix(in srgb, var(--scene-temp) 14%, transparent); stroke: var(--scene-temp); stroke-width: 1.2; stroke-dasharray: 4 3; }
+  :global(.db-demo .lw-end) { fill: var(--scene-flow); transition: opacity 200ms ease; }
+  :global(.db-demo .lw-cursor) { stroke: var(--scene-dep); stroke-width: 1.4; }
+  :global(.db-demo .lw-cursor-text) { fill: var(--scene-dep); }
+  :global(.db-demo .scene-lock.is-orphan .scene-lock-card) { fill: var(--scene-danger-soft); stroke: var(--scene-danger); stroke-dasharray: 5 3; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lw-readouts b:global(.is-bump) { animation: none; }
+  }
+</style>

@@ -1,0 +1,502 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="same-key-loader-lanes" ariaLabel="같은 키를 동시에 읽는 요청 16개가 로더를 몇 번 실행하는지 캐시 종류, sync, Redis 상태별로 보는 실험" title="같은 키 16개가 동시에 miss 되면 로더는 몇 번 돌까요?" description="스레드 16개가 비어 있는 같은 키를 한꺼번에 읽습니다. 캐시와 sync, Redis 상태를 고르면 같은 요청을 다시 보내고, 로더가 실행된 레인을 셉니다.">
+  <div class="sk-controls">
+    <DemoControls ariaLabel="캐시 종류">
+      <span class="sk-control-label">캐시</span>
+      <button type="button" data-cache="nonlocking" aria-pressed="true">Redis 기본 writer</button>
+      <button type="button" data-cache="locking" aria-pressed="false">Redis locking writer</button>
+      <button type="button" data-cache="cmap" aria-pressed="false">ConcurrentMapCache</button>
+    </DemoControls>
+    <DemoControls ariaLabel="sync 설정">
+      <span class="sk-control-label">sync</span>
+      <button type="button" data-sync="off" aria-pressed="false">끔</button>
+      <button type="button" data-sync="on" aria-pressed="true">켬</button>
+      <span class="sk-control-label sk-control-gap">Redis</span>
+      <button type="button" data-redis="up" aria-pressed="true">정상</button>
+      <button type="button" data-redis="down" aria-pressed="false">중단</button>
+      <button type="button" data-action="replay">다시 보내기</button>
+    </DemoControls>
+  </div>
+
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="왼쪽에 스레드 16개가 한 줄씩 있고, 가운데에 같은 키 하나를 가진 캐시, 오른쪽에 레인마다 로더 칸이 있습니다. 요청이 캐시에서 miss 를 받으면 로더 칸으로 가서 칸을 채우고, 로더 칸이 몇 개 채워졌는지가 로더 실행 횟수입니다."></svg>
+  </div>
+
+  <div class="sk-readouts" aria-label="이번 실행의 수치">
+    <span>로더 실행 <b data-loads>0번</b></span>
+    <span>get 실패 <b data-get>0건</b></span>
+    <span>put 실패 <b data-put>0건</b></span>
+    <span>16개가 끝나기까지 <b data-wall>미측정</b></span>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">
+    로컬 재현 값입니다. 같은 맥북의 Docker 에 띄운 Redis 7.2.16 과 JVM 하나(spring-data-redis 3.5.10, spring-context 6.2.17), 스레드 16개, 200ms 잠드는 로더로 쟀습니다. 로더 실행 횟수는 Redis 정상 5회와 중단 3회에서 매번 같았고, 끝나기까지의 시간은 그 반복의 범위입니다. 그림의 움직임 속도는 실제 시간에 비례하지 않습니다.
+    locking writer 에서 기다리던 요청이 락을 얻는 순서는 실행마다 다르며 그림의 순서는 예시입니다. 로더는 DB 대신 잠드는 함수이고, GKE 측정값이나 PeekCart 의 조회 상한은 이 모형에 없습니다. Redis 중단은 컨테이너를 죽여 연결이 곧바로 거부된 경우이고, 끝나기까지의 시간은 writer 두 종류와 <code>sync</code> 켜고 끔의 네 조합 12회를 합친 범위입니다.
+  </p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, lerp, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createBoundary, landRing } from '@/scripts/blog/scene/parts';
+  import { createPacketLayer, type Packet } from '@/scripts/blog/scene/packets';
+
+  type CacheKind = 'nonlocking' | 'locking' | 'cmap';
+  type Run = { cache: CacheKind; sync: boolean; down: boolean };
+  const LANES = 16;
+  const LOADER_HUE = 'var(--scene-hue-amber)';
+  const LOCK_HUE = 'var(--scene-hue-violet)';
+
+  /** 로컬 재현 결과. 로더 횟수는 반복 내내 같았고 wall 은 반복의 범위입니다. */
+  const RESULT: Record<string, { loads: number; wall: string }> = {
+    'nonlocking-off': { loads: 16, wall: '213~240ms' },
+    'nonlocking-on': { loads: 16, wall: '208~232ms' },
+    'locking-off': { loads: 16, wall: '215~251ms' },
+    'locking-on': { loads: 1, wall: '603~1,249ms' },
+    'cmap-off': { loads: 16, wall: '210~218ms' },
+    'cmap-on': { loads: 1, wall: '204~212ms' },
+    down: { loads: 16, wall: '208~223ms' },
+  };
+
+  type Layout = {
+    view: [number, number];
+    laneY0: number;
+    laneGap: number;
+    threadX: number;
+    dotX: number;
+    cache: { x: number; w: number };
+    loader: { x: number; w: number };
+    cellW: number;
+    head: number;
+    lock: Point;
+    short: boolean;
+  };
+  const layouts: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 410], laneY0: 104, laneGap: 19, threadX: 34, dotX: 58,
+      cache: { x: 196, w: 132 }, loader: { x: 404, w: 136 }, cellW: 92, head: 54, lock: { x: 262, y: 22 }, short: false,
+    },
+    narrow: {
+      view: [360, 410], laneY0: 104, laneGap: 19, threadX: 20, dotX: 40,
+      cache: { x: 108, w: 104 }, loader: { x: 262, w: 92 }, cellW: 60, head: 54, lock: { x: 160, y: 22 }, short: true,
+    },
+  };
+
+  type State = { fill: number[]; key: number; lock: number; down: number; cmap: number };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="same-key-loader-lanes"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const loadsOut = demo.querySelector<HTMLElement>('[data-loads]')!;
+    const getOut = demo.querySelector<HTMLElement>('[data-get]')!;
+    const putOut = demo.querySelector<HTMLElement>('[data-put]')!;
+    const wallOut = demo.querySelector<HTMLElement>('[data-wall]')!;
+    const cacheButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-cache]')];
+    const syncButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-sync]')];
+    const redisButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-redis]')];
+    let layout = layouts.wide;
+    const run: Run = { cache: 'nonlocking', sync: true, down: false };
+    let started = false;
+
+    // ── 논리 모형 ──
+    let fill = Array.from({ length: LANES }, () => 0);
+    let keyFilled = 0;
+    let loads = 0;
+    let getFails = 0;
+    let putFails = 0;
+    const target = (): State => ({
+      fill: [...fill],
+      key: keyFilled,
+      lock: run.cache === 'locking' ? 1 : 0,
+      down: run.down ? 1 : 0,
+      cmap: run.cache === 'cmap' ? 1 : 0,
+    });
+
+    // ── 그림 ──
+    const cacheZone = createBoundary(root, '');
+    const loaderZone = createBoundary(root, '');
+    const keyText = svg('text', { class: 'scene-label sk-key', 'text-anchor': 'middle' }, root);
+    const laneLines = Array.from({ length: LANES }, () => svg('line', { class: 'sk-lane-line' }, root));
+    const threadLabels = Array.from({ length: LANES }, (_, i) => {
+      const text = svg('text', { class: 'scene-label scene-label-dep', 'text-anchor': 'middle' }, root);
+      text.textContent = `T${i + 1}`;
+      return text;
+    });
+    const dots = Array.from({ length: LANES }, () => svg('circle', { class: 'sk-dot', r: 4.5 }, root));
+    const cells = Array.from({ length: LANES }, () => {
+      const group = svg('g', { class: 'sk-cell' }, root);
+      group.style.setProperty('--node-hue', LOADER_HUE);
+      const track = svg('rect', { class: 'scene-lane-track', rx: 3, height: 12, y: -6 }, group);
+      const bar = svg('rect', { class: 'scene-lane-bar', rx: 3, height: 12, y: -6 }, group);
+      return { group, track, bar };
+    });
+    const lockGroup = svg('g', { class: 'scene-lock' }, root);
+    lockGroup.style.setProperty('--node-hue', LOCK_HUE);
+    const lockCard = svg('rect', { class: 'scene-lock-card', rx: 10, height: 22, y: -11, x: -66, width: 132 }, lockGroup);
+    const lockText = svg('text', { class: 'scene-lock-text', y: 4 }, lockGroup);
+    lockText.textContent = 'product~lock';
+    void lockCard;
+    const packets = createPacketLayer(root);
+
+    const laneY = (i: number) => layout.laneY0 + i * layout.laneGap;
+    const threadOut = (i: number): Point => ({ x: layout.dotX + 22, y: laneY(i) });
+    const cacheIn = (i: number): Point => ({ x: layout.cache.x + 26, y: laneY(i) });
+    const waitSpot = (i: number): Point => ({ x: layout.cache.x - 26, y: laneY(i) });
+    const loaderIn = (i: number): Point => ({ x: layout.loader.x + 12, y: laneY(i) });
+    const cellX = () => layout.loader.x + layout.loader.w - layout.cellW - 10;
+
+    const captions = () => {
+      const short = layout.short;
+      if (run.cache === 'cmap') cacheZone.caption.textContent = short ? 'ConcurrentMap' : 'ConcurrentMapCache';
+      else cacheZone.caption.textContent = run.down ? 'Redis 중단' : short ? 'Redis' : `Redis, ${run.cache === 'locking' ? 'locking' : '기본'} writer`;
+      loaderZone.caption.textContent = short ? '로더' : '로더 (200ms)';
+    };
+
+    const scene = createScene<State>(target(), (s) => {
+      const top = layout.head;
+      const bottom = laneY(LANES - 1) + 16;
+      cacheZone.place({ x: layout.cache.x, y: top, w: layout.cache.w, h: bottom - top }, { x: layout.cache.x + layout.cache.w / 2, y: top + 20, anchor: 'middle' });
+      loaderZone.place({ x: layout.loader.x, y: top, w: layout.loader.w, h: bottom - top }, { x: layout.loader.x + layout.loader.w / 2, y: top + 20, anchor: 'middle' });
+      cacheZone.rect.classList.toggle('is-down', s.down > 0.5);
+      cacheZone.caption.classList.toggle('is-down', s.down > 0.5);
+      setAttrs(keyText, { x: layout.cache.x + layout.cache.w / 2, y: top + 36 });
+      keyText.textContent = s.down > 0.5 ? '연결 거부' : layout.short ? (s.key > 0.5 ? '키 = 값' : '키 비어 있음') : s.key > 0.5 ? 'product::1 = 값' : 'product::1 비어 있음';
+      keyText.classList.toggle('is-filled', s.key > 0.5 && s.down < 0.5);
+      keyText.classList.toggle('is-down', s.down > 0.5);
+      for (let i = 0; i < LANES; i += 1) {
+        const y = laneY(i);
+        setAttrs(laneLines[i], { x1: layout.dotX + 8, x2: layout.loader.x - 4, y1: y, y2: y });
+        setAttrs(threadLabels[i], { x: layout.threadX, y: y + 4 });
+        setAttrs(dots[i], { cx: layout.dotX, cy: y });
+        setAttrs(cells[i].group, { transform: `translate(${cellX()} ${y})` });
+        setAttrs(cells[i].track, { x: 0, width: layout.cellW });
+        setAttrs(cells[i].bar, { x: 0, width: Math.max(0, layout.cellW * s.fill[i]) });
+        cells[i].bar.style.opacity = String(Math.min(1, s.fill[i] * 4));
+      }
+      setAttrs(lockGroup, { transform: `translate(${layout.lock.x} ${lerp(layout.lock.y - 10, layout.lock.y, s.lock)})` });
+      lockGroup.style.opacity = String(s.lock * (s.down > 0.5 ? 0.45 : 1));
+    });
+
+    const holdLock = (lane: number | null) => {
+      lockGroup.classList.toggle('is-held', lane !== null);
+      bumpText(lockText, lane === null ? 'product~lock' : `product~lock: T${lane + 1}`);
+    };
+    const setLane = (i: number, status: '' | 'wait' | 'done' | 'fail') => {
+      dots[i].setAttribute('class', `sk-dot${status ? ` is-${status}` : ''}`);
+      threadLabels[i].classList.toggle('scene-label-flow', status === 'done');
+      threadLabels[i].classList.toggle('is-waiting-label', status === 'wait');
+    };
+    const say = (html: string, alert = false) => {
+      note.classList.toggle('is-alert', alert);
+      note.innerHTML = html;
+    };
+    const syncCounts = () => {
+      bumpText(loadsOut, `${loads}번`);
+      bumpText(getOut, `${getFails}건`);
+      bumpText(putOut, `${putFails}건`);
+      loadsOut.classList.toggle('is-temp', loads > 1);
+      getOut.classList.toggle('is-danger', getFails > 0);
+      putOut.classList.toggle('is-danger', putFails > 0);
+    };
+    const resultKey = () => (run.down ? 'down' : `${run.cache}-${run.sync ? 'on' : 'off'}`);
+    const finish = () => {
+      bumpText(wallOut, RESULT[resultKey()].wall);
+    };
+
+    const T = { hop: 520, load: 900, back: 460 };
+    const stagger = (i: number) => scene.pause(i * 22);
+
+    /** 로더 칸을 채웁니다. 장면 전환이 겹쳐도 마지막 목표 상태로 이어집니다. */
+    const runLoader = async (i: number, alive: () => boolean) => {
+      loads += 1;
+      syncCounts();
+      fill[i] = 1;
+      void scene.go(target(), T.load);
+      await scene.pause(T.load);
+      return alive();
+    };
+    const backToThread = async (p: Packet, i: number, alive: () => boolean) => {
+      p.relabel('응답', 'flow');
+      if (!(await p.travel([threadOut(i)], T.back)) || !alive()) return false;
+      setLane(i, 'done');
+      void p.fade(260);
+      return true;
+    };
+
+    /** 묶임 없이 각자 읽고, 없으면 로더를 부르고, 씁니다. */
+    const laneAlone = async (i: number, alive: () => boolean) => {
+      await stagger(i);
+      if (!alive()) return;
+      const p = packets.spawn({ label: 'GET', at: threadOut(i) });
+      if (!(await p.travel([cacheIn(i)], T.hop)) || !alive()) return;
+      p.relabel('miss', 'temp');
+      await scene.pause(160);
+      if (!alive()) return;
+      if (!(await p.travel([loaderIn(i)], T.hop)) || !alive()) return;
+      if (!(await runLoader(i, alive))) return;
+      p.relabel(run.cache === 'cmap' ? 'put' : 'SET', 'dep');
+      if (!(await p.travel([cacheIn(i)], T.hop)) || !alive()) return;
+      void p.land(true);
+      if (!keyFilled) { keyFilled = 1; void scene.go(target(), duration.reflow); }
+      await backToThread(p, i, alive);
+    };
+
+    /** Redis 가 죽어 있을 때. get 이 실패하면 처리기가 miss 로 넘기고 로더가 돕니다. */
+    const laneDown = async (i: number, alive: () => boolean) => {
+      await stagger(i);
+      if (!alive()) return;
+      const p = packets.spawn({ label: 'GET', at: threadOut(i) });
+      if (!(await p.bounce({ x: layout.cache.x + 4, y: laneY(i) }, 18)) || !alive()) return;
+      getFails += 1;
+      syncCounts();
+      p.relabel('get 실패', 'danger');
+      setLane(i, 'fail');
+      await scene.pause(380);
+      if (!alive()) return;
+      p.relabel('miss 처리', 'temp');
+      if (!(await p.travel([{ x: layout.cache.x - 8, y: laneY(i) + 0.01 }, loaderIn(i)], T.hop + 160)) || !alive()) return;
+      if (!(await runLoader(i, alive))) return;
+      if (!run.sync) {
+        p.relabel('SET', 'dep');
+        if (!(await p.bounce({ x: layout.cache.x + layout.cache.w - 4, y: laneY(i) }, 18)) || !alive()) return;
+        putFails += 1;
+        syncCounts();
+        p.relabel('put 실패', 'danger');
+        await scene.pause(300);
+        if (!alive()) return;
+      }
+      await backToThread(p, i, alive);
+    };
+
+    const shuffle = (list: number[]) => {
+      const copy = [...list];
+      for (let i = copy.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    };
+
+    /** locking writer 에 sync: 한 요청만 락을 얻어 적재하고, 나머지는 락이 풀린 뒤 하나씩 다시 락을 얻어 읽습니다. */
+    const runLocking = async (alive: () => boolean) => {
+      const lanes = Array.from({ length: LANES }, (_, i) => i);
+      const ps = lanes.map((i) => packets.spawn({ label: 'GET', at: threadOut(i) }));
+      say('locking writer 는 락 없이 먼저 한 번 읽습니다. 16개 모두 <strong>비어 있음</strong>을 받습니다.');
+      const firstReads = await Promise.all(lanes.map(async (i) => {
+        await stagger(i);
+        if (!alive() || !(await ps[i].travel([cacheIn(i)], T.hop))) return false;
+        ps[i].relabel('miss', 'temp');
+        return true;
+      }));
+      if (!alive() || firstReads.some((ok) => !ok)) return;
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      const order = shuffle(lanes);
+      const winner = order[0];
+      holdLock(winner);
+      say(`T${winner + 1} 이 <code>SET product~lock NX</code> 로 락을 얻었습니다. 나머지 15개는 락 키가 사라질 때까지 50ms 마다 확인하며 기다립니다.`);
+      await Promise.all(order.slice(1).map(async (i) => {
+        setLane(i, 'wait');
+        await ps[i].travel([waitSpot(i)], T.hop);
+        ps[i].relabel('대기', 'temp');
+      }));
+      if (!alive()) return;
+      const p = ps[winner];
+      if (!(await p.travel([loaderIn(winner)], T.hop)) || !alive()) return;
+      if (!(await runLoader(winner, alive))) return;
+      p.relabel('SET', 'dep');
+      if (!(await p.travel([cacheIn(winner)], T.hop)) || !alive()) return;
+      void p.land(true);
+      keyFilled = 1;
+      void scene.go(target(), duration.reflow);
+      holdLock(null);
+      if (!(await backToThread(p, winner, alive))) return;
+      say('적재가 끝나 락이 풀렸습니다. 기다리던 요청은 값을 읽으려고 <strong>하나씩 다시 락을 얻습니다.</strong> 로더는 다시 돌지 않습니다.');
+      for (const i of order.slice(1)) {
+        await scene.pause(170);
+        if (!alive()) return;
+        holdLock(i);
+        ps[i].relabel('GET', 'dep');
+        if (!(await ps[i].travel([cacheIn(i)], 240)) || !alive()) return;
+        ps[i].relabel('hit', 'flow');
+        holdLock(null);
+        setLane(i, '');
+        void scene.pause(200).then(() => (alive() ? backToThread(ps[i], i, alive) : false));
+      }
+      await scene.pause(T.back + 400);
+      if (!alive()) return;
+      finish();
+      say(`로더는 <strong>${loads}번</strong> 돌았습니다. 대신 16개는 차례로 락을 얻느라 로컬 재현에서 ${RESULT['locking-on'].wall} 걸렸습니다. 같은 키는 묶였습니다.`);
+    };
+
+    /** ConcurrentMapCache 에 sync: computeIfAbsent 안에서 같은 키의 계산이 하나로 묶이고, 끝나면 모두 같은 값을 받습니다. */
+    const runMap = async (alive: () => boolean) => {
+      const lanes = Array.from({ length: LANES }, (_, i) => i);
+      const ps = lanes.map((i) => packets.spawn({ label: 'get', at: threadOut(i) }));
+      say('JVM 메모리의 <code>ConcurrentMapCache</code> 에 sync 를 켰습니다. 같은 하네스로 16개가 같은 키를 읽습니다.');
+      const arrived = await Promise.all(lanes.map(async (i) => {
+        await stagger(i);
+        return alive() && (await ps[i].travel([cacheIn(i)], T.hop));
+      }));
+      if (!alive() || arrived.some((ok) => !ok)) return;
+      const winner = shuffle(lanes)[0];
+      lanes.filter((i) => i !== winner).forEach((i) => { ps[i].relabel('대기', 'temp'); setLane(i, 'wait'); });
+      ps[winner].relabel('miss', 'temp');
+      say(`<code>computeIfAbsent</code> 가 같은 키의 계산을 하나로 묶습니다. T${winner + 1} 만 로더를 부르고 나머지는 맵 안에서 기다립니다.`);
+      const p = ps[winner];
+      if (!(await p.travel([loaderIn(winner)], T.hop)) || !alive()) return;
+      if (!(await runLoader(winner, alive))) return;
+      p.relabel('put', 'dep');
+      if (!(await p.travel([cacheIn(winner)], T.hop)) || !alive()) return;
+      void p.land(true);
+      keyFilled = 1;
+      void scene.go(target(), duration.reflow);
+      lanes.forEach((i) => {
+        if (i === winner) { void backToThread(p, i, alive); return; }
+        ps[i].relabel('hit', 'flow');
+        setLane(i, '');
+        void scene.pause(300).then(() => (alive() ? backToThread(ps[i], i, alive) : false));
+      });
+      await scene.pause(T.back + 600);
+      if (!alive()) return;
+      finish();
+      say(`같은 장치로 셌을 때 대조군은 <strong>${loads}번</strong>입니다. 이 하네스는 묶임이 있으면 잡아냅니다. 캐시를 Redis 기본 writer 로 바꿔 보세요.`);
+      cacheButtons.find((b) => b.dataset.cache === 'nonlocking')!.setAttribute('data-state', 'next');
+    };
+
+    const reset = () => {
+      fill = Array.from({ length: LANES }, () => 0);
+      keyFilled = 0;
+      loads = 0;
+      getFails = 0;
+      putFails = 0;
+      for (let i = 0; i < LANES; i += 1) setLane(i, '');
+      holdLock(null);
+      bumpText(wallOut, '실행 중');
+      syncCounts();
+      captions();
+    };
+
+    const go = async () => {
+      started = true;
+      const alive = scene.begin();
+      packets.clear();
+      reset();
+      if (!(await scene.go(target(), duration.reflow)) || !alive()) return;
+      if (run.down) {
+        say(run.cache === 'locking'
+          ? 'Redis 가 죽어 락 키를 만들 수도 확인할 수도 없습니다. 같은 키 16개가 읽기를 보냅니다.'
+          : 'Redis 가 죽은 채로 같은 키 16개가 읽기를 보냅니다.', true);
+        await Promise.all(Array.from({ length: LANES }, (_, i) => laneDown(i, alive)));
+        if (!alive()) return;
+        finish();
+        say(run.sync
+          ? `로더 <strong>${loads}번</strong>. sync 를 켠 경로는 <code>Cache.get(key, Callable)</code> 이 실패하자 처리기가 get 실패로 받고 로더를 직접 불렀습니다. 쓰기는 다시 시도하지 않아 put 실패는 0건입니다.`
+          : `로더 <strong>${loads}번</strong>. get 이 실패해 miss 로 넘어가고, 적재 뒤 put 도 실패했습니다. 캐시는 채워지지 않습니다.`, true);
+        return;
+      }
+      if (run.cache === 'locking' && run.sync) { await runLocking(alive); return; }
+      if (run.cache === 'cmap' && run.sync) { await runMap(alive); return; }
+      say(run.cache === 'cmap'
+        ? 'sync 를 끈 <code>ConcurrentMapCache</code> 입니다. 16개가 각자 읽습니다.'
+        : `${run.cache === 'locking' ? 'locking' : '기본'} writer 에 sync 를 ${run.sync ? '켰' : '껐'}습니다. 16개가 같은 키를 동시에 읽습니다.`);
+      await Promise.all(Array.from({ length: LANES }, (_, i) => laneAlone(i, alive)));
+      if (!alive()) return;
+      finish();
+      if (run.cache === 'nonlocking' && run.sync) {
+        say(`sync 를 켰는데도 로더가 <strong>${loads}번</strong> 돌았습니다. 기본 writer 의 <code>get(key, loader)</code> 경로에는 같은 키를 묶는 장치가 없습니다.`, true);
+        cacheButtons.find((b) => b.dataset.cache === 'cmap')!.setAttribute('data-state', 'next');
+      } else {
+        say(`로더 <strong>${loads}번</strong>. sync 를 끈 경로는 캐시 종류와 상관없이 같은 키를 묶지 않습니다.`);
+      }
+    };
+
+    const pressOnly = (buttons: HTMLButtonElement[], pressed: HTMLButtonElement) => {
+      buttons.forEach((b) => b.setAttribute('aria-pressed', String(b === pressed)));
+    };
+    const clearNext = () => cacheButtons.forEach((b) => b.removeAttribute('data-state'));
+    const syncRedisButtons = () => {
+      redisButtons.forEach((b) => { b.disabled = run.cache === 'cmap'; });
+      if (run.cache === 'cmap' && run.down) {
+        run.down = false;
+        pressOnly(redisButtons, redisButtons.find((b) => b.dataset.redis === 'up')!);
+      }
+    };
+    cacheButtons.forEach((button) => button.addEventListener('click', () => {
+      run.cache = button.dataset.cache as CacheKind;
+      pressOnly(cacheButtons, button);
+      clearNext();
+      syncRedisButtons();
+      void go();
+    }));
+    syncButtons.forEach((button) => button.addEventListener('click', () => {
+      run.sync = button.dataset.sync === 'on';
+      pressOnly(syncButtons, button);
+      clearNext();
+      void go();
+    }));
+    redisButtons.forEach((button) => button.addEventListener('click', () => {
+      run.down = button.dataset.redis === 'down';
+      pressOnly(redisButtons, button);
+      clearNext();
+      void go();
+    }));
+    demo.querySelector('[data-action="replay"]')!.addEventListener('click', () => { void go(); });
+
+    const applyLayout = () => {
+      setAttrs(root, { viewBox: `0 0 ${layout.view[0]} ${layout.view[1]}` });
+      scene.begin();
+      packets.clear();
+      captions();
+      scene.set(scene.state);
+      if (started) void go();
+    };
+    watchNarrow(stage, (narrow) => { layout = layouts[narrow ? 'narrow' : 'wide']; applyLayout(); });
+    syncCounts();
+    say('Redis 기본 writer 에 <code>sync = true</code> 를 켰습니다. 같은 키 16개가 동시에 miss 되면 로더는 몇 번 돌까요?');
+    applyLayout();
+
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        window.setTimeout(() => { if (!started) void go(); }, scene.reduced ? 0 : 1200);
+      }, { threshold: 0.5 });
+      observer.observe(stage);
+    }
+  });
+</script>
+
+<style>
+  .sk-controls :global(.db-demo-controls) { align-items: center; margin-block: 10px 0; }
+  .sk-controls :global(.db-demo-controls:first-child) { margin-top: 18px; }
+  .sk-controls :global(.db-demo-controls:last-child) { margin-bottom: 14px; }
+  .sk-control-label { min-width: 2.6em; color: var(--slate); font-size: 0.78rem; font-weight: 700; }
+  .sk-control-gap { margin-left: 8px; }
+  .sk-readouts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .sk-readouts span { display: inline-flex; align-items: baseline; gap: 6px; }
+  .sk-readouts b { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .sk-readouts b:global(.is-temp) { color: var(--scene-temp); }
+  .sk-readouts b:global(.is-danger) { color: var(--scene-danger); }
+  .sk-readouts b:global(.is-bump) { animation: scene-pop 420ms ease-out; }
+
+  :global(.db-demo .sk-lane-line) { stroke: var(--hairline); stroke-width: 1; stroke-dasharray: 2 5; }
+  :global(.db-demo .sk-dot) { fill: var(--surface); stroke: var(--scene-dep); stroke-width: 1.4; transition: fill 220ms ease, stroke 220ms ease; }
+  :global(.db-demo .sk-dot.is-done) { fill: var(--scene-flow); stroke: var(--scene-flow); }
+  :global(.db-demo .sk-dot.is-wait) { fill: var(--scene-temp-soft); stroke: var(--scene-temp); stroke-dasharray: 2 2; }
+  :global(.db-demo .sk-dot.is-fail) { fill: var(--scene-danger-soft); stroke: var(--scene-danger); }
+  :global(.db-demo .sk-key) { fill: var(--scene-dep); font-size: 10.5px; }
+  :global(.db-demo .sk-key.is-filled) { fill: var(--scene-flow-ink); }
+  :global(.db-demo .sk-key.is-down) { fill: var(--scene-danger); }
+  :global(.db-demo .scene-boundary.is-down) { stroke: var(--scene-danger); stroke-dasharray: 6 5; fill: var(--scene-danger-soft); }
+  :global(.db-demo .scene-caption.is-down) { fill: var(--scene-danger); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sk-readouts b:global(.is-bump) { animation: none; }
+  }
+</style>

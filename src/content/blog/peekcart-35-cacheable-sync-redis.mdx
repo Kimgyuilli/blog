@@ -1,0 +1,494 @@
+---
+title: 'PeekCart 학습 기록 35: @Cacheable(sync = true) 는 기본 RedisCacheManager 에서 무엇을 묶을까?'
+description: '기본 RedisCacheManager 에서 sync = true 가 같은 키 miss 를 묶지 않는 이유와 조회 상한을 올리지 않은 결정입니다.'
+image: "/images/blog/peekcart-cacheable-sync-redis/thumbnail.jpg"
+pubDate: 2026-10-28
+category: backend
+slug: peekcart-cacheable-sync-redis
+tags: [peekcart, spring-cache, spring-data-redis, redis, cache-stampede, bulkhead]
+draft: false
+---
+
+import SameKeyLoaderLanes from '@/components/blog/peekcart/cacheable-sync/SameKeyLoaderLanes.astro';
+import LockingWriterWaits from '@/components/blog/peekcart/cacheable-sync/LockingWriterWaits.astro';
+
+{/*
+독자: Spring 의 @Cacheable 을 spring-data-redis 의 RedisCacheManager 로 쓰는 백엔드 개발자. RedisCacheManager.builder(connectionFactory) 로 직접 만들었거나 Spring Boot 자동 구성에 맡겼다. 같은 키 동시 miss(cache stampede)는 sync = true 로 막을 수 있다고 알고 있거나 그렇게 계획해 두었다. PeekCart 를 몰라도 자기 스택에 대입할 수 있어야 한다.
+핵심 주장: spring-data-redis 3.5.10, 4.0.5 의 RedisCacheManager.builder(connectionFactory) 는 non-locking writer 를 고르고, sync = true 가 넘긴 Cache.get(key, Callable) 경로에는 같은 키를 묶는 장치가 없다. locking writer 로 바꾸면 같은 키는 묶이지만 락이 캐시 이름 단위라 다른 키의 적재와 hit 까지 기다리고, Redis 가 죽으면 쓸 수 없다. 그래서 조회 DB 진입 상한을 올리지 않고 Pod 안에서 같은 키 로딩을 묶고 정해진 범위 안에서 오래된 값을 내주기로 했다. 결정까지이고 구현과 효과 측정은 아직이다.
+유형: 주 decision, 보조 troubleshooting.
+수치 출처: "GKE 측정"은 GKE 클러스터의 재측정 세션(상한 1 과 4 비교), "앞선 측정 세션"은 그 전 회차, "로컬 재현"은 결정 뒤 같은 맥북의 Docker Redis 로 돌린 재현 두 묶음(로더 횟수 재현, locking writer 재현)이다. 로컬 값과 GKE 값은 한 표에 섞지 않는다.
+확인한 버전: spring-context 6.2.17, 7.0.10, spring-data-redis 3.5.10, 4.0.5, Spring Boot 3.5.12 자동 구성(jar 를 javap 로 확인), spring-kafka 3.3.14, HikariCP 6.3.3. Spring Boot 4.x 자동 구성은 확인하지 못했다.
+시점: 결정 때 확인한 것은 spring-data-redis 3.5.10 의 builder 와 writer 바이트코드까지다. 프레임워크 경로, 4.0.5, Boot 자동 구성은 결정 뒤 넓혀 확인했다. 로더 횟수, locking writer 의 hit 대기, 남은 락, 대기 요청의 순번 잠금, JVM 두 개 결과는 결정 뒤의 로컬 재현이다.
+*/}
+
+PeekCart 는 혼자 만드는 이커머스 백엔드 프로젝트입니다. 상품 서비스는 상품 상세와 목록 조회 결과를 Spring 의 `@Cacheable` 로 Redis 에 캐시합니다. 캐시 매니저는 spring-data-redis 의 `RedisCacheManager` 이고 `RedisCacheManager.builder(connectionFactory)` 로 만듭니다. 캐시에 값이 없는 요청(miss)은 MySQL 을 읽는데, 그 DB 진입에는 Pod 당 동시 1개라는 상한을 두었습니다.
+
+GKE 에서 이 상한을 1 과 4 로 바꿔 재 보니 미리 정한 조건으로는 "상한 4 로 올릴 근거가 있다"는 결과가 나왔습니다. 그래도 상한은 1 로 두고, 캐시 계층에서 같은 키 miss 를 묶고 정해진 범위 안에서 오래된 값을 내주기로 했습니다. 그 결정을 내리면서 같은 키에 동시에 몰리는 miss(cache stampede)는 `@Cacheable(sync = true)` 로 묶으면 된다는 전제가 이 스택에서 맞지 않는다는 것도 확인했습니다. 계획을 세우고 대안을 고를 때는 이 전제를 그대로 썼지만, PeekCart 코드에 `sync = true` 를 단 적은 없습니다.
+
+이 글은 세 질문을 따라갑니다. 측정으로 얻은 "상한 증액 근거 있음"은 어떤 질문의 답이었고, 실제로 정해야 했던 것은 무엇이었을까요? `sync` 라는 이름을 믿지 않고 실제 동작은 어떻게 확인했을까요? 오래된 값을 내도 되는 범위는 무엇으로 정했을까요?
+
+라이브러리 동작은 jar 를 `javap` 로 열어 바이트코드로 확인했습니다. 결정을 내릴 때는 spring-data-redis 3.5.10 의 jar 를 열어 builder 가 고르는 writer 와 락 키, writer 안의 JVM 락 유무까지 봤습니다. spring-context 6.2.17, 7.0.10 의 프레임워크 경로, spring-data-redis 4.0.5, Spring Boot 3.5.12 의 캐시 자동 구성은 결정한 뒤 같은 방법으로 넓혀 확인했습니다. 로더가 실제로 몇 번 도는지도 결정한 뒤 로컬에서 따로 재현해 셌고 그 수치에는 모두 로컬 재현이라고 적었습니다. 확인한 버전 밖에서는 동작이 다를 수 있습니다.
+
+## 상한을 4로 올려도 된다는 측정 결과가 나왔습니다
+
+상품 조회의 miss 경로 앞에 DB 진입 상한을 둔 것은 Redis 가 죽거나 캐시가 비었을 때를 대비해서입니다. 그때는 모든 조회가 DB 로 가서 커넥션 풀을 다 가져갈 수 있습니다. 상한은 세마포어 하나로 구현했고 허가를 얻지 못한 요청은 기다리지 않고 바로 503 을 받습니다. 대기열이 없습니다. 기본값은 Pod 당 1 입니다.
+
+처음에는 MySQL CPU 한도 0.5코어에서 MySQL 의 처리 한계를 재려 했습니다. 그런데 상한 1 이 캐시를 끈 경로를 동시 1개로 묶어서 200 응답 비율이 0.77~1.46% 에 그쳤고 MySQL 한계를 잴 수 없었습니다. 그래서 다음 측정에서는 질문을 바꿔 상한 1 과 4 를 비교했습니다.
+
+GKE 클러스터에서 MySQL CPU 한도 2코어, VU 400, 60초로 상세와 목록 API 를 캐시를 끈 채 두드렸습니다. 셀마다 네 번 돌려 첫 run 은 워밍업으로 버리고 나머지 세 run 의 중앙값과 범위를 적었습니다.
+
+| 상한 | API | 200 응답 rps 중앙값 [범위] | 503 비율 (중앙값) | MySQL CPU 코어 (중앙값) | 커넥션 풀 대기 최대 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 상세 | 26.5 [20.7~30.6] | 98.9% | 0.154 | 0 |
+| 1 | 목록 | 30.3 [25.7~30.4] | 98.5% | 0.124 | 0 |
+| 4 | 상세 | 115.9 [87.9~122.0] | 94.5% | 0.391 | 0 |
+| 4 | 목록 | 123.7 [71.7~136.8] | 93.5% | 0.289 | 0 |
+
+503 은 상한이 거절한 요청입니다. 503 이 아닌 오류와 MySQL CPU 스로틀도 네 셀 모두 0 이었습니다. 측정 전에 증액 조건 네 가지를 정해 두었습니다. 두 API 모두 상한 4 의 처리량 범위가 상한 1 의 범위보다 위에 있을 것, 503 이 아닌 오류가 늘지 않을 것, 커넥션 풀 대기 최대가 0 일 것, MySQL 스로틀이 0 일 것입니다. 넷 다 맞아서 "상한 4 증액 근거 있음"으로 결론을 냈습니다.
+
+## 측정 스택에는 읽기만 있었습니다
+
+네 조건 중 다시 봐야 했던 것은 상한 4 에서도 커넥션 풀 대기가 0 이었다는 조건입니다. 측정 스택에는 주문 경로를 띄우지 않아서 쓰기와 메시지 소비가 거의 없었습니다. 풀 지표도 15초 간격으로 모아서 그보다 짧은 순간값은 보지 못했습니다.
+
+실제 상품 서비스에서는 조회만 이 풀을 쓰지 않습니다. 커넥션 풀은 크기를 따로 지정하지 않아 HikariCP 6.3.3 의 기본값인 10개입니다. miss 조회 말고도 Kafka 리스너 10개, 스케줄러 스레드 4개, HTTP 쓰기 요청이 같은 풀에서 커넥션을 가져갑니다. 리스너는 컨테이너 팩토리에 동시성을 지정하지 않아서 spring-kafka 3.3.14 의 기본값 1 로 하나씩 돕니다. 재고 예약 리스너도 그중 하나라서 상한을 올리면 예약이 쓸 커넥션이 줄어들 수 있습니다.
+
+상한 1 을 처음 정할 때 올리는 조건도 함께 정했습니다. 동시성 실험을 하고, 다른 DB 사용자의 여유를 다시 확인하는 것입니다. 이번 측정으로는 이 둘 중 동시성 실험만 했습니다. 측정으로 확인한 것은 "읽기만 있을 때 상한 4 가 풀을 고갈시키는가"였고, 정작 정해야 했던 것은 "쓰기와 메시지 소비가 같은 풀을 쓰는 상태에서 상한을 올려도 되는가"였습니다. 같은 풀을 쓰는 다른 사용자가 있는 서비스라면 읽기 부하만 걸어 잰 풀 여유로는 뒤의 질문에 답할 수 없습니다.
+
+MySQL 도 처리량을 묶고 있지 않았습니다. 상한 4 의 상세 셀에서 MySQL CPU 는 한도 2코어 중 run 중앙값 0.39코어, 가장 많이 쓴 run 에서 0.42코어였습니다. 캐시를 끈 경로의 처리량은 상한이 정했습니다.
+
+## 상한이 결과를 바꾸는 때는 언제일까요?
+
+캐시 advice 는 상한 advice 보다 바깥에서 돕니다. hit 는 캐시 advice 에서 바로 돌아가고 상한을 지나지 않습니다. 캐시가 잘 맞는 평상시에는 상한이 거의 걸리지 않습니다. 결과를 바꾸는 경우는 두 가지입니다.
+
+첫째는 Redis 가 죽었거나 캐시가 비었을 때입니다. 모든 조회가 miss 경로로 가므로 상한이 곧 처리 한도가 됩니다. 앞의 표 네 셀이 모두 캐시를 끈 이 상황이고 503 은 셀별 중앙값으로 93.5~98.9% 였습니다.
+
+둘째는 캐시가 정상이어도 부하가 높을 때입니다. 상세 API 는 상품 정보(TTL 30분)와 재고(TTL 5초)를 서로 다른 캐시에서 차례로 읽습니다. 같은 GKE 측정에서 캐시를 켜고 상한 1 로 상세를 두드리자 200 응답이 2,899.5 rps(중앙값)였고 503 이 4.8~6.1% 섞였습니다. 재고 캐시가 만료되는 순간 miss 가 겹치면 첫 요청이 허가를 얻어 DB 를 읽는 동안 나머지 요청은 상한에 걸려 거절됩니다. 상한은 키를 가리지 않는 세마포어 하나라서 같은 키의 miss 도, 함께 만료된 다른 키의 miss 도 같은 허가를 다툽니다. 측정 때 상품 서비스는 Pod 1개였으니 상한 1 은 서비스 전체에서 동시 1개였습니다.
+
+측정 run 의 캐시 카운터로 이 설명이 맞는지 맞춰 봤습니다. run 셋에서 재고 캐시 miss 는 run 당 9,986~12,107건, 503 은 8,882~10,982건이었고 상품 정보 캐시의 miss 는 0 이었습니다. miss 에서 503 을 빼면 run 당 1,005~1,125건이 남습니다. 상품 100개가 5초마다 만료되면 60초에 1,200번 적재하니 만료 한 번에 적재 한 번만 상한을 지나고 같은 순간 몰린 나머지가 503 을 받았을 가능성이 큽니다. 같은 키끼리의 경합인지 다른 키끼리의 경합인지는 이 수치로 나눌 수 없습니다. 실제 DB 조회 수는 따로 세지 않았고 클러스터를 지워 다시 잴 수도 없어서 이 뺄셈은 해석에 그칩니다.
+
+503 비율은 측정 조건 때문에 커졌을 수도 있습니다. run 을 시작할 때 상품 100개를 한꺼번에 채워서 100개가 5초마다 함께 만료됐습니다. 실제 트래픽이라면 만료 시각이 흩어집니다. 상한 4 로 캐시를 켠 셀은 돌리지 않았습니다.
+
+두 경우 모두 DB 진입 시도가 트래픽에 비례합니다. 상한을 올리면 거절은 줄지만 풀을 더 쓰고, 트래픽이 더 늘면 다시 거절됩니다. 같은 키의 동시 miss 를 하나로 묶을 수 있다면 DB 진입 시도는 트래픽 대신 키 수를 따릅니다.
+
+## 같은 키 miss 는 `sync = true` 가 묶는다고 믿었습니다
+
+같은 키 miss 를 묶는 처방으로는 오래전부터 `@Cacheable(sync = true)` 를 생각하고 있었습니다. Redis 장애 때 동시 요청이 DB 로 몰리는 문제를 처음 정리하면서 bulkhead, `sync = true`, rate limit 을 완화 후보로 꼽았습니다. 읽기 천장을 재는 계획을 세울 때는 TTL 만료 순간의 stampede 를 이렇게 예상했습니다. 그 계획 표의 한 줄에서 내부 항목 번호와 정정 표시만 뺐습니다.
+
+```text
+| TTL miss 가 상품당 5초 1회다 | **전제로 쓸 수 없다.** `:34` 가 `__ITER % IDS` 라 400 VU 가 비슷한 시점에 같은 ID 를 밟고, `@Cacheable`(`ProductCacheService:68`)에 **`sync=true` 가 없다** → TTL 만료 순간 동일 키 stampede 가 가능하다 | `100/5=20회/초`를 **예측이 아니라 측정 대상**으로 내린다. miss 차분으로 실측한다 |
+```
+
+상한을 정할 때는 `sync = true` 만 쓰는 대안을 이런 이유로 기각했습니다.
+
+```text
+- sync=true만 적용하면 같은 cache key에 한정되고 Redis 장애 시 여러 key가 동시에 DB에 진입한다.
+```
+
+두 번 모두 `sync = true` 를 켜면 적어도 같은 키는 묶인다고 믿었습니다. 정작 코드에는 `sync` 를 단 적이 없습니다. 상품 캐시의 `@Cacheable` 세 곳에서 선언부만 남기고 사이 줄은 생략했습니다.
+
+```java
+    @Cacheable(cacheNames = CacheConfig.PRODUCT_DETAIL_CACHE, key = "#productId")
+    public ProductInfoDto getProductInfo(Long productId) {
+
+    @Cacheable(cacheNames = CacheConfig.PRODUCT_STOCK_CACHE, key = "#productId")
+    public int getStock(Long productId) {
+
+    @Cacheable(cacheNames = CacheConfig.PRODUCT_LIST_CACHE,
+            key = "'list:' + #categoryId + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort.toString()")
+    public CachedPage<ProductListDto> getProductList(Long categoryId, Pageable pageable) {
+```
+
+혹시 놓친 곳이 있을까 해서 저장소의 커밋 2,019개를 `git log --all -G 'sync\s*=\s*true' -- '*.java' '*.kt'` 로 훑어봤지만 Java, Kotlin 파일에 `sync = true` 를 넣은 커밋은 없었습니다. 이 전제는 계획을 세우고 대안을 기각할 때만 썼습니다.
+
+`sync` 를 켜면 무엇이 달라지는지는 Spring 문서가 다룹니다. 기본적으로 캐시 추상화는 아무것도 잠그지 않아서 같은 값이 여러 번 계산될 수 있고, `sync` 를 켜면 값을 계산하는 동안 캐시 항목을 잠그라고 하부 캐시 제공자에게 지시합니다([Spring Framework Reference 6.2, Synchronized Caching](https://docs.spring.io/spring-framework/reference/6.2/integration/cache/annotations.html#cache-annotations-cacheable-synchronized)). 같은 절 끝에는 다음 주의가 붙어 있습니다.
+
+```text
+NOTE: This is an optional feature, and your favorite cache library may not support it.
+All `CacheManager` implementations provided by the core framework support it. See the
+documentation of your cache provider for more details.
+```
+
+`RedisCacheManager` 는 코어 프레임워크 밖의 spring-data-redis 가 제공합니다. 안내대로 spring-data-redis 3.5 의 [Redis 캐시 문서](https://docs.spring.io/spring-data/redis/reference/3.5/redis/redis-cache.html)를 열면 `sync` 나 값 로더(`Callable`)에 관한 설명이 없습니다. 락에 관해서는 다음 문단이 있습니다.
+
+```text
+javadoc:org.springframework.data.redis.cache.RedisCacheManager[] defaults to a lock-free javadoc:org.springframework.data.redis.cache.RedisCacheWriter[] for reading and writing binary values.
+Lock-free caching improves throughput.
+The lack of entry locking can lead to overlapping, non-atomic commands for the `Cache` `putIfAbsent` and `clean` operations, as those require multiple commands to be sent to Redis.
+The locking counterpart prevents command overlap by setting an explicit lock key and checking against presence of this key, which leads to additional requests and potential command wait times.
+
+Locking applies on the *cache level*, not per *cache entry*.
+```
+
+기본 writer 는 락을 쓰지 않습니다. 락을 쓰는 writer 는 `putIfAbsent` 와 `clean` 처럼 명령이 여러 개 필요한 연산이 겹치지 않도록 락 키를 둡니다. 그 락은 캐시 단위로 걸립니다. 여기까지가 문서의 설명입니다. `sync = true` 가 이 스택에서 실제로 무엇을 하는지는 문서로 알 수 없고 jar 의 바이트코드로 확인했습니다.
+
+## `sync = true` 는 `Cache.get(key, Callable)` 에 로더를 넘기기만 합니다
+
+상품 서비스가 실제로 쓰는 버전은 Spring Boot 3.5.12 BOM 이 정한 spring-context 6.2.17, spring-data-redis 3.5.10 입니다. sources jar 가 없어서 `javap -c -p` 로 바이트코드를 읽었습니다. 결정 때는 spring-data-redis 3.5.10 을 열었고 프레임워크 쪽 경로와 spring-context 7.0.10, spring-data-redis 4.0.5 대조는 결정한 뒤 더했습니다.
+
+프레임워크 쪽부터 보면 `@Cacheable` 을 처리하는 `CacheAspectSupport` 는 `sync` 가 켜져 있으면 일반 경로 대신 `executeSynchronized` 로 갑니다. 반환 타입이 `CompletableFuture` 나 reactive 타입이 아니면 대상 메서드 호출을 `Callable` 로 감싸 `Cache.get(key, Callable)` 에 넘깁니다. `CacheAspectSupport`, `AbstractCacheInvoker`, `CacheInterceptor` 의 바이트코드에는 `monitorenter` 도 `java.util.concurrent.locks` 사용도 없습니다. 프레임워크는 "값이 없으면 이 로더로 채워라"를 캐시 구현에 넘길 뿐이고, 같은 키를 묶을지는 `Cache.get(key, Callable)` 구현이 정합니다.
+
+코어가 제공하는 `ConcurrentMapCache` 는 이 메서드에서 `ConcurrentMap.computeIfAbsent` 를 부릅니다. 같은 키의 계산이 맵 안에서 하나로 묶입니다.
+
+spring-data-redis 의 `RedisCache.get(key, Callable)` 에는 `synchronized` 선언도 `monitorenter` 도 없습니다. 키를 직렬화한 뒤 로더를 `Supplier` 로 감싸 writer 의 `get(name, key, loader, ttl, tti)` 에 넘깁니다. 묶을지 말지는 writer 가 정합니다. 기본 writer 인 `DefaultRedisCacheWriter` 의 이 메서드를 바이트코드에서 읽어 흐름만 의사 코드로 옮기면 다음과 같습니다. 바이트코드에서 복원한 요지이고 원래 소스는 아닙니다.
+
+```text
+// spring-data-redis 3.5.10 DefaultRedisCacheWriter.get(name, key, valueLoader, ttl, timeToIdle)
+// javap -c 바이트코드에서 흐름만 옮긴 의사 코드 (원래 소스 아님)
+byte[] get(name, key, valueLoader, ttl, timeToIdle):
+    if isLockingCacheWriter():               // sleepTime 이 0 도 음수도 아닐 때만 true
+        cached = get(name, key, ttl)         // 락 없이 먼저 한 번 읽는다
+        if cached != null: return cached
+    return execute(name, connection ->       // execute: 연결을 얻고, locking writer 일 때만 락이 풀릴 때까지 기다린 뒤 실행
+        if isLockingCacheWriter(): doLock(name)          // SET "{name}~lock" "" NX 를 성공할 때까지 반복
+        try:
+            cached = doGet(connection, name, key, ttl)
+            if cached != null: return cached
+            value = valueLoader.get()                    // 여기서 @Cacheable 메서드가 실행된다
+            doPut(connection, name, key, value, ttl)
+            return value
+        finally:
+            if isLockingCacheWriter(): doUnlock(name)    // DEL "{name}~lock"
+    )
+```
+
+락에 관한 분기는 모두 `isLockingCacheWriter()` 아래에 있습니다. `execute` 에 넘기는 람다의 바이트코드 앞부분을 그대로 옮기면 첫 명령이 `isLockingCacheWriter()` 이고 거짓이면 `doLock` 을 건너뛰어 16번 오프셋의 `doGet` 으로 갑니다. 아래에는 그 메서드의 오프셋 13까지만 남겼습니다.
+
+```text
+  private byte[] lambda$get$1(java.lang.String, byte[], boolean, boolean, java.time.Duration, java.util.function.Supplier, org.springframework.data.redis.connection.RedisConnection);
+    Code:
+       0: aload_0
+       1: invokevirtual #142                // Method isLockingCacheWriter:()Z
+       4: ifeq          16
+       7: aload_0
+       8: aload_1
+       9: aload_2
+      10: aconst_null
+      11: aload         7
+      13: invokevirtual #377                // Method doLock:(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Lorg/springframework/data/redis/connection/RedisConnection;)V
+```
+
+뒤에 있는 `doUnlock` 호출 세 곳(hit 로 돌아갈 때, 적재 뒤, 예외 때)도 같은 조건 검사 뒤에 있습니다. 락을 쓰지 않는 writer 에서는 `doLock` 도, 락을 기다리는 루프도 건너뛰고 "읽고, 없으면 로더를 부르고, 쓴다"만 남습니다.
+
+그러면 `RedisCacheManager.builder(connectionFactory)` 는 어느 writer 를 고를까요? PeekCart 의 `CacheConfig` 는 이렇게 캐시 매니저를 만듭니다.
+
+```java
+        return RedisCacheManager.builder(connectionFactory)
+                .cacheDefaults(defaultConfig)
+                .withCacheConfiguration(PRODUCT_DETAIL_CACHE, productDetailConfig)
+                .withCacheConfiguration(PRODUCT_LIST_CACHE, defaultConfig)
+                .withCacheConfiguration(PRODUCT_STOCK_CACHE, productStockConfig)
+                .enableStatistics()
+                .build();
+```
+
+`builder(connectionFactory)` 는 `RedisCacheManagerBuilder.fromConnectionFactory` 를 부르고 여기서 `nonLockingRedisCacheWriter` 로 writer 를 만듭니다. spring-data-redis 3.5.10 의 바이트코드입니다.
+
+```text
+  public static org.springframework.data.redis.cache.RedisCacheManager$RedisCacheManagerBuilder fromConnectionFactory(org.springframework.data.redis.connection.RedisConnectionFactory);
+    Code:
+       0: aload_0
+       1: ldc           #15                 // String ConnectionFactory must not be null
+       3: invokestatic  #3                  // Method org/springframework/util/Assert.notNull:(Ljava/lang/Object;Ljava/lang/String;)V
+       6: aload_0
+       7: invokestatic  #17                 // InterfaceMethod org/springframework/data/redis/cache/RedisCacheWriter.nonLockingRedisCacheWriter:(Lorg/springframework/data/redis/connection/RedisConnectionFactory;)Lorg/springframework/data/redis/cache/RedisCacheWriter;
+      10: astore_1
+      11: new           #9                  // class org/springframework/data/redis/cache/RedisCacheManager$RedisCacheManagerBuilder
+      14: dup
+      15: aload_1
+      16: invokespecial #11                 // Method "<init>":(Lorg/springframework/data/redis/cache/RedisCacheWriter;)V
+      19: areturn
+```
+
+`nonLockingRedisCacheWriter` 가 부르는 `DefaultRedisCacheWriter` 생성자는 `sleepTime` 에 `Duration.ZERO` 를 넣고, `isLockingCacheWriter()` 는 `sleepTime` 이 0 이면 거짓을 돌려줍니다. 같은 3.5.10 의 바이트코드입니다.
+
+```text
+  org.springframework.data.redis.cache.DefaultRedisCacheWriter(org.springframework.data.redis.connection.RedisConnectionFactory, org.springframework.data.redis.cache.BatchStrategy);
+    Code:
+       0: aload_0
+       1: aload_1
+       2: getstatic     #1                  // Field java/time/Duration.ZERO:Ljava/time/Duration;
+       5: aload_2
+       6: invokespecial #7                  // Method "<init>":(Lorg/springframework/data/redis/connection/RedisConnectionFactory;Ljava/time/Duration;Lorg/springframework/data/redis/cache/BatchStrategy;)V
+       9: return
+
+  private boolean isLockingCacheWriter();
+    Code:
+       0: aload_0
+       1: getfield      #53                 // Field sleepTime:Ljava/time/Duration;
+       4: invokevirtual #308                // Method java/time/Duration.isZero:()Z
+       7: ifne          24
+      10: aload_0
+      11: getfield      #53                 // Field sleepTime:Ljava/time/Duration;
+      14: invokevirtual #311                // Method java/time/Duration.isNegative:()Z
+      17: ifne          24
+      20: iconst_1
+      21: goto          25
+      24: iconst_0
+      25: ireturn
+```
+
+통계를 켜는 `enableStatistics()` 는 writer 를 새로 만들 때 `sleepTime` 과 락 TTL 을 그대로 넘기므로 writer 종류를 바꾸지 않습니다. spring-data-redis 4.0.5 도 builder 가 `nonLockingRedisCacheWriter` 를 쓰고 writer 설정의 기본 `sleepTime` 이 0 인 같은 구조였습니다. Spring Boot 3.5.12 의 캐시 자동 구성(`RedisCacheConfiguration`)도 같은 `RedisCacheManager.builder(RedisConnectionFactory)` 를 부릅니다. `CacheManager` 를 직접 만들지 않고 writer 를 바꾸는 customizer 도 두지 않았다면 Boot 에 맡긴 프로젝트도 기본은 non-locking writer 입니다. Spring Boot 4.x 의 자동 구성은 확인하지 못했습니다.
+
+확인한 두 버전 조합에서 기본 builder 로 만든 `RedisCacheManager` 에 `sync = true` 를 켜면 Redis 를 한 번 읽고 없으면 로더를 부르는 경로로 갑니다. 그 경로 어디에도 같은 키를 묶는 장치가 없습니다. PeekCart 는 Spring Boot 버전을 처음 정한 3.5.12 에서 바꾼 적이 없고 spring-data-redis 버전을 따로 지정한 적도 없어서 `sync = true` 를 후보로 꼽던 때에도 spring-data-redis 는 3.5.10 이었습니다. "sync 는 같은 키를 묶는다"는 전제는 이 스택에서 처음부터 맞지 않았습니다. 결정을 내릴 때 확인한 것은 이 중 spring-data-redis 3.5.10 의 builder 가 non-locking writer 를 고른다는 것과 writer 와 `RedisCache` 에 JVM 락이 없다는 것까지입니다. 프레임워크 쪽 경로, 람다의 분기, `enableStatistics()`, 4.0.5, Boot 자동 구성은 결정한 뒤 넓혀 확인했습니다.
+
+## 로컬에서 로더 실행 횟수를 세었습니다
+
+결정한 뒤 바이트코드로 읽은 경로가 실행에서도 그대로인지 로컬에서 로더 실행 횟수를 셌습니다. Spring Boot 3.5.12 BOM 으로 spring-data-redis 3.5.10, spring-context 6.2.17, Lettuce 6.6.0 을 받고 상품 서비스의 Redis 장애 처리기(`ResilientCacheErrorHandler`)를 원본 파일 그대로 컴파일해 붙였습니다. Redis 의 연결 실패와 타임아웃을 캐시 miss 로 넘기는 오류 처리기입니다. Redis 는 운영과 같은 `redis:7.2` 이미지 태그로(로컬에 받은 버전은 7.2.16) 같은 맥북의 Docker 에 띄웠고 명령 타임아웃 500ms, 연결 타임아웃 300ms 로 맞췄습니다. 로더는 호출 수를 세고 200ms 잠듭니다. 스레드 16개를 한 신호(`CountDownLatch`)로 풀어 같은 키를 동시에 부르고 매번 캐시를 비운 뒤 5번 반복했습니다.
+
+<SameKeyLoaderLanes />
+
+데모에서 고를 수 있는 locking writer 와 Redis 중단의 결과는 뒤의 두 절에서 다룹니다.
+
+| 캐시 | `sync` | 로더 실행 횟수 (5회 모두) | 16개가 끝나기까지 (ms) |
+| --- | --- | --- | --- |
+| Redis, non-locking writer (기본) | 끔 | 16 | 213~240 |
+| Redis, non-locking writer (기본) | 켬 | 16 | 208~232 |
+| Redis, locking writer | 끔 | 16 | 215~251 |
+| Redis, locking writer | 켬 | 1 | 603~1,249 |
+| `ConcurrentMapCache` (대조군) | 끔 | 16 | 210~218 |
+| `ConcurrentMapCache` (대조군) | 켬 | 1 | 204~212 |
+
+기본 writer 에서는 `sync` 를 켜도 끈 것과 똑같이 로더가 16번 돕니다. 같은 하네스에서 `ConcurrentMapCache` 에 `sync` 를 켜면 1번이니 측정 장치는 묶임을 볼 수 있습니다. 각 조합의 1회차 로그 행은 다음과 같습니다.
+
+```text
+#phase	scenario	writer	sync	rep	threads	loads	wall_ms	errors	note
+up	same-key	nonlocking	false	1	16	16	240	0	latency_ms min/med/max=240/240/240 fallback 누계 전=get=0 put=0 evict=0 후=get=0 put=0 evict=0
+up	same-key	nonlocking	true	1	16	16	230	0	latency_ms min/med/max=229/230/230 fallback 누계 전=get=0 put=0 evict=0 후=get=0 put=0 evict=0
+up	same-key	locking	false	1	16	16	229	0	latency_ms min/med/max=228/229/229 fallback 누계 전=get=0 put=0 evict=0 후=get=0 put=0 evict=0
+up	same-key	locking	true	1	16	1	603	0	latency_ms min/med/max=222/426/603 fallback 누계 전=get=0 put=0 evict=0 후=get=0 put=0 evict=0
+up	same-key	concurrentmap	false	1	16	16	218	0	latency_ms min/med/max=205/217/218 fallback 누계 전=get=0 put=0 evict=0 후=get=0 put=0 evict=0
+up	same-key	concurrentmap	true	1	16	1	210	0	latency_ms min/med/max=209/209/210 fallback 누계 전=get=0 put=0 evict=0 후=get=0 put=0 evict=0
+```
+
+대조군 덕분에 하네스 결함을 알아챘습니다. 첫 실행은 로더 안에서 `this.synced()` 로 메서드를 불러 Spring 프록시를 건너뛰는 바람에 캐시가 전혀 동작하지 않았습니다. 그때는 `ConcurrentMapCache` 까지 16번이 나와서 하네스 결함을 의심해 결과를 버렸습니다. 대조군이 없었다면 같은 16번을 "sync 가 묶지 않는다"는 근거로 잘못 읽었을 것입니다.
+
+## locking writer 는 같은 키를 묶지만 락은 캐시 이름 하나에 하나입니다
+
+결정할 때 locking writer 로 바꾸지 않은 이유는 두 가지였습니다. 락 키가 캐시 이름 단위라 모든 키가 같은 락을 기다린다는 것, Redis 가 죽으면 락도 쓸 수 없다는 것입니다. 락 키는 `createCacheLockKey` 가 캐시 이름 뒤에 `~lock` 을 붙여 만듭니다. 아래 상수 풀의 `\u0001` 이 캐시 이름이 들어가는 자리입니다(spring-data-redis 3.5.10).
+
+```text
+  byte[] createCacheLockKey(java.lang.String);
+    Code:
+       0: aload_1
+       1: invokedynamic #359,  0            // InvokeDynamic #10:makeConcatWithConstants:(Ljava/lang/String;)Ljava/lang/String;
+       6: getstatic     #363                // Field java/nio/charset/StandardCharsets.UTF_8:Ljava/nio/charset/Charset;
+       9: invokevirtual #369                // Method java/lang/String.getBytes:(Ljava/nio/charset/Charset;)[B
+      12: areturn
+
+  #573 = String             #574          // \u0001~lock
+  #574 = Utf8               \u0001~lock
+```
+
+PeekCart 의 상품 정보 캐시는 이름이 `product` 이고 Redis 에 저장하는 캐시 키에는 `cache:` 접두를 붙입니다. 키가 몇 개든 락 키는 `product~lock` 하나이고 `cache:` 접두도 락 키에는 붙지 않습니다. 앞에서 본 문서의 "Locking applies on the cache level" 과 같은 내용입니다.
+
+결정한 뒤 로컬 재현에서는 같은 키가 실제로 묶이는 것을 보았고 결정 때 고려하지 않은 비용도 드러났습니다. 이 절의 수치는 모두 같은 맥북의 Docker Redis 로 잰 로컬 재현 값입니다.
+
+<LockingWriterWaits />
+
+### 같은 키는 JVM 이 둘이어도 한 번만 적재합니다
+
+locking writer 에 `sync` 를 켜면 첫 요청이 `SET product~lock "" NX` 로 락을 얻어 적재하고, 나머지는 락 키가 사라질 때까지 50ms 마다 확인하며 기다립니다. 50ms 는 `lockingRedisCacheWriter(connectionFactory)` 의 기본값입니다.
+
+락이 Redis 키라서 JVM 이 여러 개여도 묶입니다. 같은 맥북에 JVM 두 개를 띄워 같은 Redis 에 붙이고 JVM 마다 스레드 8개로 같은 키를 같은 시각에 읽었습니다. 로더는 500ms 잠들고 조합마다 3번 반복했습니다.
+
+| 캐시 | `sync` | 로더 실행 횟수 (JVM A + B, 3회 모두) |
+| --- | --- | --- |
+| Redis, non-locking writer (기본) | 켬 | 8 + 8 = 16 |
+| Redis, locking writer | 켬 | 1 + 0 = 1 |
+| Redis, locking writer | 끔 | 8 + 8 = 16 |
+| `ConcurrentMapCache` (JVM 안에서만 묶음) | 켬 | 1 + 1 = 2 |
+
+`ConcurrentMapCache` 는 JVM 마다 한 번씩 적재해서 합이 2입니다. 같은 호스트에서 네트워크 지연이 거의 없는 프로세스 두 개까지 확인했고 Pod 나 노드가 다른 환경은 재현하지 않았습니다.
+
+locking writer 는 `sync` 를 끄면 묶지 않으면서 Redis 왕복만 늘립니다. 위 실행에서 locking writer 에 `sync` 를 끈 조합은 기본 writer 에서 0번인 Redis 의 `EXISTS` 명령이 32번 나갔습니다. 16개의 읽기와 16개의 쓰기가 각각 앞에서 락 키를 확인한 수입니다.
+
+### 기다리던 요청은 값을 읽으려고 하나씩 차례로 락을 얻습니다
+
+같은 키가 묶이더라도 기다리던 요청이 채워진 값을 바로 가져가지는 못합니다. 의사 코드에서 보듯 `doGet` 도 락 안에 있습니다. 첫 요청이 락을 풀어도 이미 `doLock` 에서 기다리던 요청은 값을 읽으려고 차례로 락을 얻어야 합니다.
+
+폴링 간격만 바꿔 같은 키를 다시 읽었습니다. 한 JVM, 스레드 16개, 로더 200ms, `sync` 켬, 간격마다 5번 반복했고 로더는 모두 1번 돌았습니다.
+
+| 폴링 간격 | 16개가 끝나기까지 | 락 해제(`DEL`) 수 |
+| --- | --- | --- |
+| 10ms | 0.41~0.50초 | 16 |
+| 50ms (기본) | 0.74~1.02초 | 16 |
+| 50ms (4인자 오버로드로 지정) | 0.66~0.93초 | 14~16 |
+| 200ms | 2.4~3.2초 | 13~16 |
+
+이 표는 첫 표와 같은 조건(locking writer, `sync` 켬, 기본 50ms)에서 재현을 따로 한 번 더 돌려 잰 값이라 첫 표의 603~1,249ms 와 범위가 다릅니다. 적재는 0.2초인데 16개가 모두 끝나기까지는 폴링 간격을 따라 늘었습니다. `DEL` 이 16이면 16개 요청이 모두 한 번씩 락을 얻었다는 뜻입니다. 16보다 적은 회차에는 락 없이 먼저 읽는 단계에서 값을 받아 간 요청이 있었을 것입니다. 명령 수에서 추론한 것이고 요청마다 보지는 않았습니다. 정렬한 완료 시각의 이웃 간격도 폴링 간격을 따라갔습니다. 이웃 간격의 중앙값은 폴링 10ms 에서 13~18ms, 200ms 에서 183~210ms 였습니다. 같은 시각에 깨어난 대기 요청 중 하나만 `SET NX` 에 성공해서 폴링 한 주기에 하나씩 빠져나가는 것으로 추정합니다. 요청마다 `SET NX` 를 시도한 시각은 재지 않았으니 이 설명은 추론입니다.
+
+1회차 로그의 마지막 열에는 16개 요청의 완료 시각을 정렬해 넣었습니다. 200ms 줄은 약 0.2초 간격으로 하나씩 끝났습니다.
+
+```text
+#mode	writer	sync	rep	threads	loads	wall_ms	lock_wait_ms_sum	set	exists	del	get	latencies_sorted_ms
+poll	locking(기본)	true	1	16	1	735	7650	77	222	16	32	[243, 271, 327, 383, 458, 500, 508, 510, 556, 568, 611, 623, 665, 679, 717, 735]
+poll	locking-sleep=10ms	true	1	16	1	412	4614	97	432	16	32	[220, 236, 258, 276, 289, 301, 315, 327, 342, 355, 355, 367, 368, 381, 394, 411]
+poll	locking-sleep=50ms	true	1	16	1	934	8226	101	261	16	32	[207, 224, 283, 344, 399, 400, 452, 455, 514, 576, 642, 702, 760, 818, 877, 934]
+poll	locking-sleep=200ms	true	1	16	1	2717	19731	84	194	16	32	[212, 213, 415, 416, 424, 633, 837, 1043, 1257, 1469, 1682, 1886, 2092, 2300, 2508, 2714]
+```
+
+`locking(기본)` 은 `lockingRedisCacheWriter(connectionFactory)` 이고, `locking-sleep=10ms`, `50ms`, `200ms` 는 폴링 간격과 락 TTL 을 받는 4인자 오버로드로 지정했습니다. 표의 10ms 와 200ms 도 이 오버로드로 잰 값입니다.
+
+### 다른 키의 적재와 이미 채워진 키의 hit 도 기다립니다
+
+락이 캐시 이름에 하나라서 다른 키도 같은 락을 기다립니다. 서로 다른 키 16개를 동시에 읽었더니 로더는 16번 돌았습니다. 같은 `sync` 켬에서 non-locking writer 로 0.21~0.25초에 끝나던 16개가 locking writer 에서는 3.7~4.0초 걸렸고 시작 100ms 시점에 Redis 에 `product~lock` 키가 있었습니다(3회 모두). 걸린 시간과 락 키로 미루어 로더가 한 번에 하나씩 돌았을 것입니다.
+
+이미 캐시에 있는 키를 읽는 요청도 기다립니다. locking writer 의 `execute` 는 적재뿐 아니라 모든 읽기와 쓰기 앞에서 락 키가 있는지 확인하고, 있으면 없어질 때까지 기다립니다. 다른 키 하나를 1초 동안 적재하기 시작하고 약 0.1초 뒤에 이미 채워진 키를 읽었더니 non-locking writer 에서 1~8ms 에 돌아온 요청이 locking writer 에서는 923~948ms 를 기다렸습니다. 조합마다 한 번씩 돌렸습니다. 범위의 두 끝은 hit 요청의 `sync` 를 끈 값과 켠 값입니다. 캐시 이름 하나에 든 모든 키가 적재 하나를 기다립니다.
+
+```text
+up	diff-keys	nonlocking	false	1	16	16	214	0	lock_key_at_100ms=false latency_ms min/med/max=208/209/214
+up	diff-keys	nonlocking	true	1	16	16	213	0	lock_key_at_100ms=false latency_ms min/med/max=209/210/213
+up	diff-keys	locking	false	1	16	16	215	0	lock_key_at_100ms=false latency_ms min/med/max=211/212/215
+up	diff-keys	locking	true	1	16	16	3739	0	lock_key_at_100ms=true latency_ms min/med/max=216/2068/3738
+up	hit-during-load	nonlocking	false	1	2	1	8	0	hit 요청 지연(ms), 다른 키가 1000ms 적재 중. lock_key_at_100ms=false
+up	hit-during-load	nonlocking	true	1	2	1	1	0	hit 요청 지연(ms), 다른 키가 1000ms 적재 중. lock_key_at_100ms=false
+up	hit-during-load	locking	false	1	2	1	923	0	hit 요청 지연(ms), 다른 키가 1000ms 적재 중. lock_key_at_100ms=true
+up	hit-during-load	locking	true	1	2	1	948	0	hit 요청 지연(ms), 다른 키가 1000ms 적재 중. lock_key_at_100ms=true
+up	stale-lock	locking	false	1	1	1	3021	0	product~lock 을 SET 한 채 이미 채워진 키 조회: 3초 동안 끝나지 않음, DEL 뒤 완료까지 3021ms
+up	stale-lock	locking	true	1	1	1	3021	0	product~lock 을 SET 한 채 이미 채워진 키 조회: 3초 동안 끝나지 않음, DEL 뒤 완료까지 3021ms
+```
+
+`hit-during-load` 줄의 `sync` 열은 hit 요청 쪽의 설정이고, 적재하는 쪽은 항상 `sync` 를 켰습니다. 위 로그의 `diff-keys` 는 1회차만 옮겼습니다.
+
+### 락이 남으면 그 캐시 전체가 멈춥니다
+
+`lockingRedisCacheWriter(connectionFactory)` 의 기본 락 TTL 은 만료 없음(`TtlFunction.persistent()`)이고 락을 기다리는 루프에는 시한이 없습니다. 락을 쥔 프로세스가 적재 도중 죽으면 락 키가 남고 그 캐시를 쓰는 요청은 모두 멈춥니다. 이 상황은 `SET product~lock ""` 로 락 키를 직접 남겨 흉내 냈습니다(로그의 마지막 두 줄). 이미 채워진 키를 읽는 요청이 3초 동안 끝나지 않았고 3초에 락 키를 지운 뒤에야 돌아왔습니다. 3,021ms 는 요청을 보낸 때부터 잰 값이고, 락 키를 지운 뒤로는 약 21ms 만에 돌아왔습니다. 재현 코드를 짤 때 로그 문구를 "DEL 뒤 완료까지"로 잘못 붙였습니다.
+
+락 TTL 을 받는 오버로드 `lockingRedisCacheWriter(connectionFactory, Duration, TtlFunction, BatchStrategy)` 가 있어서 남는 락은 설정으로 줄일 수 있습니다. 그래도 캐시 단위로 기다리는 문제와 Redis 장애 때 락을 쓸 수 없는 문제는 그대로 남습니다. 뒤의 것은 Redis 장애 때의 경로와 함께 봐야 합니다.
+
+## Redis 가 죽으면 writer 도 `sync` 도 로더 호출을 줄이지 못합니다
+
+앞에서 재현에 붙인 상품 서비스의 오류 처리기는 Redis 의 연결 실패와 타임아웃을 캐시 miss 로 처리합니다. Redis 가 죽어도 조회가 5xx 가 되지 않게 하려고 가용성 계열 예외만 miss 로 넘기고 나머지는 다시 던집니다. 이 처리기를 거치는 경로가 `sync` 에 따라 갈립니다.
+
+`sync` 를 끈 일반 경로에서는 `Cache.get(key)` 가 실패하면 처리기가 get 오류를 받아 miss 로 넘기고 로더가 돕니다. 로더가 끝나면 `put` 을 시도하고 그것도 실패하면 처리기가 put 오류를 받습니다. 응답은 나가지만 캐시는 채워지지 않습니다.
+
+`sync` 를 켠 경로에서는 `Cache.get(key, Callable)` 하나가 읽기, 적재, 쓰기를 다 합니다. 이 호출이 `RuntimeException` 을 던지면 프레임워크는 처리기의 get 오류 콜백을 부른 뒤 로더(`Callable.call()`)를 직접 부릅니다. 쓰기는 다시 시도하지 않습니다. spring-context 6.2.17 의 `AbstractCacheInvoker` 바이트코드입니다.
+
+```text
+  protected <T> T doGet(org.springframework.cache.Cache, java.lang.Object, java.util.concurrent.Callable<T>);
+    Code:
+       0: aload_1
+       1: aload_2
+       2: aload_3
+       3: invokeinterface #47,  3           // InterfaceMethod org/springframework/cache/Cache.get:(Ljava/lang/Object;Ljava/util/concurrent/Callable;)Ljava/lang/Object;
+       8: areturn
+       9: astore        4
+      11: aload         4
+      13: athrow
+      14: astore        4
+      16: aload_0
+      17: invokevirtual #39                 // Method getErrorHandler:()Lorg/springframework/cache/interceptor/CacheErrorHandler;
+      20: aload         4
+      22: aload_1
+      23: aload_2
+      24: invokeinterface #43,  4           // InterfaceMethod org/springframework/cache/interceptor/CacheErrorHandler.handleCacheGetError:(Ljava/lang/RuntimeException;Lorg/springframework/cache/Cache;Ljava/lang/Object;)V
+      29: aload_3
+      30: invokeinterface #52,  1           // InterfaceMethod java/util/concurrent/Callable.call:()Ljava/lang/Object;
+      35: areturn
+      36: astore        5
+      38: new           #50                 // class org/springframework/cache/Cache$ValueRetrievalException
+      41: dup
+      42: aload_2
+      43: aload_3
+      44: aload         4
+      46: invokespecial #59                 // Method org/springframework/cache/Cache$ValueRetrievalException."<init>":(Ljava/lang/Object;Ljava/util/concurrent/Callable;Ljava/lang/Throwable;)V
+      49: athrow
+    Exception table:
+       from    to  target type
+           0     8     9   Class org/springframework/cache/Cache$ValueRetrievalException
+           0     8    14   Class java/lang/RuntimeException
+          29    35    36   Class java/lang/Exception
+```
+
+0~8 에서 `Cache.get` 이 `RuntimeException` 을 던지면 14 로 가서 `handleCacheGetError` 를 부르고, 29~30 에서 `Callable.call()` 을 다시 부릅니다. `ValueRetrievalException` 은 9 에서 그대로 다시 던집니다.
+
+로컬 재현에서 Redis 컨테이너를 `docker kill` 로 죽인 뒤 같은 키를 16개 스레드로 읽었습니다. writer 두 종류와 `sync` 켜고 끔의 네 조합 모두, 3번 반복 내내 로더가 16번 돌았습니다. 처리기 카운터는 `sync` 를 끈 경로에서 get 실패 16건과 put 실패 16건, 켠 경로에서 get 실패 16건만 늘었습니다. 1회차 로그 행입니다.
+
+```text
+down	same-key	nonlocking	false	1	16	16	212	0	latency_ms min/med/max=204/207/212 fallback 누계 전=get=1 put=1 evict=0 후=get=17 put=17 evict=0
+down	same-key	nonlocking	true	1	16	16	208	0	latency_ms min/med/max=201/203/208 fallback 누계 전=get=49 put=49 evict=0 후=get=65 put=49 evict=0
+down	same-key	locking	false	1	16	16	211	0	latency_ms min/med/max=202/210/211 fallback 누계 전=get=1 put=0 evict=0 후=get=17 put=16 evict=0
+down	same-key	locking	true	1	16	16	210	0	latency_ms min/med/max=200/207/210 fallback 누계 전=get=49 put=48 evict=0 후=get=65 put=48 evict=0
+```
+
+카운터는 누계라서 전후 차이로 셉니다. 포트가 닫혀 연결이 곧바로 거부된 경우라 16개가 로더 시간과 비슷한 0.21초 안팎에 끝났습니다. 응답하지 않는 Redis 에서 명령 타임아웃 500ms 를 다 기다리는 경우는 재현하지 않았습니다.
+
+`sync` 를 켠 경로에는 경우가 하나 더 있습니다. 로더가 도는 사이에 Redis 가 죽으면 적재는 끝났는데 쓰기가 실패해 `Cache.get(key, Callable)` 전체가 예외로 끝납니다. 프레임워크는 이것을 get 실패로 받고 로더를 다시 부릅니다. 요청 하나에 로더, 보통은 DB 조회가 두 번 돕니다. 1.5초짜리 로더를 부르고 0.3초 뒤 Redis 컨테이너를 죽였습니다. 조합마다 한 번씩만 돌렸습니다.
+
+```text
+mid-load-kill	single-call	nonlocking	false	1	1	1	2065	0	로더 1500ms, 300ms 에 docker kill. 결과=v1233 fallback 누계 전=get=0 put=0 evict=0 후=get=0 put=1 evict=0
+mid-load-kill	single-call	nonlocking	true	1	1	2	3024	0	로더 1500ms, 300ms 에 docker kill. 결과=v1234 fallback 누계 전=get=0 put=1 evict=0 후=get=1 put=1 evict=0
+mid-load-kill	single-call	locking	true	1	1	2	3039	0	로더 1500ms, 300ms 에 docker kill. 결과=v1235 fallback 누계 전=get=0 put=0 evict=0 후=get=1 put=0 evict=0
+```
+
+`sync` 를 끈 경로(non-locking writer 로만 돌렸습니다)는 로더 1번에 put 실패 1건(2.1초), 켠 경로는 non-locking 과 locking writer 모두 로더 2번에 get 실패 1건(3.0초)이었습니다. 쓰기 실패가 get 실패로 세어지므로 처리기의 지표를 읽을 때도 이 차이를 알고 읽어야 합니다.
+
+Redis 가 죽어 있는 동안에는 writer 와 `sync` 를 무엇으로 고르든 같은 키 조회가 요청 수만큼 로더로 갑니다. PeekCart 에서는 Redis 장애 때의 miss 도 상한 1 을 지나므로 넘친 요청은 DB 대신 503 으로 드러나고 장애 동안 상품 조회 처리량은 상한이 정할 것으로 예상합니다.
+
+## 상한은 1로 두고 캐시 계층에서 miss 를 묶기로 했습니다
+
+바이트코드로 확인한 내용과 측정의 한계를 놓고 상한은 1 로 두고, 캐시 계층에서 miss 를 묶고 정해진 범위 안에서 오래된 값을 내주기로 했습니다.
+
+1. **같은 키 로딩을 Pod 안에서 묶습니다.** 한 Pod 에서 같은 키가 miss 되면 DB 조회는 한 번이고 나머지 요청은 그 결과를 기다립니다. Redis writer 의 락에 기대지 않습니다.
+2. **재고는 만료 전에 갱신합니다.** soft 시점이 지나면 한 요청만 갱신하고 나머지는 기존 값을 받습니다(stale-while-revalidate). hard 시점은 지금의 TTL 5초 그대로이고 갱신이 DB 진입 상한에 거절되면 hard 시점까지 기존 값을 줍니다. soft 시점은 5초보다 짧게 두고 값은 구현 계획에서 정합니다.
+3. **Redis 장애 때는 Pod 메모리에 둔 마지막 값으로 응답합니다.** 정상 조회 때마다 마지막 값을 크기 한도 안에서 Pod 메모리에 두고, Redis 오류 때 그 값이 허용 범위 안이면 그 값을 줍니다(stale-if-error). 허용 범위는 상품 정보 30분, 목록 10분, 재고 5초입니다. 범위를 넘었거나 값이 없으면 1번으로 묶은 DB 조회가 상한을 지납니다.
+
+Pod 메모리 저장소로는 Caffeine 을 쓰기로 했고 상한 advice 와 트랜잭션의 순서는 바꾸지 않습니다. 평상시 상품 정보와 목록의 신선도도 바꾸지 않습니다. Redis 가 정상이면 지금처럼 Redis 를 읽고 수정 때 지웁니다. Pod 메모리는 진행 중인 로딩, 재고 갱신, 장애 응답에만 씁니다. 평상시 경로에 Pod 마다 캐시를 하나 더 두면 Redis 왕복은 줄지만 수정이 다른 Pod 에 늦게 반영되어 평상시에도 오래된 값이 새로 생깁니다.
+
+검토한 대안과 처리는 이렇습니다.
+
+| 대안 | 처리 | 이유 |
+| --- | --- | --- |
+| 상한 4 로 증액 | 기각 | 다른 DB 사용자의 여유를 확인하지 않았고, DB 진입 시도가 트래픽에 비례하는 원인이 그대로라 트래픽이 늘면 다시 거절된다 |
+| `@Cacheable(sync = true)` 만 추가 | 기각 | 기본 non-locking writer 에서는 묶이지 않는다. locking writer 는 캐시 이름 단위 락이라 모든 키가 같은 락을 기다리고, Redis 장애 때 쓸 수 없다 |
+| 조회 전용 커넥션 풀 | 보류 | 조회가 쓰기와 메시지 소비의 커넥션을 가져가지 못하게 하지만 DataSource 2개와 라우팅, 지표 분리가 필요하고 miss 원인은 그대로다. 묶은 뒤에도 모자라면 다시 검토한다 |
+| read replica | 보류 | 인프라와 비용이 늘고 복제 지연이 오래된 값에 더해진다 |
+| 평상시 2단 캐시와 pub/sub 무효화 | 기각 | 평상시에 Pod 사이의 오래된 값을 새로 만든다 |
+| Redis client-side caching | 기각 | 연결이 끊기면 클라이언트가 로컬 캐시를 전부 비워 Redis 장애 대비가 되지 않는다 |
+| 확률적 조기 재계산 | 기각 (재검토 조건 있음) | 여러 노드의 동시 재계산을 흩지만 확률적이다. Pod 수가 적고 Pod 안에서 묶으므로 지금은 필요 없다. Pod 사이의 재적재가 DB 부하로 보이면 다시 검토한다 |
+| 재고 TTL 편차, 상한의 짧은 대기 | 기각 | 부분 처방이고, 짧은 대기는 대기열 없이 거절한다는 상한의 성질을 바꾼다. 만료 전 갱신과 장애 때 마지막 값이 거절이 사용자에게 드러나는 경우를 없애므로 따로 두지 않는다 |
+
+## 오래된 값을 내도 되는 범위는 그 값이 보증하는 것으로 정했습니다
+
+장애 중 마지막 값과 재고의 만료 전 갱신은 둘 다 오래된 값을 내줍니다. 범위는 값마다 그 값이 무엇을 보증하는지로 정했습니다.
+
+상세 응답의 재고는 표시용 힌트입니다. 응답을 받은 직후에도 다른 주문이 재고를 가져갈 수 있고, 주문 가능 여부는 재고 예약 단계가 DB 의 재고 행을 낙관적 락(`@Version`)으로 차감하며 정합니다. 예약 경로는 캐시를 거치지 않습니다. 그래서 재고 캐시는 처음부터 무효화 없이 TTL 5초를 오래된 값의 최대 시간으로 두었고, 장애 중 마지막 값도 그 5초를 넘기지 않게 하기로 했습니다.
+
+주문 단가는 상품 조회 API 에서 오지 않습니다. 주문 서비스는 주문을 만들 때 상품 서비스를 동기로 부르지 않고 자기 DB 의 가격 테이블에서 단가를 읽습니다. 아래 `priceCacheRepository` 는 이름에 cache 가 들어 있지만 주문 DB 의 그 테이블을 읽습니다. 주석 두 줄과 에러 코드 이름을 빼고 옮기면 이렇습니다.
+
+```java
+        List<OrderItemData> itemDataList = cart.getItems().stream()
+                .map(cartItem -> {
+                    long unitPrice = priceCacheRepository.findUnitPrice(cartItem.getProductId())
+                            .orElseThrow(() -> new OrderException(...));
+                    return new OrderItemData(cartItem.getProductId(), cartItem.getQuantity(), unitPrice);
+                })
+```
+
+이 가격 테이블은 주문 서비스가 상품 수정 이벤트를 소비해 채우고, version 이 더 큰 이벤트만 반영합니다. 상품 조회 API 가 오래된 가격을 보여 줘도 그 값이 주문 단가에 들어가지는 않습니다. 다만 가격 테이블도 이벤트가 늦게 도착하면 그만큼 늦습니다.
+
+상품 정보 30분, 목록 10분은 지금의 Redis TTL 과 같은 숫자입니다. Redis 장애 중에 상품을 수정하면 캐시 삭제가 실패하고, 처리기는 그 실패를 넘깁니다. 그 키는 Redis 가 복구된 뒤에도 TTL 이 끝날 때까지 옛 가격과 상태를 내줍니다. 지금 구성도 이만큼의 오래된 값은 내고 있어서 같은 숫자를 허용 범위로 썼습니다. 대가는 남습니다. 장애 중에는 판매 중단이나 가격 변경의 표시가 최대 30분 늦어지고, 한 Pod 에서 수정해 지워도 다른 Pod 의 사본은 허용 범위까지 남습니다.
+
+## 남은 것
+
+- 세 가지 보강은 아직 구현하지 않았고 효과도 재지 않았습니다. 검증 방법은 착수할 때 다시 정합니다.
+- 기대 효과는 계산입니다. Redis 장애 중 Pod 하나의 DB 조회 수가 트래픽 대신 "인기 키 수를 허용 범위로 나눈 값"으로 묶이므로 상품 100개에 재고 허용 범위 5초면 Pod 당 재고 DB 조회는 초당 최대 약 20회로 계산했습니다. 서비스 전체로는 여기에 Pod 수를 곱합니다. 재고 만료 순간의 거절도 hard 시점 안에서는 503 으로 드러나지 않을 것으로 예상합니다.
+- 허용 범위를 DB 에서 읽은 시각부터 셀지, Pod 메모리에 넣은 시각부터 셀지는 결정할 때 정하지 않았고 구현할 때 정합니다. Redis 에서 읽은 재고는 넣는 순간 이미 최대 5초 지났을 수 있습니다.
+- Pod 안에서 묶으므로 Pod 가 여러 개면 같은 키를 Pod 수만큼 다시 적재합니다. 그것이 DB 부하로 보이면 확률적 조기 재계산을 다시 검토합니다. 묶은 뒤에도 콜드 스타트나 Redis 장애에서 조회 거절이 의미 있게 남으면 조회 전용 풀을 검토하고, 그때 상한 증액도 다시 정합니다.
+- 증액 근거가 된 측정은 읽기 전용 스택의 풀 여유입니다. 예약 소비와 겹쳤을 때의 여유, 15초보다 짧은 순간값은 재지 않았습니다.
+- 라이브러리 동작은 spring-context 6.2.17, 7.0.10, spring-data-redis 3.5.10, 4.0.5, Spring Boot 3.5.12 자동 구성까지 확인했습니다. 그 밖의 버전과 Spring Boot 4.x 자동 구성은 동작이 다를 수 있습니다.
+- 로컬 재현은 같은 맥북의 Docker Redis 와 JVM 최대 두 개까지입니다. Pod 나 노드가 다른 환경, 응답하지 않는 Redis, 실제 DB, 상한과 함께 도는 경우는 재현하지 않았습니다. 로딩 중 Redis 를 죽인 재현은 조합마다 한 번씩만 돌렸습니다.
+
+## 다시 한다면
+
+`sync = true` 를 완화 후보로 처음 꼽을 때 구현을 한 번 열어 봤다면 상한을 정할 때 이 대안을 기각한 이유부터 달랐을 것입니다. 그때는 "같은 키에 한정된다"는 이유로 기각했는데, 같은 키는 묶인다고 믿고 내린 결론이었습니다. 확인에는 Gradle 캐시에 있던 jar 와 `javap` 가 필요했습니다.
+
+증액 조건을 정할 때 다른 DB 사용자의 여유를 조건에 넣었다면 처음부터 결정에 필요한 것을 재도록 측정을 짰을 것입니다. 상한을 처음 정할 때 이미 "다른 DB 사용자의 여유를 다시 확인한다"는 조건을 두었는데 측정 전에 정한 네 조건은 모두 읽기 부하 안의 값이었습니다. 같은 세션에서 주문 경로의 경합도 재려 했지만 주문 서비스의 커넥션 풀이 먼저 포화돼 결과를 내지 못했습니다. 그래도 그 조건이 증액 조건에 있었다면 이번 측정만으로는 결정할 수 없다는 것을 측정 전에 알았을 것입니다.
+
+## 정리하며
+
+측정으로 얻은 "상한 증액 근거 있음"은 읽기만 있는 스택에서 상한 4 가 커넥션 풀을 고갈시키지 않는다는 뜻이었습니다. 정작 정해야 했던 것은 쓰기와 메시지 소비가 같은 풀을 쓰는 상태에서 상한을 올려도 되는가였고, 그 상태는 측정에서 만들지 않았습니다. 상한을 올려도 DB 진입 시도가 트래픽에 비례하는 원인은 그대로였습니다.
+
+`sync` 의 실제 동작은 jar 를 열어 확인했습니다. spring-context 6.2.17, 7.0.10 의 `sync = true` 는 로더를 `Cache.get(key, Callable)` 에 넘기기만 하고, spring-data-redis 3.5.10, 4.0.5 의 `RedisCacheManager.builder(connectionFactory)` 는 락이 꺼진 writer 를 고릅니다. 기본 구성에서는 같은 키 동시 miss 가 각자 로더를 실행하고 로컬 재현에서도 16개 스레드가 16번 적재했습니다. locking writer 는 같은 키를 묶지만 캐시 이름마다 락이 하나라서 다른 키의 적재와 hit 까지 기다리게 하고, Redis 가 죽으면 쓸 수 없습니다. 자기 프로젝트의 캐시 매니저가 `builder(connectionFactory)` 인지, Boot 자동 구성이라면 writer 를 바꾸는 설정이 있는지, spring-data-redis 버전이 어디인지를 보면 같은 상황인지 알 수 있습니다.
+
+오래된 값을 내도 되는 범위는 값이 보증하는 것으로 정했습니다. 재고는 예약을 보증하지 않는 표시용 값이라 5초, 상품 정보와 목록은 이미 받아들인 TTL 범위인 30분과 10분입니다. 상품 조회 API 의 오래된 가격은 주문 단가에 들어가지 않습니다. PeekCart 는 상한을 1 로 두고 Pod 안에서 같은 키 로딩을 묶기로 했고 이 결정의 효과는 구현한 뒤에 재야 합니다.
