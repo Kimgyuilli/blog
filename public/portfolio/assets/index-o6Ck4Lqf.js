@@ -1,4 +1,4 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/ResumePdf-8OIY_L7S.js","assets/react-pdf.browser-BlUQdqDf.js"])))=>i.map(i=>d[i]);
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/ResumePdf-CrsXf2q9.js","assets/react-pdf.browser-BYyCNiao.js"])))=>i.map(i=>d[i]);
 (function(){const t=document.createElement("link").relList;if(t&&t.supports&&t.supports("modulepreload"))return;for(const s of document.querySelectorAll('link[rel="modulepreload"]'))o(s);new MutationObserver(s=>{for(const u of s)if(u.type==="childList")for(const l of u.addedNodes)l.tagName==="LINK"&&l.rel==="modulepreload"&&o(l)}).observe(document,{childList:!0,subtree:!0});function r(s){const u={};return s.integrity&&(u.integrity=s.integrity),s.referrerPolicy&&(u.referrerPolicy=s.referrerPolicy),s.crossOrigin==="use-credentials"?u.credentials="include":s.crossOrigin==="anonymous"?u.credentials="omit":u.credentials="same-origin",u}function o(s){if(s.ep)return;s.ep=!0;const u=r(s);fetch(s.href,u)}})();var qN=typeof globalThis<"u"?globalThis:typeof window<"u"?window:typeof global<"u"?global:typeof self<"u"?self:{};function ul(e){return e&&e.__esModule&&Object.prototype.hasOwnProperty.call(e,"default")?e.default:e}function YN(e){if(Object.prototype.hasOwnProperty.call(e,"__esModule"))return e;var t=e.default;if(typeof t=="function"){var r=function o(){return this instanceof o?Reflect.construct(t,arguments,this.constructor):t.apply(this,arguments)};r.prototype=t.prototype}else r={};return Object.defineProperty(r,"__esModule",{value:!0}),Object.keys(e).forEach(function(o){var s=Object.getOwnPropertyDescriptor(e,o);Object.defineProperty(r,o,s.get?s:{enumerable:!0,get:function(){return e[o]}})}),r}var oc={exports:{}},zo={},sc={exports:{}},be={};/**
  * @license React
  * react.production.min.js
@@ -198,7 +198,7 @@ Error generating stack: `+y.message+`
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
- */const Iw=[["path",{d:"M18 6 6 18",key:"1bl5f8"}],["path",{d:"m6 6 12 12",key:"d8bk6v"}]],Cw=Le("x",Iw),cc=[{label:"Home",href:"#home"},{label:"Skills",href:"#skills"},{label:"Projects",href:"#projects"},{label:"Achievements",href:"#achievements"},{label:"Experience",href:"#experience"},{label:"Blog",href:"#blog"},{label:"Contact",href:"#contact"}],bw="<Dev/>",x1=K.createContext(void 0);function _w({children:e}){const[t,r]=K.useState(()=>localStorage.getItem("theme")||"dark");K.useEffect(()=>{localStorage.setItem("theme",t),t==="dark"?document.documentElement.classList.add("dark"):document.documentElement.classList.remove("dark")},[t]);const o=()=>{const u=window.matchMedia("(prefers-reduced-motion: reduce)").matches,l="startViewTransition"in document;!u&&l&&document.startViewTransition?document.startViewTransition(()=>{r(f=>f==="light"?"dark":"light")}):u?r(f=>f==="light"?"dark":"light"):(document.documentElement.classList.add("theme-transition"),r(f=>f==="light"?"dark":"light"),setTimeout(()=>{document.documentElement.classList.remove("theme-transition")},1e3))},s=K.useMemo(()=>({theme:t,toggleTheme:o}),[t]);return k.jsx(x1.Provider,{value:s,children:e})}function Pw(){const e=K.useContext(x1);if(e===void 0)throw new Error("useTheme must be used within a ThemeProvider");return e}const Tw="modulepreload",Aw=function(e){return"/portfolio/"+e},Vm={},Hm=function(t,r,o){let s=Promise.resolve();if(r&&r.length>0){let l=function(h){return Promise.all(h.map(p=>Promise.resolve(p).then(g=>({status:"fulfilled",value:g}),g=>({status:"rejected",reason:g}))))};document.getElementsByTagName("link");const f=document.querySelector("meta[property=csp-nonce]"),d=f?.nonce||f?.getAttribute("nonce");s=l(r.map(h=>{if(h=Aw(h),h in Vm)return;Vm[h]=!0;const p=h.endsWith(".css"),g=p?'[rel="stylesheet"]':"";if(document.querySelector(`link[href="${h}"]${g}`))return;const v=document.createElement("link");if(v.rel=p?"stylesheet":Tw,p||(v.as="script"),v.crossOrigin="",v.href=h,d&&v.setAttribute("nonce",d),document.head.appendChild(v),p)return new Promise((x,I)=>{v.addEventListener("load",x),v.addEventListener("error",()=>I(new Error(`Unable to preload CSS for ${h}`)))})}))}function u(l){const f=new Event("vite:preloadError",{cancelable:!0});if(f.payload=l,window.dispatchEvent(f),!f.defaultPrevented)throw l}return s.then(l=>{for(const f of l||[])f.status==="rejected"&&u(f.reason);return t().catch(u)})};function Um({className:e,showLabel:t,onClick:r}){const[o,s]=K.useState(!1),u=async()=>{if(!o){s(!0);try{const[{pdf:l},{ResumePdf:f}]=await Promise.all([Hm(()=>import("./react-pdf.browser-BlUQdqDf.js"),[]),Hm(()=>import("./ResumePdf-8OIY_L7S.js"),__vite__mapDeps([0,1]))]),d=await l(k.jsx(f,{})).toBlob(),h=URL.createObjectURL(d),p=document.createElement("a");p.href=h,p.download="김규일_이력서.pdf",p.click(),setTimeout(()=>URL.revokeObjectURL(h),1e3)}catch(l){console.error("PDF 생성 실패:",l)}finally{s(!1),r?.()}}};return k.jsx("button",{onClick:u,disabled:o,className:e,"aria-label":"이력서 PDF 다운로드",title:"이력서 다운로드",children:o?k.jsxs(k.Fragment,{children:[k.jsx(v1,{size:t?16:18,style:{animation:"spin 1s linear infinite"}}),t&&k.jsx("span",{children:"PDF 생성중..."})]}):k.jsxs(k.Fragment,{children:[k.jsx(Y2,{size:t?16:18}),t&&k.jsx("span",{children:"이력서 다운로드"})]})})}const Ew="_nav_10752_1",Dw="_container_10752_18",jw="_brand_10752_46",Mw="_divider_10752_126",Me={nav:Ew,container:Dw,"nav-content":"_nav-content_10752_39",brand:jw,"brand-link":"_brand-link_10752_50","desktop-nav":"_desktop-nav_10752_66","nav-links":"_nav-links_10752_78","nav-link":"_nav-link_10752_78","nav-link-active":"_nav-link-active_10752_114",divider:Mw,"theme-toggle":"_theme-toggle_10752_145","theme-toggle-mobile":"_theme-toggle-mobile_10752_146","toggle-track":"_toggle-track_10752_156","toggle-thumb":"_toggle-thumb_10752_178","toggle-thumb-dark":"_toggle-thumb-dark_10752_192","mobile-nav":"_mobile-nav_10752_201","mobile-button":"_mobile-button_10752_213","mobile-menu":"_mobile-menu_10752_237","mobile-menu-content":"_mobile-menu-content_10752_268","mobile-nav-link":"_mobile-nav-link_10752_276","mobile-divider":"_mobile-divider_10752_301","blog-link":"_blog-link_10752_308","download-btn":"_download-btn_10752_347","mobile-blog-link":"_mobile-blog-link_10752_378","mobile-download-btn":"_mobile-download-btn_10752_406","github-link":"_github-link_10752_442","mobile-github-link":"_mobile-github-link_10752_465"},Gm="https://github.com/Kimgyuilli/gyuill-portfolio",Wm="https://blog.rlarbdlf222.workers.dev/";function Nw({isProjectPage:e=!1,onNavigateHome:t}){const[r,o]=K.useState(!1),[s,u]=K.useState("home"),{theme:l,toggleTheme:f}=Pw(),d=(h,p)=>{!e||!t||(h.preventDefault(),t(p.replace("#","")))};return K.useEffect(()=>{if(e)return;const h=()=>{const p=cc.map(D=>D.href.substring(1)),g=.9,v=window.scrollY*g+100,x=window.innerHeight,I=document.documentElement.scrollHeight;if(x+window.scrollY>=I-10){u(p[p.length-1]);return}for(const D of p){const _=document.getElementById(D);if(_){const z=_.getBoundingClientRect(),M=(z.top+window.scrollY)*g,q=z.height*g;if(v>=M&&v<M+q){u(D);break}}}};return window.addEventListener("scroll",h),h(),()=>window.removeEventListener("scroll",h)},[e]),k.jsxs("nav",{className:Me.nav,children:[k.jsx("div",{className:Me.container,children:k.jsxs("div",{className:Me["nav-content"],children:[k.jsx("div",{className:Me.brand,children:k.jsx("a",{href:"#home",className:Me["brand-link"],onClick:h=>d(h,"#home"),children:bw})}),k.jsxs("div",{className:Me["desktop-nav"],children:[k.jsx("div",{className:Me["nav-links"],children:cc.map(h=>{const p=!e&&s===h.href.substring(1);return k.jsx("a",{href:h.href,onClick:g=>d(g,h.href),className:`${Me["nav-link"]} ${p?Me["nav-link-active"]:""}`,children:h.label},h.label)})}),k.jsx("div",{className:Me.divider}),k.jsxs("a",{href:Wm,className:Me["blog-link"],"aria-label":"Tech Blog",children:[k.jsx(Yc,{size:18}),k.jsx("span",{children:"Tech Blog"})]}),k.jsx(Um,{className:Me["download-btn"]}),k.jsx("a",{href:Gm,target:"_blank",rel:"noopener noreferrer",className:Me["github-link"],"aria-label":"GitHub Repository",children:k.jsx(zm,{size:18})}),k.jsx("div",{className:Me.divider}),k.jsx("button",{onClick:f,className:Me["theme-toggle"],"aria-label":"Toggle theme",children:k.jsx("div",{className:Me["toggle-track"],children:k.jsx("div",{className:`${Me["toggle-thumb"]} ${l==="dark"?Me["toggle-thumb-dark"]:""}`,children:l==="dark"?k.jsx(Bm,{size:14}):k.jsx(Fm,{size:14})})})})]}),k.jsxs("div",{className:Me["mobile-nav"],children:[k.jsx("button",{onClick:f,className:Me["theme-toggle-mobile"],"aria-label":"Toggle theme",children:k.jsx("div",{className:Me["toggle-track"],children:k.jsx("div",{className:`${Me["toggle-thumb"]} ${l==="dark"?Me["toggle-thumb-dark"]:""}`,children:l==="dark"?k.jsx(Bm,{size:12}):k.jsx(Fm,{size:12})})})}),k.jsx("button",{onClick:()=>o(!r),className:Me["mobile-button"],"aria-label":"Toggle menu",children:r?k.jsx(Cw,{size:24}):k.jsx(uw,{size:24})})]})]})}),r&&k.jsx("div",{className:Me["mobile-menu"],children:k.jsxs("div",{className:Me["mobile-menu-content"],children:[cc.map(h=>k.jsx("a",{href:h.href,className:Me["mobile-nav-link"],onClick:p=>{d(p,h.href),o(!1)},children:h.label},h.label)),k.jsx("div",{className:Me["mobile-divider"]}),k.jsxs("a",{href:Wm,className:Me["mobile-blog-link"],onClick:()=>o(!1),children:[k.jsx(Yc,{size:18}),"Tech Blog"]}),k.jsx(Um,{className:Me["mobile-download-btn"],showLabel:!0,onClick:()=>o(!1)}),k.jsxs("a",{href:Gm,target:"_blank",rel:"noopener noreferrer",className:Me["mobile-github-link"],onClick:()=>o(!1),children:[k.jsx(zm,{size:18}),"GitHub Repo"]})]})})]})}const Rw="/portfolio/assets/profile-CpUiUMR4.jpeg",Di={name:"김규일",profileImage:Rw,about:{paragraphs:[`학습한 내용을 기술 블로그에 기록하고, 세미나와 스터디를 통해 팀원들과 지식을 나누며 함께 성장하는 환경을 만들어갑니다. 
+ */const Iw=[["path",{d:"M18 6 6 18",key:"1bl5f8"}],["path",{d:"m6 6 12 12",key:"d8bk6v"}]],Cw=Le("x",Iw),cc=[{label:"Home",href:"#home"},{label:"Skills",href:"#skills"},{label:"Projects",href:"#projects"},{label:"Achievements",href:"#achievements"},{label:"Experience",href:"#experience"},{label:"Blog",href:"#blog"},{label:"Contact",href:"#contact"}],bw="<Dev/>",x1=K.createContext(void 0);function _w({children:e}){const[t,r]=K.useState(()=>localStorage.getItem("theme")||"dark");K.useEffect(()=>{localStorage.setItem("theme",t),t==="dark"?document.documentElement.classList.add("dark"):document.documentElement.classList.remove("dark")},[t]);const o=()=>{const u=window.matchMedia("(prefers-reduced-motion: reduce)").matches,l="startViewTransition"in document;!u&&l&&document.startViewTransition?document.startViewTransition(()=>{r(f=>f==="light"?"dark":"light")}):u?r(f=>f==="light"?"dark":"light"):(document.documentElement.classList.add("theme-transition"),r(f=>f==="light"?"dark":"light"),setTimeout(()=>{document.documentElement.classList.remove("theme-transition")},1e3))},s=K.useMemo(()=>({theme:t,toggleTheme:o}),[t]);return k.jsx(x1.Provider,{value:s,children:e})}function Pw(){const e=K.useContext(x1);if(e===void 0)throw new Error("useTheme must be used within a ThemeProvider");return e}const Tw="modulepreload",Aw=function(e){return"/portfolio/"+e},Vm={},Hm=function(t,r,o){let s=Promise.resolve();if(r&&r.length>0){let l=function(h){return Promise.all(h.map(p=>Promise.resolve(p).then(g=>({status:"fulfilled",value:g}),g=>({status:"rejected",reason:g}))))};document.getElementsByTagName("link");const f=document.querySelector("meta[property=csp-nonce]"),d=f?.nonce||f?.getAttribute("nonce");s=l(r.map(h=>{if(h=Aw(h),h in Vm)return;Vm[h]=!0;const p=h.endsWith(".css"),g=p?'[rel="stylesheet"]':"";if(document.querySelector(`link[href="${h}"]${g}`))return;const v=document.createElement("link");if(v.rel=p?"stylesheet":Tw,p||(v.as="script"),v.crossOrigin="",v.href=h,d&&v.setAttribute("nonce",d),document.head.appendChild(v),p)return new Promise((x,I)=>{v.addEventListener("load",x),v.addEventListener("error",()=>I(new Error(`Unable to preload CSS for ${h}`)))})}))}function u(l){const f=new Event("vite:preloadError",{cancelable:!0});if(f.payload=l,window.dispatchEvent(f),!f.defaultPrevented)throw l}return s.then(l=>{for(const f of l||[])f.status==="rejected"&&u(f.reason);return t().catch(u)})};function Um({className:e,showLabel:t,onClick:r}){const[o,s]=K.useState(!1),u=async()=>{if(!o){s(!0);try{const[{pdf:l},{ResumePdf:f}]=await Promise.all([Hm(()=>import("./react-pdf.browser-BYyCNiao.js"),[]),Hm(()=>import("./ResumePdf-CrsXf2q9.js"),__vite__mapDeps([0,1]))]),d=await l(k.jsx(f,{})).toBlob(),h=URL.createObjectURL(d),p=document.createElement("a");p.href=h,p.download="김규일_이력서.pdf",p.click(),setTimeout(()=>URL.revokeObjectURL(h),1e3)}catch(l){console.error("PDF 생성 실패:",l)}finally{s(!1),r?.()}}};return k.jsx("button",{onClick:u,disabled:o,className:e,"aria-label":"이력서 PDF 다운로드",title:"이력서 다운로드",children:o?k.jsxs(k.Fragment,{children:[k.jsx(v1,{size:t?16:18,style:{animation:"spin 1s linear infinite"}}),t&&k.jsx("span",{children:"PDF 생성중..."})]}):k.jsxs(k.Fragment,{children:[k.jsx(Y2,{size:t?16:18}),t&&k.jsx("span",{children:"이력서 다운로드"})]})})}const Ew="_nav_10752_1",Dw="_container_10752_18",jw="_brand_10752_46",Mw="_divider_10752_126",Me={nav:Ew,container:Dw,"nav-content":"_nav-content_10752_39",brand:jw,"brand-link":"_brand-link_10752_50","desktop-nav":"_desktop-nav_10752_66","nav-links":"_nav-links_10752_78","nav-link":"_nav-link_10752_78","nav-link-active":"_nav-link-active_10752_114",divider:Mw,"theme-toggle":"_theme-toggle_10752_145","theme-toggle-mobile":"_theme-toggle-mobile_10752_146","toggle-track":"_toggle-track_10752_156","toggle-thumb":"_toggle-thumb_10752_178","toggle-thumb-dark":"_toggle-thumb-dark_10752_192","mobile-nav":"_mobile-nav_10752_201","mobile-button":"_mobile-button_10752_213","mobile-menu":"_mobile-menu_10752_237","mobile-menu-content":"_mobile-menu-content_10752_268","mobile-nav-link":"_mobile-nav-link_10752_276","mobile-divider":"_mobile-divider_10752_301","blog-link":"_blog-link_10752_308","download-btn":"_download-btn_10752_347","mobile-blog-link":"_mobile-blog-link_10752_378","mobile-download-btn":"_mobile-download-btn_10752_406","github-link":"_github-link_10752_442","mobile-github-link":"_mobile-github-link_10752_465"},Gm="https://github.com/Kimgyuilli/gyuill-portfolio",Wm="https://blog.rlarbdlf222.workers.dev/";function Nw({isProjectPage:e=!1,onNavigateHome:t}){const[r,o]=K.useState(!1),[s,u]=K.useState("home"),{theme:l,toggleTheme:f}=Pw(),d=(h,p)=>{!e||!t||(h.preventDefault(),t(p.replace("#","")))};return K.useEffect(()=>{if(e)return;const h=()=>{const p=cc.map(D=>D.href.substring(1)),g=.9,v=window.scrollY*g+100,x=window.innerHeight,I=document.documentElement.scrollHeight;if(x+window.scrollY>=I-10){u(p[p.length-1]);return}for(const D of p){const _=document.getElementById(D);if(_){const z=_.getBoundingClientRect(),M=(z.top+window.scrollY)*g,q=z.height*g;if(v>=M&&v<M+q){u(D);break}}}};return window.addEventListener("scroll",h),h(),()=>window.removeEventListener("scroll",h)},[e]),k.jsxs("nav",{className:Me.nav,children:[k.jsx("div",{className:Me.container,children:k.jsxs("div",{className:Me["nav-content"],children:[k.jsx("div",{className:Me.brand,children:k.jsx("a",{href:"#home",className:Me["brand-link"],onClick:h=>d(h,"#home"),children:bw})}),k.jsxs("div",{className:Me["desktop-nav"],children:[k.jsx("div",{className:Me["nav-links"],children:cc.map(h=>{const p=!e&&s===h.href.substring(1);return k.jsx("a",{href:h.href,onClick:g=>d(g,h.href),className:`${Me["nav-link"]} ${p?Me["nav-link-active"]:""}`,children:h.label},h.label)})}),k.jsx("div",{className:Me.divider}),k.jsxs("a",{href:Wm,className:Me["blog-link"],"aria-label":"Tech Blog",children:[k.jsx(Yc,{size:18}),k.jsx("span",{children:"Tech Blog"})]}),k.jsx(Um,{className:Me["download-btn"]}),k.jsx("a",{href:Gm,target:"_blank",rel:"noopener noreferrer",className:Me["github-link"],"aria-label":"GitHub Repository",children:k.jsx(zm,{size:18})}),k.jsx("div",{className:Me.divider}),k.jsx("button",{onClick:f,className:Me["theme-toggle"],"aria-label":"Toggle theme",children:k.jsx("div",{className:Me["toggle-track"],children:k.jsx("div",{className:`${Me["toggle-thumb"]} ${l==="dark"?Me["toggle-thumb-dark"]:""}`,children:l==="dark"?k.jsx(Bm,{size:14}):k.jsx(Fm,{size:14})})})})]}),k.jsxs("div",{className:Me["mobile-nav"],children:[k.jsx("button",{onClick:f,className:Me["theme-toggle-mobile"],"aria-label":"Toggle theme",children:k.jsx("div",{className:Me["toggle-track"],children:k.jsx("div",{className:`${Me["toggle-thumb"]} ${l==="dark"?Me["toggle-thumb-dark"]:""}`,children:l==="dark"?k.jsx(Bm,{size:12}):k.jsx(Fm,{size:12})})})}),k.jsx("button",{onClick:()=>o(!r),className:Me["mobile-button"],"aria-label":"Toggle menu",children:r?k.jsx(Cw,{size:24}):k.jsx(uw,{size:24})})]})]})}),r&&k.jsx("div",{className:Me["mobile-menu"],children:k.jsxs("div",{className:Me["mobile-menu-content"],children:[cc.map(h=>k.jsx("a",{href:h.href,className:Me["mobile-nav-link"],onClick:p=>{d(p,h.href),o(!1)},children:h.label},h.label)),k.jsx("div",{className:Me["mobile-divider"]}),k.jsxs("a",{href:Wm,className:Me["mobile-blog-link"],onClick:()=>o(!1),children:[k.jsx(Yc,{size:18}),"Tech Blog"]}),k.jsx(Um,{className:Me["mobile-download-btn"],showLabel:!0,onClick:()=>o(!1)}),k.jsxs("a",{href:Gm,target:"_blank",rel:"noopener noreferrer",className:Me["mobile-github-link"],onClick:()=>o(!1),children:[k.jsx(zm,{size:18}),"GitHub Repo"]})]})})]})}const Rw="/portfolio/assets/profile-CpUiUMR4.jpeg",Di={name:"김규일",profileImage:Rw,about:{paragraphs:[`학습한 내용을 기술 블로그에 기록하고, 세미나와 스터디를 통해 팀원들과 지식을 나누며 함께 성장하는 환경을 만들어갑니다. 
 혼자 빠르게 앞서가기보다, 동료와 오래 지속될 수 있는 방향으로 함께 멀리 가는 개발자가 되고자 합니다.`,"단순히 기능을 구현하는 것에 그치지 않고, 왜 이 기술을 선택했는지 근거를 갖고 개발합니다.","프로젝트 기획부터 배포까지 경험하며, 직무 간 맥락을 이해하고 주도적으로 소통합니다.","AI 도구를 활용해 반복 작업을 자동화하고, 핵심 로직 개발에 집중하여 생산성을 높입니다."]},education:[{period:"2020.03 - 현재",school:"안양대학교 컴퓨터공학과 20학번 (유예) [학점: 4.02/4.5]"}],lastUpdated:"2026-08-05"},Ua=[{label:"이메일",value:"rlarbdlf222@gmail.com",href:"mailto:rlarbdlf222@gmail.com"},{label:"전화번호",value:"Please contact me by email",href:""},{label:"위치",value:"경기도, 대한민국"}],Lw=[{href:"https://github.com/Kimgyuilli",label:"GitHub"},{href:"https://www.linkedin.com/in/kimgyuill222",label:"LinkedIn"},{href:"https://blog.rlarbdlf222.workers.dev",label:"Tech Blog"}],bt={"hero-section":"_hero-section_dpy24_1","hero-container":"_hero-container_dpy24_10","hero-grid":"_hero-grid_dpy24_19","left-column":"_left-column_dpy24_33","center-column":"_center-column_dpy24_37","right-column":"_right-column_dpy24_42","section-title":"_section-title_dpy24_87","timeline-list":"_timeline-list_dpy24_96"},$e={"career-title":"_career-title_m1h69_1","profile-wrapper":"_profile-wrapper_m1h69_11","profile-image-box":"_profile-image-box_m1h69_16","profile-image":"_profile-image_m1h69_16","info-section":"_info-section_m1h69_41","section-header":"_section-header_m1h69_47","info-grid":"_info-grid_m1h69_56","info-item":"_info-item_m1h69_62","info-label":"_info-label_m1h69_67","info-value":"_info-value_m1h69_73","info-value-name":"_info-value-name_m1h69_78","updated-section":"_updated-section_m1h69_90","updated-label":"_updated-label_m1h69_100","updated-date":"_updated-date_m1h69_106"};function Ow(e){const t=new Date(e),r=new Date;r.setHours(0,0,0,0),t.setHours(0,0,0,0);const o=Math.floor((r.getTime()-t.getTime())/(1e3*60*60*24));return{formatted:e.replace(/-/g,". "),diffDays:o}}function zw(){const{formatted:e,diffDays:t}=Ow(Di.lastUpdated);return k.jsxs("div",{className:bt["left-column"],children:[k.jsx("div",{children:k.jsx("h1",{className:$e["career-title"],children:"CAREER"})}),k.jsx("div",{className:$e["profile-wrapper"],children:k.jsx("div",{className:$e["profile-image-box"],children:k.jsx("img",{src:Di.profileImage,alt:Di.name,className:$e["profile-image"]})})}),k.jsx("div",{className:$e["info-section"],children:k.jsxs("div",{children:[k.jsx("h2",{className:$e["section-header"],children:"Profile"}),k.jsxs("div",{className:$e["info-grid"],children:[k.jsxs("div",{className:$e["info-item"],children:[k.jsx("p",{className:$e["info-label"],children:"이름"}),k.jsx("p",{className:$e["info-value-name"],children:Di.name})]}),k.jsxs("div",{className:$e["info-item"],children:[k.jsx("p",{className:$e["info-label"],children:"이메일"}),k.jsx("p",{className:$e["info-value"],children:Ua.find(r=>r.label==="이메일")?.value})]}),k.jsxs("div",{className:$e["info-item"],children:[k.jsx("p",{className:$e["info-label"],children:"번호"}),k.jsx("p",{className:$e["info-value"],children:Ua.find(r=>r.label==="전화번호")?.value})]}),k.jsxs("div",{className:$e["info-item"],children:[k.jsx("p",{className:$e["info-label"],children:"주소"}),k.jsx("p",{className:$e["info-value"],children:Ua.find(r=>r.label==="위치")?.value})]})]})]})}),k.jsxs("div",{className:$e["updated-section"],children:[k.jsx("p",{className:$e["updated-label"],children:"Latest Updated"}),k.jsxs("p",{className:$e["updated-date"],children:[e," (D+",t,")"]})]})]})}const Xc=[{company:"SOPT makers",position:"공식 홈페이지팀 BE",period:"2026.08 - 현재",description:["공식 홈페이지 및 인증, 리쿠르팅 로직 유지보수","팀 내부 효율성 개선 작업"],type:"activity"},{company:"IT 동아리 SOPT",position:"SERVER OB",period:"2026.02 - 2026.07",description:["서버 파트 합동 세미나 참여 및 과제/리뷰 수행","Redis 스터디장/성능테스트 스터디 참여","1주차 MVP","12주간 정보 공유 아티클 17개 작성","해커톤 참여 및 iOS 서비스 부문 대상 수상",'프로젝트 관리 툴 "Momens" Server Lead'],type:"activity"},{company:"IT 동아리 SOPT",position:"SERVER YB",period:"2025.09 - 2026.01",description:["서버 파트 합동 세미나 참여 및 과제 수행","Spring Boot 기반 서버 개발 역량 강화","1주차 과제 MVP","12주간 정보 공유 아티클 22개 작성","해커톤 참여 및 웹 서비스 부문 대상 수상",'뷰티 캘린더 앱 "Cherrish" Server Lead, GitHub Wiki 기반 서버 문서화'],type:"activity"},{company:"IT 동아리 피로그래밍",position:"교육팀 운영진",period:"2025.03 - 2025.08",description:["교육 커리큘럼 설계 및 과제 출제","과제 채점 기준 수립 및 코드리뷰 진행","강의자 섭외 및 조율","Git 세션 강의 진행","리쿠르팅 전반 참여"],type:"activity"},{company:"IT 동아리 피로그래밍 피로니어",position:"서버 개발 팀 참가자",period:"2025.03 - 2025.05",description:["SpringBoot 과정 수료","리쿠르팅 플랫폼 프로젝트 PM 및 풀스택 리드 개발자"],type:"activity"},{company:"Groomthon Univ",position:"AYU 서버파트 미르미",period:"2025.02 - 2025.09",description:["해커톤 2회 참여","SpringBoot 스터디 진행 및 기술 공유"],type:"activity"},{company:"IT 동아리 피로그래밍",position:"참가자",period:"2024.12 - 2025.02",description:["풀스택 개발 과정 수료","3주차 과제 MVP","러닝 코스 추천 웹 서비스 팀 프로젝트 개발"],type:"activity"},{company:"AYU DB LAB",position:"학부 연구생",period:"2024.03 - 2026.02",description:["노인 돌봄을 위한 AI 비서 서비스 논문 및 프로젝트 연구 진행"],type:"activity"}],ht={"about-section":"_about-section_cnh1r_1","about-paragraphs":"_about-paragraphs_cnh1r_5","about-paragraph":"_about-paragraph_cnh1r_5","timeline-item":"_timeline-item_cnh1r_18","timeline-date":"_timeline-date_cnh1r_24","timeline-content":"_timeline-content_cnh1r_34","timeline-title":"_timeline-title_cnh1r_39","timeline-subtitle":"_timeline-subtitle_cnh1r_46","timeline-text":"_timeline-text_cnh1r_52"};function Bw(){const e=Xc.filter(r=>r.type==="career"),t=Xc.filter(r=>r.type==="activity");return k.jsxs("div",{className:bt["center-column"],children:[k.jsxs("div",{className:ht["about-section"],children:[k.jsx("h2",{className:bt["section-title"],children:"About Me"}),k.jsx("div",{className:ht["about-paragraphs"],children:Di.about.paragraphs.map((r,o)=>k.jsx("p",{className:ht["about-paragraph"],children:r},o))})]}),k.jsxs("div",{children:[k.jsx("h2",{className:bt["section-title"],children:"Education"}),k.jsx("div",{className:bt["timeline-list"],children:Di.education.map((r,o)=>k.jsxs("div",{className:ht["timeline-item"],children:[k.jsx("div",{className:ht["timeline-date"],children:r.period}),k.jsx("div",{className:ht["timeline-content"],children:k.jsx("p",{className:ht["timeline-text"],children:r.school})})]},o))})]}),e.length>0&&k.jsxs("div",{children:[k.jsx("h2",{className:bt["section-title"],children:"Career"}),k.jsx("div",{className:bt["timeline-list"],children:e.map((r,o)=>k.jsxs("div",{className:ht["timeline-item"],children:[k.jsx("div",{className:ht["timeline-date"],children:r.period}),k.jsxs("div",{className:ht["timeline-content"],children:[k.jsx("p",{className:ht["timeline-title"],children:r.position}),k.jsx("p",{className:ht["timeline-subtitle"],children:r.company})]})]},o))})]}),k.jsxs("div",{children:[k.jsx("h2",{className:bt["section-title"],children:"Activities"}),k.jsx("div",{className:bt["timeline-list"],children:t.map((r,o)=>k.jsxs("div",{className:ht["timeline-item"],children:[k.jsx("div",{className:ht["timeline-date"],children:r.period}),k.jsxs("div",{className:ht["timeline-content"],children:[k.jsx("p",{className:ht["timeline-text"],children:r.company}),k.jsx("p",{className:ht["timeline-subtitle"],children:r.position})]})]},o))})]})]})}const Fw="/portfolio/assets/thumbnail-DhocodSY.webp",Vw="/portfolio/assets/diagram-modules-ecIIWazl.svg",Hw="/portfolio/assets/diagram-team-boundary-qsddo30Q.svg",Uw="/portfolio/assets/diagram-outbox-DS2c4XxZ.svg",Gw="/portfolio/assets/diagram-legacy-FxDI_wGP.svg",Ww={diagram_modules:Vw,diagram_team_boundary:Hw,diagram_outbox:Uw,diagram_legacy:Gw},Zw=`## 프로젝트 개요
 
 **Momens**는 여러 도구에 흩어진 프로젝트의 변화와 결정을 모아 다음 행동으로 연결하는 AI 운영 도구다.
@@ -207,21 +207,21 @@ Error generating stack: `+y.message+`
 
 SOPT 38기 앱잼에서 서버 리드로 참여함. Java/Spring Product API 서버(\`momens-server\`) 설계와 기존 Go/Gin 서버의 기능 이관을 담당함.
 
-- **모듈 경계 및 모바일 API 설계**: Spring Modulith 검증을 빌드에 연결하고, 모바일 앱의 Signal, Brief, Task 흐름에 필요한 서버 계약을 정리했다.
-- **레거시 이관 및 운영 스키마 소유권 이전**: 라우팅 제약에 맞춰 전환 순서를 바꾸고, DB 이전 절차를 리허설했다.
+- **모듈 경계 및 모바일 API 설계**: Spring Modulith 검증을 빌드에 연결하고 모바일 앱의 Signal, Brief, Task 흐름에 필요한 서버 계약을 정리했다.
+- **레거시 이관 및 운영 스키마 소유권 이전**: 라우팅 제약에 맞춰 전환 순서를 바꾸고 DB 이전 절차를 리허설했다.
 - **전환 검증 도구 구축**: 두 서버의 응답과 DB 기록을 비교하고 OpenAPI 변경을 검사했다.
-- **팀 간 계약 및 운영 문제 대응**: 관계 팀과 확정한 계약을 ADR에 남겼고, 개발 서버의 간헐적 503 원인을 찾아 배포 구성을 바꿨다.
+- **팀 간 계약 및 운영 문제 대응**: 관계 팀과 확정한 계약을 ADR에 남겼고 개발 서버의 간헐적 503 원인을 찾아 배포 구성을 바꿨다.
 
 ### 제품 배경
 
-프로젝트의 중요한 맥락은 Slack의 논의, Notion의 문서, Figma의 코멘트, Linear/Jira의 태스크, Analytics와 VOC에 흩어진다. 각각의 도구에는 정보가 남지만 서로 연결되지 않기 때문에, 팀원은 다음 질문에 답하려고 여러 도구를 직접 오가야 한다.
+프로젝트의 중요한 맥락은 Slack의 논의, Notion의 문서, Figma의 코멘트, Linear/Jira의 태스크, Analytics와 VOC에 흩어진다. 각각의 도구에는 정보가 남지만 서로 연결되지 않기 때문에 팀원은 다음 질문에 답하려고 여러 도구를 직접 오가야 한다.
 
-- 최근 어떤 결정이 있었고, 지금의 실행과 충돌하는가
+- 최근 어떤 결정이 있었고 지금의 실행과 충돌하는가
 - 일정, 범위, 품질에 영향을 줄 위험이 생겼는가
 - 이 변화는 어떤 근거에서 중요하다고 판단되었는가
 - 지금 누가 어떤 다음 행동을 해야 하는가
 
-Momens는 여러 원천의 변화 중 프로젝트 목표와 실행 흐름에 영향을 줄 만한 것을 **Signal**로 정리한다. 관련 근거를 보여주고 태스크 생성, 공유, 결정 기록, 해결 처리로 연결해, 흩어진 정보를 다음 행동에 쓰도록 만든다.
+Momens는 여러 원천의 변화 중 프로젝트 목표와 실행 흐름에 영향을 줄 만한 것을 **Signal**로 정리한다. 관련 근거를 보여주고 태스크 생성, 공유, 결정 기록, 해결 처리로 연결해 흩어진 정보를 다음 행동에 쓰도록 만든다.
 
 ### 모바일 앱과 서버의 역할
 
@@ -239,7 +239,7 @@ Momens Mobile은 10명 안팎의 작은 팀에서 릴리즈를 책임지는 Proj
 
 ### 서버 이관의 배경
 
-Go 서버인 \`momens-api\`는 제품 가설을 빨리 확인하기 위해 만들었고, 처음부터 Spring 서버로 옮길 계획이었다. 새 서버에서는 빠른 기능 추가를 위해 미뤄둔 도메인 경계를 먼저 정했다.
+Go 서버인 \`momens-api\`는 제품 가설을 빨리 확인하기 위해 만들었고 처음부터 Spring 서버로 옮길 계획이었다. 새 서버에서는 빠른 기능 추가를 위해 미뤄둔 도메인 경계를 먼저 정했다.
 
 모듈 사이의 규칙은 빌드가 검사하도록 만들었다. 팀 사이에서 정해야 할 책임은 결정 요청서로 논의하고 ADR에 남겼다.
 
@@ -268,9 +268,9 @@ Go 서버인 \`momens-api\`는 제품 가설을 빨리 확인하기 위해 만�
 
 **순환 의존 발견과 수정**
 
-\`signal\` 모듈을 nested로 쪼개면서 구현체와 DTO를 전부 nested에 몰아넣었더니 Modulith가 \`signal → signal.query → signal\` 순환으로 판정했다. presentation(root)이 nested 구현을 참조하고, nested가 다시 root의 에러 코드를 참조해 방향이 겹친 것이다.
+\`signal\` 모듈을 nested로 쪼개면서 구현체와 DTO를 전부 nested에 몰아넣었더니 Modulith가 \`signal → signal.query → signal\` 순환을 보고했다. presentation(root)이 nested 구현을 참조하고 nested가 다시 root의 에러 코드를 참조해 방향이 겹쳤다.
 
-기존 선례(\`project.task\`)를 다시 확인해 **공개 계약은 root, 구현체는 nested에 package-private**이라는 배치로 재작업했다. 빌드 검증 덕분에 순환 의존을 구현 단계에서 발견했다.
+기존 선례(\`project.task\`)를 다시 확인해 **공개 계약은 root, 구현체는 nested에 package-private**이라는 배치로 재작업했다. 이 순환 의존은 구현 단계의 빌드 검증에서 발견했다.
 
 **Notification 모듈의 도메인 분리**
 
@@ -282,65 +282,65 @@ Go 서버인 \`momens-api\`는 제품 가설을 빨리 확인하기 위해 만�
 
 **모듈 내부 구조의 선택 기준**
 
-모듈 간 협력은 세 가지로 정리했다. 단순 조회는 상대 모듈의 public API 직접 호출, side effect는 application event, 복잡한 동기 의존은 port/adapter다. 반면 **모듈 내부 구조는 모든 모듈에 같은 틀을 강제하지 않았다.** aggregate와 상태 전이가 없는 얇은 조합 모듈에 hexagonal을 씌우면 껍데기만 늘어난다. 경계는 Modulith가 강제하므로, 그 안쪽은 복잡도에 맞춰 차등을 뒀다.
+모듈 간 협력은 세 가지로 정리했다. 단순 조회는 상대 모듈의 public API 직접 호출, side effect는 application event, 복잡한 동기 의존은 port/adapter다. 반면 **모듈 내부 구조는 모든 모듈에 같은 틀을 강제하지 않았다.** aggregate와 상태 전이가 없는 얇은 조합 모듈에 hexagonal을 씌우면 껍데기만 늘어난다. 경계는 Modulith가 강제하므로 그 안쪽은 복잡도에 맞춰 차등을 뒀다.
 
-**첫 기능을 구현하며 모듈 구조를 검증했다.** 별도 PoC 대신 실제 기능에 필요한 의존 관계를 확인했다.
+**첫 기능을 구현하며 모듈 구조를 검증했다.** 별도 PoC를 만들지 않고 실제 기능에 필요한 의존 관계를 확인했다.
 
 **하위 도메인의 공개 계약 분리**
 
-\`project\` 모듈이 두꺼워졌을 때 위 순서대로 nested \`@ApplicationModule\`로 가려 했는데, 실제로 선언해 보니 다른 모듈과 충돌이 났다. 대신 \`core\`, \`task\`, \`milestone\`, \`blocker\` 네 하위 도메인의 root를 각각 \`NamedInterface\`로 선언해 공개 계약만 노출하는 쪽으로 갔다(\`source\`도 같은 방식으로 \`connection\`과 \`ref\`로 나눴다). 이 과정에서 숨어 있던 결합도 드러났다. 다른 하위 도메인의 repository를 JPQL로 직접 조회하던 3건을 \`ProjectReader\`, \`MilestoneDirectory\`로 교체했고, milestone 생성이 \`ProjectOwnerRepository\`를 직접 참조하던 것도 \`ProjectOwnerReader\`로 바꿨다. 의존 방향과 순환은 ArchUnit 테스트(\`ProjectSubDomainBoundaryTests\`)로 고정했다.
+\`project\` 모듈이 두꺼워졌을 때 위 순서대로 nested \`@ApplicationModule\`로 가려 했는데 실제로 선언해 보니 다른 모듈과 충돌이 났다. \`core\`, \`task\`, \`milestone\`, \`blocker\` 네 하위 도메인의 root를 각각 \`NamedInterface\`로 선언해 공개 계약만 노출하는 쪽으로 바꿨다(\`source\`도 같은 방식으로 \`connection\`과 \`ref\`로 나눴다). 이 과정에서 숨어 있던 결합도 드러났다. 다른 하위 도메인의 repository를 JPQL로 직접 조회하던 3건을 \`ProjectReader\`, \`MilestoneDirectory\`로 교체했고 milestone 생성이 \`ProjectOwnerRepository\`를 직접 참조하던 것도 \`ProjectOwnerReader\`로 바꿨다. 의존 방향과 순환은 ArchUnit 테스트(\`ProjectSubDomainBoundaryTests\`)로 고정했다.
 
-경계를 옮기면서 계산 책임도 따라 옮겼다. 진행률 계산이 \`project\`의 core에 있었는데 **분모와 분자가 모두 task**라 task 쪽으로 넘겼다. 경계를 다시 긋는 작업은 코드를 옮기는 것으로 끝나지 않고 "이 계산은 누구 것인가"를 다시 묻게 한다.
+경계를 옮기면서 계산 책임도 따라 옮겼다. 진행률 계산이 \`project\`의 core에 있었는데 **분모와 분자가 모두 task**라 task 쪽으로 넘겼다. 경계를 다시 그으면 코드를 옮기는 것으로 끝나지 않고 "이 계산은 누구 것인가"를 다시 묻게 된다.
 
-이 사례를 통해 물리 분리 이후에도 모듈의 의존 관계에 맞춰 \`NamedInterface\`를 쓸 수 있음을 확인했다. 선택한 방식의 경계는 ArchUnit 테스트로 검사한다.
+물리 분리 이후에도 모듈의 의존 관계에 맞춰 \`NamedInterface\`를 쓸 수 있었다. 선택한 방식의 경계는 ArchUnit 테스트로 검사한다.
 
 > 관련 글: [모듈러 모놀리스와 Spring Modulith 학습 기록](https://blog.rlarbdlf222.workers.dev/blog/modular-monolith-spring-modulith/). 모듈 경계를 업무 기능별로 잡은 이유를 정리했다.
 
 ### 모듈별 통합 테스트
 
-모듈마다 독립적으로 테스트가 돌아야 경계가 의미를 갖는다. 각 모듈이 자기 Flyway 마이그레이션을 소유하고 자기 부트스트랩 클래스를 두어, 모듈 단독으로 Testcontainers 통합 테스트가 가능하다. 여기에 \`app\`의 전체 컨텍스트 테스트와 \`ApplicationModules.verify()\`가 조립 결과를 검증한다.
+모듈마다 독립적으로 테스트가 돌아야 경계를 나눈 의미가 있다. 각 모듈이 자기 Flyway 마이그레이션을 소유하고 자기 부트스트랩 클래스를 두어 모듈 단독으로 Testcontainers 통합 테스트가 가능하다. 여기에 \`app\`의 전체 컨텍스트 테스트와 \`ApplicationModules.verify()\`가 조립 결과를 검증한다.
 
 ---
 
 ## 레거시 이관과 스키마 소유권
 
-레거시 HTTP API를 옮기는 동안 모바일 MVP용 API도 개발해야 했다. 신규 서버와 레거시 서버가 같은 DB를 사용해, 기능 구현과 스키마 변경 순서를 함께 조율해야 했다.
+레거시 HTTP API를 옮기는 동안 모바일 MVP용 API도 개발해야 했다. 신규 서버와 레거시 서버가 같은 DB를 사용해 기능 구현과 스키마 변경 순서를 함께 조율해야 했다.
 
-이관 원장은 레거시 저장소의 특정 커밋(\`momens-api@71bbd076\`)을 기준으로 작성했다. 계획서에 적힌 API 목록보다 코드에 선언된 경로가 많아, 실제 구현을 확인하며 범위를 다시 정해야 했다.
+이관 원장은 레거시 저장소의 특정 커밋(\`momens-api@71bbd076\`)을 기준으로 작성했다. 계획서에 적힌 API 목록보다 코드에 선언된 경로가 많아 실제 구현을 확인하며 범위를 다시 정해야 했다.
 
-이관 초기에는 신규 서버와 레거시 \`momens-api\`가 **같은 PostgreSQL을 공유**했고, 운영 DB의 스키마는 레거시가 소유했다. 당시 신규 서버의 운영 프로필은 \`flyway off\` + \`ddl-auto=validate\`여서 **스키마를 만들지 않고 검증만 했다.** 새 컬럼이 필요하면 레거시 쪽에 마이그레이션 반영을 요청해야 했고, 순서가 어긋나면 신규 서버가 기동하지 못했다.
+이관 초기에는 신규 서버와 레거시 \`momens-api\`가 **같은 PostgreSQL을 공유**했고 운영 DB의 스키마는 레거시가 소유했다. 신규 서버의 운영 프로필은 \`flyway off\` + \`ddl-auto=validate\`여서 **스키마를 만들지 않고 검증만 했다.** 새 컬럼이 필요하면 레거시 쪽에 마이그레이션 반영을 요청해야 했고 순서가 어긋나면 신규 서버가 기동하지 못했다.
 
-전부 옮긴 뒤 한 번에 전환하는 **빅뱅 컷오버를 기각**했다. 완성 전까지는 운영 가치가 0이고, 리스크가 컷오버 시점 하나에 몰린다. 2026-06 계획 당시에는 레거시를 감싼 채 기능을 하나씩 새 서버로 넘기는 **점진 전환**(Strangler Fig)을 택했다. 한 사용자 행위를 끝까지 옮기는 **최소 수직 슬라이스**를 구현 단위로 삼고, 실제 트래픽을 넘기는 단위는 불변식을 함께 지켜야 하는 **aggregate 경계**로 따로 잡았다.
+전부 옮긴 뒤 한 번에 전환하는 **빅뱅 컷오버를 기각**했다. 완성 전까지는 운영 가치가 0이고 리스크가 컷오버 시점 하나에 몰린다. 2026-06 계획에서는 레거시를 감싼 채 기능을 하나씩 새 서버로 넘기는 **점진 전환**(Strangler Fig)을 택했다. 한 사용자 행위를 끝까지 옮기는 **최소 수직 슬라이스**를 구현 단위로 삼고 실제 트래픽을 넘기는 단위는 불변식을 함께 지켜야 하는 **aggregate 경계**로 따로 잡았다.
 
-**이 점진 전환은 끝내 실행되지 않았다.** 슬라이스 구현은 계속 나아갔지만 트래픽은 한 건도 넘어가지 못했고, 두 달 뒤 방식 자체를 기각했다. 점진 전환에 필요한 라우팅 지점이 없었기 때문이다. 전환 단위를 다시 정한 과정은 라우팅 제약 사례에서 설명한다.
+**이 점진 전환은 끝내 실행되지 않았다.** 슬라이스 구현은 계속 나아갔지만 트래픽은 한 건도 넘어가지 못했고 두 달 뒤 방식 자체를 기각했다. 점진 전환에 필요한 라우팅 지점이 없었기 때문이다. 전환 단위를 다시 정한 과정은 라우팅 제약 사례에서 설명한다.
 
-환경마다 스키마 소유자를 명시했다. local/test에는 레거시 소유 테이블을 본뜬 **미러 마이그레이션**을 두어 개발과 테스트를 막지 않고, prod에는 **배포 순서 게이트**를 티켓의 명시적 완료 조건으로 넣었다.
+환경마다 스키마 소유자를 명시했다. local/test에는 레거시 소유 테이블을 본뜬 **미러 마이그레이션**을 두어 개발과 테스트를 막지 않고 prod에는 **배포 순서 게이트**를 티켓의 명시적 완료 조건으로 넣었다.
 
 ![이관 초기의 환경별 스키마 소유권과 배포 순서]({{diagram_legacy}})
 
 **기능 구현과 트래픽 전환의 단위**
 
-이관 단위를 하나로 두지 않고 둘로 나눈 것이 이 전략의 핵심이다.
+이관 단위는 하나로 두지 않고 둘로 나눴다.
 
-**구현 단위는 최소 수직 슬라이스다.** 한 사용자 행위에 필요한 요청 파싱, 인가, 도메인 규칙, 쿼리, 응답 계약, 테스트를 함께 옮겼다. 같은 파일의 무관한 API는 분리하고, 파일이 달라도 한 행위에 필요한 API는 같은 슬라이스로 묶었다.
+**구현 단위는 최소 수직 슬라이스다.** 한 사용자 행위에 필요한 요청 파싱, 인가, 도메인 규칙, 쿼리, 응답 계약, 테스트를 함께 옮겼다. 같은 파일의 무관한 API는 분리하고 파일이 달라도 한 행위에 필요한 API는 같은 슬라이스로 묶었다.
 
 **운영 전환 단위는 aggregate의 writer다.** 하나의 root를 통해 상태 규칙을 함께 지켜야 하는 데이터를 aggregate로 묶었다. 조회 API는 인증과 응답 계약을 맞춰 개별 전환할 수 있다. 쓰기 API는 같은 aggregate를 변경하는 경로를 모두 확인해야 한다.
 
-\`tasks\`가 그 사례다. REST create/update/delete뿐 아니라 MCP tool과 Slack 액션도 같은 \`tasks\`를 쓴다. REST handler 외의 쓰기 경로도 전환 범위에 포함해야 했다. 한 aggregate의 writer는 한 시점에 하나만 둔다는 원칙에 따라, 비-HTTP writer도 컷오버 게이트(G2)에 포함했다.
+\`tasks\`가 그 사례다. REST create/update/delete뿐 아니라 MCP tool과 Slack 액션도 같은 \`tasks\`를 쓴다. REST handler 외의 쓰기 경로도 전환 범위에 포함해야 했다. 한 aggregate의 writer는 한 시점에 하나만 둔다는 원칙에 따라 비-HTTP writer도 컷오버 게이트(G2)에 포함했다.
 
-정리하면 **작은 단위로 구현하는 것과 작은 단위로 전환하는 것은 별개**다. 구현은 슬라이스로 잘게 나눌 수 있었지만, 전환은 aggregate가 허락하는 만큼만 잘렸다. 이 한계 때문에 전환 방식을 다시 정했다.
+**작은 단위로 구현하는 것과 작은 단위로 전환하는 것은 별개**였다. 구현은 슬라이스로 잘게 나눌 수 있었지만 전환은 aggregate 경계보다 잘게 자를 수 없었다. 이 한계 때문에 전환 방식을 다시 정했다.
 
 **클라이언트별 API 계약**
 
-기존 웹 API와 모바일 API에 서로 다른 계약을 적용했다. 기존 웹 API는 클라이언트 수정을 최소화하려고 **legacy-compatible 계약을 유지**했고, 모바일 신규 API만 \`/api\` 표준 계약으로 갔다. 인증도 새 서버를 순수하게 유지하는 것보다 전환 비용을 줄이는 쪽을 택해, 레거시 미들웨어를 작게 패치해 Bearer 헤더와 새 쿠키를 함께 읽게 했다.
+기존 웹 API와 모바일 API에 서로 다른 계약을 적용했다. 기존 웹 API는 클라이언트 수정을 최소화하려고 **legacy-compatible 계약을 유지**했고 모바일 신규 API만 \`/api\` 표준 계약으로 갔다. 인증도 새 서버를 순수하게 유지하는 것보다 전환 비용을 줄이는 쪽을 택해 레거시 미들웨어를 작게 패치해 Bearer 헤더와 새 쿠키를 함께 읽게 했다.
 
-이관 순서는 사용자 기능을 완성하는 단위와 운영에서 한 번에 넘겨야 하는 쓰기 경로를 함께 고려해 정했다.
+이관 순서도 사용자 기능을 완성하는 단위와 운영에서 한 번에 넘겨야 하는 쓰기 경로를 함께 놓고 정했다.
 
 > 관련 글: [레거시 API를 한 번에 갈아엎으려다 멈춘 이유](https://blog.rlarbdlf222.workers.dev/blog/legacy-api-strangler-fig-migration/). 검토했지만 채택하지 않은 BFF, API Gateway 안과, 당시 outbox를 후보로 떠올리지 못했던 이유까지 회고로 정리했다.
 
 **모듈별 마이그레이션과 테스트**
 
-Flyway는 자기 클래스패스의 마이그레이션만 본다. 마이그레이션을 \`app\`에 몰아두면 단순하지만, 그 순간 **모듈 단독 통합 테스트가 불가능**해진다. 그래서 마이그레이션을 모듈별 소유로 두고, 병렬 개발에서 정수 버전이 충돌하지 않도록 **타임스탬프 버전**을 채택했다. 중앙집중이 더 단순하다는 걸 알면서도 모듈 격리를 택한 트레이드오프다.
+Flyway는 자기 클래스패스의 마이그레이션만 본다. 마이그레이션을 \`app\`에 몰아두면 단순하지만 그 순간 **모듈 단독 통합 테스트가 불가능**해진다. 그래서 마이그레이션을 모듈별 소유로 두고 병렬 개발에서 정수 버전이 충돌하지 않도록 **타임스탬프 버전**을 채택했다. 중앙집중이 더 단순하다는 걸 알면서도 모듈 격리를 택한 트레이드오프다.
 
 레거시가 소유한 테이블은 \`@Immutable\` read-only 엔티티로 매핑해 신규 서버가 실수로 쓰기 경로를 만들 수 없게 했다.
 
@@ -350,7 +350,7 @@ Flyway는 자기 클래스패스의 마이그레이션만 본다. 마이그레�
 
 **값의 소유권에 따른 자료형 선택**
 
-리뷰에서 나온 논점이다. 이 저장소는 task의 \`status\`, \`priority\`를 enum이 아닌 문자열로 둔다. 표면만 보면 "이 레포는 상태값을 문자열로 쓴다"는 패턴처럼 보이지만, **그 예외가 성립하는 이유는 그 값의 소유권이 레거시에 있어서** 코드에서 enum으로 이중 정의하면 안 되기 때문이다.
+리뷰에서 나온 논점이다. 이 저장소는 task의 \`status\`, \`priority\`를 enum이 아닌 문자열로 둔다. 표면만 보면 "이 레포는 상태값을 문자열로 쓴다"는 패턴처럼 보이지만 **그 예외가 성립하는 이유는 그 값의 소유권이 레거시에 있어서** 코드에서 enum으로 이중 정의하면 안 되기 때문이다.
 
 신규 서버가 소유한 \`action_type\`에는 enum을 썼다. 값 집합의 소유자에 따라 표현 방식을 정하는 규칙을 ADR-0022에 기록했다.
 
@@ -360,11 +360,11 @@ Flyway는 자기 클래스패스의 마이그레이션만 본다. 마이그레�
 
 위 구조는 레거시가 스키마를 소유한다는 전제를 따랐다. 슬라이스를 옮길수록 레거시 테이블의 마이그레이션마다 DB 관리자에게 권한을 요청해야 했다. 특히 \`ALTER TABLE\`은 GRANT 체계 밖에 있어 요청이 반복됐다. 권한 승인 절차가 이관의 병목이 됐다.
 
-그래서 전제 자체를 바꿨다. 개별 요청을 반복하는 대신 **최종 상태(신규 서버가 운영 스키마를 소유한다)를 한 번에 받는** 쪽으로 설계를 다시 짜고 ADR-0019로 확정했다. 부수 효과가 오히려 컸다. 소유권이 넘어오면서 개별 선행 조건이 줄었고, 앞서 "강제할 수단이 없다"고 위험으로만 남겨 뒀던 **레거시의 DDL 동결이 물리적으로 강제**됐다.
+그래서 전제 자체를 바꿨다. 개별 요청을 반복하지 않고 **최종 상태(신규 서버가 운영 스키마를 소유한다)를 한 번에 받는** 쪽으로 설계를 다시 짜고 ADR-0019로 확정했다. 부수 효과가 오히려 컸다. 소유권이 넘어오면서 개별 선행 조건이 줄었고 앞서 "강제할 수단이 없다"고 위험으로만 남겨 뒀던 **레거시의 DDL 동결이 물리적으로 강제**됐다.
 
 **운영 DB와 같은 조건의 리허설**
 
-운영 DB의 마이그레이션 이력 42행을 구성하는 작업은 실패하면 되돌리기 어렵고, 나에게는 운영 DB에 시험 삼아 돌려 볼 권한이 없었다. 그래서 **운영 DB와 같은 조건의 PostgreSQL을 로컬에 구성했다.** PG17, 비-superuser 작업용 role, 확장 스키마 분리, event trigger, 10만 행 규모의 테이블, 락 경합을 재현해 권한과 락 조건별로 리허설했다.
+운영 DB의 마이그레이션 이력 42행을 구성하는 작업은 실패하면 되돌리기 어렵고 나에게는 운영 DB에 시험 삼아 돌려 볼 권한이 없었다. 그래서 **운영 DB와 같은 조건의 PostgreSQL을 로컬에 구성했다.** PG17, 비-superuser 작업용 role, 확장 스키마 분리, event trigger, 10만 행 규모의 테이블, 락 경합을 재현해 권한과 락 조건별로 리허설했다.
 
 이전 리허설은 빈 DB에서 superuser로 실행해 운영 환경의 권한 제약과 락 경합을 확인하지 못했다. 이를 검증하려고 로컬 환경의 조건을 운영 DB에 맞췄다.
 
@@ -378,7 +378,7 @@ Flyway는 자기 클래스패스의 마이그레이션만 본다. 마이그레�
 | 스크립트의 권한 재발급 대상과 검증의 판정 대상이 다른 role인 것 | 검증이 성립한 적 없음 |
 | 재발급이 빠져도 권한 검사가 통과하는 것 | 안전장치 무력화 |
 
-기존 검증 39건이 모두 통과했지만, 권한 차이 때문에 운영에서 발생할 실패를 감지하지 못했다. 리허설 환경에 운영 DB의 권한 구조를 재현하고 시나리오마다 이를 확인하도록 고쳤다. 락 수치도 실패 조건에 포함해 검증 항목을 42건으로 늘렸다.
+기존 검증 39건이 모두 통과했지만 권한 차이 때문에 운영에서 발생할 실패를 감지하지 못했다. 리허설 환경에 운영 DB의 권한 구조를 재현하고 시나리오마다 이를 확인하도록 고쳤다. 락 수치도 실패 조건에 포함해 검증 항목을 42건으로 늘렸다.
 
 **락 시간 측정과 배포 절차**
 
@@ -389,11 +389,11 @@ Flyway는 자기 클래스패스의 마이그레이션만 본다. 마이그레�
 | 레거시가 우리 때문에 막힐 때 | **1초 미만** (10만 행 최장 342ms) |
 | 실패 경로 | 전부 스키마 무변경 |
 
-실행 대상 14건 중 5건이 레거시가 실트래픽으로 쓰는 테이블을 \`ALTER\`한다. 레거시 쿼리의 락 대기 시간을 제한하려고 \`lock_timeout\`을 설정했지만, 배포 매니페스트에서 인자가 빠져 있었다. 렌더 결과를 확인해 누락을 발견했다.
+실행 대상 14건 중 5건이 레거시가 실트래픽으로 쓰는 테이블을 \`ALTER\`한다. 레거시 쿼리의 락 대기 시간을 제한하려고 \`lock_timeout\`을 설정했지만 배포 매니페스트에서 인자가 빠져 있었다. 렌더 결과를 확인해 누락을 발견했다.
 
 **503 원인에 대한 보고 정정**
 
-첫 롤아웃이 타임아웃으로 실패했을 때 \`maxUnavailable=0\`을 근거로 서비스 영향이 없다고 보고했다. 실제로는 해당 경로가 503을 반환하고 있었고, 클러스터 이관 이후 롤아웃도 성공한 적이 없었다. \`maxUnavailable=0\`은 기존 Pod의 유지 조건일 뿐 Ready 상태까지 보장하지 않는다. 실제 응답 상태를 확인한 뒤 보고 내용을 정정했다.
+첫 롤아웃이 타임아웃으로 실패했을 때 \`maxUnavailable=0\`을 근거로 서비스 영향이 없다고 보고했다. 실제로는 해당 경로가 503을 반환하고 있었고 클러스터 이관 이후 롤아웃도 성공한 적이 없었다. \`maxUnavailable=0\`은 기존 Pod의 유지 조건일 뿐 Ready 상태까지 보장하지 않는다. 실제 응답 상태를 확인한 뒤 보고 내용을 정정했다.
 
 시크릿 키 누락은 필요한 placeholder를 대조해 배제했다. 접속 정보 교체 여부는 시크릿의 갱신 시각으로, 선행 기동 오류는 수정 커밋이 릴리스에 포함된 것으로 확인했다. 남은 원인은 접속 주소였다. 설계 문서가 요구한 direct host는 IPv6 주소만 반환했고 클러스터는 IPv4 전용이었다. pooler의 transaction 모드를 피하려면 호스트 이름 대신 포트로 구분해야 했다. 절차 문서를 이에 맞게 고쳤다.
 
@@ -401,13 +401,13 @@ Flyway는 자기 클래스패스의 마이그레이션만 본다. 마이그레�
 
 **절차 문서의 접속 지침 수정**
 
-처음에는 원문을 남기고 "정정" 인용구를 덧붙였는데, 불필요하다는 지적을 받았다. 다음 사람이 오래된 접속 지침을 다시 따르지 않도록 실행에 사용하는 절차 본문을 고쳤다. 변경 경위는 별도 절에 남기고, 절차에는 현재 사용할 접속 방법만 적었다.
+처음에는 원문을 남기고 "정정" 인용구를 덧붙였는데 불필요하다는 지적을 받았다. 다음 사람이 오래된 접속 지침을 다시 따르지 않도록 실행에 사용하는 절차 본문을 고쳤다. 변경 경위는 별도 절에 남기고 절차에는 현재 사용할 접속 방법만 적었다.
 
-절차 문서에는 마지막 단계의 수기 작업이 3행으로 적혀 있었지만, 대장에는 4행이 있었다. 나중에 추가된 행이 문서에 반영되지 않아 4행으로 수정했다.
+절차 문서에는 마지막 단계의 수기 작업이 3행으로 적혀 있었지만 대장에는 4행이 있었다. 나중에 추가된 행이 문서에 반영되지 않아 4행으로 수정했다.
 
 **부트스트랩 이후의 검사 도구 정리**
 
-운영에서 Flyway를 켠 뒤 부트스트랩 전용 도구와 분류 검사를 제거했다. 분류 검사는 원래 심기 목록 누락을 막았지만, 전환 후에도 새 마이그레이션을 심기 목록에 넣도록 요구했다. 이 경우 Flyway가 이미 적용된 DDL을 다시 실행해 \`already exists\` 오류를 낼 수 있었다.
+운영에서 Flyway를 켠 뒤 부트스트랩 전용 도구와 분류 검사를 제거했다. 분류 검사는 원래 심기 목록 누락을 막았지만 전환 후에도 새 마이그레이션을 심기 목록에 넣도록 요구했다. 이 경우 Flyway가 이미 적용된 DDL을 다시 실행해 \`already exists\` 오류를 낼 수 있었다.
 
 전환이 끝난 부트스트랩 문서는 당시 적용 기록으로 보존했다. 이력 심기 28건과 실행 14건을 나눈 이유, \`outOfOrder\`를 한 번만 켠 이유를 남기기 위해 본문은 유지하고 머리말에 "당시 적용 기록"이라고 표시했다.
 
@@ -417,11 +417,11 @@ Flyway는 자기 클래스패스의 마이그레이션만 본다. 마이그레�
 
 ## 라우팅 제약과 전환 방식 변경
 
-경로를 하나씩 넘기는 점진 전환은 **경로별로 트래픽을 돌릴 수 있는 지점**이 있을 때만 성립한다. 슬라이스를 옮길수록 그 지점이 없다는 것이 드러났다.
+경로를 하나씩 넘기는 점진 전환은 **경로별로 트래픽을 돌릴 수 있는 지점**이 있을 때만 가능하다. 슬라이스를 옮길수록 그 지점이 없다는 것이 드러났다.
 
-FE는 환경변수 하나로 모든 XHR의 목적지를 정한다. ingress는 \`/api\` 접두사에 따라 요청을 두 서버로 보내지만, 접두사 적용 여부를 요청별로 정할 수 없다. 기능 단위로 순차 전환하려면 FE에 라우팅 계층을 추가해야 하는데, 이는 서버 작업만으로 해결할 수 없다.
+FE는 환경변수 하나로 모든 XHR의 목적지를 정한다. ingress는 \`/api\` 접두사에 따라 요청을 두 서버로 보내지만 접두사 적용 여부를 요청별로 정할 수 없다. 기능 단위로 순차 전환하려면 FE에 라우팅 계층을 추가해야 하는데 이는 서버 작업만으로 해결할 수 없다.
 
-웹 Product API 구현을 마친 뒤에도 전환에 필요한 FE, worker 작업이 남아 있었다. 배포 매니페스트에도 \`FE has not cut over to /api\`가 남아 있어, 서버 코드의 완료와 실제 전환을 따로 관리했다.
+웹 Product API 구현을 마친 뒤에도 전환에 필요한 FE, worker 작업이 남아 있었다. 배포 매니페스트에도 \`FE has not cut over to /api\`가 남아 있어 서버 코드의 완료와 실제 전환을 따로 관리했다.
 
 원장에는 이관 대상과 명시적 제외, 전환 대상이 아닌 경로, 웹에서 호출하지 않아 보류한 경로를 나눠 기록했다. 진행 상태를 판단할 때는 이관 대상만 확인했다.
 
@@ -436,17 +436,17 @@ FE는 환경변수 하나로 모든 XHR의 목적지를 정한다. ingress는 \`
 | G3 | 소스 연동 provider 자격 증명이 운영에 없다 | 전환 즉시 기능이 통째로 죽는다 |
 | G4 | 신규 서버로 이관하지 않기로 한 레거시 OAuth, MCP grant UI가 같은 API 클라이언트를 사용한다 | API base를 바꾸면 이관 대상이 아닌 기능의 요청도 신규 서버로 넘어간다 |
 
-G4는 내가 처음 조사에서 놓쳤고 **리뷰에서 드러났다.** 확인할 조건이 셋인 줄 알았는데 넷이었다. 이관하지 않는 기능의 요청만 별도 base로 보내기로 했다. 모든 엔드포인트를 개별 전환할 라우팅 계층은 없었지만, **이관 대상에서 제외한 기능을 위한 한시적 예외**는 만들 수 있었다.
+G4는 내가 처음 조사에서 놓쳤고 **리뷰에서 드러났다.** 확인할 조건이 셋인 줄 알았는데 넷이었다. 이관하지 않는 기능의 요청만 별도 base로 보내기로 했다. 모든 엔드포인트를 개별 전환할 라우팅 계층은 없었지만 **이관 대상에서 제외한 기능을 위한 한시적 예외**는 만들 수 있었다.
 
 FE는 **로그인 진입점과 API base를 서로 다른 환경변수**로 관리했다. 이를 이용해 라우팅 계층을 추가하지 않고 인증과 Product API를 순서대로 전환하기로 했다. 한 세션이 두 서버의 Product API를 섞어 호출하지 않도록 전환 범위를 정했다.
 
-다만 그 독립은 조건부다. 로그인 URL 환경변수가 **비어 있으면 API base에서 파생**되도록 FE 코드가 짜여 있고, 운영 설정이 값을 명시하고 있어서 독립이 성립한다. **2단계 분할 전체가 그 한 줄에 걸려 있다.** 그래서 "둘로 나눌 수 있다"에서 멈추지 않고 그 값을 비우거나 지우면 전제가 무너진다는 것까지 runbook에 적었다.
+다만 그 독립은 조건부다. 로그인 URL 환경변수가 **비어 있으면 API base에서 파생**되도록 FE 코드가 짜여 있고 운영 설정이 값을 명시하고 있어서 독립이 유지된다. **2단계 분할 전체가 그 한 줄에 걸려 있다.** 그래서 "둘로 나눌 수 있다"에서 멈추지 않고 그 값을 비우거나 지우면 전제가 무너진다는 것까지 runbook에 적었다.
 
-전환 방식은 두 서버를 나란히 실행해 응답과 DB 기록을 비교한 뒤 인증과 Product API를 순서대로 넘기는 것으로 바뀌었다. 경로별 라우팅 지점이 없어서, 전환 전에 두 서버의 동작 차이를 확인해야 했다. 레거시 비교 도구를 이 검증에 사용했다.
+전환 방식은 두 서버를 나란히 실행해 응답과 DB 기록을 비교한 뒤 인증과 Product API를 순서대로 넘기는 것으로 바뀌었다. 경로별 라우팅 지점이 없어서 전환 전에 두 서버의 동작 차이를 확인해야 했다. 레거시 비교 도구를 이 검증에 사용했다.
 
 **전환 전 확인해야 할 조건**
 
-G1은 쓰기가 성공하므로 오류로 드러나지 않는다. 전환 후 관측 창에서 잡히지 않는 종류라, 발견하는 대신 **열기 전에 막는** 쪽으로 뒀다. G3는 500으로 드러나 관측에 잡히지만 그래도 게이트로 세웠다. **기능이 통째로 죽는 것을 관측으로 아는 것과 사전에 막는 것은 다르다.**
+G1은 쓰기가 성공하므로 오류로 드러나지 않는다. 전환 후 관측 창에서 잡히지 않는 종류라 발견을 기다리지 않고 **열기 전에 막는** 쪽으로 뒀다. G3는 500으로 드러나 전환 후 확인에서 잡히지만 그래도 게이트로 세웠다. **기능이 통째로 죽는 것을 관측으로 아는 것과 사전에 막는 것은 다르다.**
 
 **전환 직후 확인할 오류**
 
@@ -458,13 +458,13 @@ G1은 쓰기가 성공하므로 오류로 드러나지 않는다. 전환 후 관
 
 **전환 되돌림 기준**
 
-기준에 걸리면 상의 없이 되돌린다. 되돌림 자체가 되돌릴 수 있는 행위이고, 판단을 미루는 동안의 손실이 더 크기 때문이다. 원인 분석과 재시도 여부는 되돌린 뒤에 상의한다. 관측은 각 단계 배포 직후 최소 10분, 실행자와 다른 한 명이 같은 시나리오를 독립적으로 확인하는 방식으로 고정했다.
+되돌림 자체가 되돌릴 수 있는 행위이고 판단을 미루는 동안의 손실이 더 크기 때문에 기준에 걸리면 상의 없이 되돌린다. 원인 분석과 재시도 여부는 되돌린 뒤에 상의한다. 점검은 각 단계 배포 직후 최소 10분, 실행자와 다른 한 명이 같은 시나리오를 독립적으로 확인하는 방식으로 고정했다.
 
 ### 남은 것
 
 전환은 아직 1단계도 열지 못했다. 다만 두 단계가 막힌 이유는 성격이 다르다.
 
-**1단계(인증)의 게이트는 넷이고, 그중 하나는 내 작업이다.** 두 서버의 JWT 서명 키 동일성 확인, Google OAuth 운영 설정의 병행 등록, 레거시가 신규 access token을 수용하게 하는 작업, 그리고 **신규 로그아웃이 레거시 세션 쿠키까지 만료시키는 작업**이다. 마지막 것은 내가 들고 있고 진행 중이다. 1단계에서 로그인만 넘기면 로그아웃이 레거시로 가서 신규 세션이 남는 구멍이 생기는데, 이건 "세션 연속성을 포기한다"와는 다른 문제라 허용하지 않기로 했다.
+**1단계(인증)의 게이트는 넷이고, 그중 하나는 내 작업이다.** 두 서버의 JWT 서명 키 동일성 확인, Google OAuth 운영 설정의 병행 등록, 레거시가 신규 access token을 수용하게 하는 작업, 그리고 **신규 로그아웃이 레거시 세션 쿠키까지 만료시키는 작업**이다. 마지막 것은 내가 들고 있고 진행 중이다. 1단계에서 로그인만 넘기면 로그아웃이 레거시로 가서 신규 세션이 남는 구멍이 생긴다. 이 구멍은 "세션 연속성을 포기한다"는 범위에 들지 않아 허용하지 않기로 했다.
 
 **2단계(Product API) 전환에는 네 가지 작업이 남아 있다.** worker 소비자(G1), 레거시에 남는 비-웹 쓰기 경로(G2), provider 콘솔 설정(G3), FE의 base 분리(G4)다. 관련 FE, 레거시 작업까지 범위를 넓혀 순차적으로 진행할 계획을 팀에 공유한 상태다.
 
@@ -478,9 +478,9 @@ G1은 쓰기가 성공하므로 오류로 드러나지 않는다. 전환 후 관
 - 같은 요청이 DB에 **같은 기록**을 남기는가 (응답만 같고 기록이 다른 경우가 실제로 있었다)
 - 그 계약이 다음 PR에서 **조용히 바뀌지 않는가**
 
-셋 다 사람 눈으로 보고 있었다. 실제로 메모리 병합 요청의 필드 이름이 레거시와 어긋난 것(\`target_memory_id\` vs \`merge_target_memory_id\`)을 눈으로 발견한 적이 있는데, 그건 자동으로 드러났어야 할 종류의 문제였다.
+셋 다 사람 눈으로 보고 있었다. 실제로 메모리 병합 요청의 필드 이름이 레거시와 어긋난 것(\`target_memory_id\` vs \`merge_target_memory_id\`)을 눈으로 발견한 적이 있는데 그건 자동으로 드러났어야 할 종류의 문제였다.
 
-검증을 3층으로 나눴다. **한 층이 다른 층을 대신하지 못한다**는 것이 이 설계의 요지다.
+검증을 3층으로 나눴다. 이 설계는 **한 층이 다른 층을 대신하지 못한다**는 전제를 따른다.
 
 | 층 | 무엇을 보는가 | 수단 |
 | --- | --- | --- |
@@ -488,9 +488,9 @@ G1은 쓰기가 성공하므로 오류로 드러나지 않는다. 전환 후 관
 | 2층 계약 고정 | 계약이 의도치 않게 바뀌지 않는가 | OpenAPI 스냅샷 + 드리프트 CI |
 | 3층 배포 후 | 실제 환경에서 도는가 | 스모크 |
 
-1층은 레거시 Go 서버와 신규 서버를 **같은 픽스처로 동시에 띄워** 같은 요청을 양쪽에 보내고, 응답과 **요청 이후 DB 기록**을 함께 대조한다. 2층은 \`/v3/api-docs\` 결과를 \`openapi.json\`으로 커밋해 두고, 계약이 바뀌면 PR diff에 남고 갱신을 잊으면 CI가 막는다.
+1층은 레거시 Go 서버와 신규 서버를 **같은 픽스처로 동시에 띄워** 같은 요청을 양쪽에 보내고 응답과 **요청 이후 DB 기록**을 함께 대조한다. 2층은 \`/v3/api-docs\` 결과를 \`openapi.json\`으로 커밋해 두고 계약이 바뀌면 PR diff에 남고 갱신을 잊으면 CI가 막는다.
 
-층을 나눈 이유는 1층이 답할 수 있는 질문의 범위가 좁기 때문이다. 이건 만들고 나서 더 분명해졌는데, 처음 golden을 뜬 21건 중 **14건의 golden 본문이 "동일" 한 단어**였다. 그 파일만 봐서는 계약을 지켰는지 알 수 없고 두 서버가 같다는 것만 안다. 둘 다 틀렸을 수도 있고, 레거시에 대응물이 없는 신규 API는 애초에 비교 대상이 없다. 그래서 계약 자체의 검증은 2층(OpenAPI 스냅샷)이, 실제 환경 동작은 3층(스모크)이 갖게 했다.
+1층이 답할 수 있는 질문의 범위가 좁아서 층을 나눴다. 이건 만들고 나서 더 분명해졌는데 처음 golden을 뜬 21건 중 **14건의 golden 본문이 "동일" 한 단어**였다. 그 파일만 봐서는 계약을 지켰는지 알 수 없고 두 서버가 같다는 것만 안다. 둘 다 틀렸을 수도 있고 레거시에 대응물이 없는 신규 API는 애초에 비교 대상이 없다. 그래서 계약 자체의 검증은 2층(OpenAPI 스냅샷)이, 실제 환경 동작은 3층(스모크)이 갖게 했다.
 
 비교 도구는 응답과 DB 기록을 같은 입력으로 대조한다. 구현된 케이스와 이관 원장의 대상 경로를 연결해 어떤 동작을 검증했는지 추적한다.
 
@@ -498,19 +498,19 @@ G1은 쓰기가 성공하므로 오류로 드러나지 않는다. 전환 후 관
 
 응답의 시간 값이 실행할 때마다 달라 비교 결과에 잡음이 생겼다. 전역 치환, 케이스별 조건, 전후 스냅샷을 검토한 뒤 시간 값을 일관되게 정규화하는 방식으로 정리했다.
 
-시간에 따라 달라지는 값을 비교하려면 두 서버의 시계를 고정하는 방법이 있다. 그러나 레거시 서버가 Go 코드에서 현재 시간을 직접 읽어, 시계를 주입하려면 레거시 동작을 바꿔야 했다. 대신 비교 전에 시간 값을 정규화했다.
+시간에 따라 달라지는 값을 비교하려면 두 서버의 시계를 고정하는 방법이 있다. 그러나 레거시 서버가 Go 코드에서 현재 시간을 직접 읽어서 시계를 주입하려면 레거시 동작을 바꿔야 했다. 시계는 고정하지 않고 비교 전에 시간 값을 정규화했다.
 
-처음에는 모든 타임스탬프를 같은 토큰으로 바꾸려 했지만, 그러면 \`created_at\`과 \`updated_at\`의 차이를 놓친다. 같은 값에는 같은 토큰을, 다른 값에는 다른 토큰을 부여했다. 컬럼 이름 대신 값의 형태로 시간 값을 찾아 응답 본문과 DB 기록에 같은 정규화 함수를 적용했다.
+처음에는 모든 타임스탬프를 같은 토큰으로 바꾸려 했지만 그러면 \`created_at\`과 \`updated_at\`의 차이를 놓친다. 같은 값에는 같은 토큰을, 다른 값에는 다른 토큰을 부여했다. 컬럼 이름 대신 값의 형태로 시간 값을 찾아 응답 본문과 DB 기록에 같은 정규화 함수를 적용했다.
 
 **Golden 파일을 이용한 회귀 검사**
 
-레거시와 의도적으로 다른 응답이 11건 있었다. 그 11건이 매 실행 출력되니 12번째 차이는 눈으로 찾아야 했다. 그래서 각 케이스의 관찰 결과를 golden 파일로 고정하고 불일치하면 실패하게 바꿨다. 갱신은 **명시한 플래그가 있을 때만** 되고, golden이 없으면 만들어 주지 않고 실패로 보고한다. 없는 기준을 자동으로 채워 주면 첫 실행이 곧 승인이 되기 때문이다.
+레거시와 의도적으로 다른 응답이 11건 있었다. 그 11건이 매 실행 출력되니 12번째 차이는 눈으로 찾아야 했다. 그래서 각 케이스의 관찰 결과를 golden 파일로 고정하고 불일치하면 실패하게 바꿨다. 갱신은 **명시한 플래그가 있을 때만** 된다. 없는 기준을 자동으로 채워 주면 첫 실행이 곧 승인이 되기 때문에 golden이 없으면 만들어 주지 않고 실패로 보고한다.
 
 **응답의 시간 값 오류 발견**
 
 시간 값 정규화를 적용하자 신규 서버 응답의 \`updated_at\`이 \`created_at\`과 같은 토큰으로 바뀌었다. flush 전 값을 응답에 매핑한 것이 원인이었다. DB 기록은 일치했으므로 응답과 DB를 따로 비교한 덕분에 오류를 찾을 수 있었다.
 
-처음에는 이 오류를 비교 도구가 찾지 못할 것으로 예상했다. 필드를 통째로 무시하면 놓치지만, 값 사이의 동일성을 보존하는 정규화에서는 차이가 나타났다. Golden 파일을 생성하기 전에 오류를 수정해 잘못된 응답이 기준값으로 남지 않게 했다.
+처음에는 이 오류를 비교 도구가 찾지 못할 것으로 예상했다. 필드를 통째로 무시하면 놓치지만 값 사이의 동일성을 보존하는 정규화에서는 차이가 나타났다. Golden 파일을 생성하기 전에 오류를 수정해 잘못된 응답이 기준값으로 남지 않게 했다.
 
 **비교 도구의 실패 감지 확인**
 
@@ -524,51 +524,51 @@ G1은 쓰기가 성공하므로 오류로 드러나지 않는다. 전환 후 관
 
 세 번째 사례에서는 검증을 강화하려고 넣은 scrubber가 기존에 감지하던 회귀를 놓쳤다. 해당 케이스의 주석도 실제 검사 내용과 달랐다.
 
-수정한 버그를 일부러 되돌려 해당 케이스가 golden 불일치와 종료 코드 1로 실패하는지 확인했다. 수정 상태로 복원한 뒤에는 다시 통과했다. 이 절차로 비교 도구의 실패 감지 능력을 확인했다.
+비교 도구의 실패 감지 능력을 보려고 수정한 버그를 일부러 되돌렸다. 해당 케이스는 golden 불일치와 종료 코드 1로 실패했다. 수정 상태로 복원한 뒤에는 다시 통과했다.
 
-scrubber 설정을 수정해도 golden 파일은 바뀌지 않았다. golden에는 원본 값 대신 두 서버의 차이를 기록하고, 해당 케이스에서는 양쪽 결과가 같기 때문이다. 설정 수정 후 결함을 다시 주입해 테스트가 실패하는지 확인했다. 파일 변경 여부만으로 검증 능력의 회복을 판단할 수 없었다.
+golden에는 원본 값 대신 두 서버의 차이를 기록하고 해당 케이스에서는 양쪽 결과가 같아서 scrubber 설정을 수정해도 golden 파일은 바뀌지 않았다. 파일 변경 여부만으로는 검증 능력의 회복을 판단할 수 없어서 설정 수정 후 결함을 다시 주입해 테스트가 실패하는지 확인했다.
 
 **OpenAPI 스냅샷의 버전 관리**
 
 \`openapi.json\`을 git에 포함해 이전 계약과 비교하도록 했다. 이 파일이 있어야 계약 변경이 PR diff에 나타나고 클라이언트가 특정 버전의 계약을 참조할 수 있다.
 
-갱신 수단도 전용 Gradle task로 뒀다. 시스템 프로퍼티만 두면 task 목록에 안 보여 발견이 안 되고 오타 시 조용히 비교 모드로 떨어진다. 항상 덮어쓰고 diff로 판정하는 방식은 아무 테스트나 돌려도 추적 파일이 바뀌어서 **"갱신은 의도적인 행위"**라는 요구와 정면으로 충돌한다.
+갱신 수단도 전용 Gradle task로 뒀다. 시스템 프로퍼티만 두면 task 목록에 안 보여 발견이 안 되고 오타가 나면 오류 없이 비교 모드로 떨어진다. 항상 덮어쓰고 diff로 변경을 찾는 방식은 아무 테스트나 돌려도 추적 파일이 바뀌어서 **"갱신은 의도적인 행위"**라는 요구와 정면으로 충돌한다.
 
-정규화 범위는 좁게 잡았다. 환경마다 달라지는 \`servers\`만 제외하고, 배열은 루트 \`tags\`만 정렬한다. \`type\` 같은 배열은 순서가 곧 의미라 일괄 정렬하면 계약을 바꿔 버린다. 그리고 이 \`tags\` 순서 문제는 **두 번 부팅해 같은 결과가 나오는 것으로는 검출할 수 없다**. 같은 classpath에서 해시 순회 순서는 결정적이기 때문이다. **재현 실행으로 못 잡는 종류는 정규화로 막는다**는 것이 여기서 얻은 규칙이다.
+정규화 범위는 좁게 잡았다. 환경마다 달라지는 \`servers\`만 제외하고 배열은 루트 \`tags\`만 정렬한다. \`type\` 같은 배열은 순서가 곧 의미라 일괄 정렬하면 계약을 바꿔 버린다. 같은 classpath에서 해시 순회 순서는 결정적이라 이 \`tags\` 순서 문제는 **두 번 부팅해 같은 결과가 나오는 것으로는 검출할 수 없다**. **재현 실행으로 못 잡는 종류는 정규화로 막는다**는 것을 여기서 규칙으로 삼았다.
 
 ---
 
 ## 비동기 후속 처리와 Outbox
 
-사용자가 Signal을 태스크로 수용하면 그 결과를 worker/retrieval이 알아야 검색 인덱스에 반영되고, 알림도 나가야 한다. 모듈러 모놀리스라 같은 런타임 안에서는 그냥 직접 호출해도 된다. 하지만 **소비자가 다른 프로세스**(worker)이고, 신규 서버 안에서도 알림 소비는 별도 경로다.
+사용자가 Signal을 태스크로 수용하면 그 결과를 worker/retrieval이 알아야 검색 인덱스에 반영되고 알림도 나가야 한다. 모듈러 모놀리스라 같은 런타임 안에서는 그냥 직접 호출해도 된다. 하지만 **소비자가 다른 프로세스**(worker)이고 신규 서버 안에서도 알림 소비는 별도 경로다.
 
-가장 위험한 건 "DB는 커밋됐는데 후속 처리 요청은 사라지는" 상태다.
+"DB는 커밋됐는데 후속 처리 요청은 사라지는" 상태가 가장 위험했다.
 
-비즈니스 쓰기와 이벤트 기록을 **하나의 트랜잭션**에 묶었다. 태스크 생성, 처리 기록, 이벤트 append가 함께 커밋되거나 함께 롤백되고, 일부만 성공하는 상태는 만들지 않는다.
+비즈니스 쓰기와 이벤트 기록을 **하나의 트랜잭션**에 묶었다. 태스크 생성, 처리 기록, 이벤트 append가 함께 커밋되거나 함께 롤백되고 일부만 성공하는 상태는 만들지 않는다.
 
 ![Signal 액션에서 outbox를 거쳐 소비자로 이어지는 흐름과 이벤트 계약]({{diagram_outbox}})
 
 **Outbox의 트랜잭션 참여 강제**
 
-\`OutboxAppender.append\`를 \`Propagation.MANDATORY\`로 선언했다. 호출자가 트랜잭션 없이 부르면 예외가 난다. 트랜잭션 참여를 실행 시점에 검사하며, 모듈 경계 검증과 같은 방식이다.
+\`OutboxAppender.append\`를 \`Propagation.MANDATORY\`로 선언했다. 호출자가 트랜잭션 없이 부르면 예외가 난다. 트랜잭션 참여를 실행 시점에 검사한다. 모듈 경계 검증과 같은 방식이다.
 
 멱등키는 \`{event_type}:{aggregate_id}\`로 서버가 결정적으로 조립하고 \`ON CONFLICT DO NOTHING\`으로 중복 발행을 흡수한다.
 
 **ID 중심의 이벤트 본문**
 
-이벤트 본문은 ID 중심의 최소 데이터만 담고, 소비자가 필요하면 공유 DB에서 최신 상태를 다시 읽는다. 스냅샷을 실으면 이벤트가 곧 계약이 되어 필드 하나 바뀔 때마다 소비자가 깨진다. 어차피 DB를 공유하는 구조라 hydrate 비용이 낮다는 점이 결정 근거였다.
+이벤트 본문은 ID 중심의 최소 데이터만 담고 소비자가 필요하면 공유 DB에서 최신 상태를 다시 읽는다. 스냅샷을 실으면 이벤트가 곧 계약이 되어 필드 하나 바뀔 때마다 소비자가 깨진다. 어차피 DB를 공유하는 구조라 hydrate 비용이 낮아서 이 방식으로 정했다.
 
 **이벤트 계약의 하위 호환성**
 
-payload의 jsonb 구조를 검사하는 도구는 별도로 두지 않았다. 대신 **필드 추가만 허용하고 소비자는 모르는 필드를 무시하는 규칙**을 정했다. 이벤트 이름은 \`{aggregate}.{과거형}\`으로 고정했다(\`signal.created\`, \`signal.converted_to_task\`). 버전은 아직 붙이지 않았다. 이벤트를 소비하는 시스템도 같은 프로젝트 팀이 관리해 변경을 조율할 수 있고, 본문에 담는 데이터가 적어 변경 영향을 받는 범위도 작다고 봤다. 하위 호환성을 깨는 변경이 필요해지면 \`event_type\`에 \`.vN\`을 붙이고 두 버전을 함께 발행하기로 했다.
+payload의 jsonb 구조를 검사하는 도구는 별도로 두지 않고 **필드 추가만 허용하고 소비자는 모르는 필드를 무시하는 규칙**을 정했다. 이벤트 이름은 \`{aggregate}.{과거형}\`으로 고정했다(\`signal.created\`, \`signal.converted_to_task\`). 버전은 아직 붙이지 않았다. 이벤트를 소비하는 시스템도 같은 프로젝트 팀이 관리해 변경을 조율할 수 있고 본문에 담는 데이터가 적어 변경 영향을 받는 범위도 작다고 봤다. 하위 호환성을 깨는 변경이 필요해지면 \`event_type\`에 \`.vN\`을 붙이고 두 버전을 함께 발행하기로 했다.
 
-발행 주체 컬럼은 \`producer\`에서 \`issued_by\`로 바꿨다. Kafka의 producer와 헷갈리는 인프라 용어 대신, \`issued_by = 'worker'\`처럼 문장으로 읽히는 도메인 친화적 이름을 택했다.
+발행 주체 컬럼은 \`producer\`에서 \`issued_by\`로 바꿨다. Kafka의 producer와 헷갈리는 인프라 용어를 피해 \`issued_by = 'worker'\`처럼 문장으로 읽히는 도메인 친화적 이름을 택했다.
 
 **알림 소비의 담당 시스템**
 
-처음 설계에서는 worker가 \`signal.created\`를 발행하고 알림 처리도 맡았다. 푸시 대상 사용자의 멤버십과 기기 등록 정보를 api-server가 관리하고 있어, 회의에서 **알림 소비를 api-server로 옮기기로 했다.** 기존 ADR은 남기고 이를 대체하는 새 ADR을 작성했다.
+처음 설계에서는 worker가 \`signal.created\`를 발행하고 알림 처리도 맡았다. 푸시 대상 사용자의 멤버십과 기기 등록 정보를 api-server가 관리하고 있어 회의에서 **알림 소비를 api-server로 옮기기로 했다.** 기존 ADR은 남기고 이를 대체하는 새 ADR을 작성했다.
 
-소비 경로를 두 단계로 나눴다. **consume**(누구에게 보낼지 DB 트랜잭션 안에서 확정)과 **dispatch**(실제 FCM 호출)를 분리해, 외부 I/O 장애가 소비 트랜잭션을 붙잡지 않게 했다. 전송 직전에 서버가 죽어도 pending 행이 남아 다음 스캔이 회수한다.
+소비 경로를 두 단계로 나눴다. **consume**(누구에게 보낼지 DB 트랜잭션 안에서 확정)과 **dispatch**(실제 FCM 호출)를 분리해 외부 I/O 장애가 소비 트랜잭션에 영향을 주지 않게 했다. 전송 직전에 서버가 죽어도 pending 행이 남아 다음 스캔이 회수한다.
 
 > 관련 글: [아웃박스로 EDA를 시작하며 마주한 네 가지 질문](https://blog.rlarbdlf222.workers.dev/blog/outbox-eda-four-questions/). payload, 네이밍, 하위호환성, 버저닝 네 가지 결정을 국내외 사례와 비교해 정리했다.
 
@@ -576,17 +576,17 @@ payload의 jsonb 구조를 검사하는 도구는 별도로 두지 않았다. �
 
 ## 팀 간 계약과 결정 기록
 
-이 프로젝트에서 서버는 혼자가 아니었다. \`momens-api\`(레거시), worker, retrieval, 인프라는 **다른 담당자 소관**이고, 웹 클라이언트와 Android 앱도 별도 팀이다. 그리고 서버 구현에 실제로 영향을 주는 결정 중 **서버가 단독으로 정할 수 없는 것**이 계속 나왔다.
+이 프로젝트에서 서버는 혼자가 아니었다. \`momens-api\`(레거시), worker, retrieval, 인프라는 **다른 담당자 소관**이고 웹 클라이언트와 Android 앱도 별도 팀이다. 그리고 서버 구현에 실제로 영향을 주는 결정 중 **서버가 단독으로 정할 수 없는 것**이 계속 나왔다.
 
 팀의 답변을 기다리는 동안에도 앱잼 개발은 진행해야 했다. 확정되지 않은 내용을 임의로 결정하면 다시 수정해야 할 수 있었다.
 
-"모든 걸 합의하고 시작한다"를 포기하고, **결정을 종류별로 다르게 처리**했다.
+"모든 걸 합의하고 시작한다"를 포기하고 **결정을 종류별로 다르게 처리**했다.
 
 ![팀 간 책임 경계와 결정 절차]({{diagram_team_boundary}})
 
 ### Worker, 검색 팀과의 결정 요청
 
-전체 설계를 공유하고 의견을 구하는 대신, **서버 단독으로 정할 수 없으면서 결정 결과가 서버 구현에 실제로 영향을 주는 항목만** 5개로 추려 결정 요청서를 만들었다. 각 항목에 서버 측 기본안과 "필요한 답"을 함께 적어, 회의에서 결정할 항목을 분명히 했다.
+전체 설계를 공유해 의견을 묻지 않고 **서버 단독으로 정할 수 없으면서 결정 결과가 서버 구현에 실제로 영향을 주는 항목만** 5개로 추려 결정 요청서를 만들었다. 각 항목에 서버 측 기본안과 "필요한 답"을 함께 적어 회의에서 결정할 항목을 분명히 했다.
 
 | 안건 | 결정 |
 | --- | --- |
@@ -596,15 +596,15 @@ payload의 jsonb 구조를 검사하는 도구는 별도로 두지 않았다. �
 | D4 task draft 계약 | 생산 주체와 non-null 보장 범위 확정 |
 | D5 서비스 간 교환 | proto를 공통 스펙으로, PR 리뷰로 변경 관리 |
 
-D5에서 **gRPC를 쓰지 않으면서 proto만 계약으로 쓰기로** 한 것이 핵심이다. proto는 데이터 정의와 직렬화를 맡는 층이고 gRPC는 그 위의 전송 층이라, 둘은 분리해서 채택할 수 있다. Go(worker)와 Java(server)가 같은 정의를 보고 코드를 생성하는 이득만 취하고, 아웃박스 이벤트는 그대로 DB를 경유하게 뒀다. 같은 메시지가 JSON 24바이트에서 proto 6바이트로 줄어드는 이득도 있지만, 이 결정의 이유는 크기보다 **두 언어가 같은 계약을 공유하는 것**이었다.
+D5에서는 **gRPC를 쓰지 않으면서 proto만 계약으로 쓰기로** 했다. proto는 데이터 정의와 직렬화를 맡는 층이고 gRPC는 그 위의 전송 층이라 둘은 분리해서 채택할 수 있다. Go(worker)와 Java(server)가 같은 정의를 보고 코드를 생성하는 이득만 취하고 아웃박스 이벤트는 그대로 DB를 경유하게 뒀다. 같은 메시지가 JSON 24바이트에서 proto 6바이트로 줄어드는 이득도 있지만 이 결정은 크기보다 **두 언어가 같은 계약을 공유하는 것**을 보고 내렸다.
 
 > 관련 글: [학습 기록: gRPC와 Protocol Buffers, 그리고 그 너머](https://blog.rlarbdlf222.workers.dev/blog/grpc-protobuf-contract-repository/). proto만으로는 시스템을 이해할 수 없는 이유(계약은 데이터의 모양만 담고 로직은 담지 않는다)까지 다뤘다.
 
-회의 결과는 ADR로 확정해 남겼고, 상세 설계 문서 상단에는 "최신 결정은 ADR을 참조"라는 배너를 달아 오래된 문서가 사실처럼 읽히지 않게 했다.
+회의 결과는 ADR로 확정해 남겼고 상세 설계 문서 상단에는 "최신 결정은 ADR을 참조"라는 배너를 달아 오래된 문서가 사실처럼 읽히지 않게 했다.
 
 ### 웹 프런트엔드와의 계약 범위
 
-웹 세션 토큰 수명은 FE 리드의 결정이 필요했고, 그 답을 바로 받기 어려운 상황이었다. 여기서 **기다리지 않기로 하고**, 대신 그 선택으로 생기는 리스크 7개를 레지스터에 등록한 뒤 **비용 기준으로 등급을 산정했다.**
+웹 세션 토큰 수명은 FE 리드의 결정이 필요했고 그 답을 바로 받기 어려운 상황이었다. 여기서 **기다리지 않기로 하고** 그 선택으로 생기는 리스크 7개를 레지스터에 등록한 뒤 **비용 기준으로 등급을 산정했다.**
 
 | 구분 | 판정 | 처리 |
 | --- | --- | --- |
@@ -612,21 +612,21 @@ D5에서 **gRPC를 쓰지 않으면서 proto만 계약으로 쓰기로** 한 것
 | **R1 비대칭 세션 보안** | 큰 위험 | "세션 폐기에 의존하는 기능을 계약으로 약속하지 않는다"는 **행동 제약** 부과 |
 | **R6 이중 운영 컷오버** | 큰 위험 | 웹이 레거시에 남는 기간의 이중 운영을 사전 합의 대상으로 명시 |
 
-리스크 일곱 건을 처리 비용에 따라 나눴다. 일곱 중 다섯은 지금 자리만 만들어 두면 되는 것이라 즉시 처리했고, 남은 둘은 코드로 닫히지 않아 **약속의 범위를 좁히는 쪽**으로 대응했다. 덕분에 모바일을 먼저 완성하면서도 웹이 나중에 붙을 자리를 비워둘 수 있었다.
+리스크 일곱 건을 처리 비용에 따라 나눴다. 일곱 중 다섯은 지금 자리만 만들어 두면 되는 것이라 즉시 처리했고 남은 둘은 코드로 해결되지 않아 **약속의 범위를 좁히는 쪽**으로 대응했다. 덕분에 모바일을 먼저 완성하면서도 웹이 나중에 붙을 자리를 비워둘 수 있었다.
 
 API 경로와 버저닝 정책을 리드와 논의했다. 초기에는 레거시 경로를 alias로 유지하고 이관 엔드포인트의 버저닝을 면제하는 방안을 검토했다. 이 경우 ingress, 문서, 매핑, 테스트에서 두 경로를 관리해야 하므로 alias를 폐기하고 모든 엔드포인트에 버저닝을 적용했다.
 
 ### Android 팀과의 API 계약
 
-푸시 알림을 붙이는데, 인증에 쓸 서비스 계정이 속한 GCP 프로젝트와 실제 FCM 대상 Firebase 프로젝트가 **서로 달랐다.** 게다가 대상 프로젝트는 Android 팀 소유라 내가 접근할 수 없었다.
+푸시 알림을 붙이는데 인증에 쓸 서비스 계정이 속한 GCP 프로젝트와 실제 FCM 대상 Firebase 프로젝트가 **서로 달랐다.** 게다가 대상 프로젝트는 Android 팀 소유라 내가 접근할 수 없었다.
 
-장기 JSON 키를 넘겨받아 Kubernetes Secret에 보관하는 방식은 폐기했다. 대신 서버 파드는 Workload Identity로 인증하고 FCM 요청 대상만 명시적으로 지정하도록 분리해, 상대 팀에 남는 작업을 **cross-project IAM 권한 부여 1회**로 줄였다.
+장기 JSON 키를 넘겨받아 Kubernetes Secret에 보관하는 방식은 폐기했다. 서버 파드는 Workload Identity로 인증하고 FCM 요청 대상만 명시적으로 지정하도록 분리해 상대 팀에 남는 작업을 **cross-project IAM 권한 부여 1회**로 줄였다.
 
 ---
 
 ## Spring Boot 4 적용과 운영 프로필 검증
 
-정식 릴리스 직후 Spring Boot 4를 적용했다. 장기 운영을 예상해 초기에 버전을 올렸지만, 참고 사례가 적고 일부 의존성의 동작이 달라 별도 검증이 필요했다.
+정식 릴리스 직후 Spring Boot 4를 적용했다. 장기 운영을 예상해 초기에 버전을 올렸지만 참고 사례가 적고 일부 의존성의 동작이 달라 별도 검증이 필요했다.
 
 | 증상 | 원인 |
 | --- | --- |
@@ -635,9 +635,9 @@ API 경로와 버저닝 정책을 리드와 논의했다. 초기에는 레거시
 | 슬라이스 테스트가 컨트롤러를 못 찾음 | \`@WebMvcTest\`, \`@DataJpaTest\`가 별도 스타터로 분리되고 패키지가 이동 |
 | 추적 빈이 배선되지 않음 | OTel SDK 자동 구성이 actuator에서 분리됨. bridge 단독으론 부족하고 starter가 필요 |
 
-첫 사례에서는 검사가 실패를 알리지 않았다. 이후 Dockerfile 정합성과 전환 회귀 검사를 만들 때, 결함을 넣으면 실제로 실패하는지도 확인했다.
+첫 사례에서는 검사가 실패를 알리지 않았다. 이후 Dockerfile 정합성과 전환 회귀 검사를 만들 때는 결함을 넣으면 실제로 실패하는지도 확인했다.
 
-운영 전환을 준비하며 프로필 기동도 검사했다. 운영 프로필에서는 springdoc을 끄지만 관련 설정 클래스는 조건 없이 등록돼, 필요한 빈이 없어 컨텍스트 생성이 실패했다. 개발 프로필에서만 기동을 확인해 발견하지 못한 문제였다. springdoc에 의존하는 빈 네 개를 설정 클래스 단위로 조건부 등록하도록 수정했다.
+운영 전환을 준비하며 프로필 기동도 검사했다. 운영 프로필에서는 springdoc을 끄지만 관련 설정 클래스는 조건 없이 등록돼 필요한 빈이 없어 컨텍스트 생성이 실패했다. 개발 프로필에서만 기동을 확인해 발견하지 못한 문제였다. springdoc에 의존하는 빈 네 개를 설정 클래스 단위로 조건부 등록하도록 수정했다.
 
 의존성도 서버의 성격을 드러내도록 골랐다. 포괄적인 \`starter-web\` 대신 \`starter-webmvc\`를 명시해 "이 서버는 MVC 기반 Servlet WAS"라는 선택이 빌드 파일에서 바로 읽히게 했다.
 
@@ -647,11 +647,11 @@ API 경로와 버저닝 정책을 리드와 논의했다. 초기에는 레거시
 
 ## 개발 서버의 503 원인과 조치
 
-앱잼 기간 동안 시연과 모바일 연동에 쓰려고 띄워 둔 **dev 서버**에서 일어난 일이다. 배포가 끝나고 5~10분이 지난 시점에 API 서버가 약 1분간 간헐적으로 **503**을 반환했다. 배포 중도 아니었고, 애플리케이션 로그에는 500 예외가 하나도 없었다. 서버는 정상으로 보이는데 요청만 실패하는 상황이었다.
+앱잼 기간 동안 시연과 모바일 연동에 쓰려고 띄워 둔 **dev 서버**에서 일어난 일이다. 배포가 끝나고 5~10분이 지난 시점에 API 서버가 약 1분간 간헐적으로 **503**을 반환했다. 배포 중도 아니었고 애플리케이션 로그에는 500 예외가 하나도 없었다. 서버는 정상으로 보이는데 요청만 실패하는 상황이었다.
 
 ### 원인 진단
 
-ingress-nginx access log에서 **upstream 주소가 \`-\`** 로 찍혀 있었다. 요청이 애플리케이션에 닿기도 전에 ingress가 돌려보낸 503이라는 뜻이다. 요청을 처리할 서버가 없는 상태였다.
+ingress-nginx access log에서 **upstream 주소가 \`-\`** 로 찍혀 있었다. 이 기록대로라면 요청이 애플리케이션에 닿기도 전에 ingress가 503을 돌려보냈다. 요청을 처리할 서버가 없는 상태였다.
 
 Kubernetes 이벤트를 시간순으로 맞춰보니 원인을 알 수 있었다.
 
@@ -663,7 +663,7 @@ Kubernetes 이벤트를 시간순으로 맞춰보니 원인을 알 수 있었다
 
 replica가 1개였고 PodDisruptionBudget도 없었다. Autopilot이 여유 노드를 줄일 때 이미지 pull과 서버 기동에 1분 이상 걸리면서 요청을 처리할 Pod가 사라졌다. 롤아웃 직후보다 5~10분 뒤에 503이 발생한 것은 Autopilot의 노드 축소 시점과 맞아떨어졌다.
 
-처음엔 기동 시간을 줄이는 쪽을 생각했지만, 그것으로는 **0초를 만들 수 없다**는 점이 분명했다. 대안을 비교한 뒤 방향을 바꿨다.
+처음엔 기동 시간을 줄이는 쪽을 생각했지만 그것으로는 **0초를 만들 수 없다**는 점이 분명했다. 대안을 비교한 뒤 방향을 바꿨다.
 
 | 대안 | 한계 |
 | --- | --- |
@@ -673,13 +673,13 @@ replica가 1개였고 PodDisruptionBudget도 없었다. Autopilot이 여유 노�
 | replica 2만 | 두 Pod가 같은 노드에 배치될 수 있다 |
 | required anti-affinity | Autopilot의 최소 리소스 요구와 충돌 |
 
-그래서 **replica 2 + PDB(minAvailable 1) + topology spread**로 갔다. 배포 전략은 \`maxUnavailable 0\`, \`maxSurge 1\`, \`minReadySeconds 10\`으로 두고, 같은 기준을 ingress controller에도 적용했다.
+그래서 **replica 2 + PDB(minAvailable 1) + topology spread**로 갔다. 배포 전략은 \`maxUnavailable 0\`, \`maxSurge 1\`, \`minReadySeconds 10\`으로 두고 같은 기준을 ingress controller에도 적용했다.
 
 재기동 중에도 요청을 처리할 서버가 남도록 replica를 늘리고 PodDisruptionBudget을 설정했다.
 
 ### 가용성 목표와 비용
 
-이 구성은 리소스를 두 배로 쓴다. 상시 운영하는 서비스였다면 과했을 선택인데, 이번엔 **일부러 가용성 쪽으로 기울였다.** 이 환경의 조건이 그랬기 때문이다.
+이 구성은 리소스를 두 배로 쓴다. 상시 운영하는 서비스였다면 과했을 선택인데 이번엔 **일부러 가용성 쪽으로 기울였다.** 이 환경의 조건이 그랬기 때문이다.
 
 - 앱잼 기간에만 띄워 두는 **임시 dev 서버**라서 수명이 2주로 정해져 있었다
 - GKE 무료 크레딧 **2주 300달러** 범위 안이라 비용이 제약이 아니었다
@@ -691,7 +691,7 @@ replica가 1개였고 PodDisruptionBudget도 없었다. Autopilot이 여유 노�
 
 이후 배포에서 Autopilot 할당량 초과로 scale-up이 밀리고 Spring Boot 기동이 **123초까지 지연**되는 상황이 실제로 발생했다. 그런데도 외부 health check는 **20회 모두 200**이었다. 새 Pod가 Ready가 될 때까지 기존 Pod 하나가 요청을 계속 받았기 때문이다.
 
-막아주지 못하는 것도 분명히 남겨 뒀다. 다중 노드, 클러스터 장애와 zone 장애는 범위 밖이고, 기동 시간 자체는 여전히 별도 과제다.
+막아주지 못하는 것도 분명히 남겨 뒀다. 다중 노드, 클러스터 장애와 zone 장애는 범위 밖이고 기동 시간 자체는 여전히 별도 과제다.
 
 > 관련 글: [서버는 멀쩡한데 왜 503이 났을까](https://blog.rlarbdlf222.workers.dev/blog/gke-autopilot-transient-503/). 로그와 이벤트로 원인을 좁혀간 과정을 시간순으로 정리했다.
 
@@ -699,27 +699,27 @@ replica가 1개였고 PodDisruptionBudget도 없었다. Autopilot이 여유 노�
 
 ## 추가 설계 결정
 
-**인증은 전송수단만 다르고 코어는 공유한다.** 모바일은 Bearer 토큰, 웹은 HttpOnly 쿠키를 쓰되 access+refresh 발급, 회전 코어는 하나로 공유한다. Refresh token은 원문을 저장하지 않고 SHA-256 해시만 서버 원장에 남긴다. Redis 도입은 실제 병목이 확인될 때로 미루고, 교체 가능하도록 저장소 port만 열어뒀다.
+**인증은 전송수단만 다르고 코어는 공유한다.** 모바일은 Bearer 토큰, 웹은 HttpOnly 쿠키를 쓰되 access+refresh 발급, 회전 코어는 하나로 공유한다. Refresh token은 원문을 저장하지 않고 SHA-256 해시만 서버 원장에 남긴다. Redis 도입은 실제 병목이 확인될 때로 미루고 교체 가능하도록 저장소 port만 열어뒀다.
 
-**LLM 경계와 측정.** AI 기능(\`minsu\`)은 벤더 중립 port 뒤에 격리해 provider SDK 타입이 도메인으로 새지 않게 했다. 운영 timeout은 실측으로 정했다. warm 상태 30회 호출에서 **p50 1,317ms / p95 6,002ms / max 6,223ms**를 관측하고, max에 약 28% 여유를 둔 **8초**로 확정했다.
+**LLM 경계와 측정.** AI 기능(\`minsu\`)은 벤더 중립 port 뒤에 격리해 provider SDK 타입이 도메인으로 새지 않게 했다. 운영 timeout은 실측으로 정했다. warm 상태 30회 호출에서 **p50 1,317ms / p95 6,002ms / max 6,223ms**를 측정하고 max에 약 28% 여유를 둔 **8초**로 확정했다.
 
-여기서 더 중요한 발견이 있었다. SDK의 timeout 설정이 **HTTP 호출 구간만 덮고** 그 앞의 인증 탐색, 클라이언트 생성, 토큰 갱신은 범위 밖이었다. timeout을 10ms로 두고 호출했는데 정상 응답이 나오는 것으로 이를 확인했다. 즉 동기 경로 전체에 대한 엄격한 상한이 아니었다. 이 한 줄이 두 가지로 이어졌다.
+여기서 그보다 중요한 문제를 하나 발견했다. SDK의 timeout 설정이 **HTTP 호출 구간만 덮고** 그 앞의 인증 탐색, 클라이언트 생성, 토큰 갱신은 범위 밖이었다. timeout을 10ms로 두고 호출했는데 정상 응답이 나오는 것으로 이를 확인했다. 즉 동기 경로 전체에 대한 엄격한 상한이 아니었다. 이 한 줄이 두 가지로 이어졌다.
 
-**LLM 생성을 요청 경로에서 분리했다(ADR-0015).** 생성 원장은 \`minsu\`가 소유하고 결과는 성공 시점에만 \`tasks\`에 반영한다. 원장을 \`tasks\`에 두면 AI 갱신과 사용자 수정이 같은 행에서 경합하고, 생성 상태의 소유가 다른 모듈로 넘어간다. 작업 유입 경로는 **변환 트랜잭션에서 원장에 직접 적재**하는 방식으로 정했다. \`@Async\`의 메모리 큐는 배포, OOM으로 작업이 유실될 때 복구할 진입점이 없었다. outbox 소비도 검토했지만, 소비자에 공개된 \`OutboxEventView\`에는 payload가 없어 이 작업에 필요한 대상 ID를 얻을 수 없었다. 공개 계약을 확인하며 발견한 제약 세 가지를 각각 우회하기보다 유입 경로를 바꾸는 쪽을 택했다.
+**LLM 생성을 요청 경로에서 분리했다(ADR-0015).** 생성 원장은 \`minsu\`가 소유하고 결과는 성공 시점에만 \`tasks\`에 반영한다. 원장을 \`tasks\`에 두면 AI 갱신과 사용자 수정이 같은 행에서 경합하고 생성 상태의 소유가 다른 모듈로 넘어간다. 작업 유입 경로는 **변환 트랜잭션에서 원장에 직접 적재**하는 방식으로 정했다. \`@Async\`의 메모리 큐는 배포, OOM으로 작업이 유실될 때 복구할 진입점이 없었다. outbox 소비도 검토했지만 소비자에 공개된 \`OutboxEventView\`에는 payload가 없어 이 작업에 필요한 대상 ID를 얻을 수 없었다. 공개 계약을 확인하며 발견한 제약 세 가지를 각각 우회하기보다 유입 경로를 바꾸는 쪽을 택했다.
 
-사용자가 결과를 먼저 고친 경우에는 조건부 UPDATE(CAS)로 **사용자 수정을 항상 우선**한다. \`updated_at\` 비교는 체크리스트 토글 같은 무관한 갱신에도 걸려서 기각하고, **오탐 0 / 미탐 허용**을 택했다. 종료 사유는 상태가 아니라 별도 컬럼으로 뒀다. "사용자가 고쳤다"는 성공도 실패도 아니기 때문이다. 그리고 앞의 timeout 발견이 여기서 다시 쓰였다. SDK timeout이 동기 경로 전체를 덮지 않으므로 lease 만료 시각만으로는 부족하고, **claim token fencing으로 오래된 작업자의 결과 반영을 막아야 한다.**
+사용자가 결과를 먼저 고친 경우에는 조건부 UPDATE(CAS)로 **사용자 수정을 항상 우선**한다. \`updated_at\` 비교는 체크리스트 토글 같은 무관한 갱신에도 걸려서 기각하고 **오탐 0 / 미탐 허용**을 택했다. "사용자가 고쳤다"는 성공도 실패도 아니어서 종료 사유는 상태가 아니라 별도 컬럼으로 뒀다. 그리고 앞의 timeout 발견이 여기서 다시 쓰였다. SDK timeout이 동기 경로 전체를 덮지 않으므로 lease 만료 시각만으로는 부족하고 **claim token fencing으로 오래된 작업자의 결과 반영을 막아야 한다.**
 
-**원장 상태 지표를 한 번에 집계한다.** 미종료 행을 대상으로 gauge 여섯 개를 한 쿼리에서 집계해 주기적으로 갱신한다. gauge 콜백에서 개별 쿼리를 실행하지 않고, 여섯 값이 같은 스냅샷을 기준으로 하도록 했다. 누적된 완료 행은 집계 대상에서 제외했다.
+**원장 상태 지표를 한 번에 집계한다.** 미종료 행을 대상으로 gauge 여섯 개를 한 쿼리에서 집계해 주기적으로 갱신한다. gauge 콜백에서 개별 쿼리를 실행하지 않고 여섯 값이 같은 스냅샷을 기준으로 하도록 했다. 누적된 완료 행은 집계 대상에서 제외했다.
 
-영속 상태를 주장하는 지표는 커밋 이후에 센다. counter는 롤백되지 않으므로, 종료 전이 뒤 후속 처리가 실패해 행이 회수되고 다시 종료되면 **같은 사건이 두 번 세어진다.** 한 사건이 중복 기록되면 사후에 구분하기 어렵다.
+영속 상태를 주장하는 지표는 커밋 이후에 센다. counter는 롤백되지 않으므로 종료 전이 뒤 후속 처리가 실패해 행이 회수되고 다시 종료되면 **같은 사건이 두 번 세어진다.** 한 사건이 중복 기록되면 사후에 구분하기 어렵다.
 
-첫 스냅샷 전에는 gauge 6종이 0을 보고했고, 스냅샷 경과 시간 지표도 0부터 증가했다. 이 값만으로는 스냅샷 실행 전과 실행 직후를 구분할 수 없었다. 첫 주기의 표시 방식을 수정했다.
+첫 스냅샷 전에는 gauge 6종이 0을 보고했고 스냅샷 경과 시간 지표도 0부터 증가했다. 이 값만으로는 스냅샷 실행 전과 실행 직후를 구분할 수 없었다. 첫 주기의 표시 방식을 수정했다.
 
 **릴리스 브랜치 정책은 방향에 따라 다르게 적용했다.** \`develop\`은 rebase 전용, \`main\`에는 merge commit만 허용했다. 릴리스 PR을 rebase 하면 \`develop\` 커밋이 새 SHA로 복제돼 장기 브랜치에 서로 다른 SHA가 남는다. merge commit은 기존 SHA와 조상 관계를 보존하면서 \`main\`의 first-parent 이력에 릴리스 경계를 남긴다.
 
 **오류 응답 계약을 통일했다.** 필드 검증 응답이 단수 \`field\`와 배열 \`fields\`로 혼재하던 것을 공통 경로 하나로 모았다. Bean Validation의 필드명도 실제 응답 형식인 snake_case로 맞췄다.
 
-**관측성은 지금 필요한 것과 나중 것을 나눴다.** 로그 상관관계(traceId/spanId의 MDC 전파)는 지금 켜고, 분산 추적 export는 껐다. 수집기가 없는 상태에서 exporter가 계속 연결을 시도해 로그를 오염시키기 때문이다. 배포 환경이 정해지면 설정 두 개만 켜면 되도록 남겨뒀다.
+**관측성은 지금 필요한 것과 나중 것을 나눴다.** 로그 상관관계(traceId/spanId의 MDC 전파)는 지금 켰다. 분산 추적 export는 수집기가 없는 상태에서 exporter가 계속 연결을 시도해 로그를 오염시키기 때문에 껐다. 배포 환경이 정해지면 설정 두 개만 켜면 되도록 남겨뒀다.
 
 ---
 
@@ -730,30 +730,30 @@ Momens는 프로젝트 맥락과 태스크를 관리하는 도구다. 그래서 
 - **단일 작업 원장.** 다른 트래커나 이슈로 이원화하지 않는다. 도구가 부족하면 우회하는 대신 그 부족함을 드러낸다
 - **작업 흐름 자동화.** 작업 시작(중복 확인, 상태 전환, 브랜치 준비)과 완료(**실제 머지 확인 후에만** 완료 처리)를 에이전트 스킬로 고정했다. PR 생성이나 CI 통과만으로는 완료로 치지 않는다
 - **CI가 연결을 검사한다.** PR 본문의 작업 라벨과 브랜치 라벨, 작업 URL의 일치를 CI가 확인해 추적이 사람의 성실함에 의존하지 않게 했다
-- **AI 에이전트가 원장을 직접 읽는다.** 제품이 MCP 서버를 제공해, 코딩 에이전트가 프로젝트, 마일스톤, 태스크를 직접 조회하고 갱신한다. 워크스페이스에는 AI 팀원(\`민수\`)도 구성원으로 들어와 있다
+- **AI 에이전트가 원장을 직접 읽는다.** 제품이 MCP 서버를 제공해 코딩 에이전트가 프로젝트, 마일스톤, 태스크를 직접 조회하고 갱신한다. 워크스페이스에는 AI 팀원(\`민수\`)도 구성원으로 들어와 있다
 
 이 프로젝트의 담당 작업과 의사결정도 Momens의 태스크에 연결해 기록했다.
 
 `,$w={slug:"momens-server",title:"Momens",description:"흩어진 프로젝트의 변화와 결정을 다음 행동으로 연결하는 Momens의 서버",projectType:"Main",image:Fw,tags:["Java 21","Spring Boot 4","Spring Modulith","PostgreSQL","Kubernetes","Team Lead"],github:"https://github.com/Momens-Works/momens-server",demo:"https://momens.works",categories:["Backend"],techStack:{backend:["Java 21","Spring Boot 4","Spring Modulith","Spring Security","Spring Data JPA","Gradle 멀티모듈"],database:["PostgreSQL","Flyway","Testcontainers"],deployment:["Docker","Kubernetes (dev GKE)","GitHub Actions","OpenTelemetry"]},duration:"2026.06 ~ 진행 중",teamSize:"서버 2명 (전체 12명)",role:"서버 리드 (모듈 경계 설계, 팀 간 계약, 개발 환경 인프라 구축)",markdownContent:Zw,markdownImages:Ww},Kw="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2NzUiIHZpZXdCb3g9IjAgMCAxMjAwIDY3NSIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iYmciIHgxPSIwIiB5MT0iMCIgeDI9IjEyMDAiIHkyPSI2NzUiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjMGYxNzJhIi8+CiAgICAgIDxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzAyMDYxNyIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iYWNjZW50IiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMCI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzM0ZDM5OSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMxMGI5ODEiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgoKICA8cmVjdCB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2NzUiIGZpbGw9InVybCgjYmcpIi8+CgogIDwhLS0gc3VidGxlIGdyaWQgLS0+CiAgPGcgc3Ryb2tlPSIjMWUyOTNiIiBzdHJva2Utd2lkdGg9IjEiIG9wYWNpdHk9IjAuNSI+CiAgICA8bGluZSB4MT0iMCIgeTE9IjE2OCIgeDI9IjEyMDAiIHkyPSIxNjgiLz4KICAgIDxsaW5lIHgxPSIwIiB5MT0iNTA2IiB4Mj0iMTIwMCIgeTI9IjUwNiIvPgogIDwvZz4KCiAgPCEtLSBhY2NlbnQgYmFyIC0tPgogIDxyZWN0IHg9IjEyMCIgeT0iMjUwIiB3aWR0aD0iNjQiIGhlaWdodD0iOCIgcng9IjQiIGZpbGw9InVybCgjYWNjZW50KSIvPgoKICA8IS0tIGxvZ290eXBlIC0tPgogIDx0ZXh0IHg9IjExNiIgeT0iMzcyIiBmb250LWZhbWlseT0iJ1NGIFBybyBEaXNwbGF5JywgJ1NlZ29lIFVJJywgc3lzdGVtLXVpLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjEyNCIgZm9udC13ZWlnaHQ9IjgwMCIgbGV0dGVyLXNwYWNpbmc9Ii0zIj4KICAgIDx0c3BhbiBmaWxsPSIjZjFmNWY5Ij5QZWVrPC90c3Bhbj48dHNwYW4gZmlsbD0iIzM0ZDM5OSI+Q2FydDwvdHNwYW4+CiAgPC90ZXh0PgoKICA8IS0tIHRhZ2xpbmUgLS0+CiAgPHRleHQgeD0iMTIwIiB5PSI0NDAiIGZvbnQtZmFtaWx5PSInU0YgUHJvIFRleHQnLCAnU2Vnb2UgVUknLCBzeXN0ZW0tdWksIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMzQiIGZvbnQtd2VpZ2h0PSI1MDAiIGZpbGw9IiM5NGEzYjgiIGxldHRlci1zcGFjaW5nPSIwLjUiPgogICAgU2NhbGFibGUgRS1Db21tZXJjZSBCYWNrZW5kCiAgPC90ZXh0PgogIDx0ZXh0IHg9IjEyMCIgeT0iNDg2IiBmb250LWZhbWlseT0iJ1NGIFBybyBUZXh0JywgJ1NlZ29lIFVJJywgc3lzdGVtLXVpLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjIwIiBmb250LXdlaWdodD0iNDAwIiBmaWxsPSIjNjQ3NDhiIiBsZXR0ZXItc3BhY2luZz0iMC4zIj4KICAgIE1vbm9saXRoIOKGkiBNU0EgwrcgSmF2YSAxNyDCtyBTcHJpbmcgQm9vdCDCtyBLYWZrYSDCtyBSZWRpcyDCtyBLdWJlcm5ldGVzCiAgPC90ZXh0Pgo8L3N2Zz4K",Qw="/portfolio/assets/diagram-evolution-CWOpomwy.svg",qw="/portfolio/assets/diagram-lock-q9oxcav4.png",Yw="/portfolio/assets/diagram-event-slu78xFx.png",Xw="/portfolio/assets/diagram-architecture-DPstG2wG.png",Jw="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMzQwIDQxMCIgd2lkdGg9IjEzNDAiIGhlaWdodD0iNDEwIiBmb250LWZhbWlseT0iJ0FwcGxlIFNEIEdvdGhpYyBOZW8nLCdOb3RvIFNhbnMgS1InLCdNYWxndW4gR290aGljJywtYXBwbGUtc3lzdGVtLEJsaW5rTWFjU3lzdGVtRm9udCxzYW5zLXNlcmlmIj4KICA8ZGVmcz4KICAgIDxtYXJrZXIgaWQ9ImgxIiB2aWV3Qm94PSIwIDAgMTAgMTAiIHJlZlg9IjkiIHJlZlk9IjUiIG1hcmtlcldpZHRoPSI3IiBtYXJrZXJIZWlnaHQ9IjciIG9yaWVudD0iYXV0by1zdGFydC1yZXZlcnNlIj4KICAgICAgPHBhdGggZD0iTSAwIDAgTCAxMCA1IEwgMCAxMCB6IiBmaWxsPSIjMTExIi8+CiAgICA8L21hcmtlcj4KICAgIDxtYXJrZXIgaWQ9ImgyIiB2aWV3Qm94PSIwIDAgMTAgMTAiIHJlZlg9IjkiIHJlZlk9IjUiIG1hcmtlcldpZHRoPSI3IiBtYXJrZXJIZWlnaHQ9IjciIG9yaWVudD0iYXV0by1zdGFydC1yZXZlcnNlIj4KICAgICAgPHBhdGggZD0iTSAwIDAgTCAxMCA1IEwgMCAxMCB6IiBmaWxsPSIjNzc3Ii8+CiAgICA8L21hcmtlcj4KICA8L2RlZnM+CgogIDxyZWN0IHdpZHRoPSIxMzQwIiBoZWlnaHQ9IjQxMCIgZmlsbD0iI2ZmZmZmZiIvPgogIDx0ZXh0IHg9IjQwIiB5PSI0MCIgZm9udC1zaXplPSIxNyIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iIzExMSI+MeyduCDqsJzrsJztmZjqsr0g7LWc7KCB7ZmU66W8IOychO2VnCBBSSDtlZjrhKTsiqQ8L3RleHQ+CgogIDwhLS0gRGV2ZWxvcG1lbnQgaGFybmVzcyAtLT4KICA8cmVjdCB4PSI0NDAiIHk9IjY2IiB3aWR0aD0iNDYwIiBoZWlnaHQ9IjU2IiBmaWxsPSIjMTExIiBzdHJva2U9IiMxMTEiIHN0cm9rZS13aWR0aD0iMiIgcng9IjMiLz4KICA8dGV4dCB4PSI2NzAiIHk9IjEwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxNSIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iI2ZmZmZmZiI+Q2xhdWRlIMK3IENvZGV4IOyXsOuPmeqzvCDsnpHsl4Ug66y466elIOyghOuLrDwvdGV4dD4KCiAgPGxpbmUgeDE9IjY3MCIgeTE9IjEyNCIgeDI9IjY3MCIgeTI9IjE1OCIgc3Ryb2tlPSIjMTExIiBzdHJva2Utd2lkdGg9IjIiIG1hcmtlci1lbmQ9InVybCgjaDEpIi8+CgogIDwhLS0gc3RhZ2VzIC0tPgogIDxyZWN0IHg9IjEyMCIgeT0iMTYwIiB3aWR0aD0iMTEwMCIgaGVpZ2h0PSIxNTAiIGZpbGw9IiNmN2Y3ZjciIHN0cm9rZT0iIzk5OSIgc3Ryb2tlLXdpZHRoPSIxLjUiIHJ4PSIzIi8+CgogIDxyZWN0IHg9IjE1MCIgeT0iMTkyIiB3aWR0aD0iMjkwIiBoZWlnaHQ9Ijg4IiBmaWxsPSIjZmZmZmZmIiBzdHJva2U9IiMxMTEiIHN0cm9rZS13aWR0aD0iMiIgcng9IjMiLz4KICA8dGV4dCB4PSIyOTUiIHk9IjIyMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxNSIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iIzExMSI+L3BsYW48L3RleHQ+CiAgPHRleHQgeD0iMjk1IiB5PSIyNDQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTIuNSIgZmlsbD0iIzMzMyI+7LCp7IiYIOyghCDsoITsoJzrpbwgPHRzcGFuIGZvbnQtd2VpZ2h0PSI3MDAiPuy9lOuTnOuhnDwvdHNwYW4+IO2ZleyduDwvdGV4dD4KICA8dGV4dCB4PSIyOTUiIHk9IjI2NiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxMi41IiBmaWxsPSIjNjY2Ij7quLDsobQg6rWs7ZiE7J2EIO2ZleyduO2VnCDrkqQg7J6R7JeFIOuylOychCDqsrDsoJU8L3RleHQ+CgogIDxsaW5lIHgxPSI0NDIiIHkxPSIyMzYiIHgyPSI1MTYiIHkyPSIyMzYiIHN0cm9rZT0iIzExMSIgc3Ryb2tlLXdpZHRoPSIyIiBtYXJrZXItZW5kPSJ1cmwoI2gxKSIvPgoKICA8cmVjdCB4PSI1MTgiIHk9IjE5MiIgd2lkdGg9IjI5MCIgaGVpZ2h0PSI4OCIgZmlsbD0iI2ZmZmZmZiIgc3Ryb2tlPSIjMTExIiBzdHJva2Utd2lkdGg9IjIiIHJ4PSIzIi8+CiAgPHRleHQgeD0iNjYzIiB5PSIyMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTUiIGZvbnQtd2VpZ2h0PSI3MDAiIGZpbGw9IiMxMTEiPi93b3JrPC90ZXh0PgogIDx0ZXh0IHg9IjY2MyIgeT0iMjQ0IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjEyLjUiIGZpbGw9IiMzMzMiPuq1rO2YhCDCtyDrj4Xrpr0g6rKA7YagIMK3IOyiheujjCDquLDspIAg7ZmV7J24PC90ZXh0PgogIDx0ZXh0IHg9IjY2MyIgeT0iMjY2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjEyLjUiIGZpbGw9IiM2NjYiPuy2lOqwgOuhnCDsoJXtlaAg7J247YSw7Y6Y7J207Iqk64KYIOq3nOy5mSDtmZXsnbg8L3RleHQ+CgogIDxsaW5lIHgxPSI4MTAiIHkxPSIyMzYiIHgyPSI4ODQiIHkyPSIyMzYiIHN0cm9rZT0iIzExMSIgc3Ryb2tlLXdpZHRoPSIyIiBtYXJrZXItZW5kPSJ1cmwoI2gxKSIvPgoKICA8cmVjdCB4PSI4ODYiIHk9IjE5MiIgd2lkdGg9IjI5MCIgaGVpZ2h0PSI4OCIgZmlsbD0iI2ZmZmZmZiIgc3Ryb2tlPSIjMTExIiBzdHJva2Utd2lkdGg9IjIiIHJ4PSIzIi8+CiAgPHRleHQgeD0iMTAzMSIgeT0iMjIwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjE1IiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjMTExIj4vc2hpcDwvdGV4dD4KICA8dGV4dCB4PSIxMDMxIiB5PSIyNDQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTIuNSIgZmlsbD0iIzMzMyI+7Luk67CLIOu2hO2VoCDCtyBQUiDrs7jrrLg8L3RleHQ+CiAgPHRleHQgeD0iMTAzMSIgeT0iMjY2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjEyLjUiIGZpbGw9IiM2NjYiPuynhO2WiSDsg4Htg5zripQg6rOE7ZqN7ISc7JmAIGdpdCDsnbTroKXsl5A8L3RleHQ+CgogIDwhLS0gdXNlciBnYXRlIC0tPgogIDxsaW5lIHgxPSIyOTUiIHkxPSIyODIiIHgyPSIyOTUiIHkyPSIzMzAiIHN0cm9rZT0iIzc3NyIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtZGFzaGFycmF5PSI1IDQiIG1hcmtlci1lbmQ9InVybCgjaDIpIi8+CiAgPGxpbmUgeDE9IjY2MyIgeTE9IjI4MiIgeDI9IjY2MyIgeTI9IjMzMCIgc3Ryb2tlPSIjNzc3IiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1kYXNoYXJyYXk9IjUgNCIgbWFya2VyLWVuZD0idXJsKCNoMikiLz4KICA8bGluZSB4MT0iMTAzMSIgeTE9IjI4MiIgeDI9IjEwMzEiIHkyPSIzMzAiIHN0cm9rZT0iIzc3NyIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtZGFzaGFycmF5PSI1IDQiIG1hcmtlci1lbmQ9InVybCgjaDIpIi8+CgogIDxyZWN0IHg9IjE1MCIgeT0iMzMyIiB3aWR0aD0iMTAyNiIgaGVpZ2h0PSI1MiIgZmlsbD0iI2ZmZmZmZiIgc3Ryb2tlPSIjMTExIiBzdHJva2Utd2lkdGg9IjIiIHJ4PSIzIi8+CiAgPHRleHQgeD0iNjYzIiB5PSIzNjMiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTQiIGZvbnQtd2VpZ2h0PSI3MDAiIGZpbGw9IiMxMTEiPuuLqOqzhOuzhCDtmZXsnbgg7KCI7LCoIMK3IOqzhO2ajSDtmZXsnbggwrcg67OA6rK9IOqygO2GoCDCtyDsu6TrsIsg67aE7ZWgIMK3IFBSIOuzuOusuDwvdGV4dD4KCjwvc3ZnPgo=",eS="/portfolio/assets/diagram-infra-CtkPKuGT.png",tS="/portfolio/assets/diagram-decomposition-Cfk3uO6u.svg",nS="/portfolio/assets/diagram-gateway-auth-BH3a8YUy.svg",rS="/portfolio/assets/diagram-saga-CTRzhSOM.svg",iS={diagram_evolution:Qw,diagram_lock:qw,diagram_event:Yw,diagram_architecture:Xw,diagram_harness:Jw,diagram_infra:eS,diagram_decomposition:tS,diagram_gateway_auth:nS,diagram_saga:rS},oS=`## 프로젝트 개요
 
-**PeekCart**는 동시 주문과 서비스 분리를 직접 검증하려고 만든 개인 이커머스 백엔드 프로젝트다. 모놀리식으로 시작해 재고 정합성, 이벤트 처리, 부하를 점검한 뒤 5개 서비스로 분리했다. 각 단계에서 선택이 맞았는지 테스트와 측정으로 확인하고, 목표에 못 미친 결과도 기록했다.
+**PeekCart**는 동시 주문과 서비스 분리를 직접 검증하려고 만든 개인 이커머스 백엔드 프로젝트다. 모놀리식으로 시작해 재고 정합성, 이벤트 처리, 부하를 점검한 뒤 5개 서비스로 분리했다. 각 단계에서 선택이 맞았는지 테스트와 측정으로 확인하고 목표에 못 미친 결과도 기록했다.
 
 ### 담당 범위와 주요 작업
 
 백엔드 설계, 구현, 인프라 구성 및 부하 검증을 단독 수행함.
 
-- **동시 주문 및 이벤트 처리 검증**: 1,000 VUser 부하 테스트에서 오버셀링은 관측되지 않았지만 실패율은 목표를 충족하지 못했다. 낙관적 락이 재고를 지켰고, 주문 경로의 분산 락은 기대한 순서로 작동하지 않았다.
+- **동시 주문 및 이벤트 처리 검증**: 1,000 VUser 부하 테스트에서 오버셀링은 관측되지 않았지만 실패율은 목표를 충족하지 못했다. 낙관적 락이 재고를 지켰고 주문 경로의 분산 락은 기대한 순서로 작동하지 않았다.
 - **5개 서비스로 분리**: 서비스 간 동기 결합을 먼저 제거하고 DB 소유권과 인증 계약을 다시 정했다.
-- **조회 성능 및 CI 시간 개선**: Redis 적용 후 상품 조회 TPS는 265.0에서 612.7로 늘었고, CI 전체 실행 시간은 51분 44초에서 30분 23초로 줄었다.
+- **조회 성능 및 CI 시간 개선**: Redis 적용 후 상품 조회 TPS는 265.0에서 612.7로 늘었고 CI 전체 실행 시간은 51분 44초에서 30분 23초로 줄었다.
 - **검증 도구의 실패 감지 확인**: 일부러 결함을 다시 넣어 테스트와 검사 스크립트의 실패 여부를 점검했다.
 
 ### 프로젝트 배경
 
-"이커머스 CRUD"는 많지만, 트래픽이 몰릴 때 무엇이 먼저 깨지는지, 그걸 어떤 순서로 막아야 하는지를 직접 겪어보고 싶었다. 그래서 처음부터 MSA로 가지 않고 **모놀리식으로 시작한 뒤, 동시성, 이벤트 유실, 중복 소비 같은 문제를 실제로 마주칠 때마다 그에 맞는 패턴을 도입**하는 방식으로 진행했다.
+"이커머스 CRUD"는 많지만 트래픽이 몰릴 때 무엇이 먼저 깨지는지, 그걸 어떤 순서로 막아야 하는지를 직접 겪어보고 싶었다. 그래서 처음부터 MSA로 가지 않고 **모놀리식으로 시작한 뒤, 동시성, 이벤트 유실, 중복 소비 같은 문제를 실제로 마주칠 때마다 그에 맞는 패턴을 도입**하는 방식으로 진행했다.
 
-기술을 도입할 때마다 문제와 대안, 선택 이유, 한계를 기록했다. 주요 결정은 ADR(Architecture Decision Record) 21건으로 남겼고, 측정 결과가 목표에 못 미친 경우도 그대로 적었다.
+기술을 도입할 때마다 문제와 대안, 선택 이유, 한계를 기록했다. 주요 결정은 ADR(Architecture Decision Record) 21건으로 남겼고 측정 결과가 목표에 못 미친 경우도 그대로 적었다.
 
-처음에는 단일 애플리케이션에서 동시성 문제를 확인했고, 이후 서비스 분리와 교차 서비스 계약을 다뤘다.
+처음에는 단일 애플리케이션에서 동시성 문제를 확인했고 이후 서비스 분리와 교차 서비스 계약을 다뤘다.
 
 ### 단일 애플리케이션에서 시작한 이유
 
@@ -765,9 +765,9 @@ Momens는 프로젝트 맥락과 태스크를 관리하는 도구다. 그래서 
 
 ## 동시 주문의 재고 정합성
 
-재고가 100개인 상품에 동시 주문이 몰리면, 재고 확인과 차감 사이의 틈에서 여러 트랜잭션이 같은 재고를 읽고 각자 차감해 **오버셀링**이 발생한다. Serializable이나 \`SELECT FOR UPDATE\`로 막을 수는 있지만, 락 경합과 DB 커넥션 점유를 주문 경로에 집중시키고 싶지 않았다.
+재고가 100개인 상품에 동시 주문이 몰리면 재고 확인과 차감 사이의 틈에서 여러 트랜잭션이 같은 재고를 읽고 각자 차감해 **오버셀링**이 발생한다. Serializable이나 \`SELECT FOR UPDATE\`로 막을 수는 있지만 락 경합과 DB 커넥션 점유를 주문 경로에 집중시키고 싶지 않았다.
 
-설계 의도는 **Redis 분산 락(Redisson)으로 동시 요청을 직렬화**하고, 락 경합 시 대기 없이 409로 응답하는 것이었다. **Redis 장애 시에는 락 없이 트랜잭션을 진행하고, DB 낙관적 락(\`@Version\`)으로 동시 차감을 방어**하도록 구성했다. 실제 주문 경로에서 락과 트랜잭션의 실행 순서를 확인한 결과는 아래에 적었다.
+설계 의도는 **Redis 분산 락(Redisson)으로 동시 요청을 직렬화**하고 락 경합 시 대기 없이 409로 응답하는 것이었다. **Redis 장애 시에는 락 없이 트랜잭션을 진행하고, DB 낙관적 락(\`@Version\`)으로 동시 차감을 방어**하도록 구성했다. 실제 주문 경로에서 락과 트랜잭션의 실행 순서를 확인한 결과는 아래에 적었다.
 
 ![재고 동시성: 분산 락과 낙관적 락 흐름]({{diagram_lock}})
 
@@ -802,15 +802,15 @@ Redis 장애 시 \`DistributedLockManager\`는 락 획득 예외를 처리하고
 
 ## 이벤트 발행 보장과 중복 소비
 
-주문이 생기면 결제, 알림 도메인에 알려야 한다. Phase 1에서는 \`@TransactionalEventListener(AFTER_COMMIT)\`로 처리했는데, **이벤트 핸들러는 커밋 이후에 실행되므로 거기서 예외가 나도 이미 커밋된 주문은 롤백되지 않는다.** 더 큰 문제는 Phase 2에서 Kafka로 넘어갈 때다. "DB 커밋 성공 → Kafka 발행 실패"가 발생하면 이벤트가 영구 유실되어 도메인 간 상태가 어긋난다.
+주문이 생기면 결제, 알림 도메인에 알려야 한다. Phase 1에서는 \`@TransactionalEventListener(AFTER_COMMIT)\`로 처리했는데 **이벤트 핸들러는 커밋 이후에 실행되므로 거기서 예외가 나도 이미 커밋된 주문은 롤백되지 않는다.** Phase 2에서 Kafka로 넘어가면 문제가 더 커진다. "DB 커밋 성공 → Kafka 발행 실패"가 발생하면 이벤트가 영구 유실되어 도메인 간 상태가 어긋난다.
 
-비즈니스 데이터와 이벤트를 **하나의 트랜잭션으로 Outbox 테이블에 함께 저장**하고, 폴링 스케줄러가 Outbox를 읽어 Kafka로 발행한다. 발행 실패는 \`retry_count\`로 재시도하고, 한계를 넘으면 \`FAILED\` + Slack 알림으로 격리한다. Consumer 쪽은 멱등성과 DLQ로 중복, 실패를 흡수한다.
+비즈니스 데이터와 이벤트를 **하나의 트랜잭션으로 Outbox 테이블에 함께 저장**하고 폴링 스케줄러가 Outbox를 읽어 Kafka로 발행한다. 발행 실패는 \`retry_count\`로 재시도하고 한계를 넘으면 \`FAILED\` + Slack 알림으로 격리한다. Consumer 쪽은 멱등성으로 중복을, DLQ로 실패를 처리한다.
 
 ![이벤트 파이프라인: Outbox, 멱등성, DLQ]({{diagram_event}})
 
 **Outbox 발행 방식 선택**
 
-Outbox를 Kafka로 내보내는 방법은 두 가지다. Debezium CDC는 MySQL binlog를 실시간으로 읽어 지연이 거의 없지만 Kafka Connect 클러스터라는 추가 인프라를 운영해야 한다. 포트폴리오 범위에서는 추가 인프라 없이 Spring Scheduler로 구현 가능한 **폴링 방식**이 적정 트레이드오프라고 판단했고, 추후 CDC로 교체 가능한 구조로 분리해 두었다.
+Outbox를 Kafka로 내보내는 방법은 두 가지다. Debezium CDC는 MySQL binlog를 실시간으로 읽어 지연이 거의 없지만 Kafka Connect 클러스터라는 추가 인프라를 운영해야 한다. 포트폴리오 범위에서는 추가 인프라 없이 Spring Scheduler로 구현 가능한 **폴링 방식**이 적정 트레이드오프라고 판단했고 추후 CDC로 교체 가능한 구조로 분리해 두었다.
 
 **이벤트 중복 소비 방지**
 
@@ -820,7 +820,7 @@ Kafka는 at-least-once 전달이라 같은 이벤트가 두 번 올 수 있다. 
 
 **발행 실패와 소비 실패 처리**
 
-발행 자체가 실패하는 것(Outbox \`FAILED\`)과, 발행은 됐지만 소비 처리가 실패하는 것(DLQ)은 원인도 대응도 다르다. 둘을 같은 메커니즘으로 뭉뚱그리지 않고 분리했다. Consumer는 3회 재시도(1s, 5s, 30s) 후에도 실패하면 \`{원본 토픽}.dlq\`로 격리하고 Slack으로 알린다.
+발행 자체가 실패하는 것(Outbox \`FAILED\`)과, 발행은 됐지만 소비 처리가 실패하는 것(DLQ)은 원인도 대응도 다르다. 둘은 별도 메커니즘으로 분리했다. Consumer는 3회 재시도(1s, 5s, 30s) 후에도 실패하면 \`{원본 토픽}.dlq\`로 격리하고 Slack으로 알린다.
 
 | 단계 | Phase 1 | Phase 2 이후 |
 | --- | --- | --- |
@@ -831,7 +831,7 @@ Kafka는 at-least-once 전달이라 같은 이벤트가 두 번 올 수 있다. 
 
 **DLQ의 실패 기록과 재처리 계약**
 
-DLQ로 보내는 것까지는 유실을 막지만, 격리된 실패가 **어디에 있는지**를 상태로 들고 있지 않으면 아무도 다시 처리할 수 없다. Slack 알림은 사건을 알릴 뿐 재처리의 입력이 되지 못한다. 그래서 Phase 4에서 실패 레코드의 물리 좌표(토픽, 파티션, 오프셋)를 남기는 **DLQ 원장**을 넣고, 그 위에 재발행 계약(ADR-0020, 0021)을 설계했다. 사가의 미완료 상태 처리에서 다룬다.
+DLQ로 보내는 것까지는 유실을 막지만 격리된 실패가 **어디에 있는지**를 상태로 들고 있지 않으면 아무도 다시 처리할 수 없다. Slack 알림은 사건을 알리기만 할 뿐 재처리에 쓸 입력을 남기지 않는다. 그래서 Phase 4에서 실패 레코드의 물리 좌표(토픽, 파티션, 오프셋)를 남기는 **DLQ 원장**을 넣고 그 위에 재발행 계약(ADR-0020, 0021)을 설계했다. 사가의 미완료 상태 처리에서 다룬다.
 
 > 관련 글: 학습 기록 10 (Transactional Outbox), 학습 기록 11 (멱등성 + DLQ), 학습 기록 5 (결제 실패 흐름), 학습 기록 6 (알림 실패 격리)
 
@@ -839,7 +839,7 @@ DLQ로 보내는 것까지는 유실을 막지만, 격리된 실패가 **어디�
 
 ## 캐시와 부하 테스트 결과
 
-"캐시를 넣어서 빨라졌다", "동시성 문제를 막았다"는 말은 수치 없이는 신뢰하기 어렵다. 실제 부하 환경에서 무엇이 병목이고, 개선이 얼마나 됐는지를 **측정**해야 했다.
+"캐시를 넣어서 빨라졌다", "동시성 문제를 막았다"는 말은 수치 없이는 신뢰하기 어렵다. 실제 부하 환경에서 무엇이 병목이고 개선이 얼마나 됐는지를 **측정**해야 했다.
 
 GKE(e2-standard-4) 환경에 배포하고 nGrinder, k6로 시나리오를 나눠 실측했다. 캐시 효과, 동시 주문 정합성, HPA 자동 확장, Kafka Lag을 각각 분리해 측정했다.
 
@@ -856,21 +856,21 @@ GKE(e2-standard-4) 환경에 배포하고 nGrinder, k6로 시나리오를 나눠
 
 **재고를 캐시하지 않은 이유**
 
-상품명, 가격 같은 정보는 캐시(Cache-Aside)에 적합하지만, **재고는 캐시에 넣지 않았다.** 재고는 주문마다 바뀌는 강한 정합성 대상이라, 캐시에 두면 무효화 타이밍에 오버셀링 리스크가 생긴다. "자주 읽고 드물게 바뀌는 것"만 캐싱하고 재고는 DB+락으로 다뤘다.
+상품명, 가격 같은 정보는 캐시(Cache-Aside)에 적합하지만 **재고는 캐시에 넣지 않았다.** 재고는 주문마다 바뀌는 강한 정합성 대상이라 캐시에 두면 무효화 타이밍에 오버셀링 리스크가 생긴다. "자주 읽고 드물게 바뀌는 것"만 캐싱하고 재고는 DB+락으로 다뤘다.
 
 **상품 조회 성능 측정**
 
-캐싱 개선 목표는 3배였지만 실측은 2.31배였다. 이를 그대로 기록하고 원인을 분석했다. 캐시 ON 상태에서도 Pod CPU 피크가 **1.75 코어**(limit 2 코어의 88%)까지 올라 **CPU가 병목**이었고, 단일 Pod 환경의 한계가 드러났다. 이 데이터가 다음 시나리오(동시 주문 + HPA)의 근거가 됐다.
+캐싱 개선 목표는 3배였지만 실측은 2.31배였다. 이를 그대로 기록하고 원인을 분석했다. 캐시 ON 상태에서도 Pod CPU 피크가 **1.75 코어**(limit 2 코어의 88%)까지 올라 **CPU가 병목**이었고 단일 Pod 환경의 한계가 드러났다. 이 데이터를 근거로 다음 시나리오(동시 주문 + HPA)를 잡았다.
 
 **동시 주문의 정합성과 처리량**
 
-1,000 VUser 동시 주문 테스트의 실패율은 Run 1 60.59%, Run 2 35.90%로, **목표인 10% 미만을 충족하지 못했다.** 테스트 중 오버셀링은 관측되지 않았으며, 실제 주문 경로의 재고 변경은 낙관적 락이 방어했다. HPA는 CPU가 request 대비 400%에 도달했을 때 Pod를 1→3으로 늘렸고, CPU 사용률은 확장 직후 90%, 부하 종료 후 15%로 내려갔다. replica 3을 미리 띄운 Run 2에서는 커밋된 주문이 25건에서 110건으로 늘었다. 자동 확장 여부와 확장을 기다리는 동안의 처리 결과를 나누어 확인했다.
+1,000 VUser 동시 주문 테스트의 실패율은 Run 1 60.59%, Run 2 35.90%로, **목표인 10% 미만을 충족하지 못했다.** 테스트 중 오버셀링은 관측되지 않았으며 실제 주문 경로의 재고 변경은 낙관적 락이 방어했다. HPA는 CPU가 request 대비 400%에 도달했을 때 Pod를 1→3으로 늘렸고 CPU 사용률은 확장 직후 90%, 부하 종료 후 15%로 내려갔다. replica 3을 미리 띄운 Run 2에서는 커밋된 주문이 25건에서 110건으로 늘었다. 자동 확장 여부와 확장을 기다리는 동안의 처리 결과를 나누어 확인했다.
 
 경합 상품 10개 × 재고 100(총 1,000개)에 대해 커밋까지 도달한 주문은 Run 1 25건, Run 2 110건이었다. 재고 소진 구간까지 경합하지 못했으므로 오버셀링 0건만으로 재고 고갈 시점의 정합성을 입증할 수는 없다. 실패 로그(\`EOF\` 519건, \`connection refused\` 173건, \`dial timeout\` 130건)를 바탕으로 DB 커넥션 풀, 락 경합과 Pod readiness 손실을 원인 후보로 정리했다. 원인을 구분하려면 HikariCP 대기 시간과 readiness 전이를 함께 측정해야 한다. 재고 소진 구간의 재측정도 후속 과제로 남겼다.
 
 **부하 테스트 산출물의 한계**
 
-Run 1의 \`k6-summary.json\`, \`stdout\` 은 Run 2 직전 백업 단계에서 디렉토리 미생성으로 유실됐다. 그래서 임계값 판정의 1차 근거는 파일이 보존된 **Run 2**로 두고, Run 1 수치는 채팅 전사 기준의 보조 증거로만 쓴다고 리포트에 명시했다. 정합성, HPA 타임라인은 별도 산출물(\`verify-concurrency.txt\`, \`kubectl get hpa -w\` 로그, Grafana 스크린샷)로 검증 가능하다.
+Run 1의 \`k6-summary.json\`, \`stdout\` 은 Run 2 직전 백업 단계에서 디렉토리 미생성으로 유실됐다. 그래서 임계값 판정의 1차 근거는 파일이 보존된 **Run 2**로 두고 Run 1 수치는 채팅 전사 기준의 보조 증거로만 쓴다고 리포트에 명시했다. 정합성, HPA 타임라인은 별도 산출물(\`verify-concurrency.txt\`, \`kubectl get hpa -w\` 로그, Grafana 스크린샷)로 검증 가능하다.
 
 > 관련 글: 학습 기록 8 (Cache-Aside), 학습 기록 16 (캐시 효과 측정), 학습 기록 17 (1,000 동시 주문, HPA, Kafka Lag)
 
@@ -878,13 +878,13 @@ Run 1의 \`k6-summary.json\`, \`stdout\` 은 Run 2 직전 백업 단계에서 �
 
 ## 도메인 경계와 서비스 구성
 
-도메인별로 Presentation / Application / Domain / Infrastructure 4개 레이어를 분리하고, 의존 방향을 단방향(Presentation → Application → Domain ← Infrastructure)으로 강제했다. 비즈니스 로직은 Service가 아닌 **Entity / Domain Service에 응집**시켰다.
+도메인별로 Presentation / Application / Domain / Infrastructure 4개 레이어를 분리하고 의존 방향을 단방향(Presentation → Application → Domain ← Infrastructure)으로 강제했다. 비즈니스 로직은 Service가 아닌 **Entity / Domain Service에 응집**시켰다.
 
 ![4-Layered + DDD 아키텍처]({{diagram_architecture}})
 
-JPA는 실용적으로 절충했다. 도메인 엔티티에 \`@Entity\` 등 매핑 어노테이션은 허용하되, 비즈니스 로직이 \`EntityManager\` 같은 JPA API에 직접 의존하지 않도록 막았다. 엔티티-도메인 분리에 따르는 매핑 보일러플레이트를 피하면서 도메인 순수성과 생산성을 함께 확보하기 위한 선택이다.
+JPA는 실용적으로 절충했다. 도메인 엔티티에 \`@Entity\` 등 매핑 어노테이션은 허용하되 비즈니스 로직이 \`EntityManager\` 같은 JPA API에 직접 의존하지 않도록 막았다. 엔티티-도메인 분리에 따르는 매핑 보일러플레이트를 피하면서 도메인 순수성과 생산성을 함께 확보하기 위한 선택이다.
 
-Phase 4에서 이 5개 도메인이 그대로 5개 서비스가 됐고, **레이어 규칙은 서비스 안에서 그대로 유지**된다. 도메인 경계를 먼저 잡아둔 것이 분해의 실제 이득이었다.
+Phase 4에서 이 5개 도메인이 그대로 5개 서비스가 됐고 **레이어 규칙은 서비스 안에서 그대로 유지**된다. 도메인 경계를 먼저 잡아둔 덕에 분해에서 실제 이득을 봤다.
 
 | 구성 요소 | 책임 |
 | --- | --- |
@@ -906,7 +906,7 @@ GCP/GKE 단일 노드(e2-standard-4) 위에 앱과 백킹 서비스(MySQL, Redis
 
 - **배포**: Kustomize base/overlays(minikube, GKE), HPA 1→3(CPU 60%), Liveness, Readiness, Startup Probe 구성
 - **관측성**: ServiceMonitor가 \`/actuator/prometheus\`를 15초 주기로 스크레이프 → Prometheus(24h) → Grafana, 임계치 초과 시 Slack 알림
-- **이미지 파이프라인**: GitHub Actions CI가 GHCR로 발행하고, GKE 부하 테스트용으로 Artifact Registry에 복사해 pull
+- **이미지 파이프라인**: GitHub Actions CI가 GHCR로 발행하고 GKE 부하 테스트용으로 Artifact Registry에 복사해 pull
 - **외부 연동**: Toss Payments(결제), Slack(알림) egress
 
 > 위 그림은 단일 애플리케이션에서 부하를 측정할 때의 구성이다. 서비스 분리 후에는 Dockerfile, CI 이미지 빌드, Deployment, Service, ServiceMonitor를 서비스별로 나눴다. NetworkPolicy로 Gateway를 경유하도록 제한하고, 이름, 라벨, 노출 설정은 검사 스크립트로 확인한다.
@@ -921,9 +921,9 @@ Product를 분리하면 **Order가 단독으로 기동하지 못했다.** Order�
 
 1. 의존이 없는 \`notification\` → \`user\`를 먼저 분리한다 (독립 서비스)
 2. Order, Product, Payment는 하나의 **사가 클러스터**로 묶어, 모듈을 나누기 전에 동기 호출 seam을 이벤트/로컬 캐시로 교체한다
-3. seam이 0이 된 뒤에 모듈을 떼고, 마지막에 **루트 앱을 해체**한다
+3. seam이 0이 된 뒤에 모듈을 떼고 마지막에 **루트 앱을 해체**한다
 
-seam 제거는 다섯 단계로 나뉜다.
+seam은 다섯 단계에 걸쳐 제거했다.
 
 ![동기 결합 제거 후 서비스 분리]({{diagram_decomposition}})
 
@@ -937,19 +937,19 @@ seam 제거는 다섯 단계로 나뉜다.
 
 **Order의 상품 정보 갱신**
 
-Order가 상품 단가를 보관하면 조회는 빨라지지만 오래된 값으로 주문을 만들 위험이 있다. \`product.updated\` payload의 \`@Version\`으로 갱신 순서를 확인하고, 늦게 도착한 낮은 버전은 원자적 upsert에서 제외한다.
+Order가 상품 단가를 보관하면 조회는 빨라지지만 오래된 값으로 주문을 만들 위험이 있다. \`product.updated\` payload의 \`@Version\`으로 갱신 순서를 확인하고 늦게 도착한 낮은 버전은 원자적 upsert에서 제외한다.
 
 **로컬 상품 정보 누락 처리**
 
-\`verifyProductExists\`를 로컬 캐시로 바꾸면 "상품이 없다"와 "아직 복제되지 않았다"가 같은 모양이 된다. 둘을 같은 응답으로 처리하면 신규 상품 주문이 조용히 실패한다. 미스에는 별도 에러 코드(\`ORD-009\`)가 부여되고, order 모듈이 product의 소스를 참조하지 못하게 하는 가드가 빌드에 걸려 있다.
+\`verifyProductExists\`를 로컬 캐시로 바꾸면 "상품이 없다"와 "아직 복제되지 않았다"가 구분되지 않는다. 둘을 같은 응답으로 처리하면 신규 상품 주문이 실패하는데 그 실패가 드러나지 않는다. 미스에는 별도 에러 코드(\`ORD-009\`)를 부여했고 order 모듈이 product의 소스를 참조하지 못하게 하는 가드를 빌드에 걸었다.
 
 **서비스의 독립 기동 확인**
 
-서비스 분리 전 운영 코드에서 서비스 간 동기 호출이 남았는지 검사했다. strangler-4 시점에 Order↔Product가 0이 됐고, strangler-5로 Order↔Payment가 0이 됐다. 그 뒤에 모듈을 분리했다.
+서비스 분리 전 운영 코드에서 서비스 간 동기 호출이 남았는지 검사했다. strangler-4 시점에 Order↔Product가 0이 됐고 strangler-5로 Order↔Payment가 0이 됐다. 그 뒤에 모듈을 분리했다.
 
 **새 모듈의 빌드, 배포 설정 검사**
 
-서비스 모듈을 하나 추가할 때마다 Dockerfile의 의존성 워밍 레이어와 CI 이미지 매트릭스도 함께 고쳐야 한다. 사람이 기억해야 할 규약으로 남기지 않도록, Gradle 서브프로젝트 목록과 Dockerfile/CI 참조 목록을 **양방향으로 대조**하는 lint(\`dockerfile-module-sync-lint\`, \`image-contract-lint\`)가 루트 \`check\`에 걸려 있다. 누락과 제거된 모듈의 잔존을 모두 잡는다.
+서비스 모듈을 하나 추가할 때마다 Dockerfile의 의존성 워밍 레이어와 CI 이미지 매트릭스도 함께 고쳐야 한다. 사람이 기억해야 할 규약으로 남기지 않도록, Gradle 서브프로젝트 목록과 Dockerfile/CI 참조 목록을 **양방향으로 대조**하는 lint(\`dockerfile-module-sync-lint\`, \`image-contract-lint\`)를 루트 \`check\`에 걸어 누락과 제거된 모듈의 잔존을 모두 잡는다.
 
 ---
 
@@ -957,7 +957,7 @@ Order가 상품 단가를 보관하면 조회는 빨라지지만 오래된 값�
 
 모듈은 나뉘었지만 5개 서비스가 한 스키마를 공유하고 있었다. **교차 도메인 FK가 스키마 분리를 막았다.** 예를 들어 \`orders.user_id\`가 \`users\`를 FK로 참조하므로, 스키마를 분리하려면 이 제약을 먼저 제거해야 했다.
 
-세 단계로 나뉜다.
+세 단계로 진행했다.
 
 1. **교차 도메인 FK 6개 드롭** (\`fk_carts_user\`, \`fk_cart_items_product\`, \`fk_orders_user\`, \`fk_order_items_product\`, \`fk_payments_order\`, \`fk_notifications_user\`). 컬럼은 남기고 **ID 참조**로 바꾼다. 참조 무결성은 DB가 아니라 사가가 책임진다
 2. **물리 스키마 분리**. 1 인스턴스 + 5 스키마/계정, Flyway를 서비스별로 소유(order 10, product 8, payment 8, notification 6, user 2)
@@ -965,11 +965,11 @@ Order가 상품 단가를 보관하면 조회는 빨라지지만 오래된 값�
 
 **이벤트 기록의 보존 기간**
 
-\`processed_events\`를 지우면 그 시점 이후로는 **같은 이벤트가 다시 와도 중복으로 판정되지 않는다.** 즉 보존 기간은 곧 **멱등성 창의 상한**이다. 디스크를 아끼려고 짧게 잡으면 중복 방어가 그만큼 짧아진다. 이 결정은 부채(L-008/011)로 남아 있다가 이 단계에서 명시적으로 닫혔다.
+\`processed_events\`를 지우면 그 시점 이후로는 **같은 이벤트가 다시 와도 중복으로 판정되지 않는다.** 보존 기간이 곧 **멱등성 창의 상한**이다. 디스크를 아끼려고 짧게 잡으면 중복 방어가 그만큼 짧아진다. 부채(L-008/011)로 남아 있던 이 결정을 이 단계에서 명시적으로 내렸다.
 
 **DB 테이블 소유권 검사**
 
-DB를 서비스별로 분리해도 코드가 다른 서비스의 테이블을 매핑하면 소유권이 흐려진다. 5개 서비스가 자기 테이블만 매핑하는지는 검증으로 고정돼 있다.
+DB를 서비스별로 분리해도 코드가 다른 서비스의 테이블을 매핑하면 소유권이 흐려진다. 5개 서비스가 자기 테이블만 매핑하는지를 검증으로 고정했다.
 
 **DB 인스턴스 구성 범위**
 
@@ -979,9 +979,9 @@ DB를 서비스별로 분리해도 코드가 다른 서비스의 테이블을 �
 
 ## 서비스 간 인증 근거 변경
 
-서비스가 5개가 되면 5곳이 각자 JWT를 검증한다. 검증 로직이 복제되고, 키 회전이 5배로 번진다. Gateway를 두고 한 번만 검증하는 것이 정석이지만, 그러면 **Gateway가 "이 요청은 누구다"를 어떻게 뒤에 전달하는가**가 새 문제가 된다.
+서비스가 5개가 되면 5곳이 각자 JWT를 검증한다. 검증 로직이 복제되고 키 회전이 5배로 번진다. Gateway를 두고 한 번만 검증하는 것이 정석이지만 그러면 **Gateway가 "이 요청은 누구다"를 어떻게 뒤에 전달하는가**가 새 문제가 된다.
 
-서비스 간 인증 방식은 다음 세 단계로 바뀌었다.
+서비스 간 인증 방식은 세 단계를 거쳐 바꿨다.
 
 | 단계 | 인증 근거 | 신뢰의 전제 |
 | --- | --- | --- |
@@ -993,19 +993,19 @@ DB를 서비스별로 분리해도 코드가 다른 서비스의 테이블을 �
 
 **평문 헤더 인증의 위험**
 
-평문 헤더로 사용자를 식별하는 방식은 NetworkPolicy 설정 오류나 우회가 생기면 인증이 무력화된다. Gateway가 서명한 내부 토큰을 검증하도록 바꿨고, 이 결정을 ADR-0017에 기록했다.
+평문 헤더로 사용자를 식별하는 방식은 NetworkPolicy 설정 오류나 우회가 생기면 인증이 무력화된다. Gateway가 서명한 내부 토큰을 검증하도록 바꿨고 이 결정을 ADR-0017에 기록했다.
 
 **인증 설정의 중복 제거**
 
-Gateway는 WebFlux, 검증 측(\`peekcart-common-auth\`)은 Servlet이라 **서로를 의존할 수 없다.** 양쪽에 issuer, claim, 헤더 이름을 각각 적으면 언젠가 어긋난다. 그래서 이름은 프레임워크 의존이 0인 \`internal-token-contract\` 모듈에 한 번만 정의된다. 루트 가드에는 예외가 한 건 열려 있지만, **그 계약 모듈이 프로젝트/Spring 의존을 갖는 것을 금지하는 검사**가 함께 걸려 있어 예외가 우회로가 되지 않는다.
+Gateway는 WebFlux, 검증 측(\`peekcart-common-auth\`)은 Servlet이라 **서로를 의존할 수 없다.** 양쪽에 issuer, claim, 헤더 이름을 각각 적으면 언젠가 어긋난다. 그래서 이름은 프레임워크 의존이 0인 \`internal-token-contract\` 모듈에 한 번만 정의했다. 루트 가드에는 예외가 한 건 열려 있지만 **그 계약 모듈이 프로젝트/Spring 의존을 갖는 것을 금지하는 검사**를 함께 걸어 두어 이 예외로 가드를 우회할 수 없다.
 
 **서명 키 식별과 교체**
 
-사용자 토큰 검증용 공개키 레지스트리에 Gateway 공개키를 함께 넣으면, \`JwkController\`가 레지스트리를 통째로 JWKS로 게시하면서 **내부 신뢰 앵커가 외부에 노출**된다. 두 키 도메인이 섞이지 않게 강제하되, 기준을 kid로 두면 같은 키를 다른 kid로 등록하는 우회가 열린다. 그래서 강제는 **SPKI DER SHA-256 fingerprint 집합이 서로소인지**로 한다(lint + 5서비스 통합 테스트 이중).
+사용자 토큰 검증용 공개키 레지스트리에 Gateway 공개키를 함께 넣으면 \`JwkController\`가 레지스트리를 통째로 JWKS로 게시하면서 **내부 신뢰 앵커가 외부에 노출**된다. 두 키 도메인이 섞이지 않게 강제하되 기준을 kid로 두면 같은 키를 다른 kid로 등록하는 우회가 열린다. 그래서 **SPKI DER SHA-256 fingerprint 집합이 서로소인지**로 강제한다(lint + 5서비스 통합 테스트 이중).
 
 **공유 계약 토큰을 이용한 검증**
 
-발행(gateway)과 검증(common-auth)은 같은 테스트에 올릴 수 없다. 대신 공유 테스트 데이터에 저장한 **계약 토큰**을 양쪽이 각각 고정한다. 한쪽만 바뀌면 반대편이 깨진다.
+발행(gateway)과 검증(common-auth)은 같은 테스트에 올릴 수 없다. 공유 테스트 데이터에 저장한 **계약 토큰**을 양쪽이 각각 고정한다. 한쪽만 바뀌면 반대편 테스트가 실패한다.
 
 **실패 시 인증 거부**
 
@@ -1019,8 +1019,8 @@ Gateway는 WebFlux, 검증 측(\`peekcart-common-auth\`)은 Servlet이라 **서�
 
 작업을 시작하기 전에 코드를 확인하니 계획서의 범위가 실제 상태와 달랐다. 예약, 확정, 복구 consumer와 \`stock.reservation.result\`는 서비스 분리 과정에서 이미 구현돼 있었다. 남은 작업은 실행 중인 사가의 미완료 상태를 처리하는 것으로 다시 정했다.
 
-- **lease 계약**: 재고 예약의 만료 시각을 Product가 부여해 사가 참여자가 공유한다. Order가 먼저 취소하고, Payment는 만료된 lease의 승인을 거부하고, sweeper는 만료+유예 뒤에만 회수한다
-- **\`@Version\` + 수렴 규칙**: 주문 상태 전이에 낙관 락을 넣고, 진 쪽의 처리를 명시한다
+- **lease 계약**: 재고 예약의 만료 시각을 Product가 부여해 사가 참여자가 공유한다. Order가 먼저 취소하고 Payment는 만료된 lease의 승인을 거부하고 sweeper는 만료+유예 뒤에만 회수한다
+- **\`@Version\` + 수렴 규칙**: 주문 상태 전이에 낙관 락을 넣고 진 쪽의 처리를 명시한다
 - **보상 원장**: 취소된 주문에 결제 완료가 도착하는 것 같은 미결 상태를 소비 트랜잭션과 같은 트랜잭션에서 원장에 남긴다
 - **환불 계약(ADR-0018)**: 감지 3지점 → Payment 단일 실행자 → 회신으로 원장 종결
 - **DLQ 원장 + replay 계약(ADR-0020, 0021)**: 격리된 실패의 물리 좌표를 상태로 남기고 재발행 축을 정의한다
@@ -1029,31 +1029,31 @@ Gateway는 WebFlux, 검증 측(\`peekcart-common-auth\`)은 Servlet이라 **서�
 
 **재고 예약 만료 시각의 소유자**
 
-초안에서는 Product가 예약 후 30분이 지나면 재고를 회수하도록 했다. 하지만 Order의 만료 조회는 예약 확정 후 결제 시작 전 구간을 처리하지 못했다. 이때 sweeper가 재고를 회수하면 진행 중인 주문의 재고가 풀릴 수 있었다. 그래서 참여자가 만료 시각을 공유하는 lease로 바꿨다. 정상 경로에서는 sweeper의 회수 건수가 0이어야 하며, 회수가 발생하면 알림을 보낸다.
+초안에서는 Product가 예약 후 30분이 지나면 재고를 회수하도록 했다. 하지만 Order의 만료 조회는 예약 확정 후 결제 시작 전 구간을 처리하지 못했다. 이때 sweeper가 재고를 회수하면 진행 중인 주문의 재고가 풀릴 수 있었다. 그래서 참여자가 만료 시각을 공유하는 lease로 바꿨다. 정상 경로에서는 sweeper의 회수 건수가 0이어야 하며 회수가 발생하면 알림을 보낸다.
 
 **사가 보상 작업의 검증 조건**
 
-주문 상태 전이의 동시성 문제는 재현 결과를 확인한 뒤 처리하기로 한 과제였다. 간헐적인 문제는 재현되지 않았다는 이유만으로 배제할 수 없어, 두 \`EntityManager\`가 커밋 전에 같은 스냅샷을 읽도록 **실행 순서를 고정했다.** 취소와 결제 중 어느 쪽이 먼저 커밋돼도, 나중에 커밋된 값이 앞선 변경을 덮어쓰는 문제가 재현됐다. 취소가 먼저 커밋되면 최종 상태가 \`PAYMENT_COMPLETED\`가 되어 취소가 유실됐고, 결제가 먼저 커밋되면 \`CANCELLED\`가 되어 과금된 주문이 취소로 표시됐다. 상태 전이 검사는 각 트랜잭션의 스냅샷을 기준으로 통과했으므로, 이 검사만으로는 변경 유실을 막지 못했다.
+주문 상태 전이의 동시성 문제는 재현 결과를 확인한 뒤 처리하기로 한 과제였다. 간헐적인 문제는 재현되지 않았다는 이유만으로 배제할 수 없어, 두 \`EntityManager\`가 커밋 전에 같은 스냅샷을 읽도록 **실행 순서를 고정했다.** 취소와 결제 중 어느 쪽이 먼저 커밋돼도, 나중에 커밋된 값이 앞선 변경을 덮어쓰는 문제가 재현됐다. 취소가 먼저 커밋되면 최종 상태가 \`PAYMENT_COMPLETED\`가 되어 취소가 유실됐고 결제가 먼저 커밋되면 \`CANCELLED\`가 되어 과금된 주문이 취소로 표시됐다. 상태 전이 검사는 각 트랜잭션의 스냅샷을 기준으로 통과했으므로, 이 검사만으로는 변경 유실을 막지 못했다.
 
 **보상 원장의 종료 조건**
 
-취소된 주문에 결제 완료가 도착하는 경로는 처음에 Slack 알림 + \`return\`으로 처리돼 있었다. 그런데 order 서비스의 SlackPort는 배포 구성상 **no-op**이고, 소비가 커밋되면 \`processed_events\` 때문에 **같은 이벤트를 다시 소비할 수 없다**. 나중에 만들 환불 구현이 입력을 잃는다. 소비와 같은 트랜잭션에서 원장에 남기는 것으로 교체됐다.
+취소된 주문에 결제 완료가 도착하는 경로는 처음에 Slack 알림 + \`return\`으로 처리돼 있었다. 그런데 order 서비스의 SlackPort는 배포 구성상 **no-op**이고 소비가 커밋되면 \`processed_events\` 때문에 **같은 이벤트를 다시 소비할 수 없다**. 나중에 만들 환불 구현에 넘길 입력이 사라진다. 소비와 같은 트랜잭션에서 원장에 남기는 방식으로 교체했다.
 
 **승인과 예약 회수의 경합**
 
-여기까지로 오버셀링이 닫혔다고 보기 쉽지만 아니다. 결제 승인은 검사 이후 **같은 트랜잭션 안에서** PG를 호출하고, 그 시점 주문 상태는 아직 이벤트가 Kafka를 통과하기 전이라 검사를 통과한다 → 만료 취소 → 재고 복구 → 다른 주문이 재예약 → 승인 성공. 승인 마진으로 창을 줄였을 뿐이고, 진짜 fence(예약을 승인 전용 상태로 CAS 전이)는 사가 프로토콜 변경이라 별도 과제로 분리돼 있다. **어떤 상태를 진입 시점에 확인하는 것과, 그 상태가 처리 도중 바뀌지 못하게 잠그는 것은 다른 일이다.**
+여기까지 하면 오버셀링이 해결된 것처럼 보이지만 승인과 만료 취소 사이에 경합이 남아 있다. 결제 승인은 검사 이후 **같은 트랜잭션 안에서** PG를 호출하고 그 시점 주문 상태는 아직 이벤트가 Kafka를 통과하기 전이라 검사를 통과한다 → 만료 취소 → 재고 복구 → 다른 주문이 재예약 → 승인 성공. 승인 마진으로 창을 줄였을 뿐이고 진짜 fence(예약을 승인 전용 상태로 CAS 전이)는 사가 프로토콜 변경이라 별도 과제로 분리돼 있다. **어떤 상태를 진입 시점에 확인하는 것과, 그 상태가 처리 도중 바뀌지 못하게 잠그는 것은 다른 일이다.**
 
 **외부 결제 호출과 소비 트랜잭션**
 
-환불도 같은 함정이 있었다. 감지 3지점이 각각 PG를 부르면, **PG 성공 후 롤백 시 fence 행이 사라져 fence 자체가 무효**가 된다. 그래서 진입점은 \`REQUESTED\` 커밋까지만 하고, \`REQUESTED→CLAIMED\` CAS로 claim한 **dispatcher만 PG를 호출**한다. 즉시성을 포기하고 crash 안전성을 얻는 교환이다.
+환불도 같은 함정이 있었다. 감지 3지점이 각각 PG를 부르면 **PG 성공 후 롤백 시 fence 행이 사라져 fence 자체가 무효**가 된다. 그래서 진입점은 \`REQUESTED\` 커밋까지만 하고, \`REQUESTED→CLAIMED\` CAS로 claim한 **dispatcher만 PG를 호출**한다. 즉시성을 포기하고 crash 안전성을 얻는 쪽을 택했다.
 
 **환불 계약의 보장 범위**
 
-호출 뒤 응답이 유실되면 로컬 기록만으로는 환불 API의 실행 여부를 알 수 없다. 목표를 **"동일 논리 환불 1건"**으로 정하고, 모호한 상태에서는 PG 조회 API로 실제 처리 결과를 확인하도록 계약을 바꿨다.
+호출 뒤 응답이 유실되면 로컬 기록만으로는 환불 API의 실행 여부를 알 수 없다. 목표를 **"동일 논리 환불 1건"**으로 정하고 모호한 상태에서는 PG 조회 API로 실제 처리 결과를 확인하도록 계약을 바꿨다.
 
 **결과별 종료 상태**
 
-환불이 실패했는데 원장이 \`RESOLVED\`로 닫히면 원장이 거짓이 된다. 실패는 \`REFUND_FAILED\`, 미확정은 전이하지 않고 reconciliation(5분 주기, 조회 상한 24h) 후 수동 종결이다. \`ALREADY_CANCELED\` 응답은 **실패로 보지 않는다**. 이전 호출이 성공했는데 응답만 유실됐거나 외부에서 수동 취소된 경우라 이미 목표 상태일 가능성이 높고, 실패로 닫으면 실제로 환불된 결제가 승인 상태로 남는다.
+환불이 실패했는데 원장이 \`RESOLVED\`로 닫히면 원장이 거짓이 된다. 실패는 \`REFUND_FAILED\`, 미확정은 전이하지 않고 reconciliation(5분 주기, 조회 상한 24h) 후 수동 종결이다. \`ALREADY_CANCELED\` 응답은 **실패로 보지 않는다**. 이전 호출이 성공했는데 응답만 유실됐거나 외부에서 수동 취소된 경우라 이미 목표 상태일 가능성이 높고 실패로 닫으면 실제로 환불된 결제가 승인 상태로 남는다.
 
 **재처리 메시지의 상관 정보**
 
@@ -1067,7 +1067,7 @@ replay 헤더를 발행할 때는 정해진 키만 빠짐없이 포함됐는지 
 
 - **크로스서비스 E2E 하네스**: 시나리오 4종(격리 compose, PG stub) **3회 연속 통과** + **음성 대조군 7종**
 - CI \`e2e\` 잡에서 전량 통과(잡 소요 15m41s), 로컬에서 162\\~189초로 실패하던 시나리오가 러너에서 14초
-- 스케줄러 배선은 **변이 검사**로 실증됐다. \`@Scheduled\` 한 줄을 지우자 배선 테스트 4건이 실패하고, 원복하니 통과
+- 스케줄러 배선은 **변이 검사**로 실증했다. \`@Scheduled\` 한 줄을 지우자 배선 테스트 4건이 실패하고 원복하니 통과
 
 ### 확인 범위와 남은 작업
 
@@ -1095,7 +1095,7 @@ fence 미구현(승인↔회수 경합 창이 마진 이내로 남음), Toss 취
 
 수정한 버그를 되돌렸을 때 해당 검사가 실패하고 종료 코드 1을 반환하는지도 확인한다. 이 변이 검사 과정에서 테스트의 단언이 과하거나 부족한 경우를 발견했다.
 
-같은 절차가 성능 작업에도 적용됐다. 커서 페이지네이션의 실행계획 테스트는 처음에 "비어 있지 않은지"만 봤고, \`examinedRows\`가 트리 전체를 합산해 **스캔 노드가 없어도 통과**했다. 실패를 주입해 검출력을 확인한 뒤에야 수치가 근거로 쓰였다.
+같은 절차를 성능 작업에도 적용했다. 커서 페이지네이션의 실행계획 테스트는 처음에 "비어 있지 않은지"만 봤고, \`examinedRows\`가 트리 전체를 합산해 **스캔 노드가 없어도 통과**했다. 실패를 주입해 검출력을 확인한 뒤에야 이 수치를 근거로 썼다.
 
 ---
 
@@ -1103,7 +1103,7 @@ fence 미구현(승인↔회수 경합 창이 마진 이내로 남음), Toss 취
 
 서비스가 늘면서 CI의 \`build\` 잡을 한 러너에서 순차 실행하는 데 **33분 20초**가 걸렸다. 전체 실행 시간은 51분 44초였다. 아래 비교는 2026-09-01 측정 기록의 개선 전 실행(33318882498)과 개선 후 실행(33470741832)을 기준으로 한다.
 
-\`build\` 하나가 **lint / test 6-shard / guards / gate**로 분해됐다. shard는 모듈이 아니라 \`@Container\` 선언 분포를 기준으로 나뉘고, \`:module:test\`가 아니라 \`:module:build\`를 돌린다. \`test\`만 돌리면 \`bootJar\`, \`testFixturesJar\` 검증이 소실된다.
+\`build\` 하나를 **lint / test 6-shard / guards / gate**로 분해했다. shard는 모듈이 아니라 \`@Container\` 선언 분포를 기준으로 나누고 \`:module:test\`가 아니라 \`:module:build\`를 돌린다. \`test\`만 돌리면 \`bootJar\`, \`testFixturesJar\` 검증이 소실된다.
 
 | | 분해 전 | 분해 후 | 변화 |
 | --- | --- | --- | --- |
@@ -1124,7 +1124,7 @@ shard별 소요는 **\`@Container\` 선언 수에 따라 증가**했다(platform
 
 **CI 완료 조건의 재설정**
 
-계획 초안은 "20분 이하"를 완료 조건으로 걸려 했지만, 모듈별 시간 자료가 없는 상태에서 정한 숫자는 근거가 없다. 대신 완료 조건은 **baseline 대비 임계 경로 단축 + shard별 소요표 기록 + 불균형 시 판단을 문서로 남기기**로 바뀌었다.
+계획 초안은 "20분 이하"를 완료 조건으로 걸려 했지만 모듈별 시간 자료가 없는 상태에서 정한 숫자는 근거가 없다. 완료 조건을 **baseline 대비 임계 경로 단축 + shard별 소요표 기록 + 불균형 시 판단을 문서로 남기기**로 바꿨다.
 
 > 이 저장소는 public이라 GitHub 러너에 과금이 없다. runner-minutes를 **자원 사용과 중복 컴파일 지표**로 읽는다고 증적 문서에 명시돼 있다.
 
@@ -1134,13 +1134,13 @@ shard별 소요는 **\`@Container\` 선언 수에 따라 증가**했다(platform
 
 **결제 타임아웃 스케줄러 + ShedLock.** 결제 대기(\`PAYMENT_REQUESTED\`)가 15분을 넘긴 주문을 자동 취소하고 재고를 복구한다. 다중 Pod로 전환할 때 스케줄러가 중복 실행되지 않도록 단일 인스턴스 단계에서 ShedLock(MySQL 락 테이블)을 미리 적용했다. (학습 기록 7, 12)
 
-**JWT 인증, DB와 Redis의 역할 분리.** Refresh Token은 DB에 영속(발급 이력, 만료 관리), 로그아웃 블랙리스트는 Redis에 둔다. Token Rotation 시 동시 재발급으로 생기는 race condition은 Grace Period로 보완했고, Phase 4에서 **Reuse Detection**(재사용 감지 시 family 전체 폐기)을 추가했다. (학습 기록 2)
+**JWT 인증, DB와 Redis의 역할 분리.** Refresh Token은 DB에 영속(발급 이력, 만료 관리), 로그아웃 블랙리스트는 Redis에 둔다. Token Rotation 시 동시 재발급으로 생기는 race condition은 Grace Period로 보완했고 Phase 4에서 **Reuse Detection**(재사용 감지 시 family 전체 폐기)을 추가했다. (학습 기록 2)
 
-**커서 페이지네이션의 정렬 계약** 로드맵은 이 작업을 "offset 성능 개선"으로 잡았는데, 착수 전 코드 검증에서 다른 것이 나왔다. 주문 목록의 \`@PageableDefault\`에 **\`sort\`가 없었다.** 응답 순서가 DB가 정하는 미정의 순서였고 클라이언트가 임의 컬럼 정렬을 넣을 수도 있었다: **offset 페이징으로서의 결과 정합성조차 없던 상태**다. 먼저 **결정적 정렬 순서를 계약으로 정했고**, "동률 \`ordered_at\`이 페이지 경계에서 누락, 중복되면 미완"이 완료 명제에 들어갔다. 검사 행 수는 커서 \`[20, 20, 20]\` vs offset \`[40, 420, 920]\`(깊이 20/400/900)로, 깊이 900에서 46배 차이가 났다. 인덱스에 \`id\`를 명시하지 않은 근거도 실행계획으로 확인된다: InnoDB 세컨더리 인덱스가 PK를 암묵 부착해 \`used_key_parts\`가 3개로 나온다.
+**커서 페이지네이션의 정렬 계약** 로드맵은 이 작업을 "offset 성능 개선"으로 잡았는데 착수 전에 코드를 검증해 보니 다른 문제가 있었다. 주문 목록의 \`@PageableDefault\`에 **\`sort\`가 없었다.** 응답 순서가 DB가 정하는 미정의 순서였고 클라이언트가 임의 컬럼 정렬을 넣을 수도 있었다: **offset 페이징으로서의 결과 정합성조차 없던 상태**다. 먼저 **결정적 정렬 순서를 계약으로 정했고** "동률 \`ordered_at\`이 페이지 경계에서 누락, 중복되면 미완"을 완료 명제에 넣었다. 검사 행 수는 커서 \`[20, 20, 20]\` vs offset \`[40, 420, 920]\`(깊이 20/400/900)로, 깊이 900에서 46배 차이가 났다. 인덱스에 \`id\`를 명시하지 않은 근거도 실행계획으로 확인된다: InnoDB 세컨더리 인덱스가 PK를 암묵 부착해 \`used_key_parts\`가 3개로 나온다.
 
-**문서 근거를 실측이 뒤집은 사례.** 같은 작업에서 커서 상한을 정하며 \`DATETIME(6)\` 의 경계값을 문서 근거로 \`.499999\`로 잡았는데, MySQL 8.0.46 컨테이너에 직접 INSERT/SELECT 해보니 \`.999999\`까지 원형 저장됐다. 문서의 \`.499999\`는 *컬럼보다 많은 자릿수를 넣어 반올림할 때*의 경계였다. 그대로 갔으면 **정상 데이터를 400으로 거부**했다. 이후로는 사실 주장을 채택하기 전에 실행해서 확인하는 절차가 붙었다.
+**문서 근거를 실측이 뒤집은 사례.** 같은 작업에서 커서 상한을 정하며 \`DATETIME(6)\` 의 경계값을 문서 근거로 \`.499999\`로 잡았는데, MySQL 8.0.46 컨테이너에 직접 INSERT/SELECT 해보니 \`.999999\`까지 원형 저장됐다. 문서의 \`.499999\`는 *컬럼보다 많은 자릿수를 넣어 반올림할 때*의 경계였다. 그대로 갔으면 **정상 데이터를 400으로 거부**했다. 이후로는 사실 주장을 채택하기 전에 실행해서 확인하는 절차를 두었다.
 
-**관측성 계약.** Actuator → Micrometer → Prometheus → Grafana로 메트릭이 흐른다. 메트릭이 수집되는데 그래프가 비는 문제(히스토그램 미활성, 라벨 불일치)를 겪고 관측성 설정의 SSOT를 ADR로 정리했으며, Phase 4에서 이를 **per-service 계약**으로 재설계했다(ADR-0015). Kafka 헤더로 trace를 전파하고 Outbox 테이블에 \`trace_id\`를 보존(의도적 무인덱스)한다.
+**관측성 계약.** Actuator → Micrometer → Prometheus → Grafana로 메트릭이 흐른다. 메트릭이 수집되는데 그래프가 비는 문제(히스토그램 미활성, 라벨 불일치)를 겪고 관측성 설정의 SSOT를 ADR로 정리했으며 Phase 4에서 이를 **per-service 계약**으로 재설계했다(ADR-0015). Kafka 헤더로 trace를 전파하고 Outbox 테이블에 \`trace_id\`를 보존(의도적 무인덱스)한다.
 
 **아직 열려 있는 부채.** \`D-002\` 캐시 TPS 2차 병목(서비스 분리 후 격리 재측정 대기), \`D-020\` 결제 승인↔로컬 커밋 불일치(DB 트랜잭션 안에서 PG를 호출해, 승인 성공 후 커밋 실패 시 **외부 과금은 남고 로컬은 롤백**된다. 웹훅 reconciliation 부재). 두 문제의 해결에 필요한 검증과 구현을 후속 작업으로 기록했다.
 
@@ -1148,7 +1148,7 @@ shard별 소요는 **\`@Container\` 선언 수에 따라 증가**했다(platform
 
 ## 개발환경 최적화를 위한 AI 하네스 구축
 
-1인 개발에서 AI 도구를 오갈 때마다 작업 문맥을 다시 전달하고, 계획과 변경 내용을 대조하는 일이 반복됐다. 이 비용을 줄이기 위해 Claude와 Codex를 연결하는 **개발 하네스**를 구축했다. 작업 절차를 \`/plan → /work → /ship\`으로 나누고, 계획서와 diff를 검토 입력으로 전달하며 결과는 정해진 JSON 형식으로 받도록 했다. 각 단계에는 계획 확인, 변경 검토, 커밋 및 PR 정리 절차를 두었다.
+1인 개발에서 AI 도구를 오갈 때마다 작업 문맥을 다시 전달하고 계획과 변경 내용을 대조하는 일이 반복됐다. 이 비용을 줄이기 위해 Claude와 Codex를 연결하는 **개발 하네스**를 구축했다. 작업 절차를 \`/plan → /work → /ship\`으로 나누고 계획서와 diff를 검토 입력으로 전달하며 결과는 정해진 JSON 형식으로 받도록 했다. 각 단계에는 계획 확인, 변경 검토, 커밋 및 PR 정리 절차를 두었다.
 
 ![Claude × Codex 하네스 흐름]({{diagram_harness}})
 
