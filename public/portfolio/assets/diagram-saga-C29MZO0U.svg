@@ -101,9 +101,9 @@
 
   <rect x="920" y="492" width="266" height="52" fill="#ffffff" stroke="#777" stroke-width="1.5" stroke-dasharray="5 4" rx="3"/>
   <text x="1053" y="514" text-anchor="middle" font-size="13" fill="#111">replay 계약 (ADR-0020 · 0021)</text>
-  <text x="1053" y="534" text-anchor="middle" font-size="12" fill="#666">상관 · 재개방 로직은 구현 중</text>
+  <text x="1053" y="534" text-anchor="middle" font-size="12" fill="#666">상관과 재개방 구현, replay는 아직 열지 않음</text>
 
   <text x="200" y="576" font-size="13" fill="#555">Slack 알림은 사건을 <tspan font-weight="700">알릴</tspan> 뿐 재처리의 <tspan font-weight="700">입력</tspan>이 되지 못한다 &#8212; 그래서 미결을 상태로 남긴다.</text>
   <text x="200" y="598" font-size="13" fill="#555">replay 헤더는 <tspan font-weight="700">쓰기는 엄격하게</tspan>(키 집합 정확 일치) <tspan font-weight="700">읽기는 관대하게</tspan>(판독 실패해도 적재는 한다). 판독 실패는 "상관하지 않음"이지 "적재하지 않음"이 아니다.</text>
-  <text x="200" y="628" font-size="12.5" fill="#888">※ 남은 것: 승인&#8596;회수 경합의 진짜 fence, PG 실호출 검증, replay 상관·재개방 &#8212; "계약은 그 구간을 없애는 게 아니라 보이게 만든다"</text>
+  <text x="200" y="628" font-size="12.5" fill="#888">※ 2026-08 구조다. 승인과 회수의 경합은 이후 승인 전 재고 보호(ADR-0034)로 막았고, Toss 테스트 API로 승인과 환불을 확인했다(2026-10-26).</text>
 </svg>
