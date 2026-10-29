@@ -1,0 +1,668 @@
+---
+import '@/styles/scene.css';
+import '@/styles/database-demos.css';
+
+type Kind =
+  | 'external-fragmentation'
+  | 'page-frames'
+  | 'address-translation'
+  | 'clustered-index'
+  | 'page-rows'
+  | 'row-sizes'
+  | 'tablespace'
+  | 'index-page'
+  | 'buffer-pool-lookup'
+  | 'hot-pages'
+  | 'lru-sublists'
+  | 'dirty-page';
+type Props = { kind: Kind };
+const { kind } = Astro.props;
+
+const COPY: Record<Kind, { label: string; caption: string }> = {
+  'external-fragmentation': {
+    label: '40KB 물리 메모리에서 사용 중인 영역 사이에 4KB 빈칸 세 개가 흩어져 있습니다. 10KB 세그먼트는 연속된 10KB 자리가 없어 들어가지 못합니다.',
+    caption: '빈 공간의 합은 12KB지만 가장 큰 연속 공간은 4KB입니다.',
+  },
+  'page-frames': {
+    label: '가상 주소 공간의 Page 0, 1, 2가 물리 메모리의 Frame 5, 2, 8로 연결됩니다. 세 프레임은 앞 그림에서 흩어져 있던 4KB 빈칸 자리입니다. Page 2는 4KB 중 2KB만 쓰고 2KB가 남습니다.',
+    caption: '아래 숫자는 프레임 번호입니다. 빗금은 페이지 안에서 쓰지 않고 남는 공간입니다.',
+  },
+  'address-translation': {
+    label: '가상 주소의 VPN 1은 페이지 테이블에서 PFN 2로 바뀌고, offset은 바뀌지 않고 물리 주소로 그대로 내려옵니다.',
+    caption: '페이지 테이블의 값은 앞 그림의 연결을 그대로 적었습니다. 한 줄이 PTE 하나입니다.',
+  },
+  'clustered-index': {
+    label: '루트 페이지에서 내부 페이지를 거쳐 id 100이 들어 있는 리프 페이지까지 내려갑니다. 리프 페이지에 row 데이터가 있고, 같은 레벨의 리프 페이지는 서로 연결되어 있습니다.',
+    caption: '리프 페이지의 id 범위는 설명을 위해 정한 값입니다.',
+  },
+  'page-rows': {
+    label: '디스크에서 16KB 리프 페이지 하나를 한 번 읽으면 그 안의 row 100부터 row 150까지 51개를 모두 읽습니다.',
+    caption: 'row 104부터 row 149까지는 한 줄로 줄여 그렸습니다.',
+  },
+  'row-sizes': {
+    label: 'Row A는 100B, Row B는 350B, Row C는 120B, Row D는 1KB로 크기가 제각각입니다.',
+    caption: '막대 길이는 row 크기에 비례합니다.',
+  },
+  'tablespace': {
+    label: 'tablespace는 16KB 페이지 Page 0부터 Page 3까지가 이어진 구조이고, 크기가 제각각인 row는 각 페이지 안에 들어갑니다.',
+    caption: '분홍 막대가 row입니다. 페이지는 모두 같은 크기입니다.',
+  },
+  'index-page': {
+    label: '인덱스 페이지는 위에서부터 FIL Header, Page Header, Infimum과 Supremum, User Records, Free Space, Page Directory, FIL Trailer로 나뉩니다. 레코드는 infimum에서 시작해 키 순서로 다음 레코드를 가리키며 supremum에서 끝나고, page directory의 slot은 infimum, 레코드 103, supremum을 가리킵니다.',
+    caption: '주요 영역만 그렸고, 영역의 높이는 실제 크기에 비례하지 않습니다. 레코드 6개만 그렸습니다.',
+  },
+  'buffer-pool-lookup': {
+    label: 'SQL을 실행하면 인덱스를 탐색해 필요한 페이지를 buffer pool에서 찾습니다. hit이면 메모리의 페이지에서 바로 row를 읽고, miss이면 디스크에서 페이지를 읽어 buffer pool에 저장한 뒤 row를 읽습니다.',
+    caption: '페이지 하나를 읽는 과정만 그렸습니다.',
+  },
+  'hot-pages': {
+    label: 'buffer pool에 자주 조회하는 페이지 A, B, C, D가 들어 있습니다.',
+    caption: '파란 페이지는 아래 데모에서도 자주 조회하는 페이지입니다.',
+  },
+  'lru-sublists': {
+    label: 'LRU 목록의 앞쪽 약 5/8은 new sublist, 뒤쪽 약 3/8은 old sublist입니다. 새로 읽은 페이지는 두 sublist의 경계에 들어가고, old sublist의 페이지에 접근하면 young이 되어 목록 맨 앞으로 옮겨집니다. 목록 끝의 페이지가 먼저 내보내집니다.',
+    caption: '비율은 innodb_old_blocks_pct 기본값 37일 때입니다.',
+  },
+  'dirty-page': {
+    label: 'UPDATE가 buffer pool에 있는 id 100 페이지의 name을 Kim으로 바꿉니다. 메모리의 페이지는 dirty page가 되고, 데이터 파일의 페이지는 나중에 flush될 때까지 이전 내용을 갖습니다.',
+    caption: '페이지 하나만 그렸습니다.',
+  },
+};
+const copy = COPY[kind];
+---
+
+<figure class="db-demo paging-figure" data-blog-demo="paging-figure" data-kind={kind} aria-label={copy.label}>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label={copy.label}></svg>
+  </div>
+  <figcaption class="db-demo-disclaimer">{copy.caption}</figcaption>
+</figure>
+
+<script>
+  import { angleOf, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createArrow, createBoundary, createNode } from '@/scripts/blog/scene/parts';
+
+  type Kind =
+    | 'external-fragmentation'
+    | 'page-frames'
+    | 'address-translation'
+    | 'clustered-index'
+    | 'page-rows'
+    | 'row-sizes'
+    | 'tablespace'
+    | 'index-page'
+    | 'buffer-pool-lookup'
+    | 'hot-pages'
+    | 'lru-sublists'
+    | 'dirty-page';
+  type Tone = 'dep' | 'flow' | 'temp';
+  type Anchor = 'start' | 'middle' | 'end';
+
+  // 같은 대상은 이 글의 모든 그림과 데모에서 같은 색을 씁니다.
+  const HUE = {
+    osPage: 'var(--scene-hue-violet)', // 운영체제의 가상 페이지와 그 페이지가 놓인 프레임
+    used: 'var(--scene-hue-gray)', // 다른 프로세스나 다른 페이지가 쓰는 공간
+    page: 'var(--scene-hue-cyan)', // InnoDB 페이지
+    row: 'var(--scene-hue-pink)', // row
+    hot: 'var(--scene-hue-blue)', // 자주 조회하는 페이지 (BufferPoolScanLru와 같은 색)
+    scan: 'var(--scene-hue-amber)', // 새로 읽은 페이지 (BufferPoolScanLru의 스캔 페이지와 같은 색)
+  };
+  const TONE_COLOR: Record<Tone, string> = {
+    dep: 'color-mix(in srgb, var(--scene-dep) 70%, var(--hairline))',
+    flow: 'var(--scene-flow)',
+    temp: 'var(--scene-temp)',
+  };
+  const LABEL = {
+    dep: 'scene-label is-sans scene-label-dep',
+    mono: 'scene-label scene-label-dep',
+    flow: 'scene-label is-sans scene-label-flow',
+    temp: 'scene-label is-sans scene-alloc-fig-waste',
+    danger: 'scene-label is-sans scene-label-danger',
+  };
+  let hatchSeq = 0;
+
+  /** 그리기 도구. 넓은·좁은 배치를 바꿀 때마다 svg 를 비우고 다시 그립니다. */
+  const tools = (root: SVGSVGElement) => {
+    let hatchId = '';
+    const t = {
+      hatch() {
+        if (hatchId) return hatchId;
+        hatchId = `paging-fig-hatch-${++hatchSeq}`;
+        const defs = svg('defs', {}, root);
+        const pattern = svg('pattern', { id: hatchId, patternUnits: 'userSpaceOnUse', width: 6, height: 6, patternTransform: 'rotate(45)' }, defs);
+        svg('line', { x1: 0, y1: 0, x2: 0, y2: 6, stroke: 'var(--scene-temp)', 'stroke-width': 1.6, opacity: 0.55 }, pattern);
+        return hatchId;
+      },
+      text(x: number, y: number, value: string, cls = LABEL.dep, anchor: Anchor = 'start') {
+        const el = svg('text', { class: cls, x, y, 'text-anchor': anchor }, root);
+        el.textContent = value;
+        return el;
+      },
+      /** 색이 찬 칸. `hue`가 칸의 주인이고, 글자는 칸 가운데에 놓입니다. */
+      cell(x: number, y: number, w: number, h: number, hue: string, label = '', sans = false) {
+        const rect = svg('rect', { class: 'scene-alloc-used', x, y, width: w, height: h, rx: 4 }, root);
+        rect.style.setProperty('--node-hue', hue);
+        if (label) t.text(x + w / 2, y + h / 2 + 3.8, label, sans ? 'scene-pg-cell-text is-sans' : 'scene-pg-cell-text', 'middle');
+        return rect;
+      },
+      /** 비어 있는 칸 (점선). */
+      hole(x: number, y: number, w: number, h: number) {
+        return svg('rect', { class: 'scene-alloc-free', x, y, width: w, height: h, rx: 4 }, root);
+      },
+      /** 쓰지 않고 남는 공간 (빗금). */
+      rest(x: number, y: number, w: number, h: number) {
+        return svg('rect', { class: 'scene-alloc-fig-rest', x, y, width: w, height: h, rx: 3, fill: `url(#${t.hatch()})` }, root);
+      },
+      box(x: number, y: number, w: number, h: number, cls = 'scene-alloc-card', rx = 8) {
+        return svg('rect', { class: cls, x, y, width: w, height: h, rx }, root);
+      },
+      /** 꺾인 선 끝에 화살촉을 붙입니다. 화살촉은 마지막 구간의 방향을 가리킵니다. */
+      arrow(points: Point[], tone: Tone = 'dep', { dashed = false, small = false } = {}) {
+        const cls = ['scene-pg-line', tone === 'dep' ? '' : `is-${tone}`, dashed ? 'is-dashed' : ''].filter(Boolean).join(' ');
+        const tip = points[points.length - 1];
+        const prev = points[points.length - 2];
+        const angle = angleOf(prev, tip);
+        // 선 끝이 화살촉 밖으로 삐져나오지 않게 조금 짧게 그립니다.
+        const back = small ? 4 : 6;
+        const rad = (angle * Math.PI) / 180;
+        const end = { x: tip.x - Math.cos(rad) * back, y: tip.y - Math.sin(rad) * back };
+        const line = [...points.slice(0, -1), end];
+        svg('polyline', { class: cls, points: line.map((p) => `${p.x},${p.y}`).join(' ') }, root);
+        if (small) {
+          const head = svg('path', { class: 'scene-arrow', d: 'M 0 0 L -7 -3.5 L -5 0 L -7 3.5 Z' }, root);
+          head.style.fill = TONE_COLOR[tone];
+          setAttrs(head, { transform: `translate(${tip.x} ${tip.y}) rotate(${angle})` });
+        } else {
+          createArrow(root, TONE_COLOR[tone])(tip, angle);
+        }
+      },
+      line(points: Point[], tone: Tone = 'dep', dashed = false) {
+        const cls = ['scene-pg-line', tone === 'dep' ? '' : `is-${tone}`, dashed ? 'is-dashed' : ''].filter(Boolean).join(' ');
+        return svg('polyline', { class: cls, points: points.map((p) => `${p.x},${p.y}`).join(' ') }, root);
+      },
+      node(label: string, hue: string, x: number, y: number, w: number, h: number, sub = '', sansSub = false) {
+        const view = createNode(root, { label, hue, sub });
+        if (sansSub) view.group.classList.add('is-sans-sub');
+        view.setBox({ x, y, w, h });
+        return view;
+      },
+    };
+    return t;
+  };
+
+  const view = (root: SVGSVGElement, w: number, h: number) => setAttrs(root, { viewBox: `0 0 ${w} ${h}` });
+
+  // ── 물리 메모리 막대 (외부 단편화, 페이지와 프레임에서 함께 씀) ──
+  // 40KB를 4KB 프레임 10개로 봅니다. 프레임 2, 5, 8 자리가 비어 있습니다.
+  const USED_KB: [number, number][] = [[0, 8], [12, 20], [24, 32], [36, 40]];
+  const HOLE_KB: [number, number][] = [[8, 12], [20, 24], [32, 36]];
+  const memory = (narrow: boolean) => (narrow ? { x0: 20, s: 8 } : { x0: 40, s: 12 });
+
+  function drawFragmentation(root: SVGSVGElement, narrow: boolean) {
+    const t = tools(root);
+    const W = narrow ? 360 : 560;
+    const H = narrow ? 186 : 178;
+    const { x0, s } = memory(narrow);
+    const barY = 96;
+    view(root, W, H);
+    t.text(x0, 20, '물리 메모리 40KB', 'scene-caption');
+    USED_KB.forEach(([a, b]) => t.cell(x0 + a * s + 1, barY, (b - a) * s - 2, 40, HUE.used, (b - a) * s >= 48 ? '사용 중' : '', true));
+    HOLE_KB.forEach(([a, b]) => {
+      t.hole(x0 + a * s + 1, barY, (b - a) * s - 2, 40);
+      t.text(x0 + ((a + b) / 2) * s, barY + 24, '4KB', LABEL.temp, 'middle');
+    });
+    // 할당하려는 10KB 세그먼트: 첫 빈칸 위에 놓아도 4KB를 넘쳐 옆 영역과 겹칩니다.
+    const segX = x0 + 8 * s;
+    const seg = { x: segX, y: 30, w: 10 * s, h: 30 };
+    svg('rect', { class: 'scene-pg-misfit', x: seg.x, y: seg.y, width: seg.w, height: seg.h, rx: 4 }, root);
+    t.text(seg.x + seg.w / 2, seg.y + seg.h / 2 + 4, narrow ? '10KB' : '세그먼트 10KB', 'scene-pg-cell-text is-sans', 'middle');
+    t.line([{ x: segX, y: seg.y + seg.h + 4 }, { x: segX, y: barY - 4 }], 'dep', true);
+    t.line([{ x: segX + 4 * s, y: seg.y + seg.h + 4 }, { x: segX + 4 * s, y: barY - 4 }], 'dep', true);
+    t.text(seg.x + seg.w + 12, seg.y + seg.h / 2 + 4, '연속된 10KB 자리가 없음', LABEL.danger);
+    t.text(x0, barY + 58, '0', LABEL.mono, 'middle');
+    t.text(x0 + 40 * s, barY + 58, '40KB', LABEL.mono, 'middle');
+    if (narrow) {
+      t.text(W / 2, barY + 62, '빈 공간 합계 12KB', LABEL.dep, 'middle');
+      t.text(W / 2, barY + 80, '가장 큰 연속 공간 4KB', LABEL.dep, 'middle');
+    } else {
+      t.text(W / 2, barY + 70, '빈 공간 합계 12KB, 가장 큰 연속 공간 4KB', LABEL.dep, 'middle');
+    }
+  }
+
+  function drawPageFrames(root: SVGSVGElement, narrow: boolean) {
+    const t = tools(root);
+    const W = narrow ? 360 : 560;
+    const H = narrow ? 226 : 232;
+    const { x0, s } = memory(narrow);
+    const frameW = 4 * s;
+    view(root, W, H);
+    // 가상 페이지는 크게, 물리 메모리는 앞 그림과 같은 축척으로 그립니다.
+    const pageW = narrow ? 80 : 96;
+    const pageCx = narrow ? [90, 180, 270] : [150, 250, 350];
+    const pageY = 46;
+    const pageH = 34;
+    const barY = 152;
+    const map = [5, 2, 8];
+    t.text(narrow ? 6 : 16, 20, '가상 주소 공간', 'scene-caption');
+    pageCx.forEach((cx, i) => {
+      const x = cx - pageW / 2;
+      t.text(cx, pageY - 8, `Page ${i}`, LABEL.mono, 'middle');
+      if (i < 2) t.cell(x, pageY, pageW, pageH, HUE.osPage, '4KB');
+      else {
+        t.cell(x, pageY, pageW / 2, pageH, HUE.osPage, '2KB');
+        t.rest(x + pageW / 2 + 2, pageY + 2, pageW / 2 - 4, pageH - 4);
+      }
+    });
+    t.text(narrow ? 6 : 16, barY - 12, '물리 메모리', 'scene-caption');
+    for (let f = 0; f < 10; f += 1) {
+      const x = x0 + f * frameW;
+      const page = map.indexOf(f);
+      if (page < 0) t.cell(x + 1, barY, frameW - 2, 40, HUE.used);
+      else if (page < 2) t.cell(x + 1, barY, frameW - 2, 40, HUE.osPage, narrow ? `P${page}` : `Page ${page}`);
+      else {
+        t.cell(x + 1, barY, frameW / 2 - 1, 40, HUE.osPage, narrow ? 'P2' : '');
+        t.rest(x + frameW / 2 + 1, barY + 2, frameW / 2 - 3, 36);
+      }
+      t.text(x + frameW / 2, barY + 58, String(f), LABEL.mono, 'middle');
+    }
+    if (!narrow) t.text(x0 + 8 * frameW + frameW / 4, barY - 6, 'Page 2', 'scene-pg-cell-text', 'middle');
+    pageCx.forEach((cx, i) => {
+      const fx = x0 + map[i] * frameW + frameW / 2;
+      t.arrow([{ x: cx, y: pageY + pageH + 4 }, { x: fx, y: barY - (i === 2 && !narrow ? 22 : 4) }], 'dep');
+    });
+  }
+
+  function drawTranslation(root: SVGSVGElement, narrow: boolean) {
+    const t = tools(root);
+    const W = narrow ? 360 : 560;
+    const H = 252;
+    const x0 = narrow ? 84 : 140;
+    const vpnW = narrow ? 140 : 180;
+    const offW = narrow ? 120 : 150;
+    const barH = 36;
+    const vaY = 30;
+    const tableY = 100;
+    const rowH = 22;
+    const paY = 210;
+    view(root, W, H);
+    const bar = (y: number, first: string, side: string) => {
+      t.text(x0 - 10, y + barH / 2 + 4, side, LABEL.dep, 'end');
+      t.cell(x0, y, vpnW - 2, barH, HUE.osPage, first);
+      svg('rect', { class: 'scene-alloc-fig-slot', x: x0 + vpnW, y, width: offW, height: barH, rx: 4 }, root);
+      t.text(x0 + vpnW + offW / 2, y + barH / 2 + 3.8, 'offset', 'scene-pg-cell-text', 'middle');
+    };
+    bar(vaY, 'VPN 1', '가상 주소');
+    // 페이지 테이블: VPN 하나에 PTE 한 줄
+    const rows: [string, string][] = [['0', '5'], ['1', '2'], ['2', '8']];
+    t.box(x0, tableY, vpnW - 2, 22 + rows.length * rowH + 6, 'scene-alloc-card');
+    t.text(x0 + 10, tableY + 15, '페이지 테이블', 'scene-caption');
+    rows.forEach(([vpn, pfn], i) => {
+      const y = tableY + 22 + i * rowH;
+      if (i === 1) {
+        const hl = svg('rect', { class: 'scene-pg-tint', x: x0 + 6, y: y + 1, width: vpnW - 14, height: rowH - 2, rx: 4 }, root);
+        hl.style.setProperty('--node-hue', HUE.osPage);
+      }
+      t.text(x0 + 16, y + 15, `VPN ${vpn}`, LABEL.mono);
+      t.text(x0 + vpnW - 16, y + 15, `PFN ${pfn}`, LABEL.mono, 'end');
+    });
+    t.text(x0 + vpnW + 8, tableY + 22 + rowH + 15, 'PTE', LABEL.mono);
+    bar(paY, 'PFN 2', '물리 주소');
+    const cx = x0 + vpnW / 2;
+    t.arrow([{ x: cx, y: vaY + barH + 2 }, { x: cx, y: tableY - 2 }], 'flow');
+    t.arrow([{ x: cx, y: tableY + 22 + rows.length * rowH + 8 }, { x: cx, y: paY - 2 }], 'flow');
+    const ox = x0 + vpnW + offW / 2;
+    t.arrow([{ x: ox, y: vaY + barH + 2 }, { x: ox, y: paY - 2 }], 'dep', { dashed: true });
+    t.text(ox + 8, (vaY + paY + barH) / 2 + 10, '그대로', LABEL.dep);
+  }
+
+  function drawClusteredIndex(root: SVGSVGElement, narrow: boolean) {
+    const t = tools(root);
+    const W = narrow ? 360 : 560;
+    const H = narrow ? 262 : 258;
+    view(root, W, H);
+    const mid = W / 2;
+    const nodeW = narrow ? 140 : 150;
+    const leafW = narrow ? 104 : 140;
+    const leafCx = narrow ? [60, 180, 300] : [100, 280, 460];
+    const rootY = 34;
+    const innerY = 108;
+    const leafY = 190;
+    const subs = ['id 1~99', 'id 100~150', 'id 151~'];
+    // 선을 먼저 그려 카드가 위에 오게 합니다.
+    leafCx.forEach((x, i) => {
+      if (i === 1) return;
+      t.line([{ x: mid, y: innerY + 20 }, { x, y: leafY - 26 }]);
+    });
+    t.arrow([{ x: mid, y: rootY + 20 }, { x: mid, y: innerY - 20 }], 'flow');
+    t.arrow([{ x: mid, y: innerY + 20 }, { x: mid, y: leafY - 26 }], 'flow');
+    t.text(mid + 10, (rootY + innerY) / 2 + 4, 'id = 100', LABEL.flow);
+    // 같은 레벨의 리프 페이지는 이전, 다음 페이지로 연결됩니다.
+    for (let i = 0; i < 2; i += 1) {
+      const a = { x: leafCx[i] + leafW / 2 + 2, y: leafY };
+      const b = { x: leafCx[i + 1] - leafW / 2 - 2, y: leafY };
+      if (narrow) t.line([a, b], 'dep', true);
+      else {
+        t.arrow([a, b], 'dep', { small: true });
+        t.arrow([b, a], 'dep', { small: true });
+      }
+    }
+    t.node('루트 페이지', HUE.page, mid, rootY, nodeW, 40);
+    t.node('내부 페이지', HUE.page, mid, innerY, nodeW, 40);
+    leafCx.forEach((x, i) => {
+      const leaf = t.node('리프 페이지', HUE.page, x, leafY, leafW, 52, subs[i]);
+      if (i === 1) leaf.flash('is-done');
+    });
+    if (narrow) {
+      t.text(mid, leafY + 46, '리프 페이지에 row 데이터', LABEL.dep, 'middle');
+      t.text(mid, leafY + 64, '리프끼리 이전, 다음 페이지로 연결', LABEL.dep, 'middle');
+    } else {
+      t.text(mid, leafY + 48, '리프 페이지에 row 데이터, 리프끼리 이전 페이지와 다음 페이지로 연결', LABEL.dep, 'middle');
+    }
+  }
+
+  function drawPageRows(root: SVGSVGElement, narrow: boolean) {
+    const t = tools(root);
+    const W = narrow ? 360 : 560;
+    const rows = ['row 100', 'row 101', 'row 102', 'row 103', 'row 104 ~ row 149', 'row 150'];
+    const stripH = 20;
+    const gap = 4;
+    const card = narrow ? { x: 50, y: 92, w: 260 } : { x: 220, y: 20, w: 250 };
+    const listH = rows.length * (stripH + gap) - gap;
+    const cardH = 40 + listH + 14;
+    const H = narrow ? card.y + cardH + 36 : card.y + cardH + 14;
+    view(root, W, H);
+    const disk = narrow ? { x: W / 2, y: 30 } : { x: 84, y: card.y + cardH / 2 };
+    t.node('디스크', HUE.used, disk.x, disk.y, narrow ? 150 : 124, 44, '데이터 파일', true);
+    if (narrow) {
+      t.arrow([{ x: disk.x, y: disk.y + 24 }, { x: disk.x, y: card.y - 4 }], 'flow');
+      t.text(disk.x + 10, (disk.y + 24 + card.y) / 2 + 4, '읽기 1번', LABEL.flow);
+    } else {
+      t.arrow([{ x: disk.x + 64, y: disk.y }, { x: card.x - 4, y: disk.y }], 'flow');
+      t.text((disk.x + 64 + card.x) / 2, disk.y - 10, '읽기 1번', LABEL.flow, 'middle');
+    }
+    t.box(card.x, card.y, card.w, cardH);
+    t.text(card.x + 14, card.y + 24, '리프 페이지 16KB', 'scene-caption');
+    rows.forEach((label, i) => {
+      const y = card.y + 40 + i * (stripH + gap);
+      const strip = t.cell(card.x + 14, y, card.w - 28, stripH, HUE.row, label);
+      if (i === 4) strip.style.opacity = '0.45';
+    });
+    const top = card.y + 40;
+    const bottom = top + listH;
+    if (narrow) {
+      t.text(W / 2, card.y + cardH + 24, 'row 51개가 페이지 하나에', LABEL.dep, 'middle');
+    } else {
+      const bx = card.x + card.w + 12;
+      t.line([{ x: bx - 5, y: top }, { x: bx, y: top }, { x: bx, y: bottom }, { x: bx - 5, y: bottom }]);
+      t.text(bx + 8, (top + bottom) / 2 + 4, 'row 51개', LABEL.dep);
+    }
+  }
+
+  const ROWS: [string, number][] = [['Row A', 100], ['Row B', 350], ['Row C', 120], ['Row D', 1024]];
+
+  function drawRowSizes(root: SVGSVGElement, narrow: boolean) {
+    const t = tools(root);
+    const W = narrow ? 360 : 560;
+    const x0 = narrow ? 60 : 96;
+    const scale = (W - x0 - 20) / 1024;
+    view(root, W, 136);
+    ROWS.forEach(([name, size], i) => {
+      const y = 16 + i * 30;
+      const w = size * scale;
+      t.text(x0 - 10, y + 15, name, LABEL.mono, 'end');
+      const label = size >= 1024 ? '1KB' : `${size}B`;
+      t.cell(x0, y, w, 22, HUE.row, w >= 60 ? label : '');
+      if (w < 60) t.text(x0 + w + 8, y + 15, label, LABEL.mono);
+    });
+  }
+
+  function drawTablespace(root: SVGSVGElement, narrow: boolean) {
+    const t = tools(root);
+    const W = narrow ? 360 : 560;
+    const pageW = narrow ? 150 : 116;
+    const pageH = 100;
+    const spots = narrow
+      ? [{ x: 24, y: 50 }, { x: 186, y: 50 }, { x: 24, y: 184 }, { x: 186, y: 184 }]
+      : [0, 1, 2, 3].map((i) => ({ x: 28 + i * 128, y: 50 }));
+    const H = narrow ? 302 : 186;
+    view(root, W, H);
+    createBoundary(root, 'tablespace (.ibd 파일)').place({ x: 8, y: 8, w: W - 16, h: H - 16 }, { x: 24, y: 32, anchor: 'start' });
+    // 페이지마다 크기가 제각각인 row가 줄지어 들어갑니다. 마지막 페이지는 덜 찼습니다.
+    const fills = [
+      [0.42, 0.3, 0.8, 0.55, 0.35, 0.6, 0.5, 0.7, 0.3, 0.45, 0.62, 0.38],
+      [0.7, 0.25, 0.5, 0.45, 0.9, 0.3, 0.4, 0.55, 0.6, 0.35, 0.5, 0.42],
+      [0.36, 0.62, 0.48, 0.28, 0.7, 0.5, 0.33, 0.58, 0.45, 0.6, 0.4, 0.52],
+      [0.55, 0.4, 0.3, 0.62],
+    ];
+    spots.forEach(({ x, y }, p) => {
+      t.box(x, y, pageW, pageH);
+      t.text(x + 10, y + 18, `Page ${p}`, LABEL.mono);
+      t.text(x + pageW - 10, y + 18, '16KB', LABEL.mono, 'end');
+      const inner = pageW - 20;
+      let cx = x + 10;
+      let cy = y + 30;
+      fills[p].forEach((f) => {
+        const w = Math.max(14, f * inner * 0.6);
+        if (cx + w > x + 10 + inner) {
+          cx = x + 10;
+          cy += 17;
+        }
+        t.cell(cx, cy, w - 3, 13, HUE.row);
+        cx += w;
+      });
+    });
+  }
+
+  function drawIndexPage(root: SVGSVGElement, narrow: boolean) {
+    const t = tools(root);
+    const W = narrow ? 360 : 560;
+    const px = narrow ? 8 : 40;
+    const pw = W - px * 2;
+    // 좁은 배치에서는 내용이 있는 영역의 이름을 내용 위에 따로 적습니다.
+    const lift = narrow ? 18 : 0;
+    const L = narrow
+      ? { inf: [16, 70], sup: [262, 340], recStart: 84, recW: 26, recGap: 10, slotW: 44, slot0: 30, slot2: 330, slotBox: [[14, 58], [183, 227], [298, 342]], labelX: 70 }
+      : { inf: [186, 250], sup: [448, 516], recStart: 250, recW: 30, recGap: 14, slotW: 48, slot0: 198, slot2: 508, slotBox: [[174, 222], [373, 421], [464, 512]], labelX: px + 12 };
+    const bands: { name: string; h: number; content?: boolean; free?: boolean }[] = [
+      { name: 'FIL Header', h: 24 },
+      { name: 'Page Header', h: 24 },
+      { name: 'Infimum / Supremum', h: 34 + lift, content: true },
+      { name: 'User Records', h: 44 + lift, content: true },
+      { name: 'Free Space', h: 34, free: true },
+      { name: 'Page Directory', h: 36 + lift, content: true },
+      { name: 'FIL Trailer', h: 24 },
+    ];
+    const top = 14;
+    const ys: number[] = [];
+    let y = top;
+    bands.forEach((b) => {
+      ys.push(y);
+      y += b.h;
+    });
+    const H = y + 14;
+    view(root, W, H);
+    // 영역 띠
+    bands.forEach((b, i) => {
+      const r = svg('rect', { class: b.free ? 'scene-pg-region is-free' : 'scene-pg-region', x: px, y: ys[i], width: pw, height: b.h }, root);
+      if (b.free) r.setAttribute('stroke-dasharray', '4 3');
+      const labelY = b.content && narrow ? ys[i] + 14 : ys[i] + b.h / 2 + 4;
+      // 좁은 배치에서는 세로선(slot 0, infimum 연결)을 피해 이름을 조금 오른쪽에 둡니다.
+      t.text(L.labelX, labelY, b.name, LABEL.mono);
+    });
+    t.box(px, top, pw, y - top, 'scene-pg-page', 6);
+    const content = (i: number) => ys[i] + lift + (bands[i].h - lift) / 2; // 내용 줄의 가운데 y
+    const supY = content(2);
+    const recY = content(3);
+    const slotY = content(5);
+    const boxH = 20;
+    const recX = (k: number) => L.recStart + k * (L.recW + L.recGap);
+    const recCx = (k: number) => recX(k) + L.recW / 2;
+    // slot 이 가리키는 선을 먼저 그려 레코드 칸이 위에 오게 합니다.
+    const slotTargets = [
+      { x: L.slot0, y: supY + boxH / 2 + 1 },
+      { x: recCx(3), y: recY + boxH / 2 + 1 },
+      { x: L.slot2, y: supY + boxH / 2 + 1 },
+    ];
+    slotTargets.forEach((target, i) => {
+      const [a, b] = L.slotBox[i];
+      t.arrow([{ x: target.x, y: slotY - boxH / 2 - 1 }, target], 'flow', { dashed: true, small: true });
+      const r = svg('rect', { class: 'scene-pg-tint', x: a, y: slotY - boxH / 2, width: b - a, height: boxH, rx: 4 }, root);
+      r.style.setProperty('--node-hue', 'var(--scene-flow)');
+      t.text((a + b) / 2, slotY + 4, `slot ${i}`, 'scene-pg-cell-text', 'middle');
+    });
+    // 레코드 연결 리스트: infimum 에서 키 순서로 supremum 까지
+    const infCx = L.inf[1] - 12;
+    t.arrow([{ x: infCx, y: supY + boxH / 2 + 1 }, { x: infCx, y: recY }, { x: recX(0) - 1, y: recY }], 'dep', { small: true });
+    for (let k = 0; k < 5; k += 1) t.arrow([{ x: recX(k) + L.recW + 1, y: recY }, { x: recX(k + 1) - 1, y: recY }], 'dep', { small: true });
+    t.arrow([{ x: recCx(5), y: recY - boxH / 2 - 1 }, { x: recCx(5), y: supY + boxH / 2 + 1 }], 'dep', { small: true });
+    t.cell(L.inf[0], supY - boxH / 2, L.inf[1] - L.inf[0], boxH, HUE.used, 'infimum');
+    t.cell(L.sup[0], supY - boxH / 2, L.sup[1] - L.sup[0], boxH, HUE.used, 'supremum');
+    for (let k = 0; k < 6; k += 1) t.cell(recX(k), recY - boxH / 2, L.recW, boxH, HUE.row, String(100 + k));
+  }
+
+  function drawLookup(root: SVGSVGElement, narrow: boolean) {
+    const t = tools(root);
+    const n = (label: string, x: number, y: number, w: number, hue = HUE.used) => t.node(label, hue, x, y, w, 40);
+    if (narrow) {
+      view(root, 360, 324);
+      t.arrow([{ x: 180, y: 50 }, { x: 180, y: 72 }]);
+      t.arrow([{ x: 180, y: 112 }, { x: 180, y: 134 }]);
+      t.arrow([{ x: 250, y: 174 }, { x: 250, y: 274 }], 'flow');
+      t.text(258, 226, 'hit', LABEL.flow);
+      t.arrow([{ x: 110, y: 174 }, { x: 110, y: 204 }], 'temp');
+      t.text(118, 194, 'miss', LABEL.temp);
+      t.arrow([{ x: 90, y: 244 }, { x: 90, y: 274 }], 'temp');
+      t.arrow([{ x: 170, y: 294 }, { x: 213, y: 294 }], 'temp');
+      n('SQL 실행', 180, 30, 140);
+      n('인덱스 탐색', 180, 92, 140);
+      n('buffer pool 조회', 180, 154, 176, HUE.page);
+      n('디스크에서 읽기', 90, 224, 150);
+      n('buffer pool에 저장', 90, 294, 160, HUE.page);
+      n('row 조회', 282, 294, 130, HUE.page);
+      return;
+    }
+    view(root, 560, 246);
+    t.arrow([{ x: 132, y: 36 }, { x: 160, y: 36 }]);
+    t.arrow([{ x: 292, y: 36 }, { x: 354, y: 36 }]);
+    t.arrow([{ x: 476, y: 56 }, { x: 476, y: 192 }], 'flow');
+    t.text(484, 128, 'hit', LABEL.flow);
+    t.arrow([{ x: 392, y: 56 }, { x: 392, y: 124 }, { x: 304, y: 124 }], 'temp');
+    t.text(400, 96, 'miss', LABEL.temp);
+    t.arrow([{ x: 226, y: 144 }, { x: 226, y: 192 }], 'temp');
+    t.arrow([{ x: 312, y: 212 }, { x: 409, y: 212 }], 'temp');
+    n('SQL 실행', 76, 36, 112);
+    n('인덱스 탐색', 226, 36, 132);
+    n('buffer pool 조회', 440, 36, 172, HUE.page);
+    n('디스크에서 읽기', 226, 124, 156);
+    n('buffer pool에 저장', 226, 212, 172, HUE.page);
+    n('row 조회', 476, 212, 130, HUE.page);
+  }
+
+  function drawHotPages(root: SVGSVGElement, narrow: boolean) {
+    const t = tools(root);
+    const W = narrow ? 360 : 560;
+    view(root, W, 112);
+    createBoundary(root, 'buffer pool').place({ x: 8, y: 8, w: W - 16, h: 96 }, { x: 24, y: 32, anchor: 'start' });
+    const xs = narrow ? [90, 150, 210, 270] : [176, 246, 316, 386];
+    ['A', 'B', 'C', 'D'].forEach((id, i) => t.node(id, HUE.hot, xs[i], 66, 52, 44));
+    t.text(W - 24, 32, '자주 조회하는 페이지', LABEL.dep, 'end');
+  }
+
+  function drawSublists(root: SVGSVGElement, narrow: boolean) {
+    const t = tools(root);
+    const W = narrow ? 360 : 560;
+    const x0 = narrow ? 12 : 40;
+    const x1 = W - x0;
+    const mid = x0 + ((x1 - x0) * 5) / 8;
+    const barY = 84;
+    const barH = 44;
+    const H = narrow ? 256 : 248;
+    view(root, W, H);
+    const newZone = svg('rect', { class: 'scene-pg-tint', x: x0, y: barY, width: mid - x0 - 1, height: barH, rx: 6 }, root);
+    newZone.style.setProperty('--node-hue', HUE.hot);
+    const oldZone = svg('rect', { class: 'scene-pg-tint', x: mid + 1, y: barY, width: x1 - mid - 1, height: barH, rx: 6 }, root);
+    oldZone.style.setProperty('--node-hue', HUE.used);
+    t.text((x0 + mid) / 2, barY + 19, 'new sublist', 'scene-pg-cell-text', 'middle');
+    t.text((x0 + mid) / 2, barY + 35, '약 5/8', 'scene-pg-cell-text is-sans', 'middle');
+    t.text((mid + x1) / 2, barY + 19, 'old sublist', 'scene-pg-cell-text', 'middle');
+    t.text((mid + x1) / 2, barY + 35, '약 3/8', 'scene-pg-cell-text is-sans', 'middle');
+    t.text(x0, barY - 10, 'MRU 쪽 (맨 앞)', LABEL.dep);
+    t.text(x1, barY - 10, 'LRU 쪽 (여기서 내보냄)', LABEL.dep, 'end');
+    // 새로 읽은 페이지는 경계에 들어갑니다.
+    const chipW = 118;
+    t.cell(mid - chipW / 2, 12, chipW, 26, HUE.scan, '새로 읽은 페이지', true);
+    t.arrow([{ x: mid, y: 40 }, { x: mid, y: barY - 2 }], 'dep');
+    // old sublist 의 페이지에 접근하면 young 이 되어 맨 앞으로 갑니다.
+    const from = { x: (mid + x1) / 2, y: barY + barH + 2 };
+    const to = { x: x0 + 20, y: barY + barH + 2 };
+    const c = { x: (from.x + to.x) / 2, y: barY + barH + 66 };
+    svg('path', { class: 'scene-pg-line is-flow', d: `M ${from.x} ${from.y} Q ${c.x} ${c.y} ${to.x} ${to.y}` }, root);
+    createArrow(root, 'var(--scene-flow)')(to, angleOf(c, to));
+    t.text(c.x, barY + barH + 54, '접근하면 young, 맨 앞으로', LABEL.flow, 'middle');
+    if (narrow) {
+      t.text(x0, H - 30, 'new: 최근에 접근한 페이지', LABEL.dep);
+      t.text(x0, H - 12, 'old: 새로 들어왔거나 오래 접근하지 않은 페이지', LABEL.dep);
+    } else {
+      t.text((x0 + mid) / 2, H - 14, '최근에 접근한 페이지', LABEL.dep, 'middle');
+      t.text((mid + x1) / 2, H - 30, '새로 들어왔거나', LABEL.dep, 'middle');
+      t.text((mid + x1) / 2, H - 14, '오래 접근하지 않은 페이지', LABEL.dep, 'middle');
+    }
+  }
+
+  function drawDirtyPage(root: SVGSVGElement, narrow: boolean) {
+    const t = tools(root);
+    const W = narrow ? 360 : 560;
+    if (narrow) {
+      view(root, W, 300);
+      createBoundary(root, 'buffer pool (메모리)').place({ x: 8, y: 8, w: W - 16, h: 128 }, { x: 24, y: 32, anchor: 'start' });
+      createBoundary(root, '데이터 파일 (디스크)').place({ x: 8, y: 164, w: W - 16, h: 128 }, { x: 24, y: 188, anchor: 'start' });
+      t.text(230, 32, 'UPDATE', LABEL.mono, 'middle');
+      t.arrow([{ x: 230, y: 38 }, { x: 230, y: 59 }]);
+      t.arrow([{ x: 180, y: 114 }, { x: 180, y: 214 }], 'temp', { dashed: true });
+      t.text(190, 152, '나중에 flush', LABEL.temp);
+      t.node('id 100 페이지', HUE.page, 160, 86, 200, 52, "name = 'Kim'").flash('is-temp');
+      t.text(268, 120, 'dirty', LABEL.temp);
+      t.node('id 100 페이지', HUE.page, 160, 242, 200, 52, 'name = 이전 값', true);
+      return;
+    }
+    view(root, 560, 196);
+    createBoundary(root, 'buffer pool (메모리)').place({ x: 8, y: 8, w: 262, h: 180 }, { x: 24, y: 32, anchor: 'start' });
+    createBoundary(root, '데이터 파일 (디스크)').place({ x: 290, y: 8, w: 262, h: 180 }, { x: 306, y: 32, anchor: 'start' });
+    t.text(139, 62, 'UPDATE users SET name', LABEL.mono, 'middle');
+    t.arrow([{ x: 139, y: 68 }, { x: 139, y: 88 }]);
+    t.arrow([{ x: 241, y: 116 }, { x: 319, y: 116 }], 'temp', { dashed: true });
+    t.text(280, 104, '나중에', LABEL.temp, 'middle');
+    t.text(280, 138, 'flush', LABEL.temp, 'middle');
+    t.node('id 100 페이지', HUE.page, 139, 116, 200, 52, "name = 'Kim'").flash('is-temp');
+    t.text(139, 164, 'dirty page', LABEL.temp, 'middle');
+    t.node('id 100 페이지', HUE.page, 421, 116, 200, 52, 'name = 이전 값', true);
+    t.text(421, 164, '아직 이전 내용', LABEL.dep, 'middle');
+  }
+
+  const DRAW: Record<Kind, (root: SVGSVGElement, narrow: boolean) => void> = {
+    'external-fragmentation': drawFragmentation,
+    'page-frames': drawPageFrames,
+    'address-translation': drawTranslation,
+    'clustered-index': drawClusteredIndex,
+    'page-rows': drawPageRows,
+    'row-sizes': drawRowSizes,
+    'tablespace': drawTablespace,
+    'index-page': drawIndexPage,
+    'buffer-pool-lookup': drawLookup,
+    'hot-pages': drawHotPages,
+    'lru-sublists': drawSublists,
+    'dirty-page': drawDirtyPage,
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="paging-figure"]').forEach((figure) => {
+    if (figure.dataset.ready) return;
+    figure.dataset.ready = 'true';
+    const stage = figure.querySelector<HTMLElement>('[data-stage]')!;
+    const root = figure.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const draw = DRAW[figure.dataset.kind as Kind];
+    watchNarrow(stage, (narrow) => {
+      root.replaceChildren();
+      draw(root, narrow);
+    });
+  });
+</script>

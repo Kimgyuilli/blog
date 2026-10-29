@@ -1,0 +1,424 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="buffer-pool-scan-lru" ariaLabel="교체 정책에 따라 전체 스캔이 buffer pool의 자주 쓰는 페이지를 밀어내는지 비교" title="전체 스캔이 자주 쓰는 페이지를 밀어낼까요?" description="buffer pool 8칸에 자주 조회하는 페이지 A, B, C, D가 있습니다. 교체 정책을 고르고 페이지 8개를 읽는 전체 스캔을 실행해 보세요. 스캔이 끝난 뒤 A를 다시 조회하면 cache hit일까요?">
+  <DemoControls ariaLabel="교체 정책">
+    <button type="button" data-mode="0" aria-pressed="true">단순 LRU</button>
+    <button type="button" data-mode="1" aria-pressed="false">midpoint, old_blocks_time 0</button>
+    <button type="button" data-mode="2" aria-pressed="false">midpoint, old_blocks_time 1000ms (기본값)</button>
+  </DemoControls>
+  <div class="scene-chips" role="group" aria-label="실행">
+    <button type="button" class="scene-chip is-plain" data-run>전체 스캔 실행</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="buffer pool 목록 8칸에 A, B, C, D와 다른 페이지 E, F, G, H가 들어 있고, 위에는 전체 스캔이 읽을 페이지 s1부터 s8, 아래에는 내보낸 페이지가 놓입니다. 단순 LRU에서는 스캔 페이지가 목록 맨 앞에 들어와 A, B, C, D를 모두 밀어냅니다. midpoint 방식에서 old_blocks_time이 0이면 스캔 페이지가 처음 읽히자마자 맨 앞으로 옮겨져 결과가 같습니다. old_blocks_time이 1000ms이면 스캔 페이지는 old sublist에 머물다 서로를 밀어내고 A, B, C, D는 남습니다."></svg>
+  </div>
+  <div class="bp-readouts">
+    <span><i class="is-hot"></i>자주 조회하는 페이지</span>
+    <span><i class="is-scan"></i>스캔 페이지</span>
+    <span>pool에 남은 A, B, C, D <b data-hot>4개</b></span>
+    <span>스캔한 페이지 <b data-scanned>0/8</b></span>
+    <span>스캔 뒤 A 조회 <b data-probe>아직 안 함</b></span>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">buffer pool을 8칸으로 줄인 모형입니다. 실제 buffer pool은 훨씬 많은 페이지를 담고, old sublist의 비율은 <code>innodb_old_blocks_pct</code>(기본값 37, 약 3/8)로 정합니다. 모형에서는 목록의 뒤 3칸을 old sublist로 그렸습니다. 스캔은 한 페이지의 row를 1초 안에 모두 읽는다고 가정했습니다. E부터 H는 예전에 읽어 둔 다른 페이지이고, 스캔 도중 다른 쿼리가 A, B, C, D를 읽는 경우와 곧 읽을 페이지를 미리 읽어 두는 read-ahead는 그리지 않았습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, createScene, duration, hopLift, watchNarrow, setAttrs, svg, bumpText, type Point } from '@/scripts/blog/scene/core';
+  import { createNode, landRing, type NodeView } from '@/scripts/blog/scene/parts';
+  import { arcPoints, createPacketLayer } from '@/scripts/blog/scene/packets';
+  import { watchDemoPlayback } from '@/scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: 단순 LRU에서는 스캔 페이지가 목록 맨 앞에 들어와 A, B, C, D를 차례로 아래 "내보낸 페이지" 줄로 밀어낸다.
+  // midpoint로 바꿔도 old_blocks_time이 0이면 스캔 페이지가 읽히자마자 맨 앞으로 날아가 결과가 같다.
+  // 기본값 1000ms에서는 스캔 페이지가 old sublist 안에서만 들어왔다 나가고 A, B, C, D가 남아 A 조회가 hit이다.
+  type Mode = 0 | 1 | 2;
+  const SLOTS = 8;
+  const OLD_AT = 5; // 뒤 3칸(3/8)이 old sublist
+  const HOT = ['A', 'B', 'C', 'D'];
+  const OTHER = ['E', 'F', 'G', 'H'];
+  const SCAN = Array.from({ length: 8 }, (_, i) => `s${i + 1}`);
+  const ALL = [...HOT, ...OTHER, ...SCAN];
+  const HUE = (id: string) => (HOT.includes(id) ? 'var(--scene-hue-blue)' : id.startsWith('s') ? 'var(--scene-hue-amber)' : 'var(--scene-hue-gray)');
+
+  type PageState = { ax: number; ay: number; bx: number; by: number; t: number; lift: number; w: number; h: number; op: number };
+  type State = { ins: number; sub: number; pages: Record<string, PageState> };
+  type Spot = { x: number; y: number; w: number; h: number; op: number };
+
+  const layouts = {
+    wide: {
+      view: [560, 248] as [number, number],
+      slot: (i: number): Point => ({ x: 44 + i * 64, y: 130 }),
+      slotSize: { w: 56, h: 46 },
+      queue: (k: number): Point => ({ x: 136 + k * 48, y: 34 }),
+      // 내보낸 페이지는 LRU 끝 아래에서부터 쌓이고, 먼저 나간 페이지가 왼쪽으로 밀립니다.
+      evict: (k: number): Point => ({ x: 472 - k * 48, y: 222 }),
+      chipSize: { w: 42, h: 28 },
+      queueLabel: { x: 16, y: 38 },
+      evictLabel: { x: 16, y: 226 },
+      source: { x: 44, y: 66 },
+      insY: 94,
+      bracketY: 166,
+      captionY: 182,
+      right: 520,
+      left: 16,
+    },
+    narrow: {
+      view: [360, 270] as [number, number],
+      slot: (i: number): Point => ({ x: 24 + i * 44, y: 146 }),
+      slotSize: { w: 40, h: 44 },
+      queue: (k: number): Point => ({ x: 24 + k * 44, y: 40 }),
+      evict: (k: number): Point => ({ x: 332 - k * 44, y: 250 }),
+      chipSize: { w: 38, h: 26 },
+      queueLabel: { x: 6, y: 16 },
+      evictLabel: { x: 6, y: 226 },
+      source: { x: 30, y: 78 },
+      insY: 112,
+      bracketY: 176,
+      captionY: 192,
+      right: 354,
+      left: 6,
+    },
+  };
+  type Layout = (typeof layouts)['wide'];
+
+  const INTRO: Record<Mode, string> = {
+    0: '단순 LRU는 새로 읽은 페이지를 목록 맨 앞(MRU)에 넣고, 자리가 없으면 맨 끝(LRU) 페이지를 내보냅니다. 스캔 페이지 8개가 들어오면 A, B, C, D는 남을까요?',
+    1: 'midpoint 방식은 새 페이지를 old sublist 맨 앞, LRU 쪽 끝에서 3/8 지점에 넣습니다. <code>innodb_old_blocks_time</code>이 0이면 처음 접근할 때 바로 new sublist 맨 앞으로 옮깁니다. 이번에는 A, B, C, D가 남을까요?',
+    2: 'midpoint 방식에 <code>innodb_old_blocks_time</code> 기본값 1000ms를 더했습니다. 처음 접근한 뒤 1초 안에 다시 읽어도 new sublist로 옮기지 않습니다. 스캔은 한 페이지의 row를 연달아 읽고 다시 오지 않습니다.',
+  };
+  const RESULT: Record<Mode, string> = {
+    0: '스캔 페이지 8개가 차례로 맨 앞에 들어오면서 <strong>A, B, C, D가 모두 밀려났습니다.</strong> 스캔 뒤 A를 다시 조회하면 cache miss라 디스크에서 다시 읽어야 합니다.',
+    1: '새 페이지를 중간에 넣었지만, 스캔이 페이지를 읽는 순간 맨 앞으로 옮겨져서 <strong>결과가 단순 LRU와 같습니다.</strong> A, B, C, D가 모두 밀려나 A 조회는 cache miss입니다.',
+    2: '스캔 페이지는 1초 안에 읽히고 끝나서 old sublist에 머물다 <strong>스캔 페이지끼리 서로를 밀어냈습니다.</strong> new sublist의 A, B, C, D는 그대로 남아 A 조회가 cache hit입니다.',
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="buffer-pool-scan-lru"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const runButton = demo.querySelector<HTMLButtonElement>('[data-run]')!;
+    const modeButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-mode]')];
+    const hotOut = demo.querySelector<HTMLElement>('[data-hot]')!;
+    const scannedOut = demo.querySelector<HTMLElement>('[data-scanned]')!;
+    const probeOut = demo.querySelector<HTMLElement>('[data-probe]')!;
+    let layout: Layout = layouts.wide;
+    let mode: Mode = 0;
+    let touched = false;
+    let running = false;
+
+    // ── 논리 모형 ──
+    let pool: string[] = [];
+    let evicted: string[] = [];
+    let entered = new Set<string>();
+    const resetModel = () => {
+      pool = [...HOT, ...OTHER];
+      evicted = [];
+      entered = new Set();
+    };
+    resetModel();
+
+    // ── 그림 ──
+    const text = (cls: string, value: string, anchor = 'start') => {
+      const t = svg('text', { class: cls, 'text-anchor': anchor }, root);
+      t.textContent = value;
+      return t;
+    };
+    const queueLabel = text('scene-label is-sans scene-label-dep', '전체 스캔');
+    const evictLabel = text('scene-label is-sans scene-label-dep', '내보낸 페이지');
+    const slots = Array.from({ length: SLOTS }, () => svg('rect', { rx: 10, fill: 'none', stroke: 'var(--hairline)', 'stroke-dasharray': '2 6' }, root));
+    const midLine = svg('line', { stroke: 'var(--scene-dep)', 'stroke-width': 1.4, 'stroke-dasharray': '4 4' }, root);
+    const newBracket = svg('path', { fill: 'none', stroke: 'var(--scene-hue-blue)', 'stroke-width': 1.6 }, root);
+    const oldBracket = svg('path', { fill: 'none', stroke: 'var(--scene-dep)', 'stroke-width': 1.6 }, root);
+    const allBracket = svg('path', { fill: 'none', stroke: 'var(--scene-dep)', 'stroke-width': 1.6 }, root);
+    const newCaption = text('scene-label', 'new sublist', 'middle');
+    const oldCaption = text('scene-label scene-label-dep', 'old sublist', 'middle');
+    const allCaption = text('scene-label scene-label-dep', 'LRU 목록', 'middle');
+    newCaption.style.fill = 'var(--scene-hue-blue)';
+    const mruLabel = text('scene-label scene-label-dep', 'MRU');
+    const lruLabel = text('scene-label scene-label-dep', 'LRU', 'end');
+    const insMark = svg('path', { fill: 'var(--scene-flow)' }, root);
+    const insLabel = text('scene-label is-sans scene-label-flow', '들어오는 자리');
+    const nodes: Record<string, NodeView> = {};
+    ALL.forEach((id) => {
+      const node = createNode(root, { label: id, hue: HUE(id) });
+      node.group.classList.add('is-sans-sub');
+      nodes[id] = node;
+    });
+    const packets = createPacketLayer(root);
+
+    /** 논리 모형에서 각 페이지가 있어야 할 자리. */
+    const spotOf = (id: string): Spot => {
+      const l = layout;
+      const p = pool.indexOf(id);
+      if (p >= 0) return { ...l.slot(p), ...l.slotSize, op: 1 };
+      const e = evicted.indexOf(id);
+      if (e >= 0) return { ...l.evict(evicted.length - 1 - e), ...l.chipSize, op: HOT.includes(id) ? 1 : 0.45 };
+      const q = SCAN.indexOf(id);
+      return { ...l.queue(q), ...l.chipSize, op: entered.has(id) ? 0 : 1 };
+    };
+    const insIndex = () => (mode === 0 ? 0 : OLD_AT);
+    const settled = (): State => {
+      const pages: Record<string, PageState> = {};
+      ALL.forEach((id) => {
+        const s = spotOf(id);
+        pages[id] = { ax: s.x, ay: s.y, bx: s.x, by: s.y, t: 1, lift: 0, w: s.w, h: s.h, op: s.op };
+      });
+      return { ins: insIndex(), sub: mode === 0 ? 0 : 1, pages };
+    };
+    const pointOf = (p: PageState): Point => bowAt({ x: p.ax, y: p.ay }, { x: p.bx, y: p.by }, p.t, hopLift(p.t, p.lift));
+
+    const scene = createScene<State>(settled(), (s) => {
+      const l = layout;
+      ALL.forEach((id) => {
+        const p = s.pages[id];
+        const at = pointOf(p);
+        nodes[id].setBox({ x: at.x, y: at.y, w: p.w, h: p.h });
+        nodes[id].group.style.opacity = String(p.op);
+      });
+      // 들어오는 자리 표시는 정책에 따라 맨 앞과 old sublist 맨 앞 사이를 오갑니다.
+      const ix = l.slot(0).x + (l.slot(1).x - l.slot(0).x) * s.ins;
+      const top = l.slot(0).y - l.slotSize.h / 2;
+      setAttrs(insMark, { d: `M ${ix - 5} ${top - 11} L ${ix + 5} ${top - 11} L ${ix} ${top - 4} Z` });
+      setAttrs(insLabel, { x: ix - l.slotSize.w / 2, y: l.insY });
+      setAttrs(midLine, { opacity: s.sub });
+      newBracket.style.opacity = oldBracket.style.opacity = newCaption.style.opacity = oldCaption.style.opacity = String(s.sub);
+      allBracket.style.opacity = allCaption.style.opacity = String(1 - s.sub);
+    });
+
+    const placeStatic = () => {
+      const l = layout;
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      setAttrs(queueLabel, l.queueLabel);
+      setAttrs(evictLabel, l.evictLabel);
+      slots.forEach((slot, i) => {
+        const at = l.slot(i);
+        setAttrs(slot, { x: at.x - l.slotSize.w / 2, y: at.y - l.slotSize.h / 2, width: l.slotSize.w, height: l.slotSize.h });
+      });
+      const half = l.slotSize.w / 2;
+      const midX = (l.slot(OLD_AT - 1).x + l.slot(OLD_AT).x) / 2;
+      const top = l.slot(0).y - l.slotSize.h / 2 - 4;
+      setAttrs(midLine, { x1: midX, x2: midX, y1: top, y2: l.bracketY + 4 });
+      const bracket = (x1: number, x2: number) => `M ${x1} ${l.bracketY - 6} L ${x1} ${l.bracketY} L ${x2} ${l.bracketY} L ${x2} ${l.bracketY - 6}`;
+      const x0 = l.slot(0).x - half;
+      const x7 = l.slot(SLOTS - 1).x + half;
+      setAttrs(newBracket, { d: bracket(x0, midX - 4) });
+      setAttrs(oldBracket, { d: bracket(midX + 4, x7) });
+      setAttrs(allBracket, { d: bracket(x0, x7) });
+      setAttrs(newCaption, { x: (x0 + midX) / 2, y: l.captionY });
+      setAttrs(oldCaption, { x: (midX + x7) / 2, y: l.captionY });
+      setAttrs(allCaption, { x: (x0 + x7) / 2, y: l.captionY });
+      setAttrs(mruLabel, { x: l.left, y: l.captionY });
+      setAttrs(lruLabel, { x: l.right, y: l.captionY });
+    };
+
+    /** 지금 보이는 자리에서 논리 모형의 자리로 옮깁니다. `lift`를 준 페이지는 호를 그리며 날아갑니다. */
+    const moveTo = (lift: Record<string, number>, ms: number) => {
+      const now = scene.state;
+      const start: State = { ...now, pages: {} };
+      const next: State = { ...now, pages: {} };
+      ALL.forEach((id) => {
+        const cur = now.pages[id];
+        const at = pointOf(cur);
+        const to = spotOf(id);
+        start.pages[id] = { ax: at.x, ay: at.y, bx: to.x, by: to.y, t: 0, lift: lift[id] ?? 0, w: cur.w, h: cur.h, op: cur.op };
+        next.pages[id] = { ...start.pages[id], t: 1, w: to.w, h: to.h, op: to.op };
+      });
+      Object.keys(lift).forEach((id) => root.insertBefore(nodes[id].group, packets.group));
+      scene.set(start);
+      return scene.go(next, ms);
+    };
+
+    /** 좁은 배치의 페이지 카드는 폭이 40이라 보조 문구를 두 글자 안팎으로 줄입니다. */
+    const short = (wide: string, narrow: string) => (layout === layouts.narrow ? narrow : wide);
+    const say = (html: string, alert = false) => {
+      note.classList.toggle('is-alert', alert);
+      note.innerHTML = html;
+    };
+    const showCounts = (bump: boolean) => {
+      const hot = `${HOT.filter((id) => pool.includes(id)).length}개`;
+      const scanned = `${entered.size}/${SCAN.length}`;
+      if (bump) { bumpText(hotOut, hot); bumpText(scannedOut, scanned); }
+      else { hotOut.textContent = hot; scannedOut.textContent = scanned; }
+    };
+    const clearMarks = () => ALL.forEach((id) => {
+      nodes[id].flash('is-error', false);
+      nodes[id].flash('is-temp', false);
+      nodes[id].flash('is-done', false);
+      nodes[id].setSub('');
+    });
+
+    const reset = () => {
+      scene.begin();
+      running = false;
+      packets.clear();
+      resetModel();
+      clearMarks();
+      scene.set(settled());
+      showCounts(false);
+      probeOut.textContent = '아직 안 함';
+      probeOut.dataset.tone = '';
+      runButton.textContent = '전체 스캔 실행';
+      runButton.disabled = false;
+      runButton.dataset.state = 'next';
+      say(INTRO[mode]);
+    };
+
+    const setMode = (next: Mode) => {
+      const { ins, sub } = scene.state;
+      mode = next;
+      modeButtons.forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.mode) === next)));
+      reset();
+      // 들어오는 자리와 sublist 표시만 새 정책으로 옮겨 갑니다.
+      const to = settled();
+      scene.set({ ...to, ins, sub });
+      void scene.go(to, duration.move);
+    };
+
+    const run = async () => {
+      if (entered.size) reset();
+      const alive = scene.begin();
+      running = true;
+      runButton.disabled = true;
+      delete runButton.dataset.state;
+      for (let i = 0; i < SCAN.length; i += 1) {
+        const id = SCAN[i];
+        const detail = i < 2;
+        const f = detail ? 1 : 0.5;
+
+        // 1. 자리가 없으면 맨 끝 페이지를 내보냅니다.
+        const victim = pool[SLOTS - 1];
+        if (detail) say(`목록이 가득 찼습니다. 맨 끝(LRU)의 <strong>${victim}</strong>를 내보내고 스캔이 읽은 <strong>${id}</strong>를 넣습니다.`);
+        pool.pop();
+        evicted.push(victim);
+        if (!(await moveTo({ [victim]: -18 }, duration.fly * f)) || !alive()) return;
+        if (HOT.includes(victim)) {
+          nodes[victim].flash('is-error');
+          nodes[victim].flash('is-shaking');
+        }
+        showCounts(true);
+
+        // 2. 새 페이지가 들어오는 자리에 들어가고, 뒤의 페이지는 한 칸씩 밀립니다.
+        pool.splice(insIndex(), 0, id);
+        entered.add(id);
+        if (!(await moveTo({ [id]: 24 }, duration.fly * f)) || !alive()) return;
+        const at = spotOf(id);
+        landRing(root, { x: at.x, y: at.y, w: at.w + 6, h: at.h + 6 });
+        showCounts(true);
+        if (detail) {
+          say(mode === 0
+            ? `<strong>${id}</strong>가 목록 맨 앞에 들어왔습니다. 스캔이 ${id}의 row를 차례로 읽습니다.`
+            : `<strong>${id}</strong>가 old sublist 맨 앞에 들어왔습니다. new sublist의 A, B, C, D는 그대로입니다. 스캔이 ${id}의 row를 차례로 읽습니다.`);
+          await scene.pause(duration.beat);
+          if (!alive()) return;
+        }
+
+        // 3. 스캔이 페이지의 row를 읽습니다. 정책에 따라 맨 앞으로 옮기거나 그대로 둡니다.
+        const packet = packets.spawn({ label: '읽기', at: layout.source });
+        const top = { x: at.x, y: at.y - at.h / 2 - 12 };
+        if (!(await packet.travel(arcPoints(layout.source, top, 18), duration.draw * 0.7 * f)) || !alive()) return;
+        void packet.land(false);
+        if (i > 0) {
+          nodes[SCAN[i - 1]].setSub('');
+          nodes[SCAN[i - 1]].flash('is-temp', false);
+        }
+        if (mode === 1) {
+          pool.splice(pool.indexOf(id), 1);
+          pool.unshift(id);
+          nodes[id].setSub(short('young', '승격'));
+          if (detail) say(`<strong>${id}</strong>를 처음 읽는 순간 young이 되어 new sublist 맨 앞으로 옮겨집니다. A, B, C, D가 한 칸씩 old sublist 쪽으로 밀립니다.`);
+          if (!(await moveTo({ [id]: 34 }, duration.fly * f)) || !alive()) return;
+        } else if (mode === 2) {
+          nodes[id].setSub(short('1초 안', '1초'));
+          nodes[id].flash('is-temp');
+          if (detail) say(`스캔은 <strong>${id}</strong>의 row를 1초 안에 연달아 읽고 다음 페이지로 갑니다. 첫 접근 뒤 1초가 지나지 않았으므로 ${id}는 old sublist에 그대로 있습니다.`);
+        } else if (detail) {
+          say(`<strong>${id}</strong>는 이미 목록 맨 앞에 있습니다. 다음 스캔 페이지가 들어올 때마다 맨 끝 페이지가 하나씩 밀려납니다.`);
+        }
+        if (detail) {
+          await scene.pause(duration.read);
+          if (!alive()) return;
+          if (i === 1) say('남은 스캔 페이지도 같은 순서로 들어옵니다.');
+        } else {
+          await scene.pause(duration.beat * f);
+          if (!alive()) return;
+        }
+      }
+      SCAN.forEach((id) => { nodes[id].setSub(''); nodes[id].flash('is-temp', false); });
+
+      // 4. 스캔이 끝난 뒤 A를 다시 조회합니다.
+      await scene.pause(duration.beat);
+      if (!alive()) return;
+      const probe = packets.spawn({ label: 'A 조회', at: layout.source });
+      if (pool.includes('A')) {
+        const at = spotOf('A');
+        if (!(await probe.travel(arcPoints(layout.source, { x: at.x, y: at.y - at.h / 2 - 12 }, 18), duration.draw)) || !alive()) return;
+        probe.relabel('hit', 'flow');
+        void probe.land(true);
+        nodes.A.flash('is-done');
+        nodes.A.flash('is-ok');
+        bumpText(probeOut, 'cache hit');
+        probeOut.dataset.tone = 'flow';
+        say(RESULT[mode]);
+      } else {
+        const l = layout;
+        const wall = { x: l.slot(2).x, y: l.slot(0).y - l.slotSize.h / 2 - 12 };
+        if (!(await probe.bounce(wall, 20)) || !alive()) return;
+        probe.relabel('miss', 'danger');
+        nodes.A.flash('is-shaking');
+        bumpText(probeOut, 'cache miss');
+        probeOut.dataset.tone = 'danger';
+        say(RESULT[mode], true);
+      }
+      running = false;
+      runButton.disabled = false;
+      runButton.textContent = '다시 실행';
+    };
+
+    modeButtons.forEach((button) => button.addEventListener('click', () => {
+      touched = true;
+      setMode(Number(button.dataset.mode) as Mode);
+    }));
+    runButton.addEventListener('click', () => {
+      touched = true;
+      void run();
+    });
+
+    watchNarrow(stage, (isNarrow) => {
+      layout = layouts[isNarrow ? 'narrow' : 'wide'];
+      placeStatic();
+      // 재생 중에 배치가 바뀌면 진행 중인 이동의 좌표가 맞지 않으므로 처음 상태로 돌립니다.
+      if (running) reset();
+      else scene.set({ ...settled(), ins: scene.state.ins, sub: scene.state.sub });
+    });
+    reset();
+
+    // 처음 화면에 들어오면 단순 LRU로 한 번 보여 줍니다.
+    let autoplayed = false;
+    watchDemoPlayback(demo, ({ visible }) => {
+      if (!visible || autoplayed || touched) return;
+      autoplayed = true;
+      void run();
+    }, { threshold: 0.45 });
+  });
+</script>
+
+<style>
+  .bp-readouts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .bp-readouts span { display: inline-flex; align-items: baseline; gap: 6px; }
+  .bp-readouts i { display: inline-block; width: 12px; height: 10px; border-radius: 3px; align-self: center; }
+  .bp-readouts i.is-hot { background: color-mix(in srgb, var(--scene-hue-blue) 58%, var(--surface)); border: 1px solid var(--scene-hue-blue); }
+  .bp-readouts i.is-scan { background: color-mix(in srgb, var(--scene-hue-amber) 58%, var(--surface)); border: 1px solid var(--scene-hue-amber); }
+  .bp-readouts b { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .bp-readouts b[data-tone="flow"] { color: var(--scene-flow-ink); }
+  .bp-readouts b[data-tone="danger"] { color: var(--scene-danger); }
+  .bp-readouts b:global(.is-bump) { animation: scene-pop 420ms ease-out; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bp-readouts b:global(.is-bump) { animation: none; }
+  }
+</style>
