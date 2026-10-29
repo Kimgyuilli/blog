@@ -784,6 +784,19 @@ html.dark .db-demo {
 .scene-alloc-fig-waste { fill: var(--scene-temp); }
 .scene-alloc-fig-chain { fill: none; stroke: var(--scene-flow); stroke-width: 1.5; stroke-dasharray: 4 3; }
 
+/* 페이징과 InnoDB 페이지 정적 도식 (PagingFigure) */
+.scene-pg-line { fill: none; stroke: color-mix(in srgb, var(--scene-dep) 70%, var(--hairline)); stroke-width: 1.6; stroke-linejoin: round; }
+.scene-pg-line.is-flow { stroke: var(--scene-flow); stroke-width: 2.2; }
+.scene-pg-line.is-temp { stroke: var(--scene-temp); stroke-width: 1.8; }
+.scene-pg-line.is-dashed { stroke-dasharray: 5 4; }
+.scene-pg-misfit { fill: color-mix(in srgb, var(--scene-danger) 10%, var(--surface)); stroke: var(--scene-danger); stroke-width: 1.6; stroke-dasharray: 5 4; }
+.scene-pg-region { fill: var(--surface); stroke: var(--hairline); stroke-width: 1.2; }
+.scene-pg-region.is-free { fill: color-mix(in srgb, var(--scene-temp) 7%, var(--surface)); }
+.scene-pg-page { fill: none; stroke: color-mix(in srgb, var(--scene-hue-cyan) 60%, var(--hairline)); stroke-width: 2; }
+.scene-pg-tint { fill: color-mix(in srgb, var(--node-hue) 14%, var(--surface)); stroke: color-mix(in srgb, var(--node-hue) 55%, var(--hairline)); stroke-width: 1.4; }
+.scene-pg-cell-text { fill: var(--ink); font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; text-anchor: middle; pointer-events: none; }
+.scene-pg-cell-text.is-sans { font-family: var(--font-sans); font-size: 11px; }
+
 /* NUMA 노드 사이 연결 (NumaPlacement) */
 .scene-numa-link { stroke: color-mix(in srgb, var(--scene-dep) 70%, var(--hairline)); stroke-width: 4; stroke-linecap: round; }
 

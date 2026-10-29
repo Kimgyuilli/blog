@@ -9,6 +9,7 @@
 | `shared/` | 공통 프레임, 컨트롤, 반복 애니메이션 틀, 타임라인, 범례 |
 | `database/basics/` | 정규화, JOIN, 인덱스, 관계도, 트랜잭션 개요 |
 | `database/transactions/` | 격리 수준, 락, 재고 경쟁, 데드락 |
+| `database/innodb/` | InnoDB 페이지, buffer pool 교체 정책, 페이징과 페이지 구조 정적 도식 |
 | `os/scheduling/` | 스레드, 스케줄링, CPU 할당량 |
 | `os/limited-direct-execution/` | 시스템 콜, 인터럽트, 문맥 전환 |
 | `jvm/` | JVM 실행 계층, OopMap, safepoint |
