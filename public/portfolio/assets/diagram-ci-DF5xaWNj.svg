@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 452" width="1120" height="452" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif">
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/></marker><marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#9a9a9a"/></marker><marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b42318"/></marker><marker id="ahm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6b6b6b"/></marker></defs>
+  <rect width="1120" height="452" fill="#ffffff"/>
+  <text x="28" y="36" font-size="18" font-weight="700" fill="#111">CI: 검사는 줄이지 않고 직렬 구간을 끊었다 (ADR-0044)</text>
+  <rect x="28" y="150" width="130" height="72" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="93.0" y="180.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">changes</text>
+  <text x="93.0" y="201.0" font-size="13" text-anchor="middle" fill="#444">문서만 바뀌었나</text>
+  <rect x="190" y="64" width="160" height="44" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="270.0" y="90.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">lint</text>
+  <text x="270" y="124" font-size="13" text-anchor="middle" fill="#6b6b6b">선행 잡 없음</text>
+  <rect x="190" y="136" width="160" height="44" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="270.0" y="162.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">test (6 shard)</text>
+  <rect x="190" y="192" width="160" height="44" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="270.0" y="218.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">guards</text>
+  <rect x="190" y="274" width="160" height="44" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="270.0" y="300.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">images (6개)</text>
+  <path d="M 160 186 L 174 186 L 174 158 L 188 158" fill="none" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+  <path d="M 160 186 L 174 186 L 174 214 L 188 214" fill="none" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+  <path d="M 160 186 L 174 186 L 174 296 L 188 296" fill="none" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+  <line x1="352" y1="86" x2="574" y2="86" stroke="#111" stroke-width="1.4" marker-end="url(#ah)"/>
+  <line x1="352" y1="158" x2="574" y2="158" stroke="#111" stroke-width="1.4" marker-end="url(#ah)"/>
+  <line x1="352" y1="214" x2="574" y2="214" stroke="#111" stroke-width="1.4" marker-end="url(#ah)"/>
+  <text x="462" y="252" font-size="13" font-weight="700" text-anchor="middle" fill="#6b6b6b">e2e 러너 3개</text>
+  <rect x="382" y="262" width="160" height="40" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="462.0" y="286.2" font-size="13.5" font-weight="700" text-anchor="middle" fill="#111">scenarios</text>
+  <path d="M 352 296 L 366 296 L 366 282 L 380 282" fill="none" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+  <line x1="544" y1="282" x2="574" y2="282" stroke="#111" stroke-width="1.4" marker-end="url(#ah)"/>
+  <rect x="382" y="310" width="160" height="40" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="462.0" y="334.2" font-size="13.5" font-weight="700" text-anchor="middle" fill="#111">fence</text>
+  <path d="M 352 296 L 366 296 L 366 330 L 380 330" fill="none" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+  <line x1="544" y1="330" x2="574" y2="330" stroke="#111" stroke-width="1.4" marker-end="url(#ah)"/>
+  <rect x="382" y="358" width="160" height="40" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="462.0" y="382.2" font-size="13.5" font-weight="700" text-anchor="middle" fill="#111">negative-control</text>
+  <path d="M 352 296 L 366 296 L 366 378 L 380 378" fill="none" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+  <line x1="544" y1="378" x2="574" y2="378" stroke="#111" stroke-width="1.4" marker-end="url(#ah)"/>
+  <rect x="576" y="60" width="140" height="340" rx="6" fill="#111" stroke="#111" stroke-width="2"/>
+  <text x="646.0" y="185.0" font-size="16" font-weight="700" text-anchor="middle" fill="#fff">gate</text>
+  <text x="646.0" y="206.5" font-size="13" text-anchor="middle" fill="#e6e6e6">필수 체크</text>
+  <text x="646.0" y="226.5" font-size="13" text-anchor="middle" fill="#e6e6e6"></text>
+  <text x="646.0" y="246.5" font-size="13" text-anchor="middle" fill="#e6e6e6">선행 잡의</text>
+  <text x="646.0" y="266.5" font-size="13" text-anchor="middle" fill="#e6e6e6">실패와 건너뜀을</text>
+  <text x="646.0" y="286.5" font-size="13" text-anchor="middle" fill="#e6e6e6">모두 확인</text>
+  <rect x="748" y="192" width="170" height="76" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="833.0" y="214.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">publish</text>
+  <text x="833.0" y="235.0" font-size="13" text-anchor="middle" fill="#444">main push만</text>
+  <text x="833.0" y="255.0" font-size="13" text-anchor="middle" fill="#444">SHA 태그 확인 후 latest</text>
+  <rect x="942" y="192" width="150" height="76" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="1017.0" y="214.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">상태 관측</text>
+  <text x="1017.0" y="235.0" font-size="13" text-anchor="middle" fill="#444">publication-state</text>
+  <text x="1017.0" y="255.0" font-size="13" text-anchor="middle" fill="#444">6개 이미지 latest</text>
+  <line x1="718" y1="230" x2="746" y2="230" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <line x1="920" y1="230" x2="940" y2="230" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <line x1="28" y1="418" x2="1092" y2="418" stroke="#9a9a9a" stroke-width="1"/>
+  <text x="28" y="444" font-size="13.5" fill="#444">문서만 바꾼 PR은 test, guards, images, e2e를 건너뛰고, gate는 정확히 건너뛰었는지 본다. PR 전체 실행 36분 (2026-09-22) → 11~15분 (2026-10-24~27)</text>
+</svg>

@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 444" width="1120" height="444" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif">
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/></marker><marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#9a9a9a"/></marker><marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b42318"/></marker><marker id="ahm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6b6b6b"/></marker></defs>
+  <rect width="1120" height="444" fill="#ffffff"/>
+  <text x="28" y="36" font-size="18" font-weight="700" fill="#111">서비스 간 인증 방식의 3단계 변화</text>
+  <text x="88" y="64" font-size="13" text-anchor="middle" fill="#6b6b6b">클라이언트</text>
+  <text x="285" y="64" font-size="13" text-anchor="middle" fill="#6b6b6b">Gateway</text>
+  <text x="630" y="64" font-size="13" text-anchor="middle" fill="#6b6b6b">5개 서비스</text>
+  <text x="936" y="64" font-size="13" text-anchor="middle" fill="#6b6b6b">신뢰의 전제</text>
+  <rect x="28" y="78" width="1064" height="108" rx="6" fill="#fafafa" stroke="#9a9a9a" stroke-width="1.5"/>
+  <text x="44" y="102" font-size="14" font-weight="700" fill="#111">1단계: 서비스별 JWT 검증</text>
+  <rect x="40" y="122" width="96" height="48" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="88.0" y="150.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">Bearer</text>
+  <line x1="138" y1="146" x2="518" y2="146" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <text x="330" y="136" font-size="13" text-anchor="middle" fill="#444">Authorization 헤더 그대로</text>
+  <rect x="520" y="116" width="220" height="60" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="630.0" y="140.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">서비스 5곳이 각자 검증</text>
+  <text x="630.0" y="161.0" font-size="13" text-anchor="middle" fill="#444">HS256 공유 → RS256 + JWKS</text>
+  <rect x="776" y="116" width="302" height="60" rx="6" fill="#ececec" stroke="#6b6b6b" stroke-width="1.5"/>
+  <text x="927.0" y="140.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">서명은 user만, 나머지는</text>
+  <text x="927.0" y="161.0" font-size="13" text-anchor="middle" fill="#444">공개키로 검증</text>
+  <rect x="28" y="198" width="1064" height="108" rx="6" fill="#fafafa" stroke="#9a9a9a" stroke-width="1.5"/>
+  <text x="44" y="222" font-size="14" font-weight="700" fill="#111">2단계: Gateway 검증과 평문 헤더</text>
+  <rect x="40" y="242" width="96" height="48" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="88.0" y="270.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">Bearer</text>
+  <rect x="190" y="236" width="190" height="60" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="285.0" y="260.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">JWT 검증 1회</text>
+  <text x="285.0" y="281.0" font-size="13" text-anchor="middle" fill="#444">외부 X-User-* 제거</text>
+  <line x1="138" y1="266" x2="188" y2="266" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <line x1="382" y1="266" x2="518" y2="266" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <text x="450" y="256" font-size="13" text-anchor="middle" fill="#444">X-User-* (평문)</text>
+  <rect x="520" y="236" width="220" height="60" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="630.0" y="270.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">헤더 값을 그대로 신뢰</text>
+  <rect x="776" y="236" width="302" height="60" rx="6" fill="#ececec" stroke="#6b6b6b" stroke-width="1.5"/>
+  <text x="927.0" y="260.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">NetworkPolicy 한 겹</text>
+  <text x="927.0" y="281.0" font-size="13" text-anchor="middle" fill="#444">잘못 배포되면 신원 위조 가능</text>
+  <rect x="28" y="318" width="1064" height="108" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="44" y="342" font-size="14" font-weight="700" fill="#111">3단계: Gateway 서명 내부 토큰 (ADR-0017)</text>
+  <rect x="40" y="362" width="96" height="48" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="88.0" y="390.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">Bearer</text>
+  <rect x="190" y="356" width="190" height="60" rx="6" fill="#111" stroke="#111" stroke-width="2"/>
+  <text x="285.0" y="380.4" font-size="14" font-weight="700" text-anchor="middle" fill="#fff">검증 후 개인키로 서명</text>
+  <text x="285.0" y="401.0" font-size="13" text-anchor="middle" fill="#e6e6e6">수명 30초 내부 토큰</text>
+  <line x1="138" y1="386" x2="188" y2="386" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <line x1="382" y1="386" x2="518" y2="386" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <text x="450" y="376" font-size="13" font-weight="700" text-anchor="middle" fill="#111">X-Internal-Auth</text>
+  <rect x="520" y="356" width="220" height="60" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="630.0" y="380.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">iss, kid, exp 검증</text>
+  <text x="630.0" y="401.0" font-size="13" text-anchor="middle" fill="#444">키 문제면 부팅 거부</text>
+  <rect x="776" y="356" width="302" height="60" rx="6" fill="#111" stroke="#111" stroke-width="2"/>
+  <text x="927.0" y="380.4" font-size="14" font-weight="700" text-anchor="middle" fill="#fff">NetworkPolicy와 서명 두 겹</text>
+  <text x="927.0" y="401.0" font-size="13" text-anchor="middle" fill="#e6e6e6">둘 다 뚫어야 위조 가능</text>
+</svg>

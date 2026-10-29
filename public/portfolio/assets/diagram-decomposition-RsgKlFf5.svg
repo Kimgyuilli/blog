@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 452" width="1120" height="452" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif">
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/></marker><marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#9a9a9a"/></marker><marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b42318"/></marker><marker id="ahm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6b6b6b"/></marker></defs>
+  <rect width="1120" height="452" fill="#ffffff"/>
+  <text x="28" y="36" font-size="18" font-weight="700" fill="#111">모듈을 떼기 전에 서비스 사이 동기 호출부터 없앴다</text>
+  <rect x="28" y="56" width="332" height="380" rx="6" fill="#fafafa" stroke="#9a9a9a" stroke-width="1.5"/>
+  <text x="44" y="84" font-size="15" font-weight="700" fill="#111">1. 분리 전 (2026-06 초)</text>
+  <text x="44" y="106" font-size="13" fill="#444">패키지는 나뉘었지만 빈으로 서로 호출</text>
+  <rect x="48" y="128" width="120" height="52" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="108.0" y="158.6" font-size="15" font-weight="700" text-anchor="middle" fill="#111">Order</text>
+  <rect x="220" y="128" width="120" height="52" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="280.0" y="158.6" font-size="15" font-weight="700" text-anchor="middle" fill="#111">Product</text>
+  <rect x="134" y="246" width="120" height="52" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="194.0" y="276.6" font-size="15" font-weight="700" text-anchor="middle" fill="#111">Payment</text>
+  <line x1="170" y1="146" x2="218" y2="146" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <text x="194" y="124" font-size="13" text-anchor="middle" fill="#444">ProductPort</text>
+  <path d="M 194 244 L 128 182" fill="none" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <text x="132" y="224" font-size="13" text-anchor="end" fill="#444">OrderPort</text>
+  <rect x="48" y="318" width="292" height="40" rx="6" fill="#ececec" stroke="#6b6b6b" stroke-width="1.5"/>
+  <text x="194.0" y="342.0" font-size="13" text-anchor="middle" fill="#444">User, Notification: 의존 없음</text>
+  <text x="44" y="390" font-size="14" font-weight="700" fill="#b42318">Product를 먼저 떼면</text>
+  <text x="44" y="412" font-size="14" font-weight="700" fill="#b42318">Order가 기동하지 못한다</text>
+  <line x1="362" y1="246" x2="380" y2="246" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <rect x="382" y="56" width="380" height="380" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="398" y="84" font-size="15" font-weight="700" fill="#111">2. 동기 호출 제거 (06-16~19)</text>
+  <circle cx="412" cy="122" r="13" fill="#111"/>
+  <text x="412" y="127" font-size="13" font-weight="700" text-anchor="middle" fill="#fff">1</text>
+  <text x="436" y="120" font-size="14" font-weight="700" fill="#111">재고 차감 호출</text>
+  <text x="436" y="141" font-size="14" fill="#444">→ 재고 예약 원장 + 이벤트</text>
+  <circle cx="412" cy="176" r="13" fill="#111"/>
+  <text x="412" y="181" font-size="13" font-weight="700" text-anchor="middle" fill="#fff">2</text>
+  <text x="436" y="174" font-size="14" font-weight="700" fill="#111">단가 조회</text>
+  <text x="436" y="195" font-size="14" fill="#444">→ product.updated로 로컬 단가 캐시</text>
+  <circle cx="412" cy="230" r="13" fill="#111"/>
+  <text x="412" y="235" font-size="13" font-weight="700" text-anchor="middle" fill="#fff">3</text>
+  <text x="436" y="228" font-size="14" font-weight="700" fill="#111">결제 시 재고 확정</text>
+  <text x="436" y="249" font-size="14" fill="#444">→ 확정과 해제를 나눈 2단계</text>
+  <circle cx="412" cy="284" r="13" fill="#111"/>
+  <text x="412" y="289" font-size="13" font-weight="700" text-anchor="middle" fill="#fff">4</text>
+  <text x="436" y="282" font-size="14" font-weight="700" fill="#111">상품 존재 확인</text>
+  <text x="436" y="303" font-size="14" fill="#444">→ 로컬 캐시, 미스면 ORD-009</text>
+  <circle cx="412" cy="338" r="13" fill="#111"/>
+  <text x="412" y="343" font-size="13" font-weight="700" text-anchor="middle" fill="#fff">5</text>
+  <text x="436" y="336" font-size="14" font-weight="700" fill="#111">Order와 Payment 상호 호출</text>
+  <text x="436" y="357" font-size="14" fill="#444">→ payment.requested 이벤트</text>
+  <line x1="398" y1="392" x2="746" y2="392" stroke="#9a9a9a" stroke-width="1"/>
+  <text x="398" y="418" font-size="14" font-weight="700" fill="#111">운영 코드의 동기 호출 0을 확인한 뒤 모듈 분리</text>
+  <line x1="764" y1="246" x2="782" y2="246" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <rect x="784" y="56" width="308" height="380" rx="6" fill="#fafafa" stroke="#9a9a9a" stroke-width="1.5"/>
+  <text x="800" y="84" font-size="15" font-weight="700" fill="#111">3. 분리와 DB 소유권</text>
+  <line x1="860" y1="108" x2="860" y2="404" stroke="#9a9a9a" stroke-width="2"/>
+  <circle cx="860" cy="116" r="6" fill="#111" stroke="#111" stroke-width="2"/>
+  <text x="800" y="121" font-size="13" fill="#444">06-15</text>
+  <text x="876" y="121" font-size="14" fill="#111">notification</text>
+  <circle cx="860" cy="160" r="6" fill="#111" stroke="#111" stroke-width="2"/>
+  <text x="800" y="165" font-size="13" fill="#444">06-16</text>
+  <text x="876" y="165" font-size="14" fill="#111">user</text>
+  <circle cx="860" cy="204" r="6" fill="#111" stroke="#111" stroke-width="2"/>
+  <text x="800" y="209" font-size="13" fill="#444">06-18</text>
+  <text x="876" y="209" font-size="14" fill="#111">product</text>
+  <circle cx="860" cy="248" r="6" fill="#111" stroke="#111" stroke-width="2"/>
+  <text x="800" y="253" font-size="13" fill="#444">06-19</text>
+  <text x="876" y="253" font-size="14" fill="#111">order</text>
+  <circle cx="860" cy="292" r="6" fill="#111" stroke="#111" stroke-width="2"/>
+  <text x="800" y="297" font-size="13" fill="#444">06-19</text>
+  <text x="876" y="297" font-size="14" font-weight="700" fill="#111">payment, 루트 앱 해체</text>
+  <circle cx="860" cy="336" r="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="800" y="341" font-size="13" fill="#444">06-21</text>
+  <text x="876" y="341" font-size="14" font-weight="700" fill="#111">교차 FK 6개 드롭</text>
+  <circle cx="860" cy="380" r="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="800" y="385" font-size="13" fill="#444">06-22</text>
+  <text x="876" y="385" font-size="14" font-weight="700" fill="#111">스키마 5개, 계정 분리</text>
+</svg>

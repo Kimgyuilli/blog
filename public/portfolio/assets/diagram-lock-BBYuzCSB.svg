@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 456" width="1120" height="456" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif">
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/></marker><marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#9a9a9a"/></marker><marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b42318"/></marker><marker id="ahm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6b6b6b"/></marker></defs>
+  <rect width="1120" height="456" fill="#ffffff"/>
+  <text x="28" y="36" font-size="18" font-weight="700" fill="#111">재고 경로의 분산 락: 의도한 순서, 실제 순서, 지금 구조</text>
+  <rect x="28" y="56" width="344" height="384" rx="6" fill="#fafafa" stroke="#9a9a9a" stroke-width="1.5"/>
+  <text x="44" y="84" font-size="16" font-weight="700" fill="#111">도입 때 의도한 순서</text>
+  <text x="44" y="105" font-size="13" fill="#444">2026-03, Phase 2</text>
+  <rect x="48" y="120" width="304" height="36" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="200.0" y="142.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">락 획득 (Redisson)</text>
+  <line x1="200.0" y1="157" x2="200.0" y2="166" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+  <rect x="48" y="168" width="304" height="36" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="200.0" y="190.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">트랜잭션 시작</text>
+  <line x1="200.0" y1="205" x2="200.0" y2="214" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+  <rect x="48" y="216" width="304" height="36" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="200.0" y="238.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">재고 차감 (@Version)</text>
+  <line x1="200.0" y1="253" x2="200.0" y2="262" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+  <rect x="48" y="264" width="304" height="36" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="200.0" y="286.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">커밋</text>
+  <line x1="200.0" y1="301" x2="200.0" y2="310" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+  <rect x="48" y="312" width="304" height="36" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="200.0" y="334.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">락 해제</text>
+  <line x1="44" y1="368" x2="356" y2="368" stroke="#9a9a9a" stroke-width="1"/>
+  <text x="44" y="393" font-size="13.5" fill="#111">경합하면 3초 기다린 뒤 409 (PRD-004)</text>
+  <text x="44" y="416" font-size="13.5" fill="#111">Redis 장애면 락 없이 진행</text>
+  <rect x="388" y="56" width="344" height="384" rx="6" fill="#fafafa" stroke="#9a9a9a" stroke-width="1.5"/>
+  <text x="404" y="84" font-size="16" font-weight="700" fill="#111">실제 순서</text>
+  <text x="404" y="105" font-size="13" fill="#444">2026-09-17 GKE 측정에서 확인</text>
+  <rect x="408" y="120" width="304" height="36" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="560.0" y="142.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">바깥 @Transactional 시작</text>
+  <line x1="560.0" y1="157" x2="560.0" y2="166" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+  <rect x="408" y="168" width="304" height="36" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="560.0" y="190.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">락 획득</text>
+  <line x1="560.0" y1="205" x2="560.0" y2="214" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+  <rect x="408" y="216" width="304" height="36" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="560.0" y="238.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">재고 읽기, 필드만 변경</text>
+  <line x1="560.0" y1="253" x2="560.0" y2="262" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+  <rect x="408" y="264" width="304" height="36" rx="6" fill="#fff" stroke="#b42318" stroke-width="2"/>
+  <text x="560.0" y="286.4" font-size="14" font-weight="700" text-anchor="middle" fill="#b42318">락 해제</text>
+  <line x1="560.0" y1="301" x2="560.0" y2="310" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+  <rect x="408" y="312" width="304" height="36" rx="6" fill="#fff" stroke="#b42318" stroke-width="2"/>
+  <text x="560.0" y="334.4" font-size="14" font-weight="700" text-anchor="middle" fill="#b42318">커밋하며 UPDATE, 여기서 충돌</text>
+  <line x1="404" y1="368" x2="716" y2="368" stroke="#9a9a9a" stroke-width="1"/>
+  <text x="404" y="393" font-size="13.5" fill="#111">락 획득 실패 0건인데 충돌 7건, DLQ 7건</text>
+  <text x="404" y="416" font-size="13.5" fill="#111">락 구간에 쓰기가 없고 3경로 중 1곳만 덮음</text>
+  <rect x="748" y="56" width="344" height="384" rx="6" fill="#fafafa" stroke="#9a9a9a" stroke-width="1.5"/>
+  <text x="764" y="84" font-size="16" font-weight="700" fill="#111">지금 구조</text>
+  <text x="764" y="105" font-size="13" fill="#444">2026-09-18 락 제거 (ADR-0025)</text>
+  <rect x="768" y="120" width="304" height="36" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="920.0" y="142.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">order.created 수신</text>
+  <line x1="920.0" y1="157" x2="920.0" y2="166" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+  <rect x="768" y="168" width="304" height="36" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="920.0" y="190.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">consumer 트랜잭션 시작</text>
+  <line x1="920.0" y1="205" x2="920.0" y2="214" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+  <rect x="768" y="216" width="304" height="36" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="920.0" y="238.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">재고 차감 (@Version)</text>
+  <line x1="920.0" y1="253" x2="920.0" y2="262" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+  <rect x="768" y="264" width="304" height="36" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="920.0" y="286.4" font-size="14" font-weight="700" text-anchor="middle" fill="#111">커밋</text>
+  <line x1="920.0" y1="301" x2="920.0" y2="310" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+  <rect x="768" y="312" width="304" height="36" rx="6" fill="#111" stroke="#111" stroke-width="2"/>
+  <text x="920.0" y="334.4" font-size="14" font-weight="700" text-anchor="middle" fill="#fff">충돌하면 jitter 재시도</text>
+  <line x1="764" y1="368" x2="1076" y2="368" stroke="#9a9a9a" stroke-width="1"/>
+  <text x="764" y="393" font-size="13.5" fill="#111">재시도 1초, 5초, 30초에 ±50% jitter</text>
+  <text x="764" y="416" font-size="13.5" fill="#111">소진되면 DLQ. 정합성은 Redis와 무관</text>
+</svg>

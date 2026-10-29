@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 412" width="1120" height="412" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif">
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/></marker><marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#9a9a9a"/></marker><marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b42318"/></marker><marker id="ahm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6b6b6b"/></marker></defs>
+  <rect width="1120" height="412" fill="#ffffff"/>
+  <text x="28" y="36" font-size="18" font-weight="700" fill="#111">단계마다 이번에 해결할 문제를 먼저 정하고 들어갔다</text>
+  <rect x="28" y="58" width="194" height="74" rx="6" fill="#ececec" stroke="#111" stroke-width="2"/>
+  <text x="125.0" y="84" font-size="16" font-weight="700" text-anchor="middle" fill="#111">Phase 1</text>
+  <text x="125.0" y="106" font-size="15" font-weight="700" text-anchor="middle" fill="#111">모놀리식 구현</text>
+  <text x="125.0" y="124" font-size="13" text-anchor="middle" fill="#444">2026-03</text>
+  <rect x="28" y="140" width="194" height="226" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <circle cx="45" cy="165.4" r="2.4" fill="#111"/>
+  <text x="55" y="170" font-size="14" fill="#111">도메인 5개 (패키지)</text>
+  <circle cx="45" cy="190.4" r="2.4" fill="#111"/>
+  <text x="55" y="195" font-size="14" fill="#111">4-Layered + DDD</text>
+  <circle cx="45" cy="215.4" r="2.4" fill="#111"/>
+  <text x="55" y="220" font-size="14" fill="#111">JWT 인증, Toss 결제</text>
+  <circle cx="45" cy="240.4" r="2.4" fill="#111"/>
+  <text x="55" y="245" font-size="14" fill="#111">로컬 이벤트</text>
+  <line x1="42" y1="300" x2="208" y2="300" stroke="#9a9a9a" stroke-width="1"/>
+  <text x="42" y="326" font-size="14" font-weight="700" fill="#111">도메인 경계를</text>
+  <text x="42" y="348" font-size="14" font-weight="700" fill="#111">어디에 긋나</text>
+  <line x1="224" y1="95" x2="242" y2="95" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <rect x="244" y="58" width="194" height="74" rx="6" fill="#ececec" stroke="#111" stroke-width="2"/>
+  <text x="341.0" y="84" font-size="16" font-weight="700" text-anchor="middle" fill="#111">Phase 2</text>
+  <text x="341.0" y="106" font-size="15" font-weight="700" text-anchor="middle" fill="#111">성능과 정합성</text>
+  <text x="341.0" y="124" font-size="13" text-anchor="middle" fill="#444">2026-03~04</text>
+  <rect x="244" y="140" width="194" height="226" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <circle cx="261" cy="165.4" r="2.4" fill="#111"/>
+  <text x="271" y="170" font-size="14" fill="#111">Redis Cache-Aside</text>
+  <circle cx="261" cy="190.4" r="2.4" fill="#111"/>
+  <text x="271" y="195" font-size="14" fill="#111">분산 락 + @Version</text>
+  <circle cx="261" cy="215.4" r="2.4" fill="#111"/>
+  <text x="271" y="220" font-size="14" fill="#111">Kafka + Outbox</text>
+  <circle cx="261" cy="240.4" r="2.4" fill="#111"/>
+  <text x="271" y="245" font-size="14" fill="#111">멱등성, DLQ</text>
+  <circle cx="261" cy="265.4" r="2.4" fill="#111"/>
+  <text x="271" y="270" font-size="14" fill="#111">ShedLock</text>
+  <line x1="258" y1="300" x2="424" y2="300" stroke="#9a9a9a" stroke-width="1"/>
+  <text x="258" y="326" font-size="14" font-weight="700" fill="#111">몰리면 무엇이</text>
+  <text x="258" y="348" font-size="14" font-weight="700" fill="#111">먼저 깨지나</text>
+  <line x1="440" y1="95" x2="458" y2="95" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <rect x="460" y="58" width="194" height="74" rx="6" fill="#ececec" stroke="#111" stroke-width="2"/>
+  <text x="557.0" y="84" font-size="16" font-weight="700" text-anchor="middle" fill="#111">Phase 3</text>
+  <text x="557.0" y="106" font-size="15" font-weight="700" text-anchor="middle" fill="#111">인프라와 관측</text>
+  <text x="557.0" y="124" font-size="13" text-anchor="middle" fill="#444">~2026-04-29</text>
+  <rect x="460" y="140" width="194" height="226" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <circle cx="477" cy="165.4" r="2.4" fill="#111"/>
+  <text x="487" y="170" font-size="14" fill="#111">Kubernetes, GKE</text>
+  <circle cx="477" cy="190.4" r="2.4" fill="#111"/>
+  <text x="487" y="195" font-size="14" fill="#111">Prometheus, Grafana</text>
+  <circle cx="477" cy="215.4" r="2.4" fill="#111"/>
+  <text x="487" y="220" font-size="14" fill="#111">부하 측정 (k6)</text>
+  <circle cx="477" cy="240.4" r="2.4" fill="#111"/>
+  <text x="487" y="245" font-size="14" fill="#111">HPA</text>
+  <line x1="474" y1="300" x2="640" y2="300" stroke="#9a9a9a" stroke-width="1"/>
+  <text x="474" y="326" font-size="14" font-weight="700" fill="#111">개선을 어떻게</text>
+  <text x="474" y="348" font-size="14" font-weight="700" fill="#111">증명하나</text>
+  <line x1="656" y1="95" x2="674" y2="95" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <rect x="676" y="58" width="194" height="74" rx="6" fill="#ececec" stroke="#111" stroke-width="2"/>
+  <text x="773.0" y="84" font-size="16" font-weight="700" text-anchor="middle" fill="#111">Phase 4</text>
+  <text x="773.0" y="106" font-size="15" font-weight="700" text-anchor="middle" fill="#111">서비스 분리</text>
+  <text x="773.0" y="124" font-size="13" text-anchor="middle" fill="#444">~2026-09-22</text>
+  <rect x="676" y="140" width="194" height="226" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <circle cx="693" cy="165.4" r="2.4" fill="#111"/>
+  <text x="703" y="170" font-size="14" fill="#111">서비스 5개 + Gateway</text>
+  <circle cx="693" cy="190.4" r="2.4" fill="#111"/>
+  <text x="703" y="195" font-size="14" fill="#111">서비스별 스키마 5개</text>
+  <circle cx="693" cy="215.4" r="2.4" fill="#111"/>
+  <text x="703" y="220" font-size="14" fill="#111">서명 내부 토큰</text>
+  <circle cx="693" cy="240.4" r="2.4" fill="#111"/>
+  <text x="703" y="245" font-size="14" fill="#111">사가와 환불 계약</text>
+  <circle cx="693" cy="265.4" r="2.4" fill="#111"/>
+  <text x="703" y="270" font-size="14" fill="#111">DLQ 원장</text>
+  <line x1="690" y1="300" x2="856" y2="300" stroke="#9a9a9a" stroke-width="1"/>
+  <text x="690" y="326" font-size="14" font-weight="700" fill="#111">나눈 뒤 무엇이</text>
+  <text x="690" y="348" font-size="14" font-weight="700" fill="#111">새로 깨지나</text>
+  <line x1="872" y1="95" x2="890" y2="95" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <rect x="892" y="58" width="194" height="74" rx="6" fill="#111" stroke="#111" stroke-width="2"/>
+  <text x="989.0" y="84" font-size="16" font-weight="700" text-anchor="middle" fill="#fff">Phase 5</text>
+  <text x="989.0" y="106" font-size="15" font-weight="700" text-anchor="middle" fill="#fff">수요 기반</text>
+  <text x="989.0" y="124" font-size="13" text-anchor="middle" fill="#d9d9d9">~2026-10-27</text>
+  <rect x="892" y="140" width="194" height="226" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <circle cx="909" cy="165.4" r="2.4" fill="#111"/>
+  <text x="919" y="170" font-size="14" fill="#111">GKE 재측정</text>
+  <circle cx="909" cy="190.4" r="2.4" fill="#111"/>
+  <text x="919" y="195" font-size="14" fill="#111">MySQL CPU 상한</text>
+  <circle cx="909" cy="215.4" r="2.4" fill="#111"/>
+  <text x="919" y="220" font-size="14" fill="#111">분산 락 제거</text>
+  <circle cx="909" cy="240.4" r="2.4" fill="#111"/>
+  <text x="919" y="245" font-size="14" fill="#111">승인 보호, Toss 실호출</text>
+  <circle cx="909" cy="265.4" r="2.4" fill="#111"/>
+  <text x="919" y="270" font-size="14" fill="#111">CI 36분 → 11~15분</text>
+  <line x1="906" y1="300" x2="1072" y2="300" stroke="#9a9a9a" stroke-width="1"/>
+  <text x="906" y="326" font-size="14" font-weight="700" fill="#111">측정이 가리킨</text>
+  <text x="906" y="348" font-size="14" font-weight="700" fill="#111">곳부터 고친다</text>
+  <text x="28" y="396" font-size="14" fill="#444">Phase 5부터는 로드맵 없이 필요한 작업을 골랐다. 2026-10-27부터 Phase 6도 같은 방식이다.</text>
+</svg>

@@ -1,0 +1,36 @@
+<svg width="1200" height="675" viewBox="0 0 1200 675" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="675" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="675" fill="url(#bg)"/>
+
+  <!-- subtle grid -->
+  <g stroke="#1e293b" stroke-width="1" opacity="0.5">
+    <line x1="0" y1="168" x2="1200" y2="168"/>
+    <line x1="0" y1="506" x2="1200" y2="506"/>
+  </g>
+
+  <!-- accent bar -->
+  <rect x="120" y="250" width="64" height="8" rx="4" fill="url(#accent)"/>
+
+  <!-- logotype -->
+  <text x="116" y="372" font-family="'SF Pro Display', 'Segoe UI', system-ui, sans-serif" font-size="124" font-weight="800" letter-spacing="-3">
+    <tspan fill="#f1f5f9">Peek</tspan><tspan fill="#34d399">Cart</tspan>
+  </text>
+
+  <!-- tagline -->
+  <text x="120" y="440" font-family="'SF Pro Text', 'Segoe UI', system-ui, sans-serif" font-size="34" font-weight="500" fill="#94a3b8" letter-spacing="0.5">
+    Scalable E-Commerce Backend
+  </text>
+  <text x="120" y="486" font-family="'SF Pro Text', 'Segoe UI', system-ui, sans-serif" font-size="20" font-weight="400" fill="#64748b" letter-spacing="0.3">
+    Monolith → MSA · Java 17 · Spring Boot · Kafka · Redis · Kubernetes
+  </text>
+</svg>

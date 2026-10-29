@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 440" width="1120" height="440" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif">
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/></marker><marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#9a9a9a"/></marker><marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b42318"/></marker><marker id="ahm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6b6b6b"/></marker></defs>
+  <rect width="1120" height="440" fill="#ffffff"/>
+  <text x="28" y="36" font-size="18" font-weight="700" fill="#111">이벤트 유실, 중복, 실패를 다루는 경로</text>
+  <text x="28" y="64" font-size="13" font-weight="700" fill="#6b6b6b">유실을 막는 발행</text>
+  <text x="754" y="64" font-size="13" font-weight="700" fill="#6b6b6b">중복을 거르는 소비</text>
+  <rect x="28" y="76" width="250" height="92" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="153.0" y="104.6" font-size="15" font-weight="700" text-anchor="middle" fill="#111">업무 트랜잭션</text>
+  <text x="153.0" y="126.9" font-size="14" text-anchor="middle" fill="#444">비즈니스 데이터와</text>
+  <text x="153.0" y="148.9" font-size="14" text-anchor="middle" fill="#444">outbox_events를 함께 커밋</text>
+  <rect x="310" y="76" width="220" height="92" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="420.0" y="104.6" font-size="15" font-weight="700" text-anchor="middle" fill="#111">Outbox poller</text>
+  <text x="420.0" y="126.9" font-size="14" text-anchor="middle" fill="#444">500ms마다 500건, ShedLock</text>
+  <text x="420.0" y="148.9" font-size="14" text-anchor="middle" fill="#444">ack 뒤 PUBLISHED 저장</text>
+  <rect x="562" y="76" width="160" height="92" rx="6" fill="#111" stroke="#111" stroke-width="2"/>
+  <text x="642.0" y="115.6" font-size="15" font-weight="700" text-anchor="middle" fill="#fff">Kafka</text>
+  <text x="642.0" y="137.9" font-size="14" text-anchor="middle" fill="#e6e6e6">업무 토픽 15개</text>
+  <rect x="754" y="76" width="250" height="92" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="879.0" y="104.6" font-size="15" font-weight="700" text-anchor="middle" fill="#111">소비 트랜잭션</text>
+  <text x="879.0" y="126.9" font-size="14" text-anchor="middle" fill="#444">processed_events INSERT 먼저,</text>
+  <text x="879.0" y="148.9" font-size="14" text-anchor="middle" fill="#444">UK 충돌이면 건너뜀</text>
+  <line x1="280" y1="122" x2="308" y2="122" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <line x1="532" y1="122" x2="560" y2="122" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <line x1="724" y1="122" x2="752" y2="122" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <text x="318" y="192" font-size="13" fill="#444">5회 실패하면 FAILED, 운영 알림</text>
+  <text x="754" y="230" font-size="13" font-weight="700" fill="#6b6b6b">실패를 남기는 경로</text>
+  <line x1="879.0" y1="170" x2="879.0" y2="240" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <text x="887.0" y="210" font-size="13" fill="#444">처리 실패</text>
+  <rect x="754" y="242" width="250" height="80" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="879.0" y="275.6" font-size="15" font-weight="700" text-anchor="middle" fill="#111">재시도 3회</text>
+  <text x="879.0" y="297.9" font-size="14" text-anchor="middle" fill="#444">1초, 5초, 30초 (±50% jitter)</text>
+  <rect x="562" y="242" width="160" height="80" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="642.0" y="275.6" font-size="15" font-weight="700" text-anchor="middle" fill="#111">{토픽}.dlq</text>
+  <text x="642.0" y="297.9" font-size="14" text-anchor="middle" fill="#444">원본 그대로 격리</text>
+  <rect x="310" y="242" width="220" height="80" rx="6" fill="#111" stroke="#111" stroke-width="2"/>
+  <text x="420.0" y="264.6" font-size="15" font-weight="700" text-anchor="middle" fill="#fff">DLQ 원장</text>
+  <text x="420.0" y="286.9" font-size="14" text-anchor="middle" fill="#e6e6e6">미결 건수로 집계,</text>
+  <text x="420.0" y="308.9" font-size="14" text-anchor="middle" fill="#e6e6e6">사람이 사유를 적어 종결</text>
+  <rect x="28" y="242" width="250" height="80" rx="6" fill="#fff" stroke="#6b6b6b" stroke-width="1.8" stroke-dasharray="7 5"/>
+  <text x="153.0" y="264.6" font-size="15" font-weight="700" text-anchor="middle" fill="#444">replay (아직 열지 않음)</text>
+  <text x="153.0" y="286.9" font-size="14" text-anchor="middle" fill="#6b6b6b">같은 eventId로</text>
+  <text x="153.0" y="308.9" font-size="14" text-anchor="middle" fill="#6b6b6b">outbox를 거쳐 재발행</text>
+  <line x1="752" y1="282" x2="724" y2="282" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <line x1="560" y1="282" x2="532" y2="282" stroke="#111" stroke-width="2" marker-end="url(#ah)"/>
+  <line x1="308" y1="282" x2="280" y2="282" stroke="#6b6b6b" stroke-width="1.8" stroke-dasharray="7 5" marker-end="url(#ahm)"/>
+  <line x1="153.0" y1="240" x2="153.0" y2="172" stroke="#6b6b6b" stroke-width="1.8" stroke-dasharray="7 5" marker-end="url(#ahm)"/>
+  <line x1="28" y1="346" x2="1092" y2="346" stroke="#9a9a9a" stroke-width="1"/>
+  <circle cx="35" cy="369.4" r="2.4" fill="#111"/>
+  <text x="45" y="374" font-size="14" fill="#111">발행은 at-least-once다. 브로커 ack 뒤 PUBLISHED를 저장하기 전에 죽으면 같은 메시지가 다시 나간다.</text>
+  <circle cx="35" cy="394.4" r="2.4" fill="#111"/>
+  <text x="45" y="399" font-size="14" fill="#111">소비 효과 1회는 같은 eventId와 processed_events (event_id, consumer_group) UK가 보장한다.</text>
+  <circle cx="35" cy="419.4" r="2.4" fill="#111"/>
+  <text x="45" y="424" font-size="14" fill="#111">replay는 원본 시각에서 7일 안, 원본 eventId와 payload를 바이트 그대로 보낼 때만 허용한다.</text>
+</svg>

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 440" width="1200" height="440" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',sans-serif">
+  <title>마크다운 파일에서 MCP 태스크 관리로 변경</title>
+  <desc>공유 파일을 읽고 편집하던 절차를 필요한 태스크 조회와 트랜잭션 기반 변경으로 옮긴 구조</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="440" fill="#fff"/>
+  <text x="40" y="44" font-size="22" font-weight="700" fill="#0f172a">필요한 태스크를 조회하고 변경하는 방식으로 전환</text>
+  <rect x="40" y="76" width="490" height="320" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+  <rect x="670" y="76" width="490" height="320" rx="12" fill="#f0fdf4" stroke="#86efac"/>
+  <text x="64" y="114" font-size="19" font-weight="700" fill="#334155">기존 · 공유 마크다운 파일</text>
+  <rect x="90" y="145" width="390" height="60" rx="6" fill="#fff" stroke="#94a3b8"/>
+  <text x="285" y="182" text-anchor="middle" font-size="17" fill="#334155">PLAN.md · PROGRESS.md</text>
+  <path d="M285 207 V240" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="285" y="272" text-anchor="middle" font-size="17" fill="#334155">상태 확인 때마다 계획과 이력 읽기</text>
+  <text x="285" y="306" text-anchor="middle" font-size="17" fill="#334155">여러 에이전트가 같은 파일 편집</text>
+  <text x="285" y="359" text-anchor="middle" font-size="15" fill="#64748b">반복 읽기와 동시 편집 충돌 조율</text>
+  <path d="M548 235 H650" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="694" y="114" font-size="19" font-weight="700" fill="#166534">변경 · MCP 도구와 SQLite</text>
+  <rect x="720" y="145" width="390" height="60" rx="6" fill="#fff" stroke="#86efac"/>
+  <text x="915" y="182" text-anchor="middle" font-size="17" fill="#166534">sync · next · claim · complete · batch</text>
+  <path d="M915 207 V240" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="915" y="272" text-anchor="middle" font-size="17" fill="#166534">요약과 필요한 태스크만 조회</text>
+  <text x="915" y="306" text-anchor="middle" font-size="17" fill="#166534">여러 변경을 한 트랜잭션으로 처리</text>
+  <text x="915" y="359" text-anchor="middle" font-size="15" fill="#15803d">진행 상황은 VS Code 보드에서 확인</text>
+</svg>
