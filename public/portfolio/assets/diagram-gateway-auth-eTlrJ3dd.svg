@@ -48,5 +48,5 @@
   <text x="630.0" y="401.0" font-size="13" text-anchor="middle" fill="#444">키 문제면 부팅 거부</text>
   <rect x="776" y="356" width="302" height="60" rx="6" fill="#111" stroke="#111" stroke-width="2"/>
   <text x="927.0" y="380.4" font-size="14" font-weight="700" text-anchor="middle" fill="#fff">NetworkPolicy와 서명 두 겹</text>
-  <text x="927.0" y="401.0" font-size="13" text-anchor="middle" fill="#e6e6e6">둘 다 뚫어야 위조 가능</text>
+  <text x="927.0" y="401.0" font-size="13" text-anchor="middle" fill="#e6e6e6">둘 다 우회해야 위조 가능</text>
 </svg>
