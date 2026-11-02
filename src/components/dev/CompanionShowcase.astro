@@ -1,0 +1,199 @@
+---
+/**
+ * 도트 캐릭터 '새싹' 견본. 개발 서버의 /dev/companion/ 에서만 보입니다.
+ * 동작을 고치면 sprite.ts의 ANIMATIONS를 바꾸고 여기서 프레임과 실제 크기를 확인합니다.
+ */
+import { ANIMATIONS, renderSvg } from '../../scripts/companion/sprite';
+import '../../styles/companion.css';
+
+const animations = Object.entries(ANIMATIONS);
+const scales = [2, 3, 4];
+---
+
+<div class="cmp">
+  <header class="cmp-intro">
+    <p class="cmp-kicker">dev only · /dev/companion/</p>
+    <h1>새싹</h1>
+    <p>글 옆을 따라다닐 도트 캐릭터입니다. 16x18 격자에 그렸고, 상단 Theme 버튼으로 다크 모드도 확인할 수 있습니다.</p>
+  </header>
+
+  <section class="cmp-section">
+    <h2>동작</h2>
+    <ul class="cmp-cards">
+      {animations.map(([name, animation]) => (
+        <li class="cmp-card">
+          <div class="cmp-card-stage">
+            <div class="companion-stage" style="--cmp-px: 6px" data-companion={name}></div>
+          </div>
+          <p class="cmp-card-name">{animation.label} <code>{name}</code></p>
+          <p class="cmp-card-when">{animation.when}</p>
+        </li>
+      ))}
+    </ul>
+  </section>
+
+  <section class="cmp-section">
+    <h2>실제 크기</h2>
+    <p class="cmp-note">목차 열 옆에 놓였을 때의 크기입니다. 버튼으로 동작을 바꿔 봅니다.</p>
+    <div class="cmp-switch" role="group" aria-label="동작 바꾸기">
+      {animations.map(([name, animation], i) => (
+        <button type="button" data-switch={name} aria-pressed={i === 0 ? 'true' : 'false'}>{animation.label}</button>
+      ))}
+    </div>
+    <div class="cmp-mock">
+      {scales.map((px) => (
+        <div class="cmp-mock-col">
+          <div class="cmp-mock-toc">
+            <span class="cmp-mock-line"></span>
+            <span class="cmp-mock-line is-active"></span>
+            <span class="cmp-mock-line"></span>
+            <span class="cmp-mock-line"></span>
+          </div>
+          <div class="companion-stage" style={`--cmp-px: ${px}px`} data-companion="idle" data-follow></div>
+          <p class="cmp-mock-label">{px}배 · {16 * px}x{18 * px}px</p>
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <section class="cmp-section">
+    <h2>프레임</h2>
+    <p class="cmp-note">각 프레임과 보여 주는 시간(ms)입니다.</p>
+    {animations.map(([name, animation]) => (
+      <div class="cmp-strip">
+        <p class="cmp-strip-name">{animation.label} <code>{name}</code></p>
+        <ol class="cmp-strip-frames">
+          {animation.frames.map((frame) => (
+            <li>
+              <div class="companion-stage" style="--cmp-px: 4px" set:html={renderSvg(frame.grid)} />
+              <span>{frame.ms}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+    ))}
+  </section>
+</div>
+
+<script>
+  import { createSpritePlayer } from '../../scripts/companion/player';
+  import type { AnimationName } from '../../scripts/companion/sprite';
+
+  const followers: ReturnType<typeof createSpritePlayer>[] = [];
+  document.querySelectorAll<HTMLElement>('[data-companion]').forEach((stage) => {
+    const player = createSpritePlayer(stage);
+    player.play(stage.dataset.companion as AnimationName);
+    if (stage.hasAttribute('data-follow')) followers.push(player);
+  });
+
+  const buttons = document.querySelectorAll<HTMLButtonElement>('[data-switch]');
+  buttons.forEach((button) => {
+    button.addEventListener('click', () => {
+      buttons.forEach((other) => other.setAttribute('aria-pressed', String(other === button)));
+      followers.forEach((player) => player.play(button.dataset.switch as AnimationName, { restart: true }));
+    });
+  });
+</script>
+
+<style>
+  .cmp {
+    width: min(100% - 32px, var(--content-width));
+    margin: 40px auto 80px;
+  }
+
+  .cmp-kicker { margin: 0; color: var(--brand-green-deep); font-family: var(--font-mono); font-size: 0.78rem; }
+  .cmp-intro h1 { margin: 6px 0 8px; }
+  .cmp-intro p, .cmp-note { color: var(--slate); }
+  .cmp-section { margin-top: 48px; }
+  .cmp-section h2 { margin-bottom: 12px; font-size: 1.25rem; }
+
+  .cmp-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 14px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .cmp-card {
+    padding: 14px;
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    background: var(--canvas);
+  }
+
+  .cmp-card-stage {
+    display: grid;
+    place-items: end center;
+    height: 150px;
+    padding-bottom: 6px;
+    border-bottom: 1px dashed var(--hairline);
+  }
+
+  .cmp-card-name { margin: 10px 0 2px; font-weight: 700; font-size: 0.92rem; }
+  .cmp-card-name code, .cmp-strip-name code { color: var(--muted); font-weight: 400; font-size: 0.78rem; }
+  .cmp-card-when { margin: 0; color: var(--slate); font-size: 0.82rem; line-height: 1.45; }
+
+  .cmp-switch { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0; }
+  .cmp-switch button {
+    padding: 5px 10px;
+    border: 1px solid var(--hairline);
+    border-radius: 999px;
+    background: var(--canvas);
+    color: var(--charcoal);
+    font: inherit;
+    font-size: 0.82rem;
+    cursor: pointer;
+  }
+  .cmp-switch button[aria-pressed='true'] {
+    border-color: var(--brand-green);
+    background: var(--brand-green-soft);
+    color: var(--ink);
+  }
+
+  .cmp-mock {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 28px;
+    padding: 28px;
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    background: var(--bg);
+  }
+
+  .cmp-mock-col { display: grid; justify-items: start; gap: 10px; }
+  .cmp-mock-toc {
+    display: grid;
+    gap: 8px;
+    width: 150px;
+    padding: 4px 0 4px 14px;
+    border-left: 1px solid var(--hairline);
+  }
+  .cmp-mock-line { height: 7px; border-radius: 4px; background: var(--hairline); }
+  .cmp-mock-line:nth-child(2n) { width: 70%; }
+  .cmp-mock-line.is-active { background: var(--brand-green); }
+  .cmp-mock-label { margin: 0; color: var(--muted); font-family: var(--font-mono); font-size: 0.74rem; }
+
+  .cmp-strip { margin-top: 18px; }
+  .cmp-strip-name { margin: 0 0 6px; font-weight: 700; font-size: 0.9rem; }
+  .cmp-strip-frames {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .cmp-strip-frames li {
+    display: grid;
+    justify-items: center;
+    gap: 4px;
+    padding: 8px;
+    border: 1px solid var(--hairline-soft);
+    border-radius: 8px;
+    background: var(--canvas);
+  }
+  .cmp-strip-frames span { color: var(--muted); font-family: var(--font-mono); font-size: 0.72rem; }
+</style>

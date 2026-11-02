@@ -12,6 +12,7 @@ import {
   getRelatedPosts,
 } from '@/utils/blog';
 import type { BlogPost } from '@/utils/blog';
+import '@/styles/companion.css';
 
 type Props = {
   post: BlogPost;
@@ -128,22 +129,28 @@ const structuredData = [{
         )
       }
     </div>
-    <aside class="toc" aria-label="목차">
-      <p class="toc-title">목차</p>
-      {
-        tocItems.length > 0 ? (
-          <ol>
-            {tocItems.map((heading) => (
-              <li class={`toc-depth-${heading.depth}`}>
-                <a href={`#${heading.slug}`}>{heading.text}</a>
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <p class="toc-empty">소제목이 있는 글에서 목차가 표시됩니다.</p>
-        )
-      }
-    </aside>
+    <div class="article-rail">
+      <aside class="toc" aria-label="목차">
+        <p class="toc-title">목차</p>
+        {
+          tocItems.length > 0 ? (
+            <ol>
+              {tocItems.map((heading) => (
+                <li class={`toc-depth-${heading.depth}`}>
+                  <a href={`#${heading.slug}`}>{heading.text}</a>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p class="toc-empty">소제목이 있는 글에서 목차가 표시됩니다.</p>
+          )
+        }
+      </aside>
+      <div class="companion" data-companion-root>
+        <div class="companion-stage" title="새싹"></div>
+        <button class="companion-toggle" type="button">숨기기</button>
+      </div>
+    </div>
   </article>
   <div class="lightbox" role="dialog" aria-modal="true" aria-label="이미지 확대" hidden>
     <button class="lightbox-close" type="button" aria-label="닫기">×</button>
@@ -158,6 +165,7 @@ const structuredData = [{
   import { setupCopyButtons } from '@/scripts/code-copy';
   import { setupImageZoom } from '@/scripts/image-lightbox';
   import { setupLinkMentions } from '@/scripts/link-mentions';
+  import { setupCompanion } from '@/scripts/companion/companion';
 
   function initArticle() {
     setupReadingProgress();
@@ -167,6 +175,7 @@ const structuredData = [{
     setupCopyButtons();
     setupLinkMentions();
     setupImageZoom();
+    setupCompanion();
   }
 
   if (document.readyState === 'loading') {

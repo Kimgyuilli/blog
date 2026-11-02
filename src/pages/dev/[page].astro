@@ -3,16 +3,21 @@
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import SceneKitShowcase from '@/components/dev/SceneKitShowcase.astro';
 import DemoGallery from '@/components/dev/DemoGallery.astro';
+import CompanionShowcase from '@/components/dev/CompanionShowcase.astro';
 
 export function getStaticPaths() {
   if (!import.meta.env.DEV) return [];
-  return [{ params: { page: 'scene-kit' } }, { params: { page: 'demos' } }];
+  return [{ params: { page: 'scene-kit' } }, { params: { page: 'demos' } }, { params: { page: 'companion' } }];
 }
 ---
 
 {Astro.params.page === 'demos' ? (
   <BaseLayout title="데모 모음">
     <DemoGallery />
+  </BaseLayout>
+) : Astro.params.page === 'companion' ? (
+  <BaseLayout title="새싹">
+    <CompanionShowcase />
   </BaseLayout>
 ) : (
   <BaseLayout title="장면 키트">
