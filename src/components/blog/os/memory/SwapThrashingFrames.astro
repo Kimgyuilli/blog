@@ -1,0 +1,475 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="swap-thrashing-frames" ariaLabel="RAM 프레임 수에 따라 같은 페이지 접근이 page fault 로 바뀌는지 비교" title="프레임 하나가 모자라면 어떻게 될까요?" description="프로세스가 페이지 A, B, C, D 를 차례로 두 번 읽습니다. 처음에는 네 페이지가 모두 swap space 에 있습니다. 프레임 수를 고르고 실행해 보세요. 두 번째 바퀴에서는 몇 번이나 RAM 에서 바로 읽을까요?">
+  <DemoControls ariaLabel="RAM 프레임 수">
+    <button type="button" data-frames="3" aria-pressed="true">프레임 3개</button>
+    <button type="button" data-frames="4" aria-pressed="false">프레임 4개</button>
+  </DemoControls>
+  <div class="scene-chips" role="group" aria-label="실행">
+    <button type="button" class="scene-chip is-plain" data-run>A, B, C, D 두 번 읽기</button>
+  </div>
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="위에는 읽는 순서 A, B, C, D, A, B, C, D 가 놓이고, 가운데에는 RAM 프레임, 아래에는 swap space 가 있습니다. 왼쪽의 프로세스가 페이지를 읽을 때 RAM 에 있으면 바로 읽고, 없으면 page fault 가 나서 swap space 에서 페이지를 읽어 옵니다. 빈 프레임이 없으면 가장 오래전에 쓴 페이지를 swap space 로 내보냅니다. 프레임이 3개이면 여덟 번 모두 page fault 이고, 4개이면 처음 네 번만 page fault 입니다. 맨 아래 시간 막대에는 접근마다 걸린 시간이 쌓입니다."></svg>
+  </div>
+  <div class="sw-readouts">
+    <span><i class="is-hit"></i>RAM 에서 읽음</span>
+    <span><i class="is-wait"></i>디스크 읽기를 기다림</span>
+    <span>page fault <b data-faults>0/8</b></span>
+    <span>RAM 에서 바로 읽음 <b data-hits>0/8</b></span>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">RAM 을 프레임 3개, 4개로 줄인 모형입니다. 빈 프레임이 없으면 가장 오래전에 쓴 페이지를 내보내는 LRU 로 그렸고, 페이지 테이블 조회, TLB, 명령어 재실행은 생략했습니다. 내보낸 페이지는 swap space 로 옮겨지는 것으로 그렸지만, swap 에 같은 내용이 이미 있고 수정하지 않은 페이지는 다시 쓰지 않고 버릴 수 있습니다. 시간 막대의 길이는 축척을 맞추지 않았습니다. OSTEP 21장에 따르면 디스크 속도로 실행되는 프로그램은 메모리 속도보다 10,000배에서 100,000배 느려질 수 있습니다.</p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, bumpText, createScene, duration, ease, hopLift, setAttrs, svg, tween, watchNarrow, type Point, type Tween } from '@/scripts/blog/scene/core';
+  import { createNode, landRing, type NodeView } from '@/scripts/blog/scene/parts';
+  import { createPacketLayer } from '@/scripts/blog/scene/packets';
+  import { watchDemoPlayback } from '@/scripts/blog/watch-demo-playback';
+
+  // 독자가 볼 변화: 프레임이 3개이면 페이지를 읽어 올 때마다 곧 다시 읽을 페이지가 swap space 로 내려가
+  // 여덟 번 모두 page fault 가 나고, 시간 막대가 디스크 대기 구간으로 가득 찬다.
+  // 프레임을 4개로 늘리면 두 번째 바퀴는 모두 RAM 에서 바로 읽고, 시간 막대에는 짧은 구간만 붙는다.
+  type Frames = 3 | 4;
+  type Kind = 'hit' | 'fault';
+  const PAGES = ['A', 'B', 'C', 'D'];
+  const SEQ = [...PAGES, ...PAGES];
+  const HUE: Record<string, string> = {
+    A: 'var(--scene-hue-blue)',
+    B: 'var(--scene-hue-violet)',
+    C: 'var(--scene-hue-cyan)',
+    D: 'var(--scene-hue-pink)',
+  };
+
+  type PageState = { ax: number; ay: number; bx: number; by: number; t: number; lift: number };
+  type State = { cursor: number; cursorOp: number; ram: number; pages: Record<string, PageState> };
+
+  const layouts = {
+    wide: {
+      view: [560, 356] as [number, number],
+      cell: (i: number): Point => ({ x: 128 + i * 52, y: 42 }),
+      cellSize: { w: 44, h: 40 },
+      seqLabel: { x: 16, y: 46 },
+      frame: (k: number): Point => ({ x: 200 + k * 84, y: 122 }),
+      swap: (j: number): Point => ({ x: 200 + j * 84, y: 246 }),
+      slotSize: { w: 68, h: 50 },
+      pageSize: { w: 56, h: 38 },
+      boxLeft: 150,
+      boxPad: 16,
+      boxH: 66,
+      process: { x: 62, y: 184, w: 92, h: 44 },
+      corridorY: 184,
+      ramCaption: { x: 16, y: 116 },
+      ramSub: { x: 16, y: 133 },
+      swapCaption: { x: 16, y: 240 },
+      swapSub: { x: 16, y: 257 },
+      laneTitle: { x: 16, y: 302 },
+      laneY: { 3: 320, 4: 343 } as Record<Frames, number>,
+      laneX: 100,
+      laneW: 444,
+      laneH: 18,
+      seg: { fault: 50, hit: 6, gap: 3 },
+    },
+    narrow: {
+      view: [360, 380] as [number, number],
+      cell: (i: number): Point => ({ x: 26 + i * 44, y: 54 }),
+      cellSize: { w: 40, h: 38 },
+      seqLabel: { x: 8, y: 16 },
+      frame: (k: number): Point => ({ x: 128 + k * 62, y: 142 }),
+      swap: (j: number): Point => ({ x: 128 + j * 62, y: 258 }),
+      slotSize: { w: 56, h: 46 },
+      pageSize: { w: 46, h: 36 },
+      boxLeft: 96,
+      boxPad: 6,
+      boxH: 60,
+      process: { x: 50, y: 200, w: 88, h: 40 },
+      corridorY: 200,
+      ramCaption: { x: 8, y: 136 },
+      ramSub: { x: 8, y: 152 },
+      swapCaption: { x: 8, y: 252 },
+      swapSub: { x: 8, y: 268 },
+      laneTitle: { x: 8, y: 316 },
+      laneY: { 3: 336, 4: 360 } as Record<Frames, number>,
+      laneX: 80,
+      laneW: 272,
+      laneH: 16,
+      seg: { fault: 30, hit: 4, gap: 2 },
+    },
+  };
+  type Layout = (typeof layouts)['wide'];
+
+  const INTRO: Record<Frames, string> = {
+    3: '프레임은 3개이고, 빈 프레임이 없으면 가장 오래전에 쓴 페이지를 swap space 로 내보냅니다. 네 페이지를 차례로 두 번 읽으면 두 번째 바퀴에서는 몇 번이나 RAM 에서 바로 읽을까요?',
+    4: '프레임을 4개로 늘렸습니다. 네 페이지가 모두 RAM 에 들어갈 수 있습니다. 두 번째 바퀴는 어떻게 달라질까요?',
+  };
+  const RESULT: Record<Frames, string> = {
+    3: '<strong>여덟 번 모두 page fault 입니다.</strong> 네 번째부터 일곱 번째 접근까지는 페이지를 읽어 올 때마다 곧 다시 읽을 페이지를 내보냈습니다. 프로세스는 종료되지 않았지만 대부분의 시간을 디스크 읽기를 기다리며 보냈습니다.',
+    4: '<strong>처음 네 번만 page fault 이고 두 번째 바퀴는 모두 RAM 에서 바로 읽었습니다.</strong> 프레임 하나 차이로 디스크 읽기가 여덟 번에서 네 번으로 줄었습니다.',
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="swap-thrashing-frames"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const runButton = demo.querySelector<HTMLButtonElement>('[data-run]')!;
+    const frameButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-frames]')];
+    const faultsOut = demo.querySelector<HTMLElement>('[data-faults]')!;
+    const hitsOut = demo.querySelector<HTMLElement>('[data-hits]')!;
+    let layout: Layout = layouts.wide;
+    let frames: Frames = 3;
+    let touched = false;
+    let running = false;
+
+    // ── 논리 모형 ──
+    let ram: (string | null)[] = [];
+    let lastUsed: Record<string, number> = {};
+    let results: Kind[] = [];
+    const logs: Record<Frames, Kind[]> = { 3: [], 4: [] };
+    const resetModel = () => {
+      ram = Array.from({ length: frames }, () => null);
+      lastUsed = {};
+      results = [];
+    };
+    resetModel();
+
+    // ── 그림 ──
+    const text = (cls: string, value: string, anchor = 'start') => {
+      const t = svg('text', { class: cls, 'text-anchor': anchor }, root);
+      t.textContent = value;
+      return t;
+    };
+    const seqLabel = text('scene-label is-sans scene-label-dep', '읽는 순서');
+    const ramCaption = text('scene-label is-sans sw-strong', 'RAM');
+    const ramSub = text('scene-label is-sans scene-label-dep', '프레임 3개');
+    const swapCaption = text('scene-label is-sans sw-strong', 'swap space');
+    const swapSub = text('scene-label is-sans scene-label-dep', '디스크');
+    const laneTitle = text('scene-label is-sans scene-label-dep', '접근마다 걸린 시간');
+    const ramBox = svg('rect', { rx: 12, class: 'sw-box' }, root);
+    const swapBox = svg('rect', { rx: 12, class: 'sw-box is-disk' }, root);
+    const frameSlots = Array.from({ length: 4 }, () => svg('rect', { rx: 10, fill: 'none', stroke: 'var(--hairline)', 'stroke-dasharray': '2 6' }, root));
+    const swapSlots = PAGES.map(() => svg('rect', { rx: 10, fill: 'none', stroke: 'var(--hairline)', 'stroke-dasharray': '2 6' }, root));
+    const cursor = svg('path', { fill: 'var(--scene-flow)' }, root);
+    const cells = SEQ.map((id) => {
+      const cell = createNode(root, { label: id, hue: HUE[id] });
+      cell.group.classList.add('is-sans-sub', 'sw-cell');
+      return cell;
+    });
+    const process = createNode(root, { label: '프로세스', hue: 'var(--scene-hue-gray)' });
+    process.group.classList.add('is-sans-sub');
+    const lanes = ([3, 4] as Frames[]).map((n) => ({
+      n,
+      label: text('scene-label is-sans', `프레임 ${n}개`),
+      track: svg('rect', { class: 'scene-lane-track', rx: 5 }, root),
+      bars: svg('g', {}, root),
+    }));
+    const pages: Record<string, NodeView> = {};
+    PAGES.forEach((id) => { pages[id] = createNode(root, { label: id, hue: HUE[id] }); });
+    const packets = createPacketLayer(root);
+
+    /** 논리 모형에서 페이지가 있어야 할 자리: RAM 프레임이나 swap space 의 제자리. */
+    const spotOf = (id: string): Point => {
+      const k = ram.indexOf(id);
+      return k >= 0 ? layout.frame(k) : layout.swap(PAGES.indexOf(id));
+    };
+    const settled = (): State => {
+      const s: Record<string, PageState> = {};
+      PAGES.forEach((id) => {
+        const p = spotOf(id);
+        s[id] = { ax: p.x, ay: p.y, bx: p.x, by: p.y, t: 1, lift: 0 };
+      });
+      return { cursor: 0, cursorOp: 0, ram: frames, pages: s };
+    };
+    const pointOf = (p: PageState): Point => bowAt({ x: p.ax, y: p.ay }, { x: p.bx, y: p.by }, p.t, hopLift(p.t, p.lift));
+    const boxRight = (n: number) => layout.frame(0).x + (n - 1) * (layout.frame(1).x - layout.frame(0).x) + layout.slotSize.w / 2 + layout.boxPad;
+
+    const scene = createScene<State>(settled(), (s) => {
+      const l = layout;
+      PAGES.forEach((id) => {
+        const at = pointOf(s.pages[id]);
+        pages[id].setBox({ x: at.x, y: at.y, ...l.pageSize });
+      });
+      // RAM 상자는 프레임 수에 따라 넓어지거나 줄고, 네 번째 프레임 자리도 함께 나타나거나 흐려집니다.
+      const top = l.frame(0).y - l.boxH / 2;
+      setAttrs(ramBox, { x: l.boxLeft, y: top, width: boxRight(s.ram) - l.boxLeft, height: l.boxH });
+      frameSlots[3].style.opacity = String(Math.max(0, s.ram - 3));
+      const c = l.cell(0).x + (l.cell(1).x - l.cell(0).x) * s.cursor;
+      const tip = l.cell(0).y - l.cellSize.h / 2 - 3;
+      setAttrs(cursor, { d: `M ${c - 6} ${tip - 8} L ${c + 6} ${tip - 8} L ${c} ${tip} Z`, opacity: s.cursorOp });
+    });
+
+    // ── 시간 막대 ──
+    let growing: Tween | undefined;
+    const segWidth = (kind: Kind) => layout.seg[kind];
+    const addBar = (n: Frames, index: number, kind: Kind, width: number) => {
+      const lane = lanes.find((x) => x.n === n)!;
+      const l = layout;
+      const x = l.laneX + logs[n].slice(0, index).reduce((sum, k) => sum + segWidth(k) + l.seg.gap, 0);
+      const bar = svg('rect', { class: `scene-lane-bar sw-bar is-${kind}`, rx: 4, x, y: l.laneY[n] - l.laneH / 2 + 2, width, height: l.laneH - 4 }, lane.bars);
+      return bar;
+    };
+    const drawLane = (n: Frames) => {
+      const lane = lanes.find((x) => x.n === n)!;
+      lane.bars.replaceChildren();
+      logs[n].forEach((kind, i) => addBar(n, i, kind, segWidth(kind)));
+    };
+    const growBar = (kind: Kind, ms: number) => {
+      const index = logs[frames].length;
+      logs[frames].push(kind);
+      const full = segWidth(kind);
+      const bar = addBar(frames, index, kind, 0);
+      growing = tween(scene.ms(ms), (t) => setAttrs(bar, { width: full * t }), ease.linear);
+    };
+
+    const placeStatic = () => {
+      const l = layout;
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      setAttrs(seqLabel, l.seqLabel);
+      setAttrs(ramCaption, l.ramCaption);
+      setAttrs(ramSub, l.ramSub);
+      setAttrs(swapCaption, l.swapCaption);
+      setAttrs(swapSub, l.swapSub);
+      setAttrs(laneTitle, l.laneTitle);
+      const swapTop = l.swap(0).y - l.boxH / 2;
+      setAttrs(swapBox, { x: l.boxLeft, y: swapTop, width: boxRight(4) - l.boxLeft, height: l.boxH });
+      const slotRect = (el: SVGRectElement, at: Point) => setAttrs(el, { x: at.x - l.slotSize.w / 2, y: at.y - l.slotSize.h / 2, width: l.slotSize.w, height: l.slotSize.h });
+      frameSlots.forEach((el, k) => slotRect(el, l.frame(k)));
+      swapSlots.forEach((el, j) => slotRect(el, l.swap(j)));
+      cells.forEach((cell, i) => cell.setBox({ ...l.cell(i), ...l.cellSize }));
+      process.setBox(l.process);
+      lanes.forEach((lane) => {
+        const y = l.laneY[lane.n];
+        setAttrs(lane.label, { x: l.laneTitle.x, y: y + 4 });
+        setAttrs(lane.track, { x: l.laneX, y: y - l.laneH / 2, width: l.laneW, height: l.laneH });
+        drawLane(lane.n);
+      });
+    };
+
+    /** 지금 보이는 자리에서 논리 모형의 자리로 옮깁니다. `lift`를 준 페이지는 호를 그리며 날아갑니다. */
+    const moveTo = (lift: Record<string, number>, ms: number) => {
+      const now = scene.state;
+      const start: State = { ...now, pages: {} };
+      const next: State = { ...now, pages: {} };
+      PAGES.forEach((id) => {
+        const at = pointOf(now.pages[id]);
+        const to = spotOf(id);
+        start.pages[id] = { ax: at.x, ay: at.y, bx: to.x, by: to.y, t: 0, lift: lift[id] ?? 0 };
+        next.pages[id] = { ...start.pages[id], t: 1 };
+      });
+      Object.keys(lift).forEach((id) => root.insertBefore(pages[id].group, packets.group));
+      scene.set(start);
+      return scene.go(next, ms);
+    };
+
+    const say = (html: string, alert = false) => {
+      note.classList.toggle('is-alert', alert);
+      note.innerHTML = html;
+    };
+    const showCounts = (bump: boolean) => {
+      const faults = `${results.filter((k) => k === 'fault').length}/${SEQ.length}`;
+      const hits = `${results.filter((k) => k === 'hit').length}/${SEQ.length}`;
+      if (bump) { bumpText(faultsOut, faults); bumpText(hitsOut, hits); }
+      else { faultsOut.textContent = faults; hitsOut.textContent = hits; }
+    };
+    const setBlocked = (on: boolean) => {
+      process.group.classList.toggle('is-waiting', on);
+      process.setSub(on ? 'blocked' : '');
+    };
+    const markLanes = () => lanes.forEach((lane) => { lane.label.classList.toggle('scene-label-dep', lane.n !== frames); lane.label.classList.toggle('sw-strong', lane.n === frames); });
+    const clearMarks = () => {
+      cells.forEach((cell) => { cell.flash('is-error', false); cell.flash('is-done', false); cell.setSub(''); });
+      PAGES.forEach((id) => { pages[id].flash('is-temp', false); pages[id].flash('is-done', false); pages[id].flash('is-error', false); pages[id].setSub(''); });
+      setBlocked(false);
+    };
+
+    const reset = () => {
+      scene.begin();
+      running = false;
+      growing?.cancel();
+      packets.clear();
+      resetModel();
+      clearMarks();
+      // 끝까지 실행하지 못한 막대는 지웁니다. 끝난 실행의 막대는 비교를 위해 남깁니다.
+      ([3, 4] as Frames[]).forEach((n) => {
+        if (logs[n].length < SEQ.length) logs[n] = [];
+        drawLane(n);
+      });
+      markLanes();
+      scene.set(settled());
+      showCounts(false);
+      runButton.textContent = 'A, B, C, D 두 번 읽기';
+      runButton.disabled = false;
+      runButton.dataset.state = 'next';
+      say(INTRO[frames]);
+    };
+
+    const setFrames = (next: Frames) => {
+      const { ram: shown } = scene.state;
+      frames = next;
+      frameButtons.forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.frames) === next)));
+      bumpText(ramSub, `프레임 ${next}개`);
+      reset();
+      // RAM 상자와 네 번째 프레임 자리만 새 프레임 수로 옮겨 갑니다.
+      const to = settled();
+      scene.set({ ...to, ram: shown });
+      void scene.go(to, duration.move);
+    };
+
+    const run = async () => {
+      logs[frames] = [];
+      reset();
+      const alive = scene.begin();
+      running = true;
+      runButton.disabled = true;
+      delete runButton.dataset.state;
+      const l = layout;
+      // 패킷은 가운데를 기준으로 놓이므로 알약 폭의 절반만큼 프로세스 카드에서 떨어뜨립니다.
+      const start = { x: l.process.x + l.process.w / 2 + 34, y: l.corridorY };
+      for (let i = 0; i < SEQ.length; i += 1) {
+        const id = SEQ[i];
+        const detail = i === 0 || i === 3 || i === 4;
+        const f = detail ? 1 : 0.5;
+        await scene.go({ ...scene.state, cursor: i, cursorOp: 1 }, i === 0 ? duration.snap : duration.move * f);
+        if (!alive()) return;
+
+        const packet = packets.spawn({ label: `${id} 읽기`, at: start });
+        const k = ram.indexOf(id);
+        if (k >= 0) {
+          // RAM 에 있으면 프레임 아래까지 가서 바로 읽습니다.
+          const at = l.frame(k);
+          growBar('hit', duration.draw * 0.6 * f);
+          if (!(await packet.travel([{ x: at.x, y: l.corridorY }, { x: at.x, y: at.y + l.slotSize.h / 2 + 12 }], duration.draw * 0.6 * f)) || !alive()) return;
+          packet.relabel('hit', 'flow');
+          void packet.land(false);
+          pages[id].flash('is-done');
+          pages[id].flash('is-ok');
+          lastUsed[id] = i;
+          results.push('hit');
+          cells[i].setSub('hit');
+          cells[i].flash('is-done');
+          showCounts(true);
+          if (detail) say(`<strong>${id}</strong> 는 RAM 에 있어 디스크를 읽지 않습니다.`);
+          await scene.pause(detail ? duration.read * 0.6 : duration.beat * f);
+          if (!alive()) return;
+          continue;
+        }
+
+        // 1. RAM 에 없으면 page fault 가 나고, 프로세스는 디스크를 읽는 동안 blocked 상태가 됩니다.
+        const ramMid = (l.boxLeft + boxRight(frames)) / 2;
+        if (!(await packet.travel([{ x: ramMid, y: l.corridorY }], duration.draw * 0.5 * f)) || !alive()) return;
+        packet.relabel('page fault', 'danger');
+        cells[i].setSub('fault');
+        cells[i].flash('is-error');
+        setBlocked(true);
+        const free = ram.indexOf(null);
+        const victim = free >= 0 ? null : ram.reduce<string>((old, p) => (lastUsed[p!] < lastUsed[old] ? p! : old), ram[0]!);
+        if (detail) {
+          say(victim
+            ? `<strong>${id}</strong> 는 RAM 에 없어 page fault 가 납니다. 빈 프레임이 없으니 가장 오래전에 쓴 <strong>${victim}</strong> 를 swap space 로 내보내고, 그 프레임에 ${id} 를 읽어 옵니다.`
+            : `<strong>${id}</strong> 는 RAM 에 없어 page fault 가 납니다. 프로세스는 디스크에서 ${id} 를 읽는 동안 blocked 상태로 기다립니다.`, Boolean(victim));
+        }
+        await scene.pause(duration.beat * f);
+        if (!alive()) return;
+
+        // 2. 디스크를 읽는 동안 시간 막대에 대기 구간이 자랍니다.
+        const slot = l.swap(PAGES.indexOf(id));
+        const diskMs = (victim ? duration.fly * 2 : duration.fly) * f + duration.draw * 0.5 * f + (victim ? duration.beat * f : 0);
+        growBar('fault', diskMs);
+        if (!(await packet.travel([{ x: slot.x, y: l.corridorY }, { x: slot.x, y: slot.y - l.slotSize.h / 2 - 12 }], duration.draw * 0.5 * f)) || !alive()) return;
+
+        // 3. 빈 프레임이 없으면 가장 오래전에 쓴 페이지를 먼저 내보냅니다.
+        let target = free;
+        if (victim) {
+          pages[victim].setSub('오래됨');
+          pages[victim].flash('is-temp');
+          await scene.pause(duration.beat * f);
+          if (!alive()) return;
+          target = ram.indexOf(victim);
+          ram[target] = null;
+          pages[victim].flash('is-temp', false);
+          pages[victim].setSub('');
+          if (!(await moveTo({ [victim]: -26 }, duration.fly * f)) || !alive()) return;
+          // 곧 다시 읽을 페이지를 내보냈다면 위험 색으로 흔듭니다.
+          if (SEQ.slice(i + 1).includes(victim)) {
+            pages[victim].flash('is-error');
+            pages[victim].flash('is-shaking');
+          }
+        }
+
+        // 4. 읽은 페이지가 프레임으로 올라갑니다.
+        void packet.fade(360);
+        pages[id].flash('is-error', false);
+        ram[target] = id;
+        if (!(await moveTo({ [id]: 26 }, duration.fly * f)) || !alive()) return;
+        const at = l.frame(target);
+        landRing(root, { x: at.x, y: at.y, w: l.pageSize.w + 6, h: l.pageSize.h + 6 });
+        setBlocked(false);
+        lastUsed[id] = i;
+        results.push('fault');
+        showCounts(true);
+        await scene.pause(detail ? duration.read * 0.6 : duration.beat * f);
+        if (!alive()) return;
+        if (i === 4 && frames === 3) say('A 는 방금 내보낸 페이지라 다시 page fault 가 납니다. 이번에는 곧 읽을 B 를 내보냈습니다. 남은 접근도 같은 순서로 이어집니다.', true);
+      }
+
+      await scene.go({ ...scene.state, cursorOp: 0 }, duration.snap);
+      if (!alive()) return;
+      say(RESULT[frames] + (frames === 3 && logs[4].length < SEQ.length ? ' 프레임을 4개로 바꿔 다시 실행해 보세요.' : ''), frames === 3);
+      running = false;
+      runButton.disabled = false;
+      runButton.textContent = '다시 읽기';
+    };
+
+    frameButtons.forEach((button) => button.addEventListener('click', () => {
+      touched = true;
+      setFrames(Number(button.dataset.frames) as Frames);
+    }));
+    runButton.addEventListener('click', () => {
+      touched = true;
+      void run();
+    });
+
+    watchNarrow(stage, (isNarrow) => {
+      layout = layouts[isNarrow ? 'narrow' : 'wide'];
+      root.classList.toggle('sw-narrow', isNarrow);
+      placeStatic();
+      // 재생 중에 배치가 바뀌면 진행 중인 이동의 좌표가 맞지 않으므로 처음 상태로 돌립니다.
+      if (running) reset();
+      else scene.set({ ...settled(), ram: scene.state.ram, cursor: scene.state.cursor, cursorOp: scene.state.cursorOp });
+    });
+    reset();
+
+    // 처음 화면에 들어오면 프레임 3개로 한 번 보여 줍니다.
+    let autoplayed = false;
+    watchDemoPlayback(demo, ({ visible }) => {
+      if (!visible || autoplayed || touched) return;
+      autoplayed = true;
+      void run();
+    }, { threshold: 0.45 });
+  });
+</script>
+
+<style>
+  .sw-readouts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .sw-readouts span { display: inline-flex; align-items: baseline; gap: 6px; }
+  .sw-readouts i { display: inline-block; width: 16px; height: 10px; border-radius: 3px; align-self: center; }
+  .sw-readouts i.is-hit { background: color-mix(in srgb, var(--scene-flow) 62%, transparent); border: 1px solid var(--scene-flow); }
+  .sw-readouts i.is-wait { background: color-mix(in srgb, var(--scene-temp) 40%, transparent); border: 1px dashed var(--scene-temp); }
+  .sw-readouts b { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .sw-readouts b:global(.is-bump) { animation: scene-pop 420ms ease-out; }
+
+  /* 좁은 배치의 읽는 순서 칸은 폭이 40이라 색 막대를 빼고 보조 문구(fault, hit)가 들어갈 자리를 둡니다. */
+  :global(.sw-narrow .sw-cell .scene-node-accent) { display: none; }
+  :global(.sw-strong) { fill: var(--ink); }
+  :global(.sw-box) { fill: color-mix(in srgb, var(--surface) 60%, transparent); stroke: var(--hairline); stroke-width: 1.2; }
+  :global(.sw-box.is-disk) { stroke-dasharray: 5 4; }
+  :global(.sw-bar.is-hit) { --node-hue: var(--scene-flow); }
+  :global(.sw-bar.is-fault) { --node-hue: var(--scene-temp); stroke-dasharray: 4 3; fill: color-mix(in srgb, var(--scene-temp) 34%, transparent); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sw-readouts b:global(.is-bump) { animation: none; }
+  }
+</style>
