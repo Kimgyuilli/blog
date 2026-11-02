@@ -17,6 +17,7 @@
 - 층을 따라 내려가는 요청·정적 할당자 도식 사례: `AllocPath`, `AllocFigure`
 - first touch·주소와 물리 페이지 분리·블록 재사용 사례: `NumaFirstTouch`, `NumaGcCopy`, `NumaBlockReuse` (공통 무대 `numaStage.ts`)
 - 캐시 목록의 삽입 위치·승격·내보내기 사례: `BufferPoolScanLru`
+- page fault·swap in/out·시간 막대 사례: `SwapThrashingFrames`
 
 ## 1. 먼저 정할 것: 독자가 장면에서 알아낼 변화
 
@@ -96,6 +97,7 @@
 | 물리 페이지가 처음 생긴다 (first touch) | 가상 주소 자리는 위쪽에 점선 빈 칩으로 남고, 처음 쓴 스레드의 노드 메모리로 페이지 칩이 호를 그리며 내려와 착지 링. 읽기만 하면 그 자리에 임시 색 점선 `zero` 칩만 생기고 메모리에는 아무것도 생기지 않음 | `createChip` `is-empty`/`is-shared` + `bowAt`, `landRing` (`NumaFirstTouch`) | `fly` |
 | 주소는 그대로, 뒤의 물리 페이지만 옮겨 갔다 | 위쪽 가상 주소 쪽(region 카드, 객체 칩)은 제자리에 있고 아래 메모리의 페이지 칩만 interconnect 너머로 날아가 착지 링, region 보조 문구가 새 노드 이름으로 바뀜. 객체 복사는 반대로 객체 칩만 옮겨 가고 옛 자리에 점선 사본이 남음 | `createNode` `setSub` + `bowAt`, `landRing` (`NumaGcCopy`) | `fly` |
 | 캐시 목록에서 내보냈다 / 앞으로 옮겼다 (LRU) | 목록은 왼쪽 MRU에서 오른쪽 LRU로 놓인 칸 한 줄. 새 페이지는 위에서 호를 그리며 "들어오는 자리" 표시가 있는 칸으로 들어오고 뒤 칸이 한 칸씩 밀림. 맨 끝 페이지는 아래 "내보낸 페이지" 줄로 떨어지고, 지켜야 할 페이지가 떨어지면 위험 색 테두리로 흔들림. 승격(young)은 목록 위로 호를 그리며 맨 앞 칸으로 날아감 | `bowAt` + `hopLift`, `landRing`, `is-error` `is-shaking` (`BufferPoolScanLru`) | `fly` |
+| 페이지를 swap 과 주고받는다 (page fault) | RAM 프레임 줄과 swap space 줄을 위아래에 두고, 읽기 패킷이 RAM 아래 통로에서 `page fault`(위험 색)로 바뀐 뒤 swap 칸으로 내려감. 그동안 프로세스는 `is-waiting`과 `blocked`. 빈 프레임이 없으면 가장 오래전에 쓴 페이지에 `오래됨`(임시 색)을 붙였다가 swap 으로 호를 그리며 내려보내고, 곧 다시 읽을 페이지면 위험 색으로 흔들림. 읽은 페이지는 빈 프레임으로 날아와 착지 링. 접근마다 시간 막대에 hit 는 짧은 흐름 색, fault 는 긴 임시 색 점선 구간이 자라 같은 조건의 다른 줄과 길이로 비교됨 | `bowAt` + `hopLift`, `landRing`, `is-waiting`, `scene-lane-bar` (`SwapThrashingFrames`) | `fly` / 선형 |
 | 다음에 누를 것 | 칩에 은은한 맥박 | `data-state="next"` | — |
 
 새 의미가 필요하면 먼저 이 표에 한 줄을 추가하고, 그다음 키트에 부품을 만듭니다.
