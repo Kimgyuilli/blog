@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 384" width="1120" height="384" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/></marker><marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#9a9a9a"/></marker><marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b42318"/></marker></defs>
+<rect width="1120" height="384" fill="#ffffff"/>
+<text x="28" y="36.0" font-size="18" font-weight="700" fill="#111" text-anchor="start">project 하위 도메인의 경계: 공개 계약은 NamedInterface, 방향은 ArchUnit</text>
+<text x="28" y="84.0" font-size="13" fill="#444" text-anchor="start">다른 모듈</text>
+<rect x="28" y="112" width="148" height="40" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+<text x="102.0" y="136.9" font-size="14" font-weight="700" fill="#111" text-anchor="middle">mobile</text>
+<line x1="178" y1="132" x2="236" y2="132" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="28" y="184" width="148" height="40" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+<text x="102.0" y="208.9" font-size="14" font-weight="700" fill="#111" text-anchor="middle">signal</text>
+<line x1="178" y1="204" x2="236" y2="204" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="28" y="256" width="148" height="40" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+<text x="102.0" y="280.9" font-size="14" font-weight="700" fill="#111" text-anchor="middle">notification</text>
+<line x1="178" y1="276" x2="236" y2="276" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="102" y="336.0" font-size="12" fill="#444" text-anchor="middle">공개 계약만 참조</text>
+<rect x="240" y="56" width="560" height="304" rx="6" fill="#fafafa" stroke="#9a9a9a" stroke-width="1.5"/>
+<text x="256" y="84.0" font-size="16" font-weight="700" fill="#111" text-anchor="start">project</text>
+<text x="256" y="105.0" font-size="12" fill="#444" text-anchor="start">Modulith는 하위 도메인 전체를 한 모듈로 본다</text>
+<rect x="264" y="124" width="232" height="84" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+<text x="380" y="160.0" font-size="15" font-weight="700" fill="#111" text-anchor="middle">core</text>
+<text x="380" y="184.0" font-size="12" fill="#254fd5" text-anchor="middle">NamedInterface로 공개 계약만 노출</text>
+<rect x="544" y="124" width="232" height="84" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+<text x="660" y="160.0" font-size="15" font-weight="700" fill="#111" text-anchor="middle">task</text>
+<text x="660" y="184.0" font-size="12" fill="#254fd5" text-anchor="middle">NamedInterface로 공개 계약만 노출</text>
+<rect x="264" y="240" width="232" height="84" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+<text x="380" y="276.0" font-size="15" font-weight="700" fill="#111" text-anchor="middle">milestone</text>
+<text x="380" y="300.0" font-size="12" fill="#254fd5" text-anchor="middle">NamedInterface로 공개 계약만 노출</text>
+<rect x="544" y="240" width="232" height="84" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+<text x="660" y="276.0" font-size="15" font-weight="700" fill="#111" text-anchor="middle">blocker</text>
+<text x="660" y="300.0" font-size="12" fill="#254fd5" text-anchor="middle">NamedInterface로 공개 계약만 노출</text>
+<line x1="498" y1="166" x2="542" y2="166" stroke="#b42318" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#ahr)"/>
+<text x="520" y="222.0" font-size="12" fill="#b42318" text-anchor="middle">하위 도메인 사이 방향은</text>
+<text x="520" y="236.0" font-size="12" fill="#b42318" text-anchor="middle">ArchUnit 테스트가 검사</text>
+<text x="832" y="84.0" font-size="13" fill="#444" text-anchor="start">nested module로 유지</text>
+<rect x="832" y="112" width="260" height="72" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+<text x="962.0" y="145.0" font-size="14" font-weight="700" fill="#111" text-anchor="middle">web</text>
+<text x="962.0" y="163.0" font-size="12" fill="#444" text-anchor="middle">웹 표면, 다른 모듈이 참조하지 않음</text>
+<rect x="832" y="200" width="260" height="72" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+<text x="962.0" y="233.0" font-size="14" font-weight="700" fill="#111" text-anchor="middle">source</text>
+<text x="962.0" y="251.0" font-size="12" fill="#444" text-anchor="middle">connection, ref로 나눔</text>
+<text x="832" y="300.0" font-size="12" fill="#444" text-anchor="start">공개 API가 없어 nested module의 경계를</text>
+<text x="832" y="317.0" font-size="12" fill="#444" text-anchor="start">Modulith가 그대로 검사한다</text>
+</svg>

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 792 496" width="792" height="496" font-family="'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif">
+<title>MySQL CPU 상한별 주문 생성 처리량, 상품 상세 처리량, throttling 시간</title>
+<text x="0" y="24" font-size="16" font-weight="700" fill="#333330">주문 생성 처리량</text>
+<text x="0" y="46" font-size="13" fill="#6e6e69">건/초, 사용자 200명, 2분</text>
+<path d="M14.0 420V325.0Q14.0 321.0 18.0 321.0H62.0Q66.0 321.0 66.0 325.0V420Z" fill="#7a7a74"/>
+<text x="40" y="311.0" font-size="15" font-weight="700" fill="#333330" text-anchor="middle">54.0</text>
+<text x="40" y="444" font-size="13" fill="#6e6e69" text-anchor="middle">500m</text>
+<path d="M94.0 420V133.2Q94.0 129.2 98.0 129.2H142.0Q146.0 129.2 146.0 133.2V420Z" fill="#254fd5"/>
+<text x="120" y="119.2" font-size="15" font-weight="700" fill="#333330" text-anchor="middle">158.6</text>
+<text x="120" y="444" font-size="13" fill="#6e6e69" text-anchor="middle">2000m</text>
+<text x="200" y="408" font-size="13" fill="#6e6e69" text-anchor="middle">재지 않음</text>
+<text x="200" y="444" font-size="13" fill="#6e6e69" text-anchor="middle">다시 500m</text>
+<line x1="0" y1="420.5" x2="240" y2="420.5" stroke="#9a9a95" stroke-width="1"/>
+<text x="276" y="24" font-size="16" font-weight="700" fill="#333330">상품 상세 처리량</text>
+<text x="276" y="46" font-size="13" fill="#6e6e69">rps, 캐시 OFF, 400 VU, 60초</text>
+<path d="M290.0 420V294.2Q290.0 290.2 294.0 290.2H338.0Q342.0 290.2 342.0 294.2V420Z" fill="#7a7a74"/>
+<text x="316" y="280.2" font-size="15" font-weight="700" fill="#333330" text-anchor="middle">393.4</text>
+<text x="316" y="444" font-size="13" fill="#6e6e69" text-anchor="middle">500m</text>
+<path d="M370.0 420V125.7Q370.0 121.7 374.0 121.7H418.0Q422.0 121.7 422.0 125.7V420Z" fill="#254fd5"/>
+<text x="396" y="111.7" font-size="15" font-weight="700" fill="#333330" text-anchor="middle">903.8</text>
+<text x="396" y="444" font-size="13" fill="#6e6e69" text-anchor="middle">2000m</text>
+<path d="M450.0 420V294.4Q450.0 290.4 454.0 290.4H498.0Q502.0 290.4 502.0 294.4V420Z" fill="#7a7a74"/>
+<text x="476" y="280.4" font-size="15" font-weight="700" fill="#333330" text-anchor="middle">392.6</text>
+<text x="476" y="444" font-size="13" fill="#6e6e69" text-anchor="middle">다시 500m</text>
+<line x1="276" y1="420.5" x2="516" y2="420.5" stroke="#9a9a95" stroke-width="1"/>
+<text x="552" y="24" font-size="16" font-weight="700" fill="#333330">MySQL CPU throttling 시간</text>
+<text x="552" y="46" font-size="13" fill="#6e6e69">초, 60초 run 누적</text>
+<path d="M566.0 420V119.6Q566.0 115.6 570.0 115.6H614.0Q618.0 115.6 618.0 119.6V420Z" fill="#7a7a74"/>
+<text x="592" y="105.6" font-size="15" font-weight="700" fill="#333330" text-anchor="middle">147.6</text>
+<text x="592" y="444" font-size="13" fill="#6e6e69" text-anchor="middle">500m</text>
+<rect x="646.0" y="418" width="52" height="2" fill="#254fd5"/>
+<text x="672" y="408.0" font-size="15" font-weight="700" fill="#333330" text-anchor="middle">0.1</text>
+<text x="672" y="444" font-size="13" fill="#6e6e69" text-anchor="middle">2000m</text>
+<path d="M726.0 420V207.4Q726.0 203.4 730.0 203.4H774.0Q778.0 203.4 778.0 207.4V420Z" fill="#7a7a74"/>
+<text x="752" y="193.4" font-size="15" font-weight="700" fill="#333330" text-anchor="middle">105.0</text>
+<text x="752" y="444" font-size="13" fill="#6e6e69" text-anchor="middle">다시 500m</text>
+<line x1="552" y1="420.5" x2="792" y2="420.5" stroke="#9a9a95" stroke-width="1"/>
+<text x="0" y="486" font-size="12" fill="#6e6e69">가로축은 MySQL CPU 상한(limits.cpu). 다른 설정과 부하는 그대로 두었다.</text>
+</svg>

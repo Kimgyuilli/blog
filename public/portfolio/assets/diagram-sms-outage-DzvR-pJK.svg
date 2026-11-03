@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 400" width="1400" height="400" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/></marker><marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#9a9a9a"/></marker><marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b42318"/></marker></defs>
+<rect width="1400" height="400" fill="#ffffff"/>
+<text x="28" y="36.0" font-size="18" font-weight="700" fill="#111" text-anchor="start">인증번호 문자 미발송: 처리 스레드 하나가 미완성 요청을 기다리며 막힌 구조</text>
+<rect x="28" y="120" width="200" height="64" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+<text x="128.0" y="149.0" font-size="14" font-weight="700" fill="#111" text-anchor="middle">인증 서버</text>
+<text x="128.0" y="167.0" font-size="12" fill="#444" text-anchor="middle">dev, prod</text>
+<text x="28" y="208.0" font-size="12" fill="#444" text-anchor="start">발송 건을 커밋한 뒤 별도 스레드에서</text>
+<text x="28" y="224.8" font-size="12" fill="#444" text-anchor="start">프록시를 호출해, 실패가 응답에</text>
+<text x="28" y="241.6" font-size="12" fill="#444" text-anchor="start">드러나지 않는다</text>
+<rect x="28" y="296" width="200" height="56" rx="6" fill="#fff" stroke="#9a9a9a" stroke-width="2" stroke-dasharray="5 4"/>
+<text x="128.0" y="321.0" font-size="14" font-weight="700" fill="#111" text-anchor="middle">인터넷 스캐너</text>
+<text x="128.0" y="339.0" font-size="12" fill="#444" text-anchor="middle">외부 IP</text>
+<line x1="232" y1="142" x2="324" y2="142" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+<text x="278" y="132.0" font-size="12" fill="#111" text-anchor="middle">발송 요청</text>
+<line x1="324" y1="168" x2="232" y2="168" stroke="#b42318" stroke-width="1.6" marker-end="url(#ahr)"/>
+<text x="280" y="186.0" font-size="12" fill="#b42318" text-anchor="middle">Connect</text>
+<text x="280" y="201.0" font-size="12" fill="#b42318" text-anchor="middle">timed out (3초)</text>
+<line x1="232" y1="324" x2="324" y2="300" stroke="#9a9a9a" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#ahg)"/>
+<rect x="328" y="56" width="600" height="312" rx="6" fill="#fafafa" stroke="#9a9a9a" stroke-width="1.5"/>
+<text x="344" y="84.0" font-size="15" font-weight="700" fill="#111" text-anchor="start">SMS 프록시 (JDK HttpServer, GraalVM 네이티브 이미지)</text>
+<text x="344" y="105.0" font-size="12" fill="#b42318" text-anchor="start">포트가 인터넷 전체에 열려 있었다</text>
+<rect x="348" y="124" width="260" height="224" rx="6" fill="#fff" stroke="#b42318" stroke-width="2"/>
+<text x="478" y="150.0" font-size="14" font-weight="700" fill="#b42318" text-anchor="middle">연결 대기열 50개, 가득 참</text>
+<rect x="366" y="168" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="389" y="168" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="412" y="168" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="435" y="168" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="458" y="168" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="481" y="168" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="504" y="168" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="527" y="168" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="550" y="168" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="573" y="168" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="366" y="191" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="389" y="191" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="412" y="191" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="435" y="191" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="458" y="191" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="481" y="191" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="504" y="191" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="527" y="191" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="550" y="191" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="573" y="191" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="366" y="214" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="389" y="214" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="412" y="214" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="435" y="214" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="458" y="214" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="481" y="214" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="504" y="214" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="527" y="214" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="550" y="214" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="573" y="214" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="366" y="237" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="389" y="237" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="412" y="237" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="435" y="237" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="458" y="237" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="481" y="237" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="504" y="237" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="527" y="237" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="550" y="237" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="573" y="237" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="366" y="260" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="389" y="260" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="412" y="260" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="435" y="260" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="458" y="260" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="481" y="260" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="504" y="260" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="527" y="260" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="550" y="260" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<rect x="573" y="260" width="17" height="17" rx="3" fill="#e4e4e2" stroke="#9a9a9a" stroke-width="1"/>
+<text x="478" y="300.0" font-size="12" fill="#444" text-anchor="middle">새 연결은 버려진다</text>
+<text x="478" y="318.0" font-size="12" fill="#444" text-anchor="middle">대부분 스캐너 대역에서 온 연결</text>
+<line x1="612" y1="236" x2="652" y2="236" stroke="#111" stroke-width="1.6" marker-end="url(#ah)"/>
+<rect x="656" y="200" width="252" height="64" rx="6" fill="#111" stroke="#111" stroke-width="2"/>
+<text x="782.0" y="229.0" font-size="14" font-weight="700" fill="#fff" text-anchor="middle">처리 스레드 1개</text>
+<text x="782.0" y="247.0" font-size="12" fill="#ddd" text-anchor="middle">실행기를 지정하지 않음</text>
+<line x1="782" y1="268" x2="782" y2="284" stroke="#b42318" stroke-width="1.6" marker-end="url(#ahr)"/>
+<rect x="656" y="288" width="252" height="64" rx="6" fill="#fff" stroke="#b42318" stroke-width="2"/>
+<text x="782.0" y="317.0" font-size="13" font-weight="700" fill="#111" text-anchor="middle">미완성 요청 1개를 무기한 대기</text>
+<text x="782.0" y="335.0" font-size="12" fill="#b42318" text-anchor="middle">요청 읽기 제한이 기본값 무제한</text>
+<line x1="932" y1="232" x2="988" y2="232" stroke="#9a9a9a" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#ahg)"/>
+<rect x="992" y="200" width="120" height="64" rx="6" fill="#fff" stroke="#9a9a9a" stroke-width="2" stroke-dasharray="5 4"/>
+<text x="1052.0" y="229.0" font-size="14" font-weight="700" fill="#111" text-anchor="middle">문자 API</text>
+<text x="1052.0" y="247.0" font-size="12" fill="#444" text-anchor="middle">연결 없음</text>
+<rect x="1136" y="56" width="236" height="312" rx="6" fill="#fafafa" stroke="#9a9a9a" stroke-width="1.5"/>
+<text x="1152" y="84.0" font-size="16" font-weight="700" fill="#111" text-anchor="start">조치</text>
+<rect x="1152" y="104" width="204" height="68" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+<text x="1254.0" y="135.0" font-size="14" font-weight="700" fill="#111" text-anchor="middle">1. 포트 범위 축소</text>
+<text x="1254.0" y="153.0" font-size="12" fill="#444" text-anchor="middle">인증 서버 2대와 VPC 내부만</text>
+<rect x="1152" y="188" width="204" height="68" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+<text x="1254.0" y="219.0" font-size="14" font-weight="700" fill="#111" text-anchor="middle">2. 요청 읽기 제한 5초</text>
+<text x="1254.0" y="237.0" font-size="12" fill="#444" text-anchor="middle">네이티브 빌드 인자로 적용</text>
+<rect x="1152" y="272" width="204" height="68" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
+<text x="1254.0" y="303.0" font-size="14" font-weight="700" fill="#111" text-anchor="middle">3. 재시작 정책</text>
+<text x="1254.0" y="321.0" font-size="12" fill="#444" text-anchor="middle">unless-stopped</text>
+</svg>
