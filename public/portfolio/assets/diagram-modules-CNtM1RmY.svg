@@ -17,7 +17,7 @@
   <!-- mobile -->
   <rect x="420" y="120" width="420" height="62" fill="#f4f4f4" stroke="#333" stroke-width="1.5" rx="3"/>
   <text x="630" y="145" text-anchor="middle" font-size="16" font-weight="700" fill="#111">mobile</text>
-  <text x="630" y="168" text-anchor="middle" font-size="13.5" fill="#333">모바일 진입 표면 · 얇은 orchestration (도메인 정책 없음)</text>
+  <text x="630" y="168" text-anchor="middle" font-size="13.5" fill="#333">모바일 API 진입점 · 얇은 orchestration (도메인 정책 없음)</text>
 
   <line x1="630" y1="182" x2="630" y2="214" stroke="#111" stroke-width="2" marker-end="url(#arw)"/>
 
