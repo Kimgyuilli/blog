@@ -1,7 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 384" width="1120" height="384" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 40 1120 336" width="1120" height="336" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif">
 <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/></marker><marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#9a9a9a"/></marker><marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b42318"/></marker></defs>
 <rect width="1120" height="384" fill="#ffffff"/>
-<text x="28" y="36.0" font-size="18" font-weight="700" fill="#111" text-anchor="start">project 하위 도메인의 경계: 공개 계약은 NamedInterface, 방향은 ArchUnit</text>
 <text x="28" y="84.0" font-size="13" fill="#444" text-anchor="start">다른 모듈</text>
 <rect x="28" y="112" width="148" height="40" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
 <text x="102.0" y="136.9" font-size="14" font-weight="700" fill="#111" text-anchor="middle">mobile</text>
@@ -34,7 +33,7 @@
 <text x="832" y="84.0" font-size="13" fill="#444" text-anchor="start">nested module로 유지</text>
 <rect x="832" y="112" width="260" height="72" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
 <text x="962.0" y="145.0" font-size="14" font-weight="700" fill="#111" text-anchor="middle">web</text>
-<text x="962.0" y="163.0" font-size="12" fill="#444" text-anchor="middle">웹 표면, 다른 모듈이 참조하지 않음</text>
+<text x="962.0" y="163.0" font-size="12" fill="#444" text-anchor="middle">웹 진입점, 다른 모듈이 참조하지 않음</text>
 <rect x="832" y="200" width="260" height="72" rx="6" fill="#fff" stroke="#111" stroke-width="2"/>
 <text x="962.0" y="233.0" font-size="14" font-weight="700" fill="#111" text-anchor="middle">source</text>
 <text x="962.0" y="251.0" font-size="12" fill="#444" text-anchor="middle">connection, ref로 나눔</text>

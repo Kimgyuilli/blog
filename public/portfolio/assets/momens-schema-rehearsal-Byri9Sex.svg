@@ -1,7 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 384" width="1120" height="384" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 40 1120 336" width="1120" height="336" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif">
 <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/></marker><marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#9a9a9a"/></marker><marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#b42318"/></marker></defs>
 <rect width="1120" height="384" fill="#ffffff"/>
-<text x="28" y="36.0" font-size="18" font-weight="700" fill="#111" text-anchor="start">운영 스키마 소유권 이전 리허설: role 상속을 운영과 맞추자 드러난 문제</text>
 <rect x="28" y="56" width="420" height="232" rx="6" fill="#fafafa" stroke="#9a9a9a" stroke-width="1.5"/>
 <text x="44" y="84.0" font-size="16" font-weight="700" fill="#111" text-anchor="start">운영 조건을 본뜬 리허설 DB</text>
 <text x="44" y="105.0" font-size="12" fill="#444" text-anchor="start">PG17, 비-superuser 작업 role, event trigger, 10만 행, 락 경합</text>
