@@ -1,4 +1,4 @@
-import{c as A,j as e,e as n,p as T,s as D,f as I,h as L,i as B,k as O,m as H,r as u,D as G}from"./index-8QQr0aMu.js";import{d as h,l as E,r as z,D as Q,a as f,c as F}from"./resume-B2W-OLjY.js";/**
+import{c as A,j as e,e as n,p as T,s as D,f as I,h as L,i as B,k as O,m as H,r as u,D as G}from"./index-cahF23qa.js";import{d as h,l as E,r as z,D as Q,a as f,c as F}from"./resume-CNu3Mqoz.js";/**
  * @license lucide-react v0.487.0 - ISC
  *
  * This source code is licensed under the ISC license.
@@ -19,7 +19,7 @@ Java HttpServer, GraalVM Native Image, AWS`},visual:{src:js,alt:"SMS 프록시�
 Redis 스터디장, 성능 테스트와 AWS 스터디 참여, 두 기수 동안 아티클 39편 작성
 해커톤 2회 대상 수상(37기 웹, 38기 iOS 서비스)`},{period:"2024.12 - 2025.08",title:"IT 동아리 피로그래밍 / 참가자 → 교육팀 운영진",body:`교육 커리큘럼 설계, 과제 출제와 채점 기준 수립, 코드 리뷰, Git 세션 강의
 리쿠르팅 플랫폼 Piro-Recruit PM 겸 풀스택 리드 개발`},{period:"2025.02 - 2025.09",title:"Groomthon Univ / AYU 서버파트 미르미",body:"Spring Boot 스터디 진행과 기술 공유, 해커톤 2회 참여"}]},{kind:"summary",section:"이력 요약",nameLines:["김규일 /","Backend Developer"],contacts:{label:"연락처",links:[{label:"010-9028-1157",url:"tel:01090281157"},...y]},links:{label:"관련 링크",links:[{label:"GitHub",url:h.github},{label:"Tech Blog",url:h.blog},{label:"Portfolio",url:h.portfolio}]},intro:{label:"소개",body:`원인을 확인한 뒤에 고치는 백엔드 개발자입니다. PeekCart에서는 MySQL CPU 상한만 바꾸는 대조 실험으로 주문 처리량을 2.94배로 올렸습니다.
-팀에서는 정한 것을 기록하고 지키게 만듭니다. Momens 서버 리드로 회의를 주도해 아키텍처 규칙을 정했고, 규칙이 구현과 맞지 않을 때는 규칙을 고치고 테스트로 검사하게 했습니다. 인수인계 문서가 거의 없던 팀에서는 BE 문서를 다시 정리해 팀 공식 문서로 채택됐습니다.
+팀에서는 정한 것을 기록하고 지키게 만듭니다. Momens 서버 리드로 회의를 주도해 아키텍처 규칙을 정했고, 규칙이 구현과 맞지 않을 때는 규칙을 고치고 테스트로 검사하게 했습니다. 인수인계 문서가 거의 없던 팀에서는 BE 문서를 다시 정리했고, 팀 공식 문서로 채택됐습니다.
 프로젝트에서 부딪힌 문제와 결정 이유는 기술 블로그에 글로 정리해 공유합니다.`},sections:[{title:"프로젝트",body:`PeekCart, 2026.03 ~ 진행 중, 개인 프로젝트 1인 개발
 Momens, 2026.06 ~ 진행 중, 서버 리드
 SOPT makers, 2026.08 ~ 현재, 공식 홈페이지팀 BE`},{title:"기술",body:`Backend / Java, Spring Boot, Spring Security, Spring Data JPA, Spring Modulith
