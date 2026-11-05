@@ -4,11 +4,12 @@ import DemoControls from '@/components/blog/shared/DemoControls.astro';
 import '@/styles/scene.css';
 ---
 
-<InteractiveDemoFrame demoId="demand-zero-fault" ariaLabel="힙에 추가한 페이지에 처음 접근할 때 물리 프레임이 생기는 과정" title="어느 접근에서 프레임이 생길까요?" description="프로세스가 힙에 페이지 네 개를 추가했습니다. 주소 공간은 16 kB 늘었지만 RSS 는 0 kB 입니다. p1 에 쓰거나 p2 를 읽어 보고, 어느 접근에서 프레임이 매핑되고 RSS 가 늘어나는지 확인하세요.">
+<InteractiveDemoFrame demoId="demand-zero-fault" ariaLabel="힙에 추가한 페이지에 처음 접근할 때 물리 프레임이 생기는 과정" title="어느 접근에서 프레임이 생길까요?" description="프로세스가 힙에 페이지 네 개를 추가했습니다. 주소 공간은 16 kB 늘었지만 RSS 는 0 kB 입니다. p1 과 p2 를 읽거나 써 보고, 어느 접근에서 프레임이 매핑되고 RSS 가 늘어나는지 확인하세요.">
   <DemoControls ariaLabel="페이지 접근">
-    <button type="button" data-action="write-0" data-state="next">p1 에 쓰기</button>
+    <button type="button" data-action="read-0">p1 읽기</button>
+    <button type="button" data-action="write-0" data-state="next">p1 쓰기</button>
     <button type="button" data-action="read-1">p2 읽기</button>
-    <button type="button" data-action="write-1">p2 에 쓰기</button>
+    <button type="button" data-action="write-1">p2 쓰기</button>
     <button type="button" data-action="reset">처음으로</button>
   </DemoControls>
 
@@ -212,6 +213,9 @@ import '@/styles/scene.css';
       const alive = interrupt();
       const before = maps[i];
       const name = `p${i + 1}`;
+      // p1 은 받침으로 끝나 조사가 달라집니다.
+      const obj = i === 0 ? '을' : '를';
+      const topic = i === 0 ? '은' : '는';
       say(`${name} 에 ${kind === 'write' ? '씁니다' : '읽기만 합니다'}.`);
       const packet = packets.spawn({ label: kind, tone: 'dep', at: L().route(i)[0] });
       if (!(await packet.travel(L().route(i), 680)) || !alive()) return;
@@ -225,7 +229,7 @@ import '@/styles/scene.css';
         if (!(await scene.go(target(), duration.draw)) || !alive()) return;
         const z = L().zero;
         landRing(root, { x: z.x, y: z.y, w: L().zeroW + 8, h: 28 });
-        text = `${name} 를 처음 읽을 때도 page fault 가 났습니다. 커널은 새 프레임 대신 시스템 전체가 같이 쓰는 zero page 를 <strong>읽기 전용</strong>으로 매핑했고, 프로세스는 0을 읽었습니다. <strong>RSS 는 그대로입니다.</strong> 이제 ${name} 에 쓰면 어떻게 될까요?`;
+        text = `${name} ${obj} 처음 읽을 때도 page fault 가 났습니다. 커널은 새 프레임 대신 시스템 전체가 같이 쓰는 zero page 를 <strong>읽기 전용</strong>으로 매핑했고, 프로세스는 0을 읽었습니다. <strong>RSS 는 그대로입니다.</strong> 이제 ${name} 에 쓰면 어떻게 될까요?`;
         setNext(`write-${i}`);
       } else if (kind === 'write' && before !== 'own') {
         // 첫 쓰기, 또는 zero page 에 매핑된 페이지에 쓰기: page fault 뒤 0으로 채운 새 프레임을 매핑합니다.
@@ -244,7 +248,7 @@ import '@/styles/scene.css';
       } else {
         // 이미 매핑된 페이지: page fault 없이 바로 접근합니다.
         text = maps[i] === 'zero'
-          ? `${name} 는 zero page 에 매핑되어 있어서 page fault 없이 0을 읽었습니다.`
+          ? `${name} ${topic} zero page 에 매핑되어 있어서 page fault 없이 0을 읽었습니다.`
           : `${name} 에는 이미 프레임이 매핑되어 있어서 page fault 없이 바로 ${kind === 'write' ? '썼' : '읽었'}습니다.`;
       }
 
