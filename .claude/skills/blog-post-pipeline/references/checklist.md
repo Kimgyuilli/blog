@@ -41,6 +41,7 @@ Answer these before gate A and again before handing the reviewed draft back. The
 - Do several sections repeat one symmetric trade-off frame ("X 하면 A 는 빨라지지만 B 가 늘고, Y 하면 ...")? Keep the full pair once; state the others as the specific cost.
 - Does a noun carry three or more stacked modifier clauses ("A 를 읽어 B 에서 C 까지 이어지는지 확인하는 검사 스크립트")? Name the thing first, then describe it in its own sentence.
 - Is one verb, often "확인했습니다", doing most of the work? Use the specific action (대조했습니다, 다시 받았습니다, 실패했습니다). Leave scope markers such as "확인하지 않았습니다" as they are. Does a verb like "봅니다", "살펴봅니다", "함께 봅니다" stand without saying what is compared, counted, or read? Write the action.
+- Do a book, document, or man page keep being the subject of "~로 설명합니다", "~라고 적습니다", "~로 듭니다"? Once is fine. When it repeats, state the fact with the source attached ("OSTEP 23장에 따르면", a link), or use the verb for what the source actually does (꼽습니다, 보여 줍니다). Found by humanize on the OSTEP 23 post.
 - Does each "이", "그", "이를 통해", "그 기준" point at something the previous sentence names? If not, write the target or add the missing step.
 - Do dictionary-style compounds ("운영 관점", "작동 구조", "~측면에서") recur in one section? Unpack them into what is done.
 - Is a list of three ("A, B, 그리고 C") there because all three matter and relate, or because three looks organized? Keep the one that matters, or explain each.
