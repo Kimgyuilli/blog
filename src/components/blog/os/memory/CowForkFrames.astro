@@ -30,8 +30,8 @@ import '@/styles/scene.css';
   <p class="cow-frames">실제로 쓰는 RAM 프레임 <b data-v="frames"></b><span>복사한 페이지 <b data-v="copies"></b></span></p>
   <p class="scene-note" data-note role="status"></p>
   <p class="db-demo-disclaimer">
-    11절 Python 실험의 100MB 배열을 4 kB 페이지 네 개로 줄인 모형이고, 표에는 이 네 페이지만 셌습니다. Python 인터프리터, 스택, 공유 라이브러리처럼 실제 <code>smaps_rollup</code> 에 함께 잡히는 메모리는 넣지 않았습니다.
-    배열 페이지는 fork() 전에 부모가 썼으므로 모두 dirty 로 셌습니다. 페이지 테이블 복제, TLB, transparent huge page 는 그리지 않았고, 새 프레임은 원본 바로 옆 빈 칸에 생기는 것으로 그렸습니다.
+    7절 Python 실험의 100MB 배열을 4 kB 페이지 네 개로 줄인 모형이고, 표에는 이 네 페이지만 셌습니다. Python 인터프리터, 스택, 공유 라이브러리처럼 실제 <code>smaps_rollup</code> 에 함께 잡히는 메모리는 넣지 않았습니다.
+    배열 페이지는 fork() 전에 부모가 썼으므로 모두 dirty 로 셌습니다. 혼자 남은 프레임에는 다른 참조가 없다고 가정해 복사 없이 쓰기 권한만 되돌렸습니다. 페이지 테이블 복제, TLB, transparent huge page 는 그리지 않았고, 새 프레임은 원본 바로 옆 빈 칸에 생기는 것으로 그렸습니다.
   </p>
 </InteractiveDemoFrame>
 

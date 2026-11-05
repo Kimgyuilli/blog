@@ -4,7 +4,7 @@ import DemoControls from '@/components/blog/shared/DemoControls.astro';
 import '@/styles/scene.css';
 ---
 
-<InteractiveDemoFrame demoId="demand-zero-fault" ariaLabel="힙에 추가한 페이지에 처음 접근할 때 물리 프레임이 생기는 과정" title="페이지를 추가했는데 RSS 는 왜 그대로일까요?" description="프로세스가 힙에 페이지 네 개를 추가했습니다. 주소 공간은 16 kB 늘었지만 RSS 는 0 kB 입니다. p1 에 쓰거나 p2 를 읽어 보고, 프레임이 언제 매핑되는지 확인하세요.">
+<InteractiveDemoFrame demoId="demand-zero-fault" ariaLabel="힙에 추가한 페이지에 처음 접근할 때 물리 프레임이 생기는 과정" title="어느 접근에서 프레임이 생길까요?" description="프로세스가 힙에 페이지 네 개를 추가했습니다. 주소 공간은 16 kB 늘었지만 RSS 는 0 kB 입니다. p1 에 쓰거나 p2 를 읽어 보고, 어느 접근에서 프레임이 매핑되고 RSS 가 늘어나는지 확인하세요.">
   <DemoControls ariaLabel="페이지 접근">
     <button type="button" data-action="write-0" data-state="next">p1 에 쓰기</button>
     <button type="button" data-action="read-1">p2 읽기</button>
@@ -24,8 +24,8 @@ import '@/styles/scene.css';
   </div>
   <p class="scene-note" data-note role="status"></p>
   <p class="db-demo-disclaimer">
-    4 kB 페이지 네 개로 줄인 모형입니다. 읽기는 zero page 를, 쓰기는 새 프레임을 매핑하는 Linux 의 anonymous memory 처리를 따랐습니다. OSTEP 이 설명하는 VMS 는 읽기에서도 프레임을 0으로 채워 매핑합니다.
-    빈 프레임 네 개에는 다른 프로세스가 쓰던 내용이 남아 있다고 가정했습니다. 커널이 빈 프레임을 고르는 방법, TLB, transparent huge page 는 그리지 않았고, zero page 는 RSS 에 넣지 않았습니다. 패킷이 움직이는 시간은 실제 page fault 처리 시간과 관계없습니다.
+    4 kB 페이지 네 개로 줄인 모형이고, 주소 공간과 RSS 는 이 네 페이지만 셌습니다. 읽기는 zero page 를, 쓰기는 새 프레임을 매핑하는 Linux 의 private anonymous memory 처리를 따랐습니다. OSTEP 이 설명하는 VMS 는 읽기에서도 프레임을 0으로 채워 매핑합니다.
+    빈 프레임 네 개에는 다른 프로세스가 쓰던 내용이 남아 있다고 가정했습니다. 커널이 빈 프레임을 고르는 방법, TLB, transparent huge page(2MB 크기의 큰 페이지)는 그리지 않았습니다. zero page 는 실제 Linux 처럼 RSS 에 넣지 않았습니다. write, read 표시가 움직이는 시간은 실제 page fault 처리 시간과 관계없습니다.
   </p>
 </InteractiveDemoFrame>
 
@@ -173,7 +173,7 @@ import '@/styles/scene.css';
       const left = maps.map((m, i) => (m === 'none' ? `p${i + 1}` : '')).filter(Boolean);
       return left.length ? ` 한 번도 접근하지 않은 ${left.join(', ')} 는 여전히 프레임이 없습니다.` : '';
     };
-    const intro = () => say('프로세스가 힙에 페이지 네 개를 추가했습니다. 커널은 페이지 테이블에 이 페이지들을 접근할 수 없다고 표시만 했고, 어느 페이지에도 프레임을 매핑하지 않았습니다. <strong>p1 에 처음 쓰면</strong> 어떤 일이 일어날까요?');
+    const intro = () => say('프로세스가 힙에 페이지 네 개를 추가했습니다. 커널은 프로세스의 메모리 영역 목록(VMA)에 범위만 기록했고, 이 페이지들의 PTE 는 비어 있어서 어느 페이지에도 프레임이 매핑되지 않았습니다. <strong>p1 에 처음 쓰면</strong> 어떤 일이 일어날까요?');
 
     /** 진행 중인 동작을 끊고, 그림을 논리 모형에 맞춥니다. */
     /** 0으로 채운 프레임의 매핑이 끊기면 매핑까지 마저 바꿉니다. */
