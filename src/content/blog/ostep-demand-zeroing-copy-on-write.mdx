@@ -15,8 +15,8 @@ import CowForkFrames from '@/components/blog/os/memory/CowForkFrames.astro';
 {/*
 독자: OSTEP 18~22장(페이징, swap, page fault)을 읽었고 JVM 애플리케이션을 Linux 서버나 컨테이너에서 운영해 본 백엔드 개발자.
 핵심 주장: 운영체제는 메모리를 주소 공간에 추가하는 일과 물리 페이지를 준비하는 일을 나눈다. demand zeroing 은 처음 접근할 때까지 페이지 할당과 0 채우기를, copy-on-write 는 처음 쓸 때까지 복사를 미룬다. 두 기법 모두 page fault 로 동작하고, 미룬 작업은 첫 접근의 지연으로 돌아온다.
-유형: 주 concept, 보조 experiment(실행 결과 없이 확인 방법과 예상만).
-수치 출처: 직접 측정은 없다. 100MB, 20MB, 1GB, 512MB, 400MB 는 설명용 가정. VMS 동작은 OSTEP 23장 Other Neat Tricks 와 TIP: BE LAZY. Linux 의 VMA, zero page, COW 재사용은 커널 mm/memory.c. HotSpot 의 reserve/commit 은 os_linux.cpp, 배열 0 채우기는 memAllocator.cpp, totalMemory 는 G1 기준. fork 비용 문장은 fork(2) NOTES. PSS 정의는 커널 proc 문서. AlwaysPreTouch, -Xms, -Xmx 설명은 Oracle java 명령 문서(JDK 21).
+유형: concept.
+수치 출처: 직접 측정은 없다. 100MB, 20MB, 1GB, 512MB 는 설명용 가정. VMS 동작은 OSTEP 23장 Other Neat Tricks 와 TIP: BE LAZY. Linux 의 VMA, zero page, COW 재사용은 커널 mm/memory.c. HotSpot 의 reserve/commit 은 os_linux.cpp, totalMemory 는 G1 기준. fork 비용 문장은 fork(2) NOTES. PSS 정의는 커널 proc 문서. AlwaysPreTouch, -Xms, -Xmx 설명은 Oracle java 명령 문서(JDK 21).
 */}
 
 OSTEP 23장 *Complete Virtual Memory Systems*는 앞 장들에서 배운 메커니즘이 실제 운영체제 안에서 어떻게 합쳐지는지 보여 줍니다. 첫 사례는 DEC 가 1970년대 후반에 내놓은 VAX-11 미니컴퓨터의 운영체제 VAX/VMS 입니다. 처음에는 50년 가까이 된 운영체제의 구현이 JVM 애플리케이션 운영과 무슨 관계가 있을지 잘 떠오르지 않았습니다.
@@ -25,7 +25,7 @@ OSTEP 23장 *Complete Virtual Memory Systems*는 앞 장들에서 배운 메커�
 
 > 운영체제는 왜 메모리 작업을 요청받은 순간에 하지 않고 미룰까요? 미룬 작업의 비용은 언제, 어디서 치르게 될까요?
 
-OSTEP 과 Linux 커널 문서, man page, Oracle Java 문서를 읽고 정리했습니다. 확인 방법은 함께 실었지만 직접 실행한 결과는 포함하지 않았고 예상은 동작 원리에서 추론한 것입니다. 페이지 크기는 x86-64 Linux 의 기본값인 4KB 를 기준으로 합니다.
+OSTEP 과 Linux 커널 문서, man page, Oracle Java 문서를 읽고 정리했습니다. 페이지 크기는 x86-64 Linux 의 기본값인 4KB 를 기준으로 합니다.
 
 ## 1. 작업을 미루는 것이 왜 최적화일까요?
 
@@ -73,22 +73,12 @@ zero page 는 시스템 전체가 하나를 같이 쓰고 RSS 에 들어가지 �
 | 단계 | HotSpot 이 하는 일 | `-Xms512m -Xmx2g` 일 때 | 드러나는 지표 |
 |---|---|---|---|
 | reserved | `-Xmx` 만큼의 범위를 접근할 수 없는 상태로 주소 공간에 넣어 둡니다 | 2GB | VSZ |
-| committed | 그중 실제로 쓸 범위를 읽고 쓸 수 있게 바꿉니다 | 시작할 때 512MB, GC 가 늘리거나 줄입니다 | NMT 의 committed, G1 에서는 `Runtime.totalMemory()` |
+| committed | 그중 실제로 쓸 범위를 읽고 쓸 수 있게 바꿉니다 | 시작할 때 512MB, GC 가 늘리거나 줄입니다 | NMT(Native Memory Tracking)의 committed, G1 에서는 `Runtime.totalMemory()` |
 | RSS | committed 범위 중 실제로 접근해 프레임이 매핑된 부분 | 접근한 페이지만큼 | RSS |
 
 commit 하지 않은 1.5GB 는 접근 자체가 막혀 있어서 demand zeroing 과는 관계가 없습니다. demand zeroing 은 committed 와 RSS 의 차이를 설명합니다. JVM 이 512MB 를 읽고 쓸 수 있게 바꿔도 Linux 는 프레임을 바로 주지 않고 JVM 이 각 페이지에 처음 쓸 때 준비합니다. 힙에서는 RSS 가 committed 범위 안에 있고 둘의 차이는 힙을 얼마나 채웠는지에 따라 달라집니다. 프로세스 전체 RSS 에는 Metaspace, thread stack, code cache 같은 힙 밖 메모리도 더해집니다.
 
-직접 확인하려면 Enter 를 누를 때마다 `new byte[100 * 1024 * 1024]` 를 하나씩 붙잡아 두는 프로그램을 NMT(Native Memory Tracking)를 켜고 실행합니다.
-
-```bash
-java -Xms512m -Xmx2g -XX:NativeMemoryTracking=summary MemoryExperiment
-jcmd <PID> VM.native_memory summary          # Java Heap 의 reserved, committed
-ps -o pid,vsz,rss,min_flt,maj_flt -p <PID>   # VSZ, RSS, minor/major page fault 횟수
-```
-
-시작 직후에는 reserved 2GB, committed 512MB 에 RSS 는 512MB 보다 훨씬 작을 것입니다. Enter 를 누를 때마다 RSS 는 100MB 가까이 늘 것입니다. HotSpot 은 배열을 만들 때 원소를 0으로 만들려고 그 메모리에 직접 쓰고 그 쓰기가 페이지 25,600개에 page fault 를 일으키기 때문입니다. `min_flt` 는 디스크 I/O 없이 처리한 page fault 의 횟수이고 6절에서 다시 다룹니다. 이 실험으로는 JVM 이 commit 한 크기와 Linux 가 RAM 에 올린 크기가 따로 움직인다는 데까지만 확인할 수 있습니다. 정확한 값은 JDK 버전, GC 종류, 커널 설정에 따라 다릅니다.
-
-`-XX:+AlwaysPreTouch` 는 이 비용을 앞당기는 옵션입니다. Oracle 문서에 따르면 JVM 이 운영체제에서 힙을 받은 뒤, 애플리케이션에 메모리를 내주기 전에 힙의 모든 페이지에 접근하게 합니다. 대상은 그 시점에 commit 한 힙이고 G1 은 나중에 힙을 늘릴 때 새로 commit 한 부분도 미리 접근합니다. `-Xms1g -Xmx1g` 로 켜고 끄며 비교하면, 켠 쪽은 시작이 늦고 시작 직후 RSS 가 힙 1GB 에 힙 밖 메모리를 더한 값이 될 것입니다.
+이 차이를 일부러 없애는 옵션도 있습니다. Oracle 문서에 따르면 `-XX:+AlwaysPreTouch` 는 JVM 이 운영체제에서 힙을 받은 뒤, 애플리케이션에 메모리를 내주기 전에 힙의 모든 페이지에 접근하게 합니다. 대상은 그 시점에 commit 한 힙이고 G1 은 나중에 힙을 늘릴 때 새로 commit 한 부분에도 미리 접근합니다. 켜면 JVM 시작은 늦어지지만 힙을 처음 쓸 때 생기는 page fault 와 0 채우기를 시작 단계로 옮길 수 있습니다.
 
 ## 5. `fork()` 는 부모 메모리를 전부 복사할까요?
 
@@ -126,7 +116,7 @@ Linux 는 디스크 I/O 없이 처리한 page fault 를 minor fault(`min_flt`), 
 
 ## 7. `fork()` 이후 메모리 지표는 어떻게 바뀔까요?
 
-부모가 100MB `bytearray` 를 만들어 4KB 마다 1을 쓰고 `os.fork()` 를 호출한 뒤, 자식이 4KB 마다 2를 쓰는 Python 프로그램을 생각해 보겠습니다. Java 의 `ProcessBuilder` 는 자식에서 곧바로 다른 프로그램을 실행하므로 이런 실험에는 Python 이 편합니다. 자식이 쓰기 전과 후에 두 프로세스의 `/proc/<PID>/smaps_rollup` 을 읽어 세 값을 비교합니다.
+부모가 100MB 배열에 값을 써 둔 뒤 `fork()` 를 호출하고 자식이 그 배열의 모든 페이지에 쓴다고 가정하겠습니다. 이 변화는 프로세스의 메모리 통계 파일 `/proc/<PID>/smaps_rollup` 의 세 값으로 볼 수 있습니다.
 
 - **Rss**: 이 프로세스에 매핑되어 RAM 에 올라와 있는 크기입니다. 공유 페이지도 그대로 들어가므로 두 프로세스의 Rss 를 더하면 공유 페이지를 두 번 셉니다.
 - **Pss**: 공유 페이지를 공유하는 프로세스 수로 나눠 센 크기입니다. [커널 문서](https://docs.kernel.org/filesystems/proc.html)의 예로, 혼자 쓰는 페이지 1,000개와 다른 프로세스 하나와 공유하는 페이지 1,000개가 있으면 PSS 는 1,500 페이지입니다.
@@ -134,21 +124,11 @@ Linux 는 디스크 I/O 없이 처리한 page fault 를 minor fault(`min_flt`), 
 
 <CowForkFrames />
 
-자식이 쓰기 전에는 배열 100MB 가 두 프로세스에서 모두 Shared_Dirty 로 세어지고 Pss 에는 각각 절반이 들어갈 것입니다. 자식이 모든 페이지에 쓰면 자식에게는 복사한 100MB 가 Private_Dirty 로 생깁니다. 원래 프레임은 이제 부모만 매핑하므로, 아무것도 쓰지 않은 부모의 Private_Dirty 도 100MB 늘어날 것입니다. 두 프로세스의 Rss 는 처음부터 100MB 를 포함하고 있었으므로 크게 변하지 않습니다. 메모리가 실제로 두 배가 된 변화는 Pss 합계와 Private_Dirty 에서 드러나고, Rss 합계에는 드러나지 않습니다.
+자식이 쓰기 전에는 배열 100MB 가 두 프로세스에서 모두 Shared_Dirty 로 세어지고 Pss 에는 각각 절반이 들어갑니다. 자식이 모든 페이지에 쓰면 자식에게는 복사한 100MB 가 Private_Dirty 로 생깁니다. 원래 프레임은 이제 부모만 매핑하므로, 아무것도 쓰지 않은 부모의 Private_Dirty 도 100MB 늘어납니다. 두 프로세스의 Rss 는 처음부터 100MB 를 포함하고 있었으므로 크게 변하지 않습니다. 메모리가 실제로 두 배가 된 변화는 Pss 합계와 Private_Dirty 에서 드러나고, Rss 합계에는 드러나지 않습니다.
 
-Python 인터프리터의 메모리도 함께 측정되고 reference count 가 바뀐 객체의 페이지도 복사되므로 정확히 100MB 만큼 변하지는 않을 것입니다. transparent huge page(2MB 크기의 큰 페이지)를 쓰는 시스템에서는 커널 설정에 따라 혼자 남은 페이지를 shared 로 셀 수도 있습니다.
+실제 프로세스에서는 배열 밖의 메모리도 함께 세어지므로 정확히 100MB 만큼 변하지는 않습니다. transparent huge page(2MB 크기의 큰 페이지)를 쓰는 시스템에서는 커널 설정에 따라 혼자 남은 페이지를 shared 로 셀 수도 있습니다.
 
-## 8. Java 백엔드에서는 어디서 이 차이를 만날까요?
-
-메모리 한도 512MB 인 컨테이너 안에서 JVM 을 `-Xmx400m` 으로 실행해도 안전하지 않을 수 있습니다. JVM 은 힙 밖에서도 Metaspace, thread stack, direct buffer, 네이티브 라이브러리의 메모리를 쓰고 cgroup 은 이 메모리도 사용량에 포함합니다. 힙 밖 메모리가 컨테이너를 종료시킨 사례는 [Java 힙은 여유로운데 컨테이너는 왜 종료될까?](/blog/ostep-java-native-memory-container-oom/)에서 다뤘습니다. 여기에 이 글의 두 기법이 더해집니다.
-
-- **시작할 때는 괜찮다가 부하가 몰리면 한도에 걸리는 경우**: 힙을 commit 해도 처음에는 RSS 가 작고, 힙을 실제로 채워야 cgroup 사용량이 늘어납니다. `AlwaysPreTouch` 를 켜고 `-Xms` 를 `-Xmx` 와 같게 두면 힙 부분이 한도 안에 드는지는 배포 직후에 알 수 있습니다. 힙 밖 메모리는 여전히 부하가 걸린 뒤에 늘어납니다.
-- **여러 프로세스의 RSS 합이 RAM 보다 큰 경우**: 같은 공유 라이브러리를 쓰는 JVM 들이나 `fork()` 로 만든 worker 들은 물리 페이지를 공유하므로, 실제 사용량은 PSS 합계로 계산해야 합니다. cgroup v2 는 메모리를 처음 만든 cgroup 에 포함하므로 한 컨테이너 안의 공유 페이지는 한 번만 셉니다. 참고: [Control Group v2](https://docs.kernel.org/admin-guide/cgroup-v2.html).
-- **새로 띄운 인스턴스의 첫 요청들이 느린 경우**: JIT 컴파일과 클래스 로딩 외에도 힙과 thread stack 을 처음 쓰는 페이지마다 minor fault 가 납니다. 시작 직후 `min_flt` 가 몰려 늘어나는지 세어 보면 이 비용이 있는지 확인할 수 있습니다.
-
-다만 OOMKilled 의 원인을 두 기법만으로 설명할 수는 없습니다. NMT 의 영역별 committed, cgroup 의 `memory.stat`, Linux 의 메모리 회수와 OOM 정책을 함께 확인해야 합니다.
-
-## 9. 처음 질문으로 돌아가면
+## 8. 처음 질문으로 돌아가면
 
 > 운영체제는 왜 메모리 작업을 요청받은 순간에 하지 않고 미룰까요? 미룬 작업의 비용은 언제, 어디서 치르게 될까요?
 
@@ -164,8 +144,6 @@ Python 인터프리터의 메모리도 함께 측정되고 reference count 가 �
 
 미룬 작업의 비용은 첫 접근의 지연으로 돌아옵니다. 힙을 결국 다 채우는 서비스라면 lazy 방식은 비용을 없애지 못하고 요청 처리 중으로 옮길 뿐이고, 이럴 때는 `AlwaysPreTouch` 로 비용을 시작 단계에 몰아서 낼 수 있습니다. 어느 쪽이 나은지는 서비스가 시작 시간과 첫 요청의 지연 중 무엇을 더 중요하게 여기는지에 따라 다릅니다.
 
-직접 실행해 확인하고 싶은 질문도 남았습니다. JVM 실험에서 committed, RSS, `min_flt` 는 100MB 할당마다 예상대로 움직일까요? Python 실험에서 부모의 Private_Dirty 는 자식이 쓴 만큼 늘어날까요?
-
 ---
 
-학습 자료: Remzi H. Arpaci-Dusseau, Andrea C. Arpaci-Dusseau, *Operating Systems: Three Easy Pieces*, [Chapter 23 *Complete Virtual Memory Systems*](https://pages.cs.wisc.edu/~remzi/OSTEP/vm-complete.pdf). Linux Kernel Documentation, [The /proc Filesystem](https://docs.kernel.org/filesystems/proc.html), [Control Group v2](https://docs.kernel.org/admin-guide/cgroup-v2.html). Linux kernel source, [mm/memory.c](https://github.com/torvalds/linux/blob/master/mm/memory.c). Linux man-pages, [fork(2)](https://man7.org/linux/man-pages/man2/fork.2.html). Oracle, [The java Command (JDK 21)](https://docs.oracle.com/en/java/javase/21/docs/specs/man/java.html).
+학습 자료: Remzi H. Arpaci-Dusseau, Andrea C. Arpaci-Dusseau, *Operating Systems: Three Easy Pieces*, [Chapter 23 *Complete Virtual Memory Systems*](https://pages.cs.wisc.edu/~remzi/OSTEP/vm-complete.pdf). Linux Kernel Documentation, [The /proc Filesystem](https://docs.kernel.org/filesystems/proc.html). Linux kernel source, [mm/memory.c](https://github.com/torvalds/linux/blob/master/mm/memory.c). Linux man-pages, [fork(2)](https://man7.org/linux/man-pages/man2/fork.2.html). Oracle, [The java Command (JDK 21)](https://docs.oracle.com/en/java/javase/21/docs/specs/man/java.html).
