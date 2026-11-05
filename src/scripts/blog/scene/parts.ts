@@ -499,3 +499,33 @@ export function createBadge(parent: Element, caption: string, width = 132) {
     },
   };
 }
+
+// ── 페이지 테이블 매핑 선 ────────────────────────────────
+
+/**
+ * "매핑이 가리키는 프레임이 바뀌었다". 가상 페이지에서 물리 프레임으로 이어지는 PTE 매핑 선입니다.
+ * 장면 상태에 끝점의 x(프레임 위치)와 `show`(0~1)를 두고 보간하면, 새 매핑은 가상 페이지에서 자라 나오고
+ * 다른 프레임으로 옮겨 가는 매핑은 아래 끝이 미끄러지듯 옮겨 갑니다. 쓰기 가능한 매핑은 흐름 색 실선,
+ * 읽기 전용 매핑(zero page, copy-on-write 공유)은 임시 색 점선입니다.
+ */
+export function createMapLine(parent: Element) {
+  const group = svg('g', { class: 'scene-pte' }, parent);
+  const line = svg('line', { class: 'scene-pte-line' }, group);
+  const dot = svg('circle', { class: 'scene-pte-dot', r: 3 }, group);
+  return {
+    group,
+    /** `show`가 0이면 숨기고, 1이면 `to`까지 이어집니다. */
+    draw(from: Point, to: Point, show: number) {
+      const s = clamp01(show);
+      const end = pointAt(from, to, s);
+      setAttrs(line, { x1: from.x.toFixed(2), y1: from.y.toFixed(2), x2: end.x.toFixed(2), y2: end.y.toFixed(2) });
+      setAttrs(dot, { cx: end.x.toFixed(2), cy: end.y.toFixed(2) });
+      group.style.opacity = s < 0.02 ? '0' : '1';
+      dot.style.opacity = s > 0.9 ? '1' : '0';
+    },
+    /** 읽기 전용 매핑이면 true. */
+    setReadOnly(readOnly: boolean) {
+      group.classList.toggle('is-ro', readOnly);
+    },
+  };
+}

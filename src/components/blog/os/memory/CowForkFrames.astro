@@ -1,0 +1,425 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="cow-fork-frames" ariaLabel="fork() 이후 쓰기가 일어날 때 물리 프레임과 smaps 지표가 바뀌는 과정" title="자식이 썼는데 부모의 Private_Dirty 가 왜 늘까요?" description="부모가 4 kB 페이지 네 개에 1을 써 둔 상태입니다. fork() 를 호출한 뒤 자식과 부모가 차례로 써 보고, 프레임과 아래 표의 값이 어떻게 바뀌는지 확인하세요.">
+  <DemoControls ariaLabel="fork 와 쓰기">
+    <button type="button" data-action="fork" data-state="next">fork()</button>
+    <button type="button" data-action="write-C-1" disabled>자식이 p2 에 쓰기</button>
+    <button type="button" data-action="write-P-1" disabled>부모가 p2 에 쓰기</button>
+    <button type="button" data-action="write-C-all" disabled>자식이 모든 페이지에 쓰기</button>
+    <button type="button" data-action="reset">처음으로</button>
+  </DemoControls>
+
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="위쪽에 부모 프로세스의 가상 페이지 네 개, 가운데에 RAM 프레임 여덟 칸, 아래쪽에 자식 프로세스의 가상 페이지 네 개가 있습니다. fork() 직후 부모와 자식의 페이지는 같은 프레임 네 개를 읽기 전용 점선으로 가리킵니다. 한쪽이 쓰면 page fault 가 나고, 커널이 그 프레임을 옆 빈 칸으로 복사해 쓴 쪽의 매핑만 새 프레임으로 옮깁니다. 남은 원본 프레임은 다른 쪽만 가리키게 됩니다."></svg>
+  </div>
+
+  <table class="cow-table" aria-label="smaps_rollup 의 배열 부분 값">
+    <thead>
+      <tr><th scope="col"></th><th scope="col">Rss</th><th scope="col">Pss</th><th scope="col">Private_Dirty</th></tr>
+    </thead>
+    <tbody>
+      <tr><th scope="row"><i class="is-parent"></i>부모</th><td data-v="P-rss"></td><td data-v="P-pss"></td><td data-v="P-priv"></td></tr>
+      <tr><th scope="row"><i class="is-child"></i>자식</th><td data-v="C-rss"></td><td data-v="C-pss"></td><td data-v="C-priv"></td></tr>
+      <tr class="is-total"><th scope="row">합계</th><td data-v="T-rss"></td><td data-v="T-pss"></td><td data-v="T-priv"></td></tr>
+    </tbody>
+  </table>
+  <p class="cow-frames">실제로 쓰는 RAM 프레임 <b data-v="frames"></b><span>복사한 페이지 <b data-v="copies"></b></span></p>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">
+    11절 Python 실험의 100MB 배열을 4 kB 페이지 네 개로 줄인 모형이고, 표에는 이 네 페이지만 셌습니다. Python 인터프리터, 스택, 공유 라이브러리처럼 실제 <code>smaps_rollup</code> 에 함께 잡히는 메모리는 넣지 않았습니다.
+    배열 페이지는 fork() 전에 부모가 썼으므로 모두 dirty 로 셌습니다. 페이지 테이블 복제, TLB, transparent huge page 는 그리지 않았고, 새 프레임은 원본 바로 옆 빈 칸에 생기는 것으로 그렸습니다.
+  </p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bowAt, bumpText, clamp01, createScene, duration, hopLift, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createBoundary, createChip, createMapLine, createNode, landRing, type Rect } from '@/scripts/blog/scene/parts';
+  import { createPacketLayer, type Packet } from '@/scripts/blog/scene/packets';
+
+  // 독자가 볼 변화: fork() 직후 자식 줄이 부모 줄에서 갈라져 나와 같은 프레임 네 개를 점선으로 가리키고,
+  // Rss 합계는 32 kB 인데 실제 프레임은 16 kB 다. 자식이 p2 에 쓰면 원본은 제자리에 남고 사본이 옆 칸으로 날아가
+  // 자식의 선만 사본으로 옮겨 간다. 그 순간 부모는 아무것도 쓰지 않았는데 Private_Dirty 가 4 kB 늘어난다.
+  // 그 뒤 부모가 p2 에 쓰면 page fault 는 나지만 복사 없이 선이 실선으로 바뀐다.
+  type Who = 'P' | 'C';
+  const PAGES = 4;
+  const FRAMES = 8;
+  const HUE: Record<Who, string> = { P: 'var(--scene-hue-blue)', C: 'var(--scene-hue-amber)' };
+  const SHARED_HUE = 'var(--scene-hue-gray)';
+  // 조사가 받침에 따라 달라서 형태별로 둡니다.
+  const NAME = {
+    subj: { P: '부모가', C: '자식이' },
+    with: { P: '부모와', C: '자식과' },
+    topic: { P: '부모는', C: '자식은' },
+    only: { P: '부모만', C: '자식만' },
+    of: { P: '부모의', C: '자식의' },
+  } as const;
+
+  type Layout = {
+    view: [number, number];
+    zone: Record<Who, Rect>;
+    card: Record<Who, Rect>;
+    slot: (who: Who, i: number) => Point;
+    slotW: number;
+    route: (who: Who, i: number) => Point[];
+    ram: Rect;
+    ramCaption: Point;
+    frame: (k: number) => Point;
+    frameW: number;
+  };
+  const layouts: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 352],
+      zone: { P: { x: 8, y: 8, w: 544, h: 80 }, C: { x: 8, y: 264, w: 544, h: 80 } },
+      card: { P: { x: 66, y: 54, w: 104, h: 40 }, C: { x: 66, y: 298, w: 104, h: 40 } },
+      slot: (who, i) => ({ x: 164 + i * 112, y: who === 'P' ? 54 : 298 }),
+      slotW: 44,
+      route: (who, i) => {
+        const y = who === 'P' ? 54 : 298;
+        const lane = who === 'P' ? 26 : 326;
+        return [{ x: 118, y }, { x: 130, y: lane }, { x: 164 + i * 112, y: lane }, { x: 164 + i * 112, y: who === 'P' ? 32 : 320 }];
+      },
+      ram: { x: 8, y: 136, w: 544, h: 80 },
+      ramCaption: { x: 22, y: 158 },
+      frame: (k) => ({ x: 136 + k * 56, y: 188 }),
+      frameW: 36,
+    },
+    narrow: {
+      view: [360, 344],
+      zone: { P: { x: 6, y: 6, w: 348, h: 96 }, C: { x: 6, y: 242, w: 348, h: 96 } },
+      card: { P: { x: 60, y: 30, w: 96, h: 34 }, C: { x: 60, y: 314, w: 96, h: 34 } },
+      slot: (who, i) => ({ x: 74 + i * 80, y: who === 'P' ? 78 : 266 }),
+      slotW: 44,
+      route: (who, i) => {
+        const card = who === 'P' ? { y: 47, lane: 56 } : { y: 297, lane: 288 };
+        return [{ x: 60, y: card.y }, { x: 60, y: card.lane }, { x: 74 + i * 80, y: card.lane }];
+      },
+      ram: { x: 6, y: 130, w: 348, h: 84 },
+      ramCaption: { x: 14, y: 150 },
+      frame: (k) => ({ x: 54 + k * 40, y: 184 }),
+      frameW: 34,
+    },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="cow-fork-frames"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const cell = (key: string) => demo.querySelector<HTMLElement>(`[data-v="${key}"]`)!;
+    const buttons = [...demo.querySelectorAll<HTMLButtonElement>('[data-action]')];
+    let narrow = false;
+    const L = () => layouts[narrow ? 'narrow' : 'wide'];
+
+    // ── 논리 모형 ──
+    type Mapping = { frame: number; rw: boolean };
+    let values: (string | null)[] = [];
+    let maps: Record<Who, Mapping[]> = { P: [], C: [] };
+    let forked = false;
+    let copies = 0;
+    const init = () => {
+      values = Array.from({ length: FRAMES }, (_, k) => (k % 2 === 0 ? '1' : null));
+      maps = { P: Array.from({ length: PAGES }, (_, i) => ({ frame: i * 2, rw: true })), C: [] };
+      forked = false;
+      copies = 0;
+    };
+    init();
+    const owners = (k: number) => (['P', 'C'] as Who[]).filter((w) => maps[w].some((m) => m.frame === k));
+
+    /** 장면 상태. child 는 자식 줄이 부모 줄에서 갈라져 나온 정도, frames 는 프레임 칩이 날아온 정도. */
+    type Line = { fx: number[]; show: number[] };
+    type State = { child: number; P: Line; C: Line; frames: { ox: number; t: number; show: number }[] };
+    const lineOf = (who: Who): Line => ({
+      fx: Array.from({ length: PAGES }, (_, i) => L().frame(maps[who][i]?.frame ?? i * 2).x),
+      show: Array.from({ length: PAGES }, (_, i) => (maps[who][i] ? 1 : 0)),
+    });
+    const target = (): State => ({
+      child: forked ? 1 : 0,
+      P: lineOf('P'),
+      C: lineOf('C'),
+      frames: values.map((v, k) => ({ ox: L().frame(k).x, t: 1, show: v === null ? 0 : 1 })),
+    });
+
+    // ── 그림 ──
+    const zones = { P: createBoundary(root, '', 'zone'), C: createBoundary(root, '', 'zone') };
+    const ram = createBoundary(root, 'RAM 프레임', 'zone');
+    const cards = { P: createNode(root, { label: '부모', hue: HUE.P }), C: createNode(root, { label: '자식', hue: HUE.C }) };
+    const lines = { P: Array.from({ length: PAGES }, () => createMapLine(root)), C: Array.from({ length: PAGES }, () => createMapLine(root)) };
+    const slots = {
+      P: Array.from({ length: PAGES }, (_, i) => createChip(root, { label: `p${i + 1}`, hue: HUE.P, width: 44 })),
+      C: Array.from({ length: PAGES }, (_, i) => createChip(root, { label: `p${i + 1}`, hue: HUE.C, width: 44 })),
+    };
+    const frameSlots = Array.from({ length: FRAMES }, () => createChip(root, { label: '', hue: SHARED_HUE, width: 34 }));
+    frameSlots.forEach((chip) => chip.group.classList.add('is-empty'));
+    const frameChips = Array.from({ length: FRAMES }, () => createChip(root, { label: '1', hue: HUE.P, width: 34 }));
+    const placeholder = svg('text', { class: 'scene-label scene-label-dep is-sans', 'text-anchor': 'middle' }, root);
+    placeholder.textContent = 'fork() 를 호출하면 자식 프로세스가 여기에 생깁니다';
+    const packets = createPacketLayer(root);
+
+    /** 자식 줄은 fork() 전에는 부모 줄과 겹쳐 숨어 있다가 아래로 갈라져 나옵니다. */
+    const childShift = (t: number) => (L().slot('P', 0).y - L().slot('C', 0).y) * (1 - t);
+    const slotAt = (who: Who, i: number, child: number): Point => {
+      const p = L().slot(who, i);
+      return who === 'C' ? { x: p.x, y: p.y + childShift(child) } : p;
+    };
+    const lineEnds = (who: Who, i: number, fx: number, child = 1) => {
+      const s = slotAt(who, i, child);
+      const fy = L().frame(0).y;
+      return who === 'P'
+        ? { from: { x: s.x, y: s.y + 12 }, to: { x: fx, y: fy - 12 } }
+        : { from: { x: s.x, y: s.y - 12 }, to: { x: fx, y: fy + 12 } };
+    };
+
+    const scene = createScene<State>(target(), (s) => {
+      const l = L();
+      const shift = childShift(s.child);
+      const z = l.zone.C;
+      setAttrs(placeholder, { x: z.x + z.w / 2, y: z.y + z.h / 2 + 4, opacity: Math.max(0, 1 - s.child * 3) });
+      zones.C.place({ ...z, y: z.y + shift, o: s.child });
+      cards.C.setBox({ ...l.card.C, y: l.card.C.y + shift });
+      cards.C.group.style.opacity = String(s.child);
+      slots.C.forEach((chip, i) => chip.place(slotAt('C', i, s.child), s.child));
+      (['P', 'C'] as Who[]).forEach((who) => lines[who].forEach((line, i) => {
+        const { from, to } = lineEnds(who, i, s[who].fx[i], s.child);
+        line.draw(from, to, s[who].show[i] * (who === 'C' ? clamp01(s.child * 1.4 - 0.2) : 1));
+      }));
+      frameChips.forEach((chip, k) => {
+        const f = s.frames[k];
+        const home = l.frame(k);
+        const at = bowAt({ x: f.ox, y: home.y }, home, f.t, hopLift(f.t < 1 ? f.t : 0, 30));
+        chip.place(at, f.show);
+      });
+    });
+
+    const paint = () => {
+      frameChips.forEach((chip, k) => {
+        const who = owners(k);
+        const hue = who.length === 1 ? HUE[who[0]] : SHARED_HUE;
+        chip.setLabel(values[k] ?? '', hue);
+      });
+      (['P', 'C'] as Who[]).forEach((who) => maps[who].forEach((m, i) => lines[who][i].setReadOnly(!m.rw)));
+
+      const kb = (n: number) => `${Number.isInteger(n) ? n : n.toFixed(1)} kB`;
+      const stats = (who: Who) => {
+        if (!maps[who].length) return null;
+        const rss = maps[who].length * 4;
+        const pss = maps[who].reduce((sum, m) => sum + 4 / owners(m.frame).length, 0);
+        const priv = maps[who].filter((m) => owners(m.frame).length === 1).length * 4;
+        return { rss, pss, priv };
+      };
+      const p = stats('P');
+      const c = stats('C');
+      (['rss', 'pss', 'priv'] as const).forEach((key) => {
+        bumpText(cell(`P-${key}`), p ? kb(p[key]) : '없음');
+        bumpText(cell(`C-${key}`), c ? kb(c[key]) : '없음');
+        bumpText(cell(`T-${key}`), kb((p?.[key] ?? 0) + (c?.[key] ?? 0)));
+      });
+      bumpText(cell('frames'), kb(values.filter((v) => v !== null).length * 4));
+      bumpText(cell('copies'), `${copies}개`);
+
+      buttons.forEach((b) => {
+        const action = b.dataset.action ?? '';
+        if (action === 'fork') b.disabled = forked;
+        else if (action.startsWith('write')) b.disabled = !forked;
+      });
+    };
+    const say = (html: string) => { note.innerHTML = html; };
+    const setNext = (action: string | null) => {
+      buttons.forEach((b) => { if (b.dataset.action === action) b.dataset.state = 'next'; else delete b.dataset.state; });
+    };
+    const intro = () => say('부모가 배열을 만들고 네 페이지에 모두 1을 썼습니다. 네 페이지 모두 부모만 쓰는 프레임에 매핑되어 있어서 Rss, Pss, Private_Dirty 가 모두 16 kB 입니다. <strong>fork() 를 호출하면</strong> 프레임은 몇 개가 될까요?');
+
+    /** 끊긴 복사가 있으면 매핑까지 마저 바꿔, 프레임만 있고 매핑이 없는 상태를 남기지 않습니다. */
+    let pending: (() => void) | null = null;
+    const interrupt = () => {
+      const alive = scene.begin();
+      packets.clear();
+      pending?.();
+      pending = null;
+      frameChips.forEach((chip) => chip.group.classList.remove('is-copy'));
+      scene.set(target());
+      paint();
+      return alive;
+    };
+
+    const fork = async () => {
+      const alive = interrupt();
+      if (forked) return;
+      forked = true;
+      maps.C = maps.P.map((m) => ({ frame: m.frame, rw: false }));
+      maps.P.forEach((m) => { m.rw = false; });
+      say('fork() 가 부모의 주소 공간을 복제합니다.');
+      if (!(await scene.go(target(), duration.fly + 360)) || !alive()) return;
+      paint();
+      say('자식은 부모와 같은 주소에 같은 페이지 네 개를 받았지만 <strong>프레임은 하나도 복사되지 않았습니다.</strong> 두 프로세스가 같은 프레임 네 개를 가리키고, 커널은 양쪽 매핑을 모두 읽기 전용(점선)으로 바꿨습니다. Rss 를 더하면 32 kB 이지만 실제 프레임은 16 kB 이고, Pss 합계가 그 값과 같습니다. <strong>자식이 p2 에 쓰면</strong> 부모 쪽 값은 어떻게 될까요?');
+      setNext('write-C-1');
+    };
+
+    /** 빈 프레임을 고릅니다. 원본 바로 옆 칸을 먼저 씁니다. */
+    const freeFrameNear = (k: number, taken: Set<number>) => {
+      const order = [k + 1, k - 1, ...Array.from({ length: FRAMES }, (_, n) => n)];
+      return order.find((n) => n >= 0 && n < FRAMES && values[n] === null && !taken.has(n)) ?? -1;
+    };
+
+    const write = async (who: Who, pages: number[]) => {
+      const alive = interrupt();
+      if (!forked) return;
+      const other: Who = who === 'P' ? 'C' : 'P';
+      say(`${NAME.subj[who]} ${pages.map((i) => `p${i + 1}`).join(', ')} 에 씁니다.`);
+
+      // 1. 쓰기 패킷이 가상 페이지까지 갑니다.
+      const sent = await Promise.all(pages.map(async (i, order) => {
+        await scene.pause(order * 140);
+        const route = L().route(who, i);
+        const packet = packets.spawn({ label: 'write', tone: 'dep', at: route[0] });
+        const ok = await packet.travel(route, 640);
+        return ok ? packet : null;
+      }));
+      if (sent.some((p) => p === null) || !alive()) return;
+      const packetOf = new Map<number, Packet>(pages.map((i, n) => [i, sent[n]!]));
+
+      // 2. 읽기 전용 매핑이면 page fault. 다른 쪽과 공유 중이면 복사, 혼자 남았으면 권한만 되돌립니다.
+      const direct = pages.filter((i) => maps[who][i].rw);
+      const faulting = pages.filter((i) => !maps[who][i].rw);
+      const copying = faulting.filter((i) => owners(maps[who][i].frame).length > 1);
+      const reusing = faulting.filter((i) => owners(maps[who][i].frame).length === 1);
+      faulting.forEach((i) => packetOf.get(i)!.relabel('page fault', 'danger'));
+      if (faulting.length) {
+        await scene.pause(duration.beat + 240);
+        if (!alive()) return;
+      }
+
+      // 3. 복사: 원본 프레임은 제자리에 두고 점선 사본이 빈 칸으로 날아갑니다.
+      const taken = new Set<number>();
+      const dest = new Map<number, number>();
+      copying.forEach((i) => {
+        const k = freeFrameNear(maps[who][i].frame, taken);
+        taken.add(k);
+        dest.set(i, k);
+      });
+      let committed = false;
+      const commit = () => {
+        if (committed) return;
+        committed = true;
+        copying.forEach((i) => { maps[who][i] = { frame: dest.get(i)!, rw: true }; });
+        reusing.forEach((i) => { maps[who][i].rw = true; });
+        copies += copying.length;
+      };
+      if (copying.length) {
+        const start = scene.state;
+        const frames = start.frames.map((f) => ({ ...f }));
+        copying.forEach((i) => {
+          const from = maps[who][i].frame;
+          const k = dest.get(i)!;
+          values[k] = values[from];
+          frames[k] = { ox: L().frame(from).x, t: 0, show: 1 };
+          frameChips[k].group.classList.add('is-copy');
+          frameChips[k].setLabel(values[k] ?? '', HUE[who]);
+        });
+        pending = commit;
+        scene.set({ ...start, frames });
+        if (!(await scene.go({ ...scene.state, frames: frames.map((f) => ({ ...f, t: 1 })) }, duration.fly)) || !alive()) return;
+        copying.forEach((i) => {
+          const k = dest.get(i)!;
+          frameChips[k].group.classList.remove('is-copy');
+          const at = L().frame(k);
+          landRing(root, { x: at.x, y: at.y, w: L().frameW + 8, h: 28 });
+        });
+        await scene.pause(duration.beat);
+        if (!alive()) return;
+      }
+
+      // 4. 매핑을 바꿉니다. 복사한 쪽은 선 끝이 새 프레임으로 옮겨 가고, 혼자 남은 쪽은 실선으로 바뀝니다.
+      commit();
+      pending = null;
+      paint();
+      if (copying.length && (!(await scene.go(target(), duration.move)) || !alive())) return;
+
+      // 5. 쓰기를 다시 실행해 값이 2로 바뀝니다.
+      const done = await Promise.all(pages.map(async (i, order) => {
+        await scene.pause(order * 90);
+        const packet = packetOf.get(i)!;
+        packet.relabel('write', 'flow');
+        const { from, to } = lineEnds(who, i, L().frame(maps[who][i].frame).x);
+        const ok = await packet.travel([from, to], 420);
+        if (ok) { values[maps[who][i].frame] = '2'; paint(); void packet.land(false); }
+        return ok;
+      }));
+      if (!done.every(Boolean) || !alive()) return;
+
+      const parts: string[] = [];
+      if (copying.length) {
+        parts.push(`${copying.map((i) => `p${i + 1}`).join(', ')} 는 ${NAME.with[other]} 공유 중인 읽기 전용 페이지라 page fault 가 났고, 커널이 프레임을 복사해 <strong>${NAME.of[who]} 매핑만</strong> 새 프레임으로 옮겼습니다.`);
+        parts.push(`${NAME.topic[other]} 아무것도 쓰지 않았지만 원본 프레임을 이제 혼자 매핑하므로 <strong>${NAME.of[other]} Private_Dirty 도 늘었습니다.</strong> 두 프로세스의 Rss 는 그대로이고, Pss 합계와 실제 프레임이 함께 늘었습니다.`);
+      }
+      if (reusing.length) {
+        parts.push(`${reusing.map((i) => `p${i + 1}`).join(', ')} 는 아직 읽기 전용이라 page fault 가 났지만, 프레임을 ${NAME.only[who]} 매핑하고 있어서 <strong>복사 없이 쓰기 권한만 되돌렸습니다.</strong>`);
+      }
+      if (direct.length) {
+        parts.push(`${direct.map((i) => `p${i + 1}`).join(', ')} 는 이미 쓰기 가능한 자기 프레임이라 page fault 없이 바로 썼습니다.`);
+      }
+      say(parts.join(' '));
+      setNext(who === 'C' && copying.length && pages.length === 1 ? 'write-P-1' : null);
+    };
+
+    const reset = async () => {
+      const alive = interrupt();
+      init();
+      intro();
+      setNext('fork');
+      if (!(await scene.go(target(), duration.fly)) || !alive()) return;
+      paint();
+    };
+
+    buttons.forEach((button) => {
+      const [kind, who, page] = (button.dataset.action ?? '').split('-');
+      button.addEventListener('click', () => {
+        if (kind === 'fork') void fork();
+        else if (kind === 'reset') void reset();
+        else {
+          void write(who as Who, page === 'all' ? [0, 1, 2, 3] : [Number(page)]);
+        }
+      });
+    });
+
+    const applyLayout = () => {
+      const l = L();
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      zones.P.place(l.zone.P);
+      ram.caption.textContent = narrow ? 'RAM' : 'RAM 프레임';
+      ram.place(l.ram, { ...l.ramCaption, anchor: 'start' });
+      cards.P.setBox(l.card.P);
+      slots.P.forEach((chip, i) => chip.place(l.slot('P', i)));
+      frameSlots.forEach((chip, k) => chip.place(l.frame(k)));
+      interrupt();
+      if (!forked) intro();
+    };
+    watchNarrow(stage, (isNarrow) => { narrow = isNarrow; applyLayout(); });
+    intro();
+    applyLayout();
+  });
+</script>
+
+<style>
+  .cow-table { width: 100%; margin: 14px 0 0; border-collapse: collapse; font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+  .cow-table th, .cow-table td { padding: 6px 8px; border-bottom: 1px solid var(--hairline); text-align: right; }
+  .cow-table thead th { color: var(--slate); font-weight: 600; }
+  .cow-table tbody th { color: var(--charcoal); font-weight: 600; text-align: left; white-space: nowrap; }
+  .cow-table td { color: var(--ink); font-size: 0.95rem; }
+  .cow-table tr.is-total th, .cow-table tr.is-total td { border-bottom: 0; color: var(--slate); }
+  .cow-table i { display: inline-block; width: 9px; height: 9px; margin-right: 7px; border-radius: 50%; vertical-align: 1px; }
+  .cow-table i.is-parent { background: var(--scene-hue-blue); }
+  .cow-table i.is-child { background: var(--scene-hue-amber); }
+  .cow-table td:global(.is-bump) { animation: scene-pop 420ms ease-out; }
+  .cow-frames { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 10px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .cow-frames span { display: inline-flex; gap: 6px; align-items: baseline; }
+  .cow-frames b { margin-left: 6px; color: var(--ink); font-size: 1rem; font-variant-numeric: tabular-nums; }
+  .cow-frames span b { margin-left: 0; }
+  .cow-frames b:global(.is-bump) { animation: scene-pop 420ms ease-out; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cow-table td:global(.is-bump), .cow-frames b:global(.is-bump) { animation: none; }
+  }
+</style>

@@ -1,0 +1,307 @@
+---
+import InteractiveDemoFrame from '@/components/blog/shared/InteractiveDemoFrame.astro';
+import DemoControls from '@/components/blog/shared/DemoControls.astro';
+import '@/styles/scene.css';
+---
+
+<InteractiveDemoFrame demoId="demand-zero-fault" ariaLabel="힙에 추가한 페이지에 처음 접근할 때 물리 프레임이 생기는 과정" title="페이지를 추가했는데 RSS 는 왜 그대로일까요?" description="프로세스가 힙에 페이지 네 개를 추가했습니다. 주소 공간은 16 kB 늘었지만 RSS 는 0 kB 입니다. p1 에 쓰거나 p2 를 읽어 보고, 프레임이 언제 매핑되는지 확인하세요.">
+  <DemoControls ariaLabel="페이지 접근">
+    <button type="button" data-action="write-0" data-state="next">p1 에 쓰기</button>
+    <button type="button" data-action="read-1">p2 읽기</button>
+    <button type="button" data-action="write-1">p2 에 쓰기</button>
+    <button type="button" data-action="reset">처음으로</button>
+  </DemoControls>
+
+  <div class="scene-stage" data-stage>
+    <svg data-graphic role="img" aria-label="위쪽에 프로세스의 가상 페이지 p1 부터 p4 가 있고, 아래쪽 RAM 에 zero page 하나와 이전 내용이 남은 빈 프레임 네 개가 있습니다. 처음에는 어떤 가상 페이지도 프레임에 매핑되어 있지 않습니다. 페이지에 처음 쓰면 page fault 가 나고, 커널이 빈 프레임을 0으로 채워 실선으로 매핑합니다. 처음 읽기만 하면 zero page 에 점선으로 매핑하고, 그 뒤에 쓰면 매핑이 새 프레임으로 옮겨 갑니다."></svg>
+  </div>
+
+  <div class="dz-readouts" aria-label="프로세스 메모리 지표">
+    <span>주소 공간 <b>16 kB</b></span>
+    <span>RSS <b data-rss>0 kB</b></span>
+    <span>page fault <b data-faults>0</b></span>
+    <span>0으로 채운 프레임 <b data-zeroed>0</b></span>
+  </div>
+  <p class="scene-note" data-note role="status"></p>
+  <p class="db-demo-disclaimer">
+    4 kB 페이지 네 개로 줄인 모형입니다. 읽기는 zero page 를, 쓰기는 새 프레임을 매핑하는 Linux 의 anonymous memory 처리를 따랐습니다. OSTEP 이 설명하는 VMS 는 읽기에서도 프레임을 0으로 채워 매핑합니다.
+    빈 프레임 네 개에는 다른 프로세스가 쓰던 내용이 남아 있다고 가정했습니다. 커널이 빈 프레임을 고르는 방법, TLB, transparent huge page 는 그리지 않았고, zero page 는 RSS 에 넣지 않았습니다. 패킷이 움직이는 시간은 실제 page fault 처리 시간과 관계없습니다.
+  </p>
+</InteractiveDemoFrame>
+
+<script>
+  import { bumpText, createScene, duration, setAttrs, svg, watchNarrow, type Point } from '@/scripts/blog/scene/core';
+  import { createBoundary, createChip, createMapLine, createNode, landRing, type Rect } from '@/scripts/blog/scene/parts';
+  import { createPacketLayer } from '@/scripts/blog/scene/packets';
+
+  // 독자가 볼 변화: 페이지를 추가한 순간에는 매핑 선이 하나도 없고 RSS 도 0 kB 다.
+  // p1 에 처음 쓰면 page fault 뒤에 옛 내용이 남은 프레임이 0으로 바뀌고 실선 매핑이 생기며 RSS 가 4 kB 늘어난다.
+  // p2 를 읽기만 하면 zero page 로 가는 점선만 생기고 RSS 는 그대로이고, p2 에 쓰면 그 선 끝이 새 프레임으로 옮겨 간다.
+  // p3, p4 는 끝까지 매핑되지 않는다.
+  const PAGES = 4;
+  const PROC_HUE = 'var(--scene-hue-blue)';
+  const ZERO_HUE = 'var(--scene-hue-gray)';
+
+  type Layout = {
+    view: [number, number];
+    zone: Rect;
+    card: Rect;
+    slot: (i: number) => Point;
+    slotW: number;
+    /** 프로세스 카드에서 가상 페이지로 가는 접근 패킷의 길. */
+    route: (i: number) => Point[];
+    ram: Rect;
+    ramCaption: Point;
+    frame: (i: number) => Point;
+    frameW: number;
+    zero: Point;
+    zeroW: number;
+    zeroSub: Point;
+  };
+  const layouts: Record<'wide' | 'narrow', Layout> = {
+    wide: {
+      view: [560, 230],
+      zone: { x: 8, y: 8, w: 544, h: 80 },
+      card: { x: 66, y: 54, w: 104, h: 40 },
+      slot: (i) => ({ x: 170 + i * 104, y: 54 }),
+      slotW: 52,
+      route: (i) => [{ x: 118, y: 54 }, { x: 130, y: 26 }, { x: 170 + i * 104, y: 26 }, { x: 170 + i * 104, y: 32 }],
+      ram: { x: 8, y: 132, w: 544, h: 90 },
+      ramCaption: { x: 22, y: 154 },
+      frame: (i) => ({ x: 170 + i * 104, y: 188 }),
+      frameW: 58,
+      zero: { x: 64, y: 188 },
+      zeroW: 80,
+      zeroSub: { x: 64, y: 212 },
+    },
+    narrow: {
+      view: [360, 226],
+      zone: { x: 6, y: 6, w: 348, h: 96 },
+      card: { x: 60, y: 30, w: 96, h: 34 },
+      slot: (i) => ({ x: 128 + i * 62, y: 76 }),
+      slotW: 44,
+      route: (i) => [{ x: 60, y: 47 }, { x: 60, y: 54 }, { x: 128 + i * 62, y: 54 }],
+      ram: { x: 6, y: 128, w: 348, h: 92 },
+      ramCaption: { x: 18, y: 148 },
+      frame: (i) => ({ x: 128 + i * 62, y: 180 }),
+      frameW: 58,
+      zero: { x: 50, y: 180 },
+      zeroW: 80,
+      zeroSub: { x: 50, y: 204 },
+    },
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-blog-demo="demand-zero-fault"]').forEach((demo) => {
+    const stage = demo.querySelector<HTMLElement>('[data-stage]')!;
+    const root = demo.querySelector<SVGSVGElement>('[data-graphic]')!;
+    const note = demo.querySelector<HTMLElement>('[data-note]')!;
+    const out = {
+      rss: demo.querySelector<HTMLElement>('[data-rss]')!,
+      faults: demo.querySelector<HTMLElement>('[data-faults]')!,
+      zeroed: demo.querySelector<HTMLElement>('[data-zeroed]')!,
+    };
+    const buttons = [...demo.querySelectorAll<HTMLButtonElement>('[data-action]')];
+    let narrow = false;
+    const L = () => layouts[narrow ? 'narrow' : 'wide'];
+
+    // ── 논리 모형 ──
+    // 'none' 은 페이지 테이블에 접근할 수 없다고만 표시한 상태, 'zero' 는 zero page 읽기 전용 매핑, 'own' 은 자기 프레임 매핑.
+    type Map = 'none' | 'zero' | 'own';
+    type Frame = 'old' | 'zeroed' | 'written';
+    let maps: Map[] = Array(PAGES).fill('none');
+    let frames: Frame[] = Array(PAGES).fill('old');
+    let faults = 0;
+
+    /** 장면 상태: 매핑 선마다 끝점 x 와 그려진 정도. */
+    type State = { fx: number[]; show: number[] };
+    const target = (): State => ({
+      fx: maps.map((m, i) => (m === 'zero' ? L().zero.x : L().frame(i).x)),
+      show: maps.map((m) => (m === 'none' ? 0 : 1)),
+    });
+
+    // ── 그림 ──
+    const zone = createBoundary(root, '', 'zone');
+    const ram = createBoundary(root, 'RAM 프레임', 'zone');
+    const card = createNode(root, { label: '프로세스', hue: PROC_HUE });
+    const lines = Array.from({ length: PAGES }, () => createMapLine(root));
+    const slots = Array.from({ length: PAGES }, (_, i) => createChip(root, { label: `p${i + 1}`, hue: PROC_HUE, width: 52 }));
+    const zeroChip = createChip(root, { label: 'zero page', hue: ZERO_HUE, width: 80 });
+    zeroChip.group.classList.add('is-shared');
+    const zeroSub = svg('text', { class: 'scene-label scene-label-dep is-sans', 'text-anchor': 'middle' }, root);
+    zeroSub.textContent = '공유, 읽기 전용';
+    const frameChips = Array.from({ length: PAGES }, () => createChip(root, { label: '이전 값', hue: PROC_HUE, width: 58 }));
+    frameChips.forEach((chip) => chip.group.classList.add('is-sans'));
+    const packets = createPacketLayer(root);
+
+    const lineEnds = (i: number, fx: number) => {
+      const slot = L().slot(i);
+      const frameY = L().frame(i).y;
+      return { from: { x: slot.x, y: slot.y + 12 }, to: { x: fx, y: frameY - 12 } };
+    };
+    const scene = createScene<State>(target(), (s) => {
+      lines.forEach((line, i) => {
+        const { from, to } = lineEnds(i, s.fx[i]);
+        line.draw(from, to, s.show[i]);
+      });
+    });
+
+    const LABEL: Record<Frame, string> = { old: '이전 값', zeroed: '0', written: '10' };
+    const paintFrame = (i: number) => {
+      const chip = frameChips[i];
+      chip.group.classList.toggle('is-empty', frames[i] === 'old');
+      chip.group.classList.toggle('is-sans', frames[i] === 'old');
+      chip.setLabel(LABEL[frames[i]]);
+    };
+    const paintReadouts = () => {
+      bumpText(out.rss, `${maps.filter((m) => m === 'own').length * 4} kB`);
+      bumpText(out.faults, String(faults));
+      bumpText(out.zeroed, String(frames.filter((f) => f !== 'old').length));
+    };
+    const paint = () => {
+      maps.forEach((m, i) => {
+        lines[i].setReadOnly(m === 'zero');
+        slots[i].group.classList.toggle('is-empty', m === 'none');
+        paintFrame(i);
+      });
+      paintReadouts();
+    };
+    const say = (html: string) => { note.innerHTML = html; };
+    const setNext = (action: string | null) => {
+      buttons.forEach((b) => { if (b.dataset.action === action) b.dataset.state = 'next'; else delete b.dataset.state; });
+    };
+    const untouched = () => {
+      const left = maps.map((m, i) => (m === 'none' ? `p${i + 1}` : '')).filter(Boolean);
+      return left.length ? ` 한 번도 접근하지 않은 ${left.join(', ')} 는 여전히 프레임이 없습니다.` : '';
+    };
+    const intro = () => say('프로세스가 힙에 페이지 네 개를 추가했습니다. 커널은 페이지 테이블에 이 페이지들을 접근할 수 없다고 표시만 했고, 어느 페이지에도 프레임을 매핑하지 않았습니다. <strong>p1 에 처음 쓰면</strong> 어떤 일이 일어날까요?');
+
+    /** 진행 중인 동작을 끊고, 그림을 논리 모형에 맞춥니다. */
+    /** 0으로 채운 프레임의 매핑이 끊기면 매핑까지 마저 바꿉니다. */
+    let pending: (() => void) | null = null;
+    const interrupt = () => {
+      const alive = scene.begin();
+      packets.clear();
+      pending?.();
+      pending = null;
+      scene.set(target());
+      paint();
+      return alive;
+    };
+
+    const fault = async (alive: () => boolean, packet: ReturnType<typeof packets.spawn>) => {
+      packet.relabel('page fault', 'danger');
+      faults += 1;
+      paintReadouts();
+      await scene.pause(duration.beat + 200);
+      return alive();
+    };
+
+    /** 커널이 이전 내용이 남은 프레임을 0으로 채웁니다. */
+    const zeroFrame = async (alive: () => boolean, i: number) => {
+      frameChips[i].flash('is-shaking');
+      await scene.pause(duration.snap);
+      if (!alive()) return false;
+      frames[i] = 'zeroed';
+      pending = () => { maps[i] = 'own'; };
+      paint();
+      await scene.pause(duration.beat);
+      return alive();
+    };
+
+    const access = async (i: number, kind: 'write' | 'read') => {
+      const alive = interrupt();
+      const before = maps[i];
+      const name = `p${i + 1}`;
+      say(`${name} 에 ${kind === 'write' ? '씁니다' : '읽기만 합니다'}.`);
+      const packet = packets.spawn({ label: kind, tone: 'dep', at: L().route(i)[0] });
+      if (!(await packet.travel(L().route(i), 680)) || !alive()) return;
+
+      let text = '';
+      if (kind === 'read' && before === 'none') {
+        // 첫 읽기: page fault 뒤 zero page 를 읽기 전용으로 매핑합니다.
+        if (!(await fault(alive, packet))) return;
+        maps[i] = 'zero';
+        paint();
+        if (!(await scene.go(target(), duration.draw)) || !alive()) return;
+        const z = L().zero;
+        landRing(root, { x: z.x, y: z.y, w: L().zeroW + 8, h: 28 });
+        text = `${name} 를 처음 읽을 때도 page fault 가 났습니다. 커널은 새 프레임 대신 시스템 전체가 같이 쓰는 zero page 를 <strong>읽기 전용</strong>으로 매핑했고, 프로세스는 0을 읽었습니다. <strong>RSS 는 그대로입니다.</strong> 이제 ${name} 에 쓰면 어떻게 될까요?`;
+        setNext(`write-${i}`);
+      } else if (kind === 'write' && before !== 'own') {
+        // 첫 쓰기, 또는 zero page 에 매핑된 페이지에 쓰기: page fault 뒤 0으로 채운 새 프레임을 매핑합니다.
+        if (!(await fault(alive, packet))) return;
+        if (!(await zeroFrame(alive, i))) return;
+        maps[i] = 'own';
+        pending = null;
+        paint();
+        if (!(await scene.go(target(), before === 'zero' ? duration.move : duration.draw)) || !alive()) return;
+        const f = L().frame(i);
+        landRing(root, { x: f.x, y: f.y, w: L().frameW + 8, h: 28 });
+        text = before === 'zero'
+          ? `zero page 는 읽기 전용이라 쓰기에서 page fault 가 한 번 더 났습니다. 커널이 빈 프레임을 0으로 채워 ${name} 의 매핑을 그 프레임으로 옮겼고, <strong>이때 RSS 가 늘었습니다.</strong>`
+          : `${name} 에 매핑된 프레임이 없어서 page fault 가 났습니다. 커널이 이전 내용이 남은 빈 프레임을 0으로 채워 ${name} 에 매핑했고, 프로세스는 같은 쓰기를 다시 실행했습니다. <strong>RSS 가 4 kB 늘었습니다.</strong>`;
+        setNext(i === 0 ? 'read-1' : null);
+      } else {
+        // 이미 매핑된 페이지: page fault 없이 바로 접근합니다.
+        text = maps[i] === 'zero'
+          ? `${name} 는 zero page 에 매핑되어 있어서 page fault 없이 0을 읽었습니다.`
+          : `${name} 에는 이미 프레임이 매핑되어 있어서 page fault 없이 바로 ${kind === 'write' ? '썼' : '읽었'}습니다.`;
+      }
+
+      packet.relabel(kind, kind === 'write' ? 'flow' : 'dep');
+      const { from, to } = lineEnds(i, target().fx[i]);
+      if (!(await packet.travel([from, to], 420)) || !alive()) return;
+      if (kind === 'write') { frames[i] = 'written'; paint(); }
+      void packet.land(false);
+      say(text + untouched());
+    };
+
+    const reset = async () => {
+      const alive = interrupt();
+      maps = Array(PAGES).fill('none');
+      frames = Array(PAGES).fill('old');
+      faults = 0;
+      intro();
+      setNext('write-0');
+      if (!(await scene.go(target(), duration.cut)) || !alive()) return;
+      paint();
+    };
+
+    buttons.forEach((button) => {
+      const [kind, index] = (button.dataset.action ?? '').split('-');
+      button.addEventListener('click', () => {
+        if (kind === 'reset') void reset();
+        else void access(Number(index), kind as 'write' | 'read');
+      });
+    });
+
+    const applyLayout = () => {
+      const l = L();
+      setAttrs(root, { viewBox: `0 0 ${l.view[0]} ${l.view[1]}` });
+      zone.place(l.zone);
+      ram.caption.textContent = narrow ? 'RAM' : 'RAM 프레임';
+      ram.place(l.ram, { ...l.ramCaption, anchor: 'start' });
+      card.setBox(l.card);
+      slots.forEach((slot, i) => slot.place(l.slot(i)));
+      frameChips.forEach((chip, i) => chip.place(l.frame(i)));
+      zeroChip.place(l.zero);
+      setAttrs(zeroSub, { x: l.zeroSub.x, y: l.zeroSub.y });
+      interrupt();
+      if (maps.every((m) => m === 'none')) intro();
+    };
+    watchNarrow(stage, (isNarrow) => { narrow = isNarrow; applyLayout(); });
+    intro();
+    applyLayout();
+  });
+</script>
+
+<style>
+  .dz-readouts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 2px 0; color: var(--slate); font-size: 0.8rem; }
+  .dz-readouts span { display: inline-flex; align-items: baseline; gap: 6px; }
+  .dz-readouts b { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .dz-readouts b:global(.is-bump) { animation: scene-pop 420ms ease-out; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dz-readouts b:global(.is-bump) { animation: none; }
+  }
+</style>

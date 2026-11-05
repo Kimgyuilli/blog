@@ -800,6 +800,12 @@ html.dark .db-demo {
 /* NUMA 노드 사이 연결 (NumaPlacement) */
 .scene-numa-link { stroke: color-mix(in srgb, var(--scene-dep) 70%, var(--hairline)); stroke-width: 4; stroke-linecap: round; }
 
+/* 페이지 테이블 매핑 선 (DemandZeroFault, CowForkFrames). 실선은 쓰기 가능, 점선은 읽기 전용 */
+.scene-pte-line { stroke: var(--scene-flow); stroke-width: 1.8; stroke-linecap: round; }
+.scene-pte-dot { fill: var(--scene-flow); }
+.scene-pte.is-ro .scene-pte-line { stroke: var(--scene-temp); stroke-dasharray: 5 4; }
+.scene-pte.is-ro .scene-pte-dot { fill: var(--scene-temp); }
+
 @media (prefers-reduced-motion: reduce) {
   .scene-alloc-block.is-misfit,
   .scene-line.is-flowing,
